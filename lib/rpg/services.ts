@@ -17,6 +17,148 @@ export function rollD20() {
   return 1 + Math.floor(Math.random() * 20);
 }
 
+export function convertInlineDiff(
+  block: Record<string, unknown> | null
+): { diff: TurnDiff | null; imageWorthy: boolean } {
+  if (!block || typeof block !== 'object') {
+    return { diff: null, imageWorthy: false };
+  }
+
+  if (Object.keys(block).length === 0) {
+    return { diff: null, imageWorthy: false };
+  }
+
+  const imageWorthy = block.image_worthy === true;
+  const diff: TurnDiff = {};
+
+  const state = block.state;
+
+  if (state && typeof state === 'object' && !Array.isArray(state)) {
+    const rawState = state as {
+      location?: unknown;
+      canon_point?: unknown;
+      inventory_and_jutsu_changes?: unknown;
+    };
+
+    const inventoryChanges =
+      Array.isArray(rawState.inventory_and_jutsu_changes) &&
+      rawState.inventory_and_jutsu_changes.length > 0
+        ? rawState.inventory_and_jutsu_changes.filter(
+            (item): item is string => typeof item === 'string' && item.trim().length > 0
+          )
+        : [];
+
+    diff.state = {
+      location:
+        typeof rawState.location === 'string' && rawState.location.trim()
+          ? rawState.location.trim()
+          : undefined,
+      canonPoint:
+        typeof rawState.canon_point === 'string' && rawState.canon_point.trim()
+          ? rawState.canon_point.trim()
+          : undefined,
+      inventoryAdded: inventoryChanges,
+    };
+  }
+
+  if (Array.isArray(block.bonds)) {
+    diff.bonds = block.bonds
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const bond = item as {
+          character?: unknown;
+          affinity_change?: unknown;
+          status?: unknown;
+          note?: unknown;
+        };
+
+        return {
+          character: typeof bond.character === 'string' ? bond.character : '',
+          affinityDelta:
+            typeof bond.affinity_change === 'number' ? bond.affinity_change : undefined,
+          status: typeof bond.status === 'string' ? bond.status : undefined,
+          note: typeof bond.note === 'string' ? bond.note : undefined,
+        };
+      })
+      .filter((item) => item.character.trim().length > 0);
+  }
+
+  if (Array.isArray(block.facts)) {
+    diff.facts = block.facts
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const fact = item as { entity?: unknown; fact?: unknown };
+
+        return {
+          action: 'add' as const,
+          type: 'event' as const,
+          text: typeof fact.fact === 'string' ? fact.fact : '',
+          subject: typeof fact.entity === 'string' ? fact.entity : undefined,
+        };
+      })
+      .filter((item) => item.text.trim().length > 0);
+  }
+
+  if (Array.isArray(block.threads)) {
+    diff.threads = block.threads
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const thread = item as { description?: unknown; status?: unknown };
+        const status = thread.status === 'resolved' ? 'resolve' : 'update';
+
+        return {
+          action: status as 'update' | 'resolve',
+          title:
+            typeof thread.description === 'string'
+              ? thread.description.trim().slice(0, 80)
+              : '',
+          description:
+            typeof thread.description === 'string' ? thread.description : undefined,
+          type: 'other' as const,
+        };
+      })
+      .filter((item) => item.title.length > 0);
+  }
+
+  if (Array.isArray(block.new_characters)) {
+    diff.entities = block.new_characters
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const character = item as {
+          name?: unknown;
+          age?: unknown;
+          role?: unknown;
+          personality?: unknown;
+          speech_style?: unknown;
+          appearance_block?: unknown;
+        };
+
+        return {
+          name: typeof character.name === 'string' ? character.name : '',
+          age: typeof character.age === 'number' ? character.age : undefined,
+          role: typeof character.role === 'string' ? character.role : undefined,
+          personality:
+            typeof character.personality === 'string' ? character.personality : undefined,
+          speechStyle:
+            typeof character.speech_style === 'string' ? character.speech_style : undefined,
+          appearance:
+            typeof character.appearance_block === 'string'
+              ? character.appearance_block
+              : undefined,
+        };
+      })
+      .filter((item) => item.name.trim().length > 0);
+  }
+
+  const hasChanges =
+    Object.keys(diff).length > 0 &&
+    Object.values(diff).some(
+      (value) => Array.isArray(value) ? value.length > 0 : Boolean(value)
+    );
+
+  return { diff: hasChanges ? diff : null, imageWorthy };
+}
+
 export function cloneDatabase(db: AppDatabase): AppDatabase {
   return JSON.parse(JSON.stringify(db)) as AppDatabase;
 }
@@ -213,12 +355,26 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
     next.state.inStoryDate = nextDate;
 
-    if (yearDelta > 0) {
-      next.entities = next.entities.map((entity) =>
-        entity.birthYear === undefined && entity.age !== undefined
-          ? { ...entity, age: entity.age + yearDelta }
-          : entity
-      );
+    if (yearDelta !== 0) {
+      next.entities = next.entities.map((entity) => {
+        if (entity.birthYear !== undefined) {
+          return entity;
+        }
+
+        if (entity.age === undefined) {
+          return entity;
+        }
+
+        return {
+          ...entity,
+          age: Math.max(0, entity.age + yearDelta),
+        };
+      });
+
+      next.bonds = next.bonds.map((bond) => ({
+        ...bond,
+        updatedInStoryDate: nextDate,
+      }));
     }
   }
 

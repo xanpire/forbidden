@@ -27,12 +27,13 @@ import {
   type StorageMeta,
 } from './db';
 import { makeId } from './id';
-import { buildNarrationPrompt } from './prompt';
+import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
   applyTurnDiff,
   cloneDatabase,
+  convertInlineDiff,
   extractTurnDiff,
   getLastExchange,
   pushSnapshot,
@@ -43,6 +44,7 @@ import {
   summarizeTimeSkip,
 } from './services';
 import { daysBetween } from './calendar';
+import { generateSceneImageForTurn } from './sceneImage';
 import type {
   AppDatabase,
   BondRecord,
@@ -50,6 +52,7 @@ import type {
   Settings,
   SummaryRecord,
   ThreadRecord,
+  TurnDiff,
 } from './types';
 
 type GameContextValue = {
@@ -164,18 +167,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const processBackground = useCallback(
-    async (currentDb: AppDatabase, userMessage: string, assistantMessage: string) => {
+    async (
+      currentDb: AppDatabase,
+      userMessage: string,
+      assistantMessage: string,
+      inlineDiff: TurnDiff | null,
+      inlineImageWorthy: boolean
+    ) => {
       setIsProcessing(true);
       setProcessingError(null);
+      const imageWorthy = inlineImageWorthy;
 
       try {
         const beforeDate = currentDb.state.inStoryDate;
-        const extraction = await extractTurnDiff({
-          apiKey,
-          db: currentDb,
-          userMessage,
-          assistantMessage,
-        });
+        const extraction = inlineDiff
+          ? inlineDiff
+          : await extractTurnDiff({
+              apiKey,
+              db: currentDb,
+              userMessage,
+              assistantMessage,
+            });
 
         let next = extraction ? applyTurnDiff(currentDb, extraction) : currentDb;
 
@@ -210,7 +222,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         const story = next.rawLog.filter((message) => message.kind === 'story');
 
-        if (extraction?.scene?.ended || story.length >= next.settings.autoSummarizeThreshold) {
+        const shouldSummarize =
+          (inlineDiff !== null && inlineImageWorthy) ||
+          extraction?.scene?.ended ||
+          story.length >= next.settings.autoSummarizeThreshold;
+
+        if (shouldSummarize) {
           const sceneMessages = story.slice(-Math.min(story.length, 8));
           const summary = await summarizeScene({
             apiKey,
@@ -306,6 +323,32 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        if (imageWorthy && apiKey) {
+          const latestAssistant = [...next.rawLog]
+            .reverse()
+            .find((message) => message.kind === 'story' && message.role === 'assistant');
+
+          if (latestAssistant && !latestAssistant.image) {
+            try {
+              const dataUri = await generateSceneImageForTurn({
+                apiKey,
+                db: next,
+                logId: latestAssistant.id,
+              });
+
+              next = {
+                ...next,
+                rawLog: next.rawLog.map((entry) =>
+                  entry.id === latestAssistant.id
+                    ? { ...entry, image: dataUri }
+                    : entry
+                ),
+              };
+            } catch {
+            }
+          }
+        }
+
         if (dbRef.current?.meta.slotId === next.meta.slotId) {
           await commitDb(next);
         } else {
@@ -379,10 +422,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           },
         });
 
+        const { narration, inlineDiff } = splitNarrationAndDiff(result.text);
+        const { diff: inlineTurnDiff, imageWorthy } = convertInlineDiff(inlineDiff);
+
         const withAssistant = appendStoryMessage(
           withUser,
           'assistant',
-          result.text,
+          narration || result.text,
           withUser.settings.narrationModel,
           result.promptTokens,
           result.completionTokens
@@ -402,7 +448,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         backgroundPromiseRef.current = processBackground(
           saved,
           action,
-          result.text
+          narration || result.text,
+          inlineTurnDiff,
+          imageWorthy
         );
       } catch (caught) {
         const message =

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kan-shell-v3';
+const CACHE_NAME = 'kan-shell-v4';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -43,7 +43,10 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put('/', copy));
           return response;
         })
-        .catch(() => caches.match('/'))
+        .catch(async () => {
+          const cached = await caches.match('/');
+          return cached || new Response('Offline', { status: 503 });
+        })
     );
     return;
   }
@@ -67,5 +70,11 @@ self.addEventListener('fetch', (event) => {
         return cached || network;
       })
     );
+  }
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') {
+    self.skipWaiting();
   }
 });

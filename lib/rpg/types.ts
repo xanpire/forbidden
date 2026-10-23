@@ -243,6 +243,7 @@ export type SceneInfo = {
   tags?: string[];
   entities?: string[];
   importance?: 1 | 2 | 3 | 4 | 5;
+  imageWorthy?: boolean;
 };
 
 export type TurnDiff = {
