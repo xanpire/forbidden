@@ -168,6 +168,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const processBackground = useCallback(
     async (
+      activeKey: string,
       currentDb: AppDatabase,
       userMessage: string,
       assistantMessage: string,
@@ -183,7 +184,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const extraction = inlineDiff
           ? inlineDiff
           : await extractTurnDiff({
-              apiKey,
+              apiKey: activeKey,
               db: currentDb,
               userMessage,
               assistantMessage,
@@ -193,7 +194,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= 180) {
           const timeSkip = await summarizeTimeSkip({
-            apiKey,
+            apiKey: activeKey,
             db: next,
             fromDate: beforeDate,
             toDate: next.state.inStoryDate,
@@ -230,7 +231,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (shouldSummarize) {
           const sceneMessages = story.slice(-Math.min(story.length, 8));
           const summary = await summarizeScene({
-            apiKey,
+            apiKey: activeKey,
             db: next,
             messages: sceneMessages,
           });
@@ -265,7 +266,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         if (chapterSummaries.length > 0 && chapterSummaries.length % 3 === 0) {
           const arcSummary = await rollArcSummary({
-            apiKey,
+            apiKey: activeKey,
             db: next,
             chapterSummaries: chapterSummaries.slice(-3),
           });
@@ -295,7 +296,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         if (chapterSummaries.length >= 12 && chapterSummaries.length % 12 === 0) {
           const yearSummary = await rollArcSummary({
-            apiKey,
+            apiKey: activeKey,
             db: next,
             chapterSummaries: chapterSummaries.slice(-12),
           });
@@ -323,7 +324,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (imageWorthy && apiKey) {
+        if (imageWorthy && activeKey) {
           const latestAssistant = [...next.rawLog]
             .reverse()
             .find((message) => message.kind === 'story' && message.role === 'assistant');
@@ -331,7 +332,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           if (latestAssistant && !latestAssistant.image) {
             try {
               const dataUri = await generateSceneImageForTurn({
-                apiKey,
+                apiKey: activeKey,
                 db: next,
                 logId: latestAssistant.id,
               });
@@ -361,22 +362,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
         backgroundPromiseRef.current = null;
       }
     },
-    [apiKey, commitDb]
+    [commitDb]
   );
 
-  const sendTurn = useCallback(
-    async (input: string) => {
-      const action = input.trim();
-
-      if (!action) {
-        return;
-      }
-
-      if (!apiKey) {
-        setError('Add your OpenRouter API key in Settings before starting the story.');
-        return;
-      }
-
+  const sendTurnInner = useCallback(
+    async (action: string, activeKey: string) => {
       if (backgroundPromiseRef.current) {
         await backgroundPromiseRef.current;
       }
@@ -411,7 +401,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         abortRef.current = controller;
 
         const result = await streamChatCompletion({
-          apiKey,
+          apiKey: activeKey,
           model: withUser.settings.narrationModel,
           messages: prompt.messages,
           temperature: withUser.settings.temperature,
@@ -446,6 +436,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setStreamingText('');
 
         backgroundPromiseRef.current = processBackground(
+          activeKey,
           saved,
           action,
           narration || result.text,
@@ -461,8 +452,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
         abortRef.current = null;
       }
     },
-    [apiKey, commitDb, processBackground]
+    [commitDb, processBackground]
   );
+
+
+  const sendTurn = useCallback(
+    async (input: string) => {
+      const action = input.trim();
+
+      if (!action) {
+        return;
+      }
+
+      if (!apiKey.trim()) {
+        const storedKey = (await loadApiKey()).trim();
+
+        if (!storedKey) {
+          setError('Add your OpenRouter API key in Settings before starting the story.');
+          return;
+        }
+
+        setApiKeyState(storedKey);
+        await sendTurnInner(action, storedKey);
+        return;
+      }
+
+      await sendTurnInner(action, apiKey.trim());
+    },
+    [apiKey, sendTurnInner]
+  );
+
 
   const undoLastTurn = useCallback(async () => {
     if (backgroundPromiseRef.current) {
