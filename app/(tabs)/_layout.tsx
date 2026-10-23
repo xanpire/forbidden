@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Compass, Settings2 } from 'lucide-react-native';
+import { BookOpen, ScrollText, Settings2, Users } from 'lucide-react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,7 +31,25 @@ export default function TabsLayout() {
         options={{
           title: 'Story',
           tabBarIcon: ({ color, focused }) => (
-            <Compass color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
+            <BookOpen color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="characters"
+        options={{
+          title: 'Characters',
+          tabBarIcon: ({ color, focused }) => (
+            <Users color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="journal"
+        options={{
+          title: 'Journal',
+          tabBarIcon: ({ color, focused }) => (
+            <ScrollText color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
           ),
         }}
       />
@@ -57,7 +75,7 @@ const styles = StyleSheet.create({
   },
   label: {
     fontFamily: fonts.semibold,
-    fontSize: 10,
+    fontSize: 9,
     letterSpacing: 0.1,
   },
 });

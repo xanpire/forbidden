@@ -1,71 +1,46 @@
-import * as WebBrowser from 'expo-web-browser';
-import {
-  ChevronRight,
-  CircleAlert,
-  CircleCheck,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  RotateCcw,
-  Trash2,
-} from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  CircleAlert,
+  CircleCheck,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Upload,
+} from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
 import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { ModelPickerModal } from '@/components/ModelPickerModal';
+import { ModelSelect } from '@/components/ModelSelect';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { useToast } from '@/components/Toast';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { testOpenRouterKey } from '@/lib/openrouter';
-import {
-  useSettings,
-  type ImageFrequency,
-  type ImageStyle,
-  type NarrationStyle,
-} from '@/lib/settings';
+import { downloadJson, pickJsonFile } from '@/lib/rpg/file';
+import { useGame } from '@/lib/rpg/game';
 
 type Feedback = {
   tone: 'success' | 'error';
   message: string;
 };
-
-const narrationOptions: { value: NarrationStyle; label: string }[] = [
-  { value: 'cinematic', label: 'Cinematic' },
-  { value: 'balanced', label: 'Balanced' },
-  { value: 'literary', label: 'Literary' },
-];
-
-const narrationDescription: Record<NarrationStyle, string> = {
-  cinematic: 'Atmospheric and visual. Built for tension and scene-setting.',
-  balanced: 'Clear action with room for mood and dialogue.',
-  literary: 'Closer and more sensory. A slower, more detailed telling.',
-};
-
-const imageFrequencyOptions: { value: Exclude<ImageFrequency, 'off'>; label: string }[] = [
-  { value: 'choice', label: 'Every choice' },
-  { value: 'action', label: 'Every action' },
-];
-
-const imageStyleOptions: { value: ImageStyle; label: string }[] = [
-  { value: 'cinematic', label: 'Cinematic' },
-  { value: 'ink', label: 'Ink' },
-  { value: 'painterly', label: 'Painterly' },
-];
 
 function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -79,13 +54,20 @@ function SectionTitle({ title, hint }: { title: string; hint?: string }) {
 export default function SettingsScreen() {
   const {
     apiKey,
-    hydrated,
-    resetSettings,
-    saveApiKey,
-    settings,
+    db,
+    slots,
+    setApiKey,
     updateSettings,
-  } = useSettings();
+    createNewSlot,
+    deleteSlotById,
+    duplicateSlotById,
+    renameSlotById,
+    switchSlotById,
+    exportActiveSlot,
+    importSlot,
+  } = useGame();
   const { showToast } = useToast();
+
   const [keyDraft, setKeyDraft] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -93,16 +75,32 @@ export default function SettingsScreen() {
   const [savingKey, setSavingKey] = useState(false);
   const [testingKey, setTestingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
-  const [modelPickerVisible, setModelPickerVisible] = useState(false);
-  const [resetVisible, setResetVisible] = useState(false);
-  const [resetting, setResetting] = useState(false);
-  const lastImageFrequency = useRef<Exclude<ImageFrequency, 'off'>>('choice');
+
+  const [contextDraft, setContextDraft] = useState('10');
+  const [thresholdDraft, setThresholdDraft] = useState('16');
+  const [temperatureDraft, setTemperatureDraft] = useState('0.7');
+  const [maxTokensDraft, setMaxTokensDraft] = useState('900');
+
+  const [newSlotName, setNewSlotName] = useState('');
+  const [renamingSlotId, setRenamingSlotId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteSlotId, setDeleteSlotId] = useState<string | null>(null);
+  const [deletingSlot, setDeletingSlot] = useState(false);
 
   useEffect(() => {
-    if (hydrated) {
-      setKeyDraft(apiKey);
+    setKeyDraft(apiKey);
+  }, [apiKey]);
+
+  useEffect(() => {
+    if (!db) {
+      return;
     }
-  }, [apiKey, hydrated]);
+
+    setContextDraft(String(db.settings.contextMessages));
+    setThresholdDraft(String(db.settings.autoSummarizeThreshold));
+    setTemperatureDraft(String(db.settings.temperature));
+    setMaxTokensDraft(String(db.settings.maxTokens));
+  }, [db]);
 
   const handleSaveKey = async () => {
     setKeyError(null);
@@ -116,15 +114,12 @@ export default function SettingsScreen() {
     setSavingKey(true);
 
     try {
-      await saveApiKey(keyDraft);
-      setFeedback({
-        tone: 'success',
-        message: 'API key saved on this device.',
-      });
+      await setApiKey(keyDraft);
+      setFeedback({ tone: 'success', message: 'API key saved on this device.' });
     } catch {
       setFeedback({
         tone: 'error',
-        message: 'Could not save the key. Check your storage permissions and try again.',
+        message: 'Could not save the key. Check your storage permissions.',
       });
     } finally {
       setSavingKey(false);
@@ -146,19 +141,11 @@ export default function SettingsScreen() {
       const result = await testOpenRouterKey(keyDraft);
 
       if (result.ok) {
-        try {
-          await saveApiKey(keyDraft);
-          setFeedback({
-            tone: 'success',
-            message: `Connected to OpenRouter · ${result.label}. Key saved.`,
-          });
-        } catch {
-          setFeedback({
-            tone: 'error',
-            message:
-              'The key works, but it could not be saved on this device. Try again.',
-          });
-        }
+        await setApiKey(keyDraft);
+        setFeedback({
+          tone: 'success',
+          message: `Connected to OpenRouter · ${result.label}.`,
+        });
       } else {
         setFeedback({ tone: 'error', message: result.message });
       }
@@ -172,75 +159,104 @@ export default function SettingsScreen() {
     setFeedback(null);
 
     try {
-      await saveApiKey('');
+      await setApiKey('');
       setKeyDraft('');
-      setFeedback({
-        tone: 'success',
-        message: 'API key removed from this device.',
-      });
+      setFeedback({ tone: 'success', message: 'API key removed.' });
     } catch {
-      setFeedback({
-        tone: 'error',
-        message: 'Could not remove the key. Try again.',
-      });
+      setFeedback({ tone: 'error', message: 'Could not remove the key.' });
     } finally {
       setRemovingKey(false);
     }
   };
 
-  const handlePreference = async (patch: Parameters<typeof updateSettings>[0]) => {
-    try {
-      await updateSettings(patch);
-    } catch {
-      showToast('Could not save that preference. Try again.', 'error');
-    }
-  };
-
-  const handleSelectModel = async (model: { id: string; name: string }) => {
-    setModelPickerVisible(false);
-
-    try {
-      await updateSettings({ modelId: model.id, modelName: model.name });
-      showToast(`${model.name} is now narrating.`, 'success');
-    } catch {
-      showToast('Could not save that model. Try again.', 'error');
-    }
-  };
-
-  const handleImageToggle = (enabled: boolean) => {
-    if (enabled) {
-      void handlePreference({ imageFrequency: lastImageFrequency.current });
+  const commitPromptSettings = async () => {
+    if (!db) {
       return;
     }
 
-    if (settings.imageFrequency !== 'off') {
-      lastImageFrequency.current = settings.imageFrequency;
-    }
+    const contextMessages = clampNumber(contextDraft, 4, 30);
+    const autoSummarizeThreshold = clampNumber(thresholdDraft, 8, 100);
+    const temperature = clampNumber(temperatureDraft, 0, 2);
+    const maxTokens = clampNumber(maxTokensDraft, 200, 4000);
 
-    void handlePreference({ imageFrequency: 'off' });
+    setContextDraft(String(contextMessages));
+    setThresholdDraft(String(autoSummarizeThreshold));
+    setTemperatureDraft(String(temperature));
+    setMaxTokensDraft(String(maxTokens));
+
+    await updateSettings({
+      contextMessages,
+      autoSummarizeThreshold,
+      temperature,
+      maxTokens,
+    });
   };
 
-  const handleReset = async () => {
-    setResetting(true);
+  const handleExport = () => {
+    const json = exportActiveSlot();
+
+    if (!json) {
+      return;
+    }
+
+    downloadJson(`kan-story-${db?.meta.slotName ?? 'save'}.json`, json);
+    showToast('Save file downloaded.', 'success');
+  };
+
+  const handleImport = async () => {
+    try {
+      const json = await pickJsonFile();
+      await importSlot(json);
+      showToast('Story imported.', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not import that file.';
+      showToast(message, 'error');
+    }
+  };
+
+  const handleCreateSlot = async () => {
+    const name = newSlotName.trim() || 'New story';
+    await createNewSlot(name);
+    setNewSlotName('');
+    showToast(`Created ${name}.`, 'success');
+  };
+
+  const handleRename = async () => {
+    if (!renamingSlotId) {
+      return;
+    }
+
+    const name = renameValue.trim();
+
+    if (!name) {
+      return;
+    }
+
+    await renameSlotById(renamingSlotId, name);
+    setRenamingSlotId(null);
+    setRenameValue('');
+    showToast('Story renamed.', 'success');
+  };
+
+  const handleDeleteSlot = async () => {
+    if (!deleteSlotId) {
+      return;
+    }
+
+    setDeletingSlot(true);
 
     try {
-      await resetSettings();
-      setKeyDraft('');
-      setFeedback(null);
-      setResetVisible(false);
-      showToast('Settings reset.', 'success');
+      await deleteSlotById(deleteSlotId);
+      setDeleteSlotId(null);
+      showToast('Story deleted.', 'success');
     } catch {
-      showToast('Could not reset settings. Try again.', 'error');
+      showToast('Could not delete that story.', 'error');
     } finally {
-      setResetting(false);
+      setDeletingSlot(false);
     }
   };
 
-  const openKeyPage = () => {
-    void WebBrowser.openBrowserAsync('https://openrouter.ai/keys');
-  };
-
-  if (!hydrated) {
+  if (!db) {
     return (
       <View style={styles.root}>
         <AppBackground />
@@ -251,17 +267,6 @@ export default function SettingsScreen() {
       </View>
     );
   }
-
-  const imagesEnabled = settings.imageFrequency !== 'off';
-  const imageFrequency = imagesEnabled ? settings.imageFrequency : 'choice';
-  const imageDescription =
-    imageFrequency === 'action'
-      ? 'A new image every time Kan speaks or acts.'
-      : 'A new image each time the narrator offers choices.';
-  const storageCopy =
-    Platform.OS === 'web'
-      ? 'Stored in this browser and sent only to OpenRouter.'
-      : 'Stored securely on this device and sent only to OpenRouter.';
 
   return (
     <View style={styles.root}>
@@ -274,22 +279,19 @@ export default function SettingsScreen() {
         >
           <View style={styles.pageHeading}>
             <Text style={styles.pageTitle}>Settings</Text>
-            <Text style={styles.pageSubtitle}>Narrator and story preferences.</Text>
+            <Text style={styles.pageSubtitle}>
+              Connect the narrator, choose models, and manage your saves.
+            </Text>
           </View>
 
           <View style={styles.section}>
-            <SectionTitle
-              hint="Connect your key to enable narration."
-              title="OpenRouter"
-            />
+            <SectionTitle hint="Your key stays on this device." title="OpenRouter" />
             <SurfaceCard style={styles.card}>
               <View style={styles.keyStatus}>
                 <View
                   style={[
                     styles.statusDot,
-                    {
-                      backgroundColor: apiKey ? colors.success : colors.textDim,
-                    },
+                    { backgroundColor: apiKey ? colors.success : colors.textDim },
                   ]}
                 />
                 <Text style={styles.keyStatusText}>
@@ -325,9 +327,9 @@ export default function SettingsScreen() {
                     onPress={() => setShowKey((current) => !current)}
                   >
                     {showKey ? (
-                      <EyeOff color={colors.textDim} size={18} strokeWidth={1.8} />
+                      <EyeOff color={colors.textDim} size={18} strokeWidth={2} />
                     ) : (
-                      <Eye color={colors.textDim} size={18} strokeWidth={1.8} />
+                      <Eye color={colors.textDim} size={18} strokeWidth={2} />
                     )}
                   </Pressable>
                 </View>
@@ -336,7 +338,9 @@ export default function SettingsScreen() {
                     {keyError}
                   </Text>
                 ) : (
-                  <Text style={styles.fieldHint}>{storageCopy}</Text>
+                  <Text style={styles.fieldHint}>
+                    Stored locally and sent only to OpenRouter.
+                  </Text>
                 )}
               </View>
 
@@ -376,11 +380,15 @@ export default function SettingsScreen() {
               <View style={styles.keyLinks}>
                 <Pressable
                   accessibilityRole="link"
-                  onPress={openKeyPage}
+                  onPress={() =>
+                    void import('expo-web-browser').then((module) =>
+                      module.openBrowserAsync('https://openrouter.ai/keys')
+                    )
+                  }
                   style={({ pressed }) => [styles.textLink, pressed && styles.pressed]}
                 >
                   <Text style={styles.textLinkLabel}>Get a key</Text>
-                  <ExternalLink color={colors.textMuted} size={13} strokeWidth={1.8} />
+                  <ExternalLink color={colors.textMuted} size={13} strokeWidth={2} />
                 </Pressable>
                 {apiKey ? (
                   <Pressable
@@ -393,7 +401,7 @@ export default function SettingsScreen() {
                     {removingKey ? (
                       <ActivityIndicator color={colors.danger} size="small" />
                     ) : (
-                      <Trash2 color={colors.danger} size={13} strokeWidth={1.8} />
+                      <Trash2 color={colors.danger} size={13} strokeWidth={2} />
                     )}
                     <Text style={styles.removeLabel}>Remove key</Text>
                   </Pressable>
@@ -403,136 +411,271 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
-            <SectionTitle hint="Any model on OpenRouter." title="Narrator model" />
-            <Pressable
-              accessibilityLabel="Choose narrator model"
-              accessibilityRole="button"
-              onPress={() => setModelPickerVisible(true)}
-              style={({ pressed }) => [styles.modelCard, pressed && styles.pressed]}
-            >
-              <View style={styles.modelCopy}>
-                <Text numberOfLines={1} style={styles.modelName}>
-                  {settings.modelName}
-                </Text>
-                <Text numberOfLines={1} style={styles.modelId}>
-                  {settings.modelId}
-                </Text>
-              </View>
-              <ChevronRight color={colors.textDim} size={18} strokeWidth={1.8} />
-            </Pressable>
-          </View>
-
-          <View style={styles.section}>
-            <SectionTitle title="Narration" />
+            <SectionTitle hint="Use different models for narration, summaries, and extraction." title="Models" />
             <SurfaceCard style={styles.card}>
-              <SegmentedControl
-                accessibilityLabel="Narration style"
-                onChange={(value) => void handlePreference({ narrationStyle: value })}
-                options={narrationOptions}
-                value={settings.narrationStyle}
+              <ModelSelect
+                hint="Writes the story."
+                label="Narration model"
+                onChange={(value) => void updateSettings({ narrationModel: value })}
+                value={db.settings.narrationModel}
               />
-              <Text style={styles.preferenceHint}>
-                {narrationDescription[settings.narrationStyle]}
-              </Text>
+              <ModelSelect
+                hint="Rolls chapters and arcs into summaries."
+                label="Summary model"
+                onChange={(value) => void updateSettings({ summaryModel: value })}
+                value={db.settings.summaryModel}
+              />
+              <ModelSelect
+                hint="Extracts state, bonds, facts, and threads."
+                label="Extraction model"
+                onChange={(value) => void updateSettings({ extractionModel: value })}
+                value={db.settings.extractionModel}
+              />
             </SurfaceCard>
           </View>
 
           <View style={styles.section}>
-            <SectionTitle title="Scene images" />
+            <SectionTitle hint="Keep prompts small and cheap." title="Prompt and memory" />
             <SurfaceCard style={styles.card}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchCopy}>
-                  <Text style={styles.switchTitle}>Generate images</Text>
-                  <Text style={styles.switchHint}>
-                    Uses an image-capable OpenRouter model.
-                  </Text>
+              <View style={styles.numberRow}>
+                <View style={styles.numberField}>
+                  <Text style={styles.fieldLabel}>Recent messages</Text>
+                  <TextInput
+                    accessibilityLabel="Recent messages"
+                    keyboardType="number-pad"
+                    onBlur={() => void commitPromptSettings()}
+                    onChangeText={setContextDraft}
+                    style={styles.numberInput}
+                    value={contextDraft}
+                  />
                 </View>
-                <Switch
-                  accessibilityLabel="Generate scene images"
-                  ios_backgroundColor={colors.surfaceSoft}
-                  onValueChange={handleImageToggle}
-                  thumbColor={colors.white}
-                  trackColor={{
-                    false: colors.surfaceSoft,
-                    true: colors.accent,
-                  }}
-                  value={imagesEnabled}
+                <View style={styles.numberField}>
+                  <Text style={styles.fieldLabel}>Summarize after</Text>
+                  <TextInput
+                    accessibilityLabel="Summarize after"
+                    keyboardType="number-pad"
+                    onBlur={() => void commitPromptSettings()}
+                    onChangeText={setThresholdDraft}
+                    style={styles.numberInput}
+                    value={thresholdDraft}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.numberRow}>
+                <View style={styles.numberField}>
+                  <Text style={styles.fieldLabel}>Temperature</Text>
+                  <TextInput
+                    accessibilityLabel="Temperature"
+                    keyboardType="decimal-pad"
+                    onBlur={() => void commitPromptSettings()}
+                    onChangeText={setTemperatureDraft}
+                    style={styles.numberInput}
+                    value={temperatureDraft}
+                  />
+                </View>
+                <View style={styles.numberField}>
+                  <Text style={styles.fieldLabel}>Max reply tokens</Text>
+                  <TextInput
+                    accessibilityLabel="Max reply tokens"
+                    keyboardType="number-pad"
+                    onBlur={() => void commitPromptSettings()}
+                    onChangeText={setMaxTokensDraft}
+                    style={styles.numberInput}
+                    value={maxTokensDraft}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.retrievalField}>
+                <Text style={styles.fieldLabel}>Retrieved memories per turn</Text>
+                <SegmentedControl
+                  accessibilityLabel="Retrieved memories per turn"
+                  onChange={(value) =>
+                    void updateSettings({ retrievalLimit: Number(value) })
+                  }
+                  options={[
+                    { value: '3', label: '3' },
+                    { value: '4', label: '4' },
+                    { value: '5', label: '5' },
+                  ]}
+                  value={String(db.settings.retrievalLimit)}
+                />
+              </View>
+            </SurfaceCard>
+          </View>
+
+          <View style={styles.section}>
+            <SectionTitle hint="Multiple independent stories." title="Save slots" />
+            <SurfaceCard style={styles.card}>
+              <View style={styles.newSlotRow}>
+                <TextInput
+                  accessibilityLabel="New story name"
+                  onChangeText={setNewSlotName}
+                  placeholder="New story name"
+                  placeholderTextColor={colors.textDim}
+                  style={styles.newSlotInput}
+                  value={newSlotName}
+                />
+                <AppButton
+                  compact
+                  icon={<Plus color={colors.onAccent} size={16} strokeWidth={2.2} />}
+                  label="New"
+                  onPress={() => void handleCreateSlot()}
+                  style={styles.newSlotButton}
                 />
               </View>
 
-              {imagesEnabled ? (
-                <>
-                  <View style={styles.divider} />
-                  <Text style={styles.fieldLabel}>Frequency</Text>
-                  <SegmentedControl
-                    accessibilityLabel="Image frequency"
-                    onChange={(value) =>
-                      void handlePreference({ imageFrequency: value })
-                    }
-                    options={imageFrequencyOptions}
-                    value={imageFrequency}
-                  />
-                  <Text style={styles.preferenceHint}>{imageDescription}</Text>
+              <View style={styles.slotList}>
+                {slots.map((slot) => {
+                  const active = slot.meta.slotId === db.meta.slotId;
 
-                  <View style={styles.divider} />
-                  <Text style={styles.fieldLabel}>Style</Text>
-                  <SegmentedControl
-                    accessibilityLabel="Image style"
-                    onChange={(value) => void handlePreference({ imageStyle: value })}
-                    options={imageStyleOptions}
-                    value={settings.imageStyle}
-                  />
-                </>
-              ) : null}
+                  return (
+                    <View key={slot.meta.slotId} style={styles.slotCard}>
+                      <View style={styles.slotTop}>
+                        <View style={styles.slotCopy}>
+                          {renamingSlotId === slot.meta.slotId ? (
+                            <TextInput
+                              accessibilityLabel="Rename story"
+                              autoFocus
+                              onChangeText={setRenameValue}
+                              onSubmitEditing={() => void handleRename()}
+                              style={styles.renameInput}
+                              value={renameValue}
+                            />
+                          ) : (
+                            <Text numberOfLines={1} style={styles.slotName}>
+                              {slot.meta.slotName}
+                            </Text>
+                          )}
+                          <Text style={styles.slotMeta}>
+                            Chapter {slot.state.chapter} · {slot.rawLog.length} log entries
+                          </Text>
+                        </View>
+                        <Text style={[active ? styles.activeTag : styles.inactiveTag]}>
+                          {active ? 'Active' : 'Saved'}
+                        </Text>
+                      </View>
+
+                      <View style={styles.slotActions}>
+                        {!active ? (
+                          <AppButton
+                            compact
+                            label="Switch"
+                            onPress={() => void switchSlotById(slot.meta.slotId)}
+                            style={styles.slotButton}
+                            variant="secondary"
+                          />
+                        ) : null}
+                        <AppButton
+                          compact
+                          icon={<Copy color={colors.text} size={14} strokeWidth={2} />}
+                          label="Copy"
+                          onPress={() =>
+                            void duplicateSlotById(
+                              slot.meta.slotId,
+                              `${slot.meta.slotName} copy`
+                            )
+                          }
+                          style={styles.slotButton}
+                          variant="secondary"
+                        />
+                        <AppButton
+                          compact
+                          icon={<Pencil color={colors.text} size={14} strokeWidth={2} />}
+                          label="Rename"
+                          onPress={() => {
+                            setRenamingSlotId(slot.meta.slotId);
+                            setRenameValue(slot.meta.slotName);
+                          }}
+                          style={styles.slotButton}
+                          variant="secondary"
+                        />
+                        <AppButton
+                          compact
+                          icon={<Trash2 color={colors.danger} size={14} strokeWidth={2} />}
+                          label="Delete"
+                          onPress={() => setDeleteSlotId(slot.meta.slotId)}
+                          style={styles.slotButton}
+                          variant="destructive"
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
+              <View style={styles.importExportRow}>
+                <AppButton
+                  compact
+                  icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
+                  label="Export"
+                  onPress={handleExport}
+                  style={styles.flexButton}
+                />
+                <AppButton
+                  compact
+                  icon={<Upload color={colors.text} size={15} strokeWidth={2} />}
+                  label="Import"
+                  onPress={() => void handleImport()}
+                  style={styles.flexButton}
+                  variant="secondary"
+                />
+              </View>
             </SurfaceCard>
           </View>
 
           <View style={styles.section}>
-            <SectionTitle title="Data" />
-            <Pressable
-              accessibilityLabel="Reset all settings"
-              accessibilityRole="button"
-              onPress={() => setResetVisible(true)}
-              style={({ pressed }) => [styles.resetRow, pressed && styles.pressed]}
-            >
-              <RotateCcw color={colors.danger} size={18} strokeWidth={1.8} />
-              <Text style={styles.resetLabel}>Reset all settings</Text>
-              <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
-            </Pressable>
+            <SectionTitle hint="How to run and install this PWA." title="Run and install" />
+            <SurfaceCard style={styles.card}>
+              <Text style={styles.installTitle}>Run locally</Text>
+              <Text style={styles.installBody}>
+                Run `bun run dev` and open the localhost URL in Chrome.
+              </Text>
+
+              <Text style={styles.installTitle}>Install on Android</Text>
+              <Text style={styles.installBody}>
+                Open the app in Chrome, tap the menu, choose “Add to Home screen,”
+                then open Kan from your home screen.
+              </Text>
+
+              <Text style={styles.installTitle}>Your data</Text>
+              <Text style={styles.installBody}>
+                Everything stays in this browser. Export a JSON save if you want a backup.
+              </Text>
+            </SurfaceCard>
           </View>
 
           <View style={styles.about}>
-            <Text style={styles.aboutText}>KAN · v0.1</Text>
+            <Text style={styles.aboutText}>KAN · v0.2</Text>
             <Text style={styles.aboutText}>
               Fan-made and unofficial. Set in the world of Naruto.
             </Text>
-            {Platform.OS === 'web' ? (
-              <Text style={styles.aboutText}>
-                Install from your browser menu to play full screen.
-              </Text>
-            ) : null}
           </View>
         </ScrollView>
       </SafeAreaView>
 
-      <ModelPickerModal
-        onClose={() => setModelPickerVisible(false)}
-        onSelect={(model) => void handleSelectModel(model)}
-        selectedId={settings.modelId}
-        visible={modelPickerVisible}
-      />
-
       <ConfirmDialog
-        body="This removes your OpenRouter key, chosen model, narration style and image preferences from this device."
-        busy={resetting}
-        confirmLabel="Reset"
-        onCancel={() => setResetVisible(false)}
-        onConfirm={() => void handleReset()}
-        title="Reset everything?"
-        visible={resetVisible}
+        body="This permanently deletes this story slot and its saved memory."
+        busy={deletingSlot}
+        confirmLabel="Delete"
+        onCancel={() => setDeleteSlotId(null)}
+        onConfirm={() => void handleDeleteSlot()}
+        title="Delete this story?"
+        visible={Boolean(deleteSlotId)}
       />
     </View>
   );
+}
+
+function clampNumber(value: string, min: number, max: number) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, parsed));
 }
 
 const styles = StyleSheet.create({
@@ -635,7 +778,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     borderRadius: radius.sm,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.border,
     backgroundColor: colors.background,
   },
   inputError: {
@@ -671,7 +814,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    paddingTop: 2,
   },
   feedbackText: {
     flex: 1,
@@ -710,84 +852,124 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.65,
   },
-  modelCard: {
+  numberRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.md,
-    minHeight: 68,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: radius.lg,
+  },
+  numberField: {
+    flex: 1,
+    gap: 7,
+  },
+  numberInput: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
+    fontFamily: fonts.medium,
+    fontSize: 14,
+    color: colors.text,
   },
-  modelCopy: {
+  retrievalField: {
+    gap: 7,
+  },
+  newSlotRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  newSlotInput: {
+    flex: 1,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: colors.text,
+  },
+  newSlotButton: {
+    minWidth: 78,
+  },
+  slotList: {
+    gap: spacing.sm,
+  },
+  slotCard: {
+    gap: 10,
+    padding: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  slotTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  slotCopy: {
     flex: 1,
     gap: 2,
   },
-  modelName: {
+  slotName: {
     fontFamily: fonts.semibold,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 19,
     color: colors.text,
   },
-  modelId: {
+  slotMeta: {
     fontFamily: fonts.regular,
     fontSize: 10,
     lineHeight: 14,
     color: colors.textDim,
   },
-  preferenceHint: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.textDim,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 44,
-  },
-  switchCopy: {
-    flex: 1,
-    gap: 2,
-  },
-  switchTitle: {
+  activeTag: {
     fontFamily: fonts.semibold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: colors.text,
+    fontSize: 10,
+    color: colors.accent,
   },
-  switchHint: {
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    lineHeight: 16,
+  inactiveTag: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
     color: colors.textDim,
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: 2,
-  },
-  resetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 60,
-    paddingHorizontal: 16,
-    borderRadius: radius.lg,
+  renameInput: {
+    minHeight: 36,
+    paddingHorizontal: 9,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    color: colors.text,
   },
-  resetLabel: {
-    flex: 1,
+  slotActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  slotButton: {
+    minWidth: 72,
+  },
+  importExportRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  installTitle: {
     fontFamily: fonts.semibold,
-    fontSize: 14,
-    lineHeight: 19,
-    color: colors.danger,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text,
+  },
+  installBody: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
   },
   about: {
     alignItems: 'center',

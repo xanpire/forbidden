@@ -1,203 +1,356 @@
-import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
-import {
-  ChevronRight,
-  Image as ImageIcon,
-  PenLine,
-  Settings2,
-  Sparkles,
-} from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import {
+  CircleAlert,
+  Heart,
+  MapPin,
+  RotateCcw,
+  Send,
+  Settings2,
+  Sparkles,
+  Undo2,
+  Zap,
+} from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
 import { AppButton } from '@/components/AppButton';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { useSettings, type ImageFrequency, type NarrationStyle } from '@/lib/settings';
+import { formatShortDate } from '@/lib/rpg/calendar';
+import { useGame } from '@/lib/rpg/game';
 
-const imageLabels: Record<ImageFrequency, string> = {
-  off: 'Off',
-  choice: 'Every choice',
-  action: 'Every action',
+type StoryMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
 };
 
-const narrationLabels: Record<NarrationStyle, string> = {
-  cinematic: 'Cinematic',
-  balanced: 'Balanced',
-  literary: 'Literary',
-};
-
-export default function StoryHomeScreen() {
+export default function StoryScreen() {
   const router = useRouter();
-  const { apiKey, hydrated, settings } = useSettings();
-  const hasNarrator = Boolean(apiKey.trim());
+  const {
+    db,
+    apiKey,
+    error,
+    isNarrating,
+    isProcessing,
+    streamingText,
+    lastPromptTokens,
+    sendTurn,
+    regenerate,
+    undoLastTurn,
+  } = useGame();
+
+  const [input, setInput] = useState('');
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const lastActionRef = useRef('');
+
+  const messages = useMemo<StoryMessage[]>(() => {
+    if (!db) {
+      return [];
+    }
+
+    return db.rawLog
+      .filter((message) => message.kind === 'story')
+      .map((message) => ({
+        id: message.id,
+        role: message.role === 'user' ? 'user' : 'assistant',
+        content: message.content,
+      }));
+  }, [db]);
+
+  useEffect(() => {
+    if (messages.length === 0 && streamingText.length === 0) {
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, [messages.length, streamingText]);
+
+  const submit = useCallback(
+    async (value: string) => {
+      const action = value.trim();
+
+      if (!action || isNarrating) {
+        return;
+      }
+
+      lastActionRef.current = action;
+      setInput('');
+      await sendTurn(action);
+    },
+    [isNarrating, sendTurn]
+  );
+
+  const retry = useCallback(async () => {
+    const action = lastActionRef.current;
+
+    if (action) {
+      await sendTurn(action);
+      return;
+    }
+
+    await regenerate();
+  }, [regenerate, sendTurn]);
+
+  if (!db) {
+    return (
+      <View style={styles.loadingRoot}>
+        <AppBackground />
+        <SafeAreaView edges={['top']} style={styles.loadingState}>
+          <ActivityIndicator color={colors.accent} size="small" />
+          <Text style={styles.loadingText}>Loading your story…</Text>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  const storyStarted = messages.length > 0;
+  const state = db.state;
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.root}
+    >
       <AppBackground />
       <SafeAreaView edges={['top']} style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.topBar}>
-            <Wordmark />
-            <Pressable
-              accessibilityLabel="Open settings"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => router.navigate('/(tabs)/settings')}
-              style={({ pressed }) => [
-                styles.iconButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Settings2 color={colors.textMuted} size={21} strokeWidth={1.8} />
-            </Pressable>
-          </View>
-
-          <View style={styles.hero}>
-            <LinearGradient
-              colors={['#22080B', '#111111', '#0C0C0C']}
-              locations={[0, 0.5, 1]}
-              style={styles.heroGradient}
-            >
-              <View style={styles.heroTop}>
-                <Text style={styles.heroKicker}>Original Naruto story</Text>
-                <Text style={styles.chapter}>Chapter 01</Text>
-              </View>
-
-              <View style={styles.heroCopy}>
-                <Text style={styles.heroTitle}>Kan</Text>
-                <Text style={styles.heroTagline}>
-                  No village. No orders. Every choice leaves a mark.
-                </Text>
-              </View>
-
-              <AppButton
-                label="Begin story"
-                onPress={() => router.push('/story')}
-                style={styles.heroButton}
-              />
-            </LinearGradient>
-          </View>
-
+        <View style={styles.header}>
+          <Wordmark compact />
           <Pressable
-            accessibilityLabel="Open narrator settings"
+            accessibilityLabel="Open settings"
             accessibilityRole="button"
+            hitSlop={8}
             onPress={() => router.navigate('/(tabs)/settings')}
-            style={({ pressed }) => [styles.statusRow, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
-            {!hydrated ? (
-              <>
-                <ActivityIndicator color={colors.textDim} size="small" />
-                <Text style={styles.statusText}>Loading your setup…</Text>
-              </>
-            ) : (
-              <>
-                <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: hasNarrator
-                        ? colors.success
-                        : colors.accent,
-                    },
-                  ]}
-                />
-                <Text
-                  style={[
-                    styles.statusText,
-                    !hasNarrator && styles.statusTextAccent,
-                  ]}
-                >
-                  {hasNarrator ? 'Narrator ready' : 'Narrator not connected'}
-                </Text>
-                <Text numberOfLines={1} style={styles.statusDetail}>
-                  {hasNarrator ? settings.modelName : 'OpenRouter'}
-                </Text>
-              </>
-            )}
-            <ChevronRight color={colors.textDim} size={16} strokeWidth={1.8} />
+            <Settings2 color={colors.text} size={20} strokeWidth={2} />
           </Pressable>
+        </View>
 
-          <View style={styles.intro}>
-            <Text style={styles.introTitle}>The road remembers.</Text>
-            <Text style={styles.introBody}>
-              Play as Kan in the world of Naruto. Speak, act, and let every
-              choice shape the road ahead.
+        <View style={styles.statusRow}>
+          <View style={styles.statusChip}>
+            <Heart color={colors.accent} size={12} strokeWidth={2} />
+            <Text style={styles.statusText}>
+              HP {state.hp.current}/{state.hp.max}
             </Text>
           </View>
+          <View style={styles.statusChip}>
+            <Zap color={colors.accent} size={12} strokeWidth={2} />
+            <Text style={styles.statusText}>
+              Chakra {state.chakra.current}/{state.chakra.max}
+            </Text>
+          </View>
+          <View style={styles.statusChip}>
+            <MapPin color={colors.textMuted} size={12} strokeWidth={2} />
+            <Text numberOfLines={1} style={styles.statusText}>
+              {state.location}
+            </Text>
+          </View>
+          <View style={styles.statusChip}>
+            <Text style={styles.statusText}>{formatShortDate(state.inStoryDate)}</Text>
+          </View>
+        </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Your setup</Text>
-            <SurfaceCard style={styles.setupCard}>
-              <Pressable
-                accessibilityLabel="Change narrator model"
-                accessibilityRole="button"
-                onPress={() => router.navigate('/(tabs)/settings')}
-                style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}
-              >
-                <Sparkles color={colors.textDim} size={18} strokeWidth={1.8} />
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Narrator</Text>
-                  <Text numberOfLines={1} style={styles.settingValue}>
-                    {settings.modelName}
-                  </Text>
-                </View>
-                <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
-              </Pressable>
-
-              <View style={styles.divider} />
-
-              <Pressable
-                accessibilityLabel="Change scene image frequency"
-                accessibilityRole="button"
-                onPress={() => router.navigate('/(tabs)/settings')}
-                style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}
-              >
-                <ImageIcon color={colors.textDim} size={18} strokeWidth={1.8} />
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Scene images</Text>
-                  <Text style={styles.settingValue}>
-                    {imageLabels[settings.imageFrequency]}
-                  </Text>
-                </View>
-                <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
-              </Pressable>
-
-              <View style={styles.divider} />
-
-              <Pressable
-                accessibilityLabel="Change narration style"
-                accessibilityRole="button"
-                onPress={() => router.navigate('/(tabs)/settings')}
-                style={({ pressed }) => [styles.settingRow, pressed && styles.pressed]}
-              >
-                <PenLine color={colors.textDim} size={18} strokeWidth={1.8} />
-                <View style={styles.settingCopy}>
-                  <Text style={styles.settingLabel}>Narration</Text>
-                  <Text style={styles.settingValue}>
-                    {narrationLabels[settings.narrationStyle]}
-                  </Text>
-                </View>
-                <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
-              </Pressable>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+        >
+          {!storyStarted ? (
+            <SurfaceCard style={styles.seedCard}>
+              <View style={styles.seedTop}>
+                <Text style={styles.seedKicker}>Chapter {state.chapter}</Text>
+                <Text style={styles.seedScene}>{state.scene}</Text>
+              </View>
+              <Text style={styles.seedTitle}>The rain hasn’t stopped.</Text>
+              <Text style={styles.seedBody}>
+                Kan waits in the forest outside Konoha. The Uchiha massacre is
+                finished, and Itachi still hasn’t come. Thunder moves through the
+                trees, and every drop sounds like footsteps.
+              </Text>
+              <AppButton
+                label="Kan waits for Itachi"
+                onPress={() => void submit('Kan waits for Itachi in the rain.')}
+                style={styles.seedButton}
+              />
             </SurfaceCard>
+          ) : null}
+
+          {messages.map((message) => (
+            <View
+              key={message.id}
+              style={[
+                styles.messageRow,
+                message.role === 'user' ? styles.userRow : styles.assistantRow,
+              ]}
+            >
+              <View
+                style={[
+                  styles.messageBubble,
+                  message.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.messageText,
+                    message.role === 'user' ? styles.userText : styles.assistantText,
+                  ]}
+                >
+                  {message.content}
+                </Text>
+              </View>
+            </View>
+          ))}
+
+          {isNarrating ? (
+            <View style={styles.messageRow}>
+              <View style={styles.assistantBubble}>
+                {streamingText.length > 0 ? (
+                  <Text style={styles.assistantText}>{streamingText}</Text>
+                ) : (
+                  <View style={styles.typingRow}>
+                    <ActivityIndicator color={colors.accent} size="small" />
+                    <Text style={styles.typingText}>The world is moving…</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : null}
+
+          {error ? (
+            <SurfaceCard style={styles.errorCard}>
+              <CircleAlert color={colors.danger} size={16} strokeWidth={2} />
+              <View style={styles.errorCopy}>
+                <Text style={styles.errorTitle}>The narrator stumbled</Text>
+                <Text style={styles.errorBody}>{error}</Text>
+              </View>
+              <AppButton
+                compact
+                label="Retry"
+                onPress={() => void retry()}
+                style={styles.retryButton}
+                variant="secondary"
+              />
+            </SurfaceCard>
+          ) : null}
+
+          {!apiKey ? (
+            <SurfaceCard style={styles.apiCard}>
+              <Sparkles color={colors.accent} size={16} strokeWidth={2} />
+              <View style={styles.errorCopy}>
+                <Text style={styles.errorTitle}>Connect your narrator</Text>
+                <Text style={styles.errorBody}>
+                  Add an OpenRouter API key in Settings to begin.
+                </Text>
+              </View>
+              <AppButton
+                compact
+                label="Settings"
+                onPress={() => router.navigate('/(tabs)/settings')}
+                style={styles.retryButton}
+                variant="secondary"
+              />
+            </SurfaceCard>
+          ) : null}
+        </ScrollView>
+
+        <View
+          style={[
+            styles.composerShell,
+            { paddingBottom: Math.max(insets.bottom, spacing.sm) },
+          ]}
+        >
+          <View style={styles.composerMeta}>
+            {isProcessing ? (
+              <View style={styles.processingRow}>
+                <ActivityIndicator color={colors.accent} size="small" />
+                <Text style={styles.processingText}>Memory updating…</Text>
+              </View>
+            ) : (
+              <Text style={styles.tokenText}>
+                {lastPromptTokens > 0 ? `~${lastPromptTokens} prompt tokens` : 'Ready'}
+              </Text>
+            )}
+            <View style={styles.composerActions}>
+              <Pressable
+                accessibilityLabel="Undo last turn"
+                accessibilityRole="button"
+                disabled={!storyStarted || isNarrating}
+                onPress={() => void undoLastTurn()}
+                style={({ pressed }) => [
+                  styles.smallButton,
+                  pressed && styles.pressed,
+                  (!storyStarted || isNarrating) && styles.disabled,
+                ]}
+              >
+                <Undo2 color={colors.textMuted} size={15} strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Regenerate last reply"
+                accessibilityRole="button"
+                disabled={!storyStarted || isNarrating}
+                onPress={() => void regenerate()}
+                style={({ pressed }) => [
+                  styles.smallButton,
+                  pressed && styles.pressed,
+                  (!storyStarted || isNarrating) && styles.disabled,
+                ]}
+              >
+                <RotateCcw color={colors.textMuted} size={15} strokeWidth={2} />
+              </Pressable>
+            </View>
           </View>
 
-        </ScrollView>
+          <View style={styles.composer}>
+            <TextInput
+              accessibilityLabel="What does Kan do?"
+              editable={!isNarrating}
+              maxLength={1000}
+              multiline
+              onChangeText={setInput}
+              placeholder="Speak, act, or think as Kan…"
+              placeholderTextColor={colors.textDim}
+              style={styles.composerInput}
+              value={input}
+            />
+            <Pressable
+              accessibilityLabel="Send Kan's action"
+              accessibilityRole="button"
+              disabled={!input.trim() || isNarrating}
+              onPress={() => void submit(input)}
+              style={({ pressed }) => [
+                styles.sendButton,
+                pressed && styles.pressed,
+                (!input.trim() || isNarrating) && styles.sendDisabled,
+              ]}
+            >
+              {isNarrating ? (
+                <ActivityIndicator color={colors.onAccent} size="small" />
+              ) : (
+                <Send color={colors.onAccent} size={18} strokeWidth={2.2} />
+              )}
+            </Pressable>
+          </View>
+        </View>
       </SafeAreaView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -209,19 +362,27 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
   },
-  content: {
-    width: '100%',
-    maxWidth: 640,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xxxl,
-    gap: spacing.xxl,
+  loadingRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  topBar: {
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.textDim,
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.md,
     minHeight: 44,
   },
   iconButton: {
@@ -234,144 +395,232 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.65,
   },
-  hero: {
-    borderRadius: radius.xl,
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
   },
-  heroGradient: {
-    minHeight: 300,
-    padding: 22,
-    justifyContent: 'space-between',
-    gap: spacing.xxxl,
+  statusText: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textMuted,
   },
-  heroTop: {
+  content: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.md,
+  },
+  seedCard: {
+    gap: 12,
+    marginBottom: spacing.sm,
+  },
+  seedTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  heroKicker: {
+  seedKicker: {
     fontFamily: fonts.semibold,
     fontSize: 10,
     lineHeight: 14,
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: colors.textMuted,
-  },
-  chapter: {
-    fontFamily: fonts.medium,
-    fontSize: 11,
-    lineHeight: 16,
     color: colors.textDim,
   },
-  heroCopy: {
-    gap: 8,
+  seedScene: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textMuted,
   },
-  heroTitle: {
+  seedTitle: {
     fontFamily: fonts.extrabold,
-    fontSize: 64,
-    lineHeight: 66,
-    letterSpacing: -2.5,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.8,
     color: colors.text,
   },
-  heroTagline: {
-    maxWidth: 320,
-    fontFamily: fonts.regular,
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.textMuted,
-  },
-  heroButton: {
-    alignSelf: 'flex-start',
-    minWidth: 148,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: -spacing.sm,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.text,
-  },
-  statusTextAccent: {
-    color: colors.accent,
-  },
-  statusDetail: {
-    flex: 1,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 17,
-    color: colors.textDim,
-    textAlign: 'right',
-  },
-  intro: {
-    gap: 6,
-  },
-  introTitle: {
-    fontFamily: fonts.bold,
-    fontSize: 25,
-    lineHeight: 31,
-    letterSpacing: -0.6,
-    color: colors.text,
-  },
-  introBody: {
+  seedBody: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
     color: colors.textMuted,
   },
-  section: {
-    gap: 0,
+  seedButton: {
+    alignSelf: 'flex-start',
+    minWidth: 170,
   },
-  sectionLabel: {
-    fontFamily: fonts.semibold,
-    fontSize: 10,
-    lineHeight: 14,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: colors.textDim,
-    marginBottom: spacing.sm,
+  messageRow: {
+    flexDirection: 'row',
   },
-  setupCard: {
-    padding: 0,
+  userRow: {
+    justifyContent: 'flex-end',
   },
-  settingRow: {
+  assistantRow: {
+    justifyContent: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '92%',
+    padding: 14,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+  },
+  userBubble: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+    borderBottomRightRadius: radius.sm,
+  },
+  assistantBubble: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderBottomLeftRadius: radius.sm,
+  },
+  messageText: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  userText: {
+    color: colors.onAccent,
+  },
+  assistantText: {
+    color: colors.text,
+  },
+  typingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 64,
-    paddingHorizontal: spacing.lg,
+    gap: 8,
   },
-  settingCopy: {
+  typingText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  errorCopy: {
     flex: 1,
     gap: 2,
   },
-  settingLabel: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textDim,
-  },
-  settingValue: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    lineHeight: 19,
+  errorTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.text,
   },
-  divider: {
-    height: 1,
-    marginLeft: 47,
-    backgroundColor: colors.border,
+  errorBody: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textMuted,
+  },
+  retryButton: {
+    minWidth: 68,
+  },
+  apiCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  composerShell: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  composerMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 32,
+    marginBottom: 6,
+  },
+  processingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  processingText: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: colors.accent,
+  },
+  tokenText: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: colors.textDim,
+  },
+  composerActions: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  smallButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  disabled: {
+    opacity: 0.35,
+  },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.sm,
+    padding: 5,
+    paddingLeft: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  composerInput: {
+    flex: 1,
+    maxHeight: 112,
+    minHeight: 42,
+    paddingTop: 11,
+    paddingBottom: 10,
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.text,
+  },
+  sendButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  sendDisabled: {
+    opacity: 0.3,
   },
 });

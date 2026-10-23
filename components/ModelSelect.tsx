@@ -1,0 +1,380 @@
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ChevronDown, RefreshCw, Search, X } from 'lucide-react-native';
+
+import { AppButton } from '@/components/AppButton';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
+import { fetchOpenRouterModels, type OpenRouterModelSummary } from '@/lib/openrouter';
+
+type ModelSelectProps = {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+};
+
+export function ModelSelect({ label, value, onChange, hint }: ModelSelectProps) {
+  const insets = useSafeAreaInsets();
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [models, setModels] = useState<OpenRouterModelSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+
+  const loadModels = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await fetchOpenRouterModels();
+      setModels(result);
+    } catch {
+      setError('Could not load models. You can still type a model ID.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!pickerVisible || models.length > 0) {
+      return;
+    }
+
+    void loadModels();
+  }, [models.length, pickerVisible]);
+
+  const filteredModels = models.filter((model) => {
+    const term = query.trim().toLowerCase();
+
+    if (!term) {
+      return true;
+    }
+
+    return (
+      model.name.toLowerCase().includes(term) ||
+      model.id.toLowerCase().includes(term)
+    );
+  });
+
+  return (
+    <View style={styles.wrap}>
+      <Text style={styles.label}>{label}</Text>
+      <Pressable
+        accessibilityLabel={`${label} model`}
+        accessibilityRole="button"
+        onPress={() => setPickerVisible(true)}
+        style={({ pressed }) => [styles.select, pressed && styles.pressed]}
+      >
+        <View style={styles.selectCopy}>
+          <Text numberOfLines={1} style={styles.selectValue}>
+            {value}
+          </Text>
+          {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+        </View>
+        <ChevronDown color={colors.textMuted} size={18} strokeWidth={2} />
+      </Pressable>
+
+      <Modal
+        animationType="slide"
+        onRequestClose={() => setPickerVisible(false)}
+        transparent
+        visible={pickerVisible}
+      >
+        <View style={styles.overlay}>
+          <Pressable
+            accessibilityLabel="Close model picker"
+            onPress={() => setPickerVisible(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View
+            style={[
+              styles.sheet,
+              { paddingBottom: Math.max(insets.bottom, spacing.lg) },
+            ]}
+          >
+            <View style={styles.header}>
+              <Text style={styles.title}>{label}</Text>
+              <View style={styles.headerActions}>
+                <Pressable
+                  accessibilityLabel="Refresh models"
+                  accessibilityRole="button"
+                  disabled={loading}
+                  hitSlop={8}
+                  onPress={() => void loadModels()}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.textMuted} size="small" />
+                  ) : (
+                    <RefreshCw color={colors.textMuted} size={18} strokeWidth={2} />
+                  )}
+                </Pressable>
+                <Pressable
+                  accessibilityLabel="Close model picker"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => setPickerVisible(false)}
+                  style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                >
+                  <X color={colors.textMuted} size={20} strokeWidth={2} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.searchWrap}>
+              <Search color={colors.textDim} size={16} strokeWidth={2} />
+              <TextInput
+                accessibilityLabel="Search models"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={setQuery}
+                placeholder="Search models"
+                placeholderTextColor={colors.textDim}
+                style={styles.searchInput}
+                value={query}
+              />
+            </View>
+
+            <View style={styles.customWrap}>
+              <TextInput
+                accessibilityLabel="Custom model ID"
+                autoCapitalize="none"
+                autoCorrect={false}
+                onChangeText={onChange}
+                placeholder="provider/model-id"
+                placeholderTextColor={colors.textDim}
+                style={styles.customInput}
+                value={value}
+              />
+            </View>
+
+            {error ? (
+              <Text style={styles.error}>{error}</Text>
+            ) : null}
+
+            <ScrollView
+              contentContainerStyle={styles.list}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {loading && models.length === 0 ? (
+                <View style={styles.loadingRow}>
+                  <ActivityIndicator color={colors.accent} size="small" />
+                  <Text style={styles.loadingText}>Loading models…</Text>
+                </View>
+              ) : (
+                filteredModels.slice(0, 60).map((model) => (
+                  <Pressable
+                    accessibilityLabel={`Select ${model.name}`}
+                    accessibilityRole="button"
+                    key={model.id}
+                    onPress={() => {
+                      onChange(model.id);
+                      setPickerVisible(false);
+                    }}
+                    style={({ pressed }) => [
+                      styles.modelRow,
+                      model.id === value && styles.modelRowSelected,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <View style={styles.modelCopy}>
+                      <Text numberOfLines={1} style={styles.modelName}>
+                        {model.name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.modelId}>
+                        {model.id}
+                      </Text>
+                      {model.promptPrice ? (
+                        <Text style={styles.modelMeta}>{model.promptPrice}</Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    gap: 7,
+  },
+  label: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textMuted,
+  },
+  select: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 50,
+    paddingHorizontal: 13,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  selectCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  selectValue: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text,
+  },
+  hint: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textDim,
+  },
+  pressed: {
+    opacity: 0.65,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: colors.overlay,
+  },
+  sheet: {
+    width: '100%',
+    maxWidth: 680,
+    height: '88%',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: 22,
+    lineHeight: 28,
+    color: colors.text,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  iconButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 44,
+    marginTop: spacing.md,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    color: colors.text,
+  },
+  customWrap: {
+    marginTop: spacing.sm,
+  },
+  customInput: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.text,
+  },
+  error: {
+    marginTop: spacing.sm,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: colors.danger,
+  },
+  list: {
+    flexGrow: 1,
+    marginTop: spacing.md,
+    gap: 6,
+    paddingBottom: spacing.md,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: spacing.xxxl,
+  },
+  loadingText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  modelRow: {
+    padding: 10,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  modelRowSelected: {
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  modelCopy: {
+    gap: 2,
+  },
+  modelName: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.text,
+  },
+  modelId: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textDim,
+  },
+  modelMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textMuted,
+  },
+});

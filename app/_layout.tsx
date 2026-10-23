@@ -16,7 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastProvider } from '@/components/Toast';
 import { colors } from '@/constants/theme';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
-import { SettingsProvider } from '@/lib/settings';
+import { GameProvider } from '@/lib/rpg/game';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -42,7 +42,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <SettingsProvider>
+      <GameProvider>
         <ToastProvider>
           <View style={styles.root}>
             <Stack
@@ -53,16 +53,12 @@ export default function RootLayout() {
               }}
             >
               <Stack.Screen name="(tabs)" />
-              <Stack.Screen
-                name="story"
-                options={{ animation: 'slide_from_right' }}
-              />
               <Stack.Screen name="+not-found" />
             </Stack>
             <StatusBar backgroundColor={colors.background} style="light" />
           </View>
         </ToastProvider>
-      </SettingsProvider>
+      </GameProvider>
     </SafeAreaProvider>
   );
 }

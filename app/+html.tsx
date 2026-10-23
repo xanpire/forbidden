@@ -41,9 +41,9 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, viewport-fit=cover"
           name="viewport"
         />
-        <title>Kan — A Naruto Story</title>
+        <title>Kan — Interactive Naruto RPG</title>
         <meta
-          content="An AI-driven roleplaying story. Play as Kan, an original shinobi in the world of Naruto."
+          content="A single-page PWA where you play Kan, an original shinobi in the Naruto universe."
           name="description"
         />
         <meta content="#050505" name="theme-color" />

@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Kan — A Naruto Story",
+  "name": "Kan — Interactive Naruto RPG",
   "short_name": "Kan",
-  "description": "An AI-driven roleplaying story. Play as Kan, an original shinobi in the world of Naruto.",
+  "description": "A single-page PWA where you play Kan, an original shinobi in the Naruto universe.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

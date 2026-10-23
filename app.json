@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kan",
     "slug": "kan",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "kan",
@@ -33,14 +33,14 @@
       "bundler": "metro",
       "output": "single",
       "favicon": "./assets/images/favicon.png",
-      "name": "Kan — A Naruto Story",
+      "name": "Kan — Interactive Naruto RPG",
       "shortName": "Kan",
       "lang": "en",
       "scope": "/",
       "startUrl": "/",
       "themeColor": "#050505",
       "backgroundColor": "#050505",
-      "description": "An AI-driven roleplaying story. Play as Kan, an original shinobi in the world of Naruto.",
+      "description": "A single-page PWA where you play Kan, an original shinobi in the Naruto universe.",
       "display": "standalone",
       "orientation": "portrait",
       "barStyle": "black-translucent"
@@ -49,7 +49,6 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-secure-store",
       [
         "expo-splash-screen",
         {

@@ -1,0 +1,55 @@
+export function downloadJson(filename: string, json: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+}
+
+export function pickJsonFile(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('File import is only available in the web app.'));
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.style.display = 'none';
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+
+      if (!file) {
+        reject(new Error('No save file selected.'));
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        resolve(String(reader.result ?? ''));
+      };
+
+      reader.onerror = () => {
+        reject(new Error('Could not read that save file.'));
+      };
+
+      reader.readAsText(file);
+      document.body.removeChild(input);
+    };
+
+    document.body.appendChild(input);
+    input.click();
+  });
+}
