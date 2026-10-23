@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -528,32 +527,9 @@ export default function SettingsScreen() {
             </SurfaceCard>
           </View>
 
-          <View style={styles.section}>
-            <SectionTitle hint="How to run and install this PWA." title="Run and install" />
-            <SurfaceCard style={styles.card}>
-              <Text style={styles.installTitle}>Run locally</Text>
-              <Text style={styles.installBody}>
-                Run `bun run dev` and open the localhost URL in Chrome.
-              </Text>
-
-              <Text style={styles.installTitle}>Install on Android</Text>
-              <Text style={styles.installBody}>
-                Open the app in Chrome, tap the menu, choose “Add to Home screen,”
-                then open Kan from your home screen.
-              </Text>
-
-              <Text style={styles.installTitle}>Your data</Text>
-              <Text style={styles.installBody}>
-                Everything stays in this browser. Export a JSON save if you want a backup.
-              </Text>
-            </SurfaceCard>
-          </View>
-
           <View style={styles.about}>
             <Text style={styles.aboutText}>KAN · v0.2</Text>
-            <Text style={styles.aboutText}>
-              Fan-made and unofficial. Set in the world of Naruto.
-            </Text>
+            <Text style={styles.aboutText}>An app made by Xanpire.</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -861,18 +837,6 @@ const styles = StyleSheet.create({
   importExportRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-  },
-  installTitle: {
-    fontFamily: fonts.semibold,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.text,
-  },
-  installBody: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.textMuted,
   },
   about: {
     alignItems: 'center',
