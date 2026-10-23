@@ -390,11 +390,7 @@ export default function StoryScreen() {
               maxLength={1000}
               multiline
               onChangeText={setInput}
-              placeholder={
-                inputMode === 'speech'
-                  ? 'What does Kan say?'
-                  : 'What does Kan do?'
-              }
+              placeholder={'Action and "speech" in one line'}
               placeholderTextColor={colors.textDim}
               style={styles.composerInput}
               value={input}
@@ -423,9 +419,50 @@ export default function StoryScreen() {
   );
 }
 
+type InputSegment = {
+  type: 'speech' | 'action';
+  text: string;
+};
+
 function formatPlayerInput(value: string, mode: InputMode) {
-  const cleaned = value
-    .trim()
+  const normalized = value
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const segments = parseInputSegments(normalized);
+  const hasSpeech = segments.some((segment) => segment.type === 'speech');
+  const hasAction = segments.some((segment) => segment.type === 'action');
+
+  if (hasSpeech && hasAction) {
+    return segments
+      .map((segment) =>
+        segment.type === 'speech'
+          ? `"${segment.text}"`
+          : `**${cleanActionText(segment.text)}**`
+      )
+      .join(' ');
+  }
+
+  if (hasSpeech) {
+    return segments
+      .filter((segment) => segment.type === 'speech')
+      .map((segment) => `"${segment.text}"`)
+      .join(' ');
+  }
+
+  if (hasAction && segments.length > 1) {
+    return segments
+      .filter((segment) => segment.type === 'action')
+      .map((segment) => `**${cleanActionText(segment.text)}**`)
+      .join(' ');
+  }
+
+  const cleaned = normalized
     .replace(/^"+|"+$/g, '')
     .replace(/^\*\*+|\*\*+$/g, '')
     .trim();
@@ -435,6 +472,43 @@ function formatPlayerInput(value: string, mode: InputMode) {
   }
 
   return mode === 'speech' ? `"${cleaned}"` : `**${cleaned}**`;
+}
+
+function cleanActionText(value: string) {
+  return value
+    .replace(/^\*\*+|\*\*+$/g, '')
+    .trim();
+}
+
+function parseInputSegments(value: string): InputSegment[] {
+  const segments: InputSegment[] = [];
+  const quotePattern = /"([^"]*)"/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = quotePattern.exec(value)) !== null) {
+    const before = value.slice(cursor, match.index).trim();
+
+    if (before) {
+      segments.push({ type: 'action', text: before });
+    }
+
+    const speech = match[1].trim();
+
+    if (speech) {
+      segments.push({ type: 'speech', text: speech });
+    }
+
+    cursor = match.index + match[0].length;
+  }
+
+  const after = value.slice(cursor).trim();
+
+  if (after) {
+    segments.push({ type: 'action', text: after });
+  }
+
+  return segments;
 }
 
 const styles = StyleSheet.create({
