@@ -398,7 +398,7 @@ export default function SettingsScreen() {
                 value={db.settings.extractionModel}
               />
               <ModelSelect
-                hint="Generates story scene images."
+                hint="Reference-capable models keep Kan consistent."
                 kind="image"
                 label="Image model"
                 onChange={(value) => void updateSettings({ imageModel: value })}

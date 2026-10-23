@@ -26,6 +26,7 @@ export type OpenRouterImageModelSummary = {
   name: string;
   description: string;
   supportsStreaming: boolean;
+  supportsImageInput: boolean;
   supportedParameters: string[];
 };
 
@@ -116,6 +117,7 @@ export async function fetchOpenRouterImageModels(): Promise<OpenRouterImageModel
       description?: string;
       supports_streaming?: boolean;
       supported_parameters?: Record<string, unknown>;
+      architecture?: { input_modalities?: string[] };
     }>;
   };
 
@@ -129,6 +131,7 @@ export async function fetchOpenRouterImageModels(): Promise<OpenRouterImageModel
         description?: string;
         supports_streaming?: boolean;
         supported_parameters?: Record<string, unknown>;
+        architecture?: { input_modalities?: string[] };
       } => Boolean(model.id && model.name)
     )
     .map((model) => ({
@@ -136,26 +139,38 @@ export async function fetchOpenRouterImageModels(): Promise<OpenRouterImageModel
       name: model.name,
       description: model.description ?? '',
       supportsStreaming: Boolean(model.supports_streaming),
+      supportsImageInput: Boolean(
+        model.architecture?.input_modalities?.includes('image')
+      ),
       supportedParameters: Object.keys(model.supported_parameters ?? {}),
-    }));
+    }))
+    .sort((a, b) => {
+      if (a.supportsImageInput !== b.supportsImageInput) {
+        return a.supportsImageInput ? -1 : 1;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
 }
 
 export async function generateImage({
   apiKey,
   model,
   prompt,
+  inputReferences,
   signal,
 }: {
   apiKey: string;
   model: string;
   prompt: string;
+  inputReferences?: string[];
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult> {
   if (!apiKey) {
     throw new Error('Add your OpenRouter API key in Settings first.');
   }
 
-  const fullBody = {
+  const fullBody: Record<string, unknown> = {
     model,
     prompt,
     n: 1,
@@ -166,6 +181,15 @@ export async function generateImage({
     output_compression: 80,
   };
 
+  const references = inputReferences?.filter(Boolean) ?? [];
+
+  if (references.length > 0) {
+    fullBody.input_references = references.map((url) => ({
+      type: 'image_url',
+      image_url: { url },
+    }));
+  }
+
   let response = await fetch(IMAGES_URL, {
     method: 'POST',
     headers: buildHeaders(apiKey, false),
@@ -173,7 +197,19 @@ export async function generateImage({
     signal,
   });
 
-  if (response.status === 400) {
+  if ((response.status === 400 || response.status === 422) && references.length > 0) {
+    const withoutReferences = { ...fullBody };
+    delete withoutReferences.input_references;
+
+    response = await fetch(IMAGES_URL, {
+      method: 'POST',
+      headers: buildHeaders(apiKey, false),
+      body: JSON.stringify(withoutReferences),
+      signal,
+    });
+  }
+
+  if (response.status === 400 || response.status === 422) {
     response = await fetch(IMAGES_URL, {
       method: 'POST',
       headers: buildHeaders(apiKey, false),

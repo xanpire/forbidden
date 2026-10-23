@@ -46,6 +46,7 @@ import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
 import { buildSceneImagePrompt } from '@/lib/rpg/image';
+import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
 import { generateImage } from '@/lib/openrouter';
 
 type StoryMessage = {
@@ -191,10 +192,12 @@ export default function StoryScreen() {
 
     try {
       const prompt = buildSceneImagePrompt(db);
+      const inputReferences = await loadKanReferenceImages();
       const result = await generateImage({
         apiKey,
         model: db.settings.imageModel,
         prompt,
+        inputReferences,
       });
       await attachImage(latestAssistant.id, result.dataUri);
     } catch (caught) {
