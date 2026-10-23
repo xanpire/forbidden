@@ -29,7 +29,6 @@ import { AppBackground } from '@/components/AppBackground';
 import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ModelSelect } from '@/components/ModelSelect';
-import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { useToast } from '@/components/Toast';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
@@ -76,11 +75,6 @@ export default function SettingsScreen() {
   const [testingKey, setTestingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
 
-  const [contextDraft, setContextDraft] = useState('10');
-  const [thresholdDraft, setThresholdDraft] = useState('16');
-  const [temperatureDraft, setTemperatureDraft] = useState('0.7');
-  const [maxTokensDraft, setMaxTokensDraft] = useState('900');
-
   const [newSlotName, setNewSlotName] = useState('');
   const [renamingSlotId, setRenamingSlotId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -96,10 +90,6 @@ export default function SettingsScreen() {
       return;
     }
 
-    setContextDraft(String(db.settings.contextMessages));
-    setThresholdDraft(String(db.settings.autoSummarizeThreshold));
-    setTemperatureDraft(String(db.settings.temperature));
-    setMaxTokensDraft(String(db.settings.maxTokens));
   }, [db]);
 
   const handleSaveKey = async () => {
@@ -167,29 +157,6 @@ export default function SettingsScreen() {
     } finally {
       setRemovingKey(false);
     }
-  };
-
-  const commitPromptSettings = async () => {
-    if (!db) {
-      return;
-    }
-
-    const contextMessages = clampNumber(contextDraft, 4, 30);
-    const autoSummarizeThreshold = clampNumber(thresholdDraft, 8, 100);
-    const temperature = clampNumber(temperatureDraft, 0, 2);
-    const maxTokens = clampNumber(maxTokensDraft, 200, 4000);
-
-    setContextDraft(String(contextMessages));
-    setThresholdDraft(String(autoSummarizeThreshold));
-    setTemperatureDraft(String(temperature));
-    setMaxTokensDraft(String(maxTokens));
-
-    await updateSettings({
-      contextMessages,
-      autoSummarizeThreshold,
-      temperature,
-      maxTokens,
-    });
   };
 
   const handleExport = () => {
@@ -431,77 +398,13 @@ export default function SettingsScreen() {
                 onChange={(value) => void updateSettings({ extractionModel: value })}
                 value={db.settings.extractionModel}
               />
-            </SurfaceCard>
-          </View>
-
-          <View style={styles.section}>
-            <SectionTitle hint="Keep prompts small and cheap." title="Prompt and memory" />
-            <SurfaceCard style={styles.card}>
-              <View style={styles.numberRow}>
-                <View style={styles.numberField}>
-                  <Text style={styles.fieldLabel}>Recent messages</Text>
-                  <TextInput
-                    accessibilityLabel="Recent messages"
-                    keyboardType="number-pad"
-                    onBlur={() => void commitPromptSettings()}
-                    onChangeText={setContextDraft}
-                    style={styles.numberInput}
-                    value={contextDraft}
-                  />
-                </View>
-                <View style={styles.numberField}>
-                  <Text style={styles.fieldLabel}>Summarize after</Text>
-                  <TextInput
-                    accessibilityLabel="Summarize after"
-                    keyboardType="number-pad"
-                    onBlur={() => void commitPromptSettings()}
-                    onChangeText={setThresholdDraft}
-                    style={styles.numberInput}
-                    value={thresholdDraft}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.numberRow}>
-                <View style={styles.numberField}>
-                  <Text style={styles.fieldLabel}>Temperature</Text>
-                  <TextInput
-                    accessibilityLabel="Temperature"
-                    keyboardType="decimal-pad"
-                    onBlur={() => void commitPromptSettings()}
-                    onChangeText={setTemperatureDraft}
-                    style={styles.numberInput}
-                    value={temperatureDraft}
-                  />
-                </View>
-                <View style={styles.numberField}>
-                  <Text style={styles.fieldLabel}>Max reply tokens</Text>
-                  <TextInput
-                    accessibilityLabel="Max reply tokens"
-                    keyboardType="number-pad"
-                    onBlur={() => void commitPromptSettings()}
-                    onChangeText={setMaxTokensDraft}
-                    style={styles.numberInput}
-                    value={maxTokensDraft}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.retrievalField}>
-                <Text style={styles.fieldLabel}>Retrieved memories per turn</Text>
-                <SegmentedControl
-                  accessibilityLabel="Retrieved memories per turn"
-                  onChange={(value) =>
-                    void updateSettings({ retrievalLimit: Number(value) })
-                  }
-                  options={[
-                    { value: '3', label: '3' },
-                    { value: '4', label: '4' },
-                    { value: '5', label: '5' },
-                  ]}
-                  value={String(db.settings.retrievalLimit)}
-                />
-              </View>
+              <ModelSelect
+                hint="Generates story scene images."
+                kind="image"
+                label="Image model"
+                onChange={(value) => void updateSettings({ imageModel: value })}
+                value={db.settings.imageModel}
+              />
             </SurfaceCard>
           </View>
 

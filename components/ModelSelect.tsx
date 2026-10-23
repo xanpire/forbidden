@@ -14,16 +14,21 @@ import { ChevronDown, RefreshCw, Search, X } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { fetchOpenRouterModels, type OpenRouterModelSummary } from '@/lib/openrouter';
+import {
+  fetchOpenRouterImageModels,
+  fetchOpenRouterModels,
+  type OpenRouterModelSummary,
+} from '@/lib/openrouter';
 
 type ModelSelectProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   hint?: string;
+  kind?: 'text' | 'image';
 };
 
-export function ModelSelect({ label, value, onChange, hint }: ModelSelectProps) {
+export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: ModelSelectProps) {
   const insets = useSafeAreaInsets();
   const [pickerVisible, setPickerVisible] = useState(false);
   const [models, setModels] = useState<OpenRouterModelSummary[]>([]);
@@ -36,8 +41,18 @@ export function ModelSelect({ label, value, onChange, hint }: ModelSelectProps) 
     setError(null);
 
     try {
-      const result = await fetchOpenRouterModels();
-      setModels(result);
+      const result =
+        kind === 'image'
+          ? (await fetchOpenRouterImageModels()).map((model) => ({
+              id: model.id,
+              name: model.name,
+              contextLength: 0,
+              promptPrice: null,
+              recommended: false,
+            }))
+          : await fetchOpenRouterModels();
+
+      setModels(result satisfies OpenRouterModelSummary[]);
     } catch {
       setError('Could not load models. You can still type a model ID.');
     } finally {

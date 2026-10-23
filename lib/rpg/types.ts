@@ -175,6 +175,7 @@ export type Settings = {
   narrationModel: string;
   summaryModel: string;
   extractionModel: string;
+  imageModel: string;
   contextMessages: number;
   retrievalLimit: number;
   autoSummarizeThreshold: number;

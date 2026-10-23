@@ -1,6 +1,8 @@
 import type { OpenRouterMessage } from './rpg/types';
 
 const CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const IMAGE_MODELS_URL = 'https://openrouter.ai/api/v1/images/models';
+const IMAGES_URL = 'https://openrouter.ai/api/v1/images';
 const MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const KEY_URL = 'https://openrouter.ai/api/v1/key';
 
@@ -17,6 +19,20 @@ type RawModel = {
   name?: string;
   context_length?: number;
   pricing?: { prompt?: string };
+};
+
+export type OpenRouterImageModelSummary = {
+  id: string;
+  name: string;
+  description: string;
+  supportsStreaming: boolean;
+  supportedParameters: string[];
+};
+
+export type ImageGenerationResult = {
+  dataUri: string;
+  mediaType: string;
+  cost: number | null;
 };
 
 export type KeyTestResult =
@@ -82,6 +98,114 @@ export async function fetchOpenRouterModels(): Promise<OpenRouterModelSummary[]>
 
       return a.name.localeCompare(b.name);
     });
+}
+
+export async function fetchOpenRouterImageModels(): Promise<OpenRouterImageModelSummary[]> {
+  const response = await fetch(IMAGE_MODELS_URL, {
+    headers: { Accept: 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error('Could not load OpenRouter image models.');
+  }
+
+  const payload = (await response.json()) as {
+    data?: Array<{
+      id?: string;
+      name?: string;
+      description?: string;
+      supports_streaming?: boolean;
+      supported_parameters?: Record<string, unknown>;
+    }>;
+  };
+
+  return (payload.data ?? [])
+    .filter(
+      (
+        model
+      ): model is {
+        id: string;
+        name: string;
+        description?: string;
+        supports_streaming?: boolean;
+        supported_parameters?: Record<string, unknown>;
+      } => Boolean(model.id && model.name)
+    )
+    .map((model) => ({
+      id: model.id,
+      name: model.name,
+      description: model.description ?? '',
+      supportsStreaming: Boolean(model.supports_streaming),
+      supportedParameters: Object.keys(model.supported_parameters ?? {}),
+    }));
+}
+
+export async function generateImage({
+  apiKey,
+  model,
+  prompt,
+  signal,
+}: {
+  apiKey: string;
+  model: string;
+  prompt: string;
+  signal?: AbortSignal;
+}): Promise<ImageGenerationResult> {
+  if (!apiKey) {
+    throw new Error('Add your OpenRouter API key in Settings first.');
+  }
+
+  const fullBody = {
+    model,
+    prompt,
+    n: 1,
+    resolution: '1K',
+    aspect_ratio: '16:9',
+    quality: 'high',
+    output_format: 'png',
+  };
+
+  let response = await fetch(IMAGES_URL, {
+    method: 'POST',
+    headers: buildHeaders(apiKey, false),
+    body: JSON.stringify(fullBody),
+    signal,
+  });
+
+  if (response.status === 400) {
+    response = await fetch(IMAGES_URL, {
+      method: 'POST',
+      headers: buildHeaders(apiKey, false),
+      body: JSON.stringify({ model, prompt }),
+      signal,
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+
+  const payload = (await response.json()) as {
+    data?: Array<{
+      b64_json?: string;
+      media_type?: string;
+    }>;
+    usage?: { cost?: number };
+  };
+
+  const image = payload.data?.[0];
+
+  if (!image?.b64_json) {
+    throw new Error('The image model did not return an image.');
+  }
+
+  const mediaType = image.media_type ?? 'image/png';
+
+  return {
+    dataUri: `data:${mediaType};base64,${image.b64_json}`,
+    mediaType,
+    cost: payload.usage?.cost ?? null,
+  };
 }
 
 export async function testOpenRouterKey(key: string): Promise<KeyTestResult> {

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +17,7 @@ import { useRouter } from 'expo-router';
 import {
   CircleAlert,
   Heart,
+  Image as ImageIcon,
   MapPin,
   MessageCircle,
   RotateCcw,
@@ -33,6 +36,8 @@ import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
+import { buildSceneImagePrompt } from '@/lib/rpg/image';
+import { generateImage } from '@/lib/openrouter';
 
 type StoryMessage = {
   id: string;
@@ -56,6 +61,9 @@ export default function StoryScreen() {
   } = useGame();
 
   const [input, setInput] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
@@ -101,6 +109,31 @@ export default function StoryScreen() {
     },
     [isNarrating, sendTurn]
   );
+
+  const generateSceneImage = useCallback(async () => {
+    if (!db || isGeneratingImage || !apiKey) {
+      return;
+    }
+
+    setIsGeneratingImage(true);
+    setImageError(null);
+
+    try {
+      const prompt = buildSceneImagePrompt(db);
+      const result = await generateImage({
+        apiKey,
+        model: db.settings.imageModel,
+        prompt,
+      });
+      setImageUri(result.dataUri);
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'Could not generate the scene image.';
+      setImageError(message);
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  }, [apiKey, db, isGeneratingImage]);
 
   const insertMarker = useCallback((marker: string) => {
     setInput((current) => {
@@ -351,6 +384,23 @@ export default function StoryScreen() {
             )}
             <View style={styles.composerActions}>
               <Pressable
+                accessibilityLabel="Generate scene image"
+                accessibilityRole="button"
+                disabled={!apiKey || isGeneratingImage || isNarrating}
+                onPress={() => void generateSceneImage()}
+                style={({ pressed }) => [
+                  styles.smallButton,
+                  pressed && styles.pressed,
+                  (!apiKey || isGeneratingImage || isNarrating) && styles.disabled,
+                ]}
+              >
+                {isGeneratingImage ? (
+                  <ActivityIndicator color={colors.accent} size="small" />
+                ) : (
+                  <ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />
+                )}
+              </Pressable>
+              <Pressable
                 accessibilityLabel="Undo last turn"
                 accessibilityRole="button"
                 disabled={!storyStarted || isNarrating}
@@ -418,11 +468,95 @@ export default function StoryScreen() {
           </View>
         </View>
       </SafeAreaView>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => {
+          setImageUri(null);
+          setImageError(null);
+        }}
+        transparent
+        visible={Boolean(imageUri || imageError)}
+      >
+        <View style={styles.imageOverlay}>
+          <Pressable
+            accessibilityLabel="Close image"
+            onPress={() => {
+              setImageUri(null);
+              setImageError(null);
+            }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.imageSheet}>
+            {imageUri ? (
+              <>
+                <Image
+                  accessibilityLabel="Generated story scene"
+                  resizeMode="contain"
+                  source={{ uri: imageUri }}
+                  style={styles.generatedImage}
+                />
+                <AppButton
+                  compact
+                  label="Regenerate image"
+                  loading={isGeneratingImage}
+                  onPress={() => void generateSceneImage()}
+                  style={styles.imageButton}
+                />
+              </>
+            ) : (
+              <View style={styles.imageErrorRow}>
+                <CircleAlert color={colors.danger} size={16} strokeWidth={2} />
+                <Text style={styles.imageErrorText}>{imageError}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  imageOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.overlay,
+  },
+  imageSheet: {
+    width: '100%',
+    maxWidth: 640,
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceRaised,
+  },
+  generatedImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.lg,
+    backgroundColor: colors.background,
+  },
+  imageButton: {
+    alignSelf: 'center',
+    minWidth: 168,
+  },
+  imageErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  imageErrorText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+  },
   root: {
     flex: 1,
     backgroundColor: colors.background,

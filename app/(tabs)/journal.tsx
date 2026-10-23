@@ -2,14 +2,10 @@ import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  Check,
   CircleDot,
   Pin,
-  PinOff,
-  Plus,
   ScrollText,
   Target,
-  Trash2,
 } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
@@ -23,17 +19,11 @@ import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
 export default function JournalScreen() {
   const {
     db,
-    addMemory,
     editMemory,
     deleteMemory,
     toggleMemoryPin,
-    updateThread,
   } = useGame();
 
-  const [showAddMemory, setShowAddMemory] = useState(false);
-  const [newSummary, setNewSummary] = useState('');
-  const [newTags, setNewTags] = useState('');
-  const [newImportance, setNewImportance] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [editSummary, setEditSummary] = useState('');
 
@@ -68,25 +58,6 @@ export default function JournalScreen() {
       })
       .slice(0, 80);
   }, [db]);
-
-  const submitNewMemory = async () => {
-    const summary = newSummary.trim();
-
-    if (!summary) {
-      return;
-    }
-
-    const tags = newTags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-
-    await addMemory(summary, tags, newImportance);
-    setNewSummary('');
-    setNewTags('');
-    setNewImportance(3);
-    setShowAddMemory(false);
-  };
 
   const startEdit = (memory: EventRecord) => {
     setEditingMemoryId(memory.id);
@@ -138,18 +109,6 @@ export default function JournalScreen() {
         <Text style={styles.threadMeta}>
           Opened {formatShortDate(thread.openedAt)}
         </Text>
-        <AppButton
-          compact
-          label={thread.status === 'resolved' ? 'Reopen' : 'Resolve'}
-          onPress={() =>
-            void updateThread(thread.id, {
-              status: thread.status === 'resolved' ? 'open' : 'resolved',
-              resolvedAt: thread.status === 'resolved' ? null : db?.state.inStoryDate ?? null,
-            })
-          }
-          style={styles.threadButton}
-          variant="secondary"
-        />
       </View>
     </SurfaceCard>
   );
@@ -199,59 +158,7 @@ export default function JournalScreen() {
           </View>
 
           <View style={styles.section}>
-            <View style={styles.memoryHeader}>
-              <Text style={styles.sectionLabel}>Memories</Text>
-              <AppButton
-                compact
-                label={showAddMemory ? 'Close' : 'Add'}
-                onPress={() => setShowAddMemory((current) => !current)}
-                style={styles.memoryAddButton}
-                variant="secondary"
-              />
-            </View>
-
-            {showAddMemory ? (
-              <SurfaceCard style={styles.addCard}>
-                <TextInput
-                  accessibilityLabel="New memory summary"
-                  multiline
-                  onChangeText={setNewSummary}
-                  placeholder="What should Kan remember?"
-                  placeholderTextColor={colors.textDim}
-                  style={styles.addInput}
-                  value={newSummary}
-                />
-                <TextInput
-                  accessibilityLabel="Memory tags"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setNewTags}
-                  placeholder="tags, comma, separated"
-                  placeholderTextColor={colors.textDim}
-                  style={styles.tagInput}
-                  value={newTags}
-                />
-                <View style={styles.importanceRow}>
-                  <Text style={styles.importanceLabel}>Importance</Text>
-                  {[1, 2, 3, 4, 5].map((value) => (
-                    <AppButton
-                      compact
-                      key={value}
-                      label={String(value)}
-                      onPress={() => setNewImportance(value as 1 | 2 | 3 | 4 | 5)}
-                      style={styles.importanceButton}
-                      variant={newImportance === value ? 'primary' : 'secondary'}
-                    />
-                  ))}
-                </View>
-                <AppButton
-                  compact
-                  disabled={!newSummary.trim()}
-                  label="Save memory"
-                  onPress={() => void submitNewMemory()}
-                />
-              </SurfaceCard>
-            ) : null}
+            <Text style={styles.sectionLabel}>Memories</Text>
 
             {memories.length === 0 ? (
               <SurfaceCard style={styles.emptyCard}>
@@ -304,7 +211,7 @@ export default function JournalScreen() {
                         accessibilityLabel="Edit memory summary"
                         multiline
                         onChangeText={setEditSummary}
-                        style={styles.addInput}
+                        style={styles.editInput}
                         value={editSummary}
                       />
                       <View style={styles.editActions}>
@@ -312,14 +219,14 @@ export default function JournalScreen() {
                           compact
                           label="Cancel"
                           onPress={() => setEditingMemoryId(null)}
-                          style={styles.threadButton}
+                          style={styles.editButton}
                           variant="secondary"
                         />
                         <AppButton
                           compact
                           label="Save"
                           onPress={() => void saveEdit()}
-                          style={styles.threadButton}
+                          style={styles.editButton}
                         />
                       </View>
                     </View>
@@ -468,57 +375,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textDim,
   },
-  threadButton: {
-    minWidth: 72,
-  },
   memoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  memoryAddButton: {
-    minWidth: 68,
-  },
-  addCard: {
-    gap: 10,
-  },
-  addInput: {
-    minHeight: 84,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    color: colors.text,
-    textAlignVertical: 'top',
-  },
-  tagInput: {
-    minHeight: 42,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    color: colors.text,
-  },
-  importanceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  importanceLabel: {
-    fontFamily: fonts.semibold,
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  importanceButton: {
-    minWidth: 36,
   },
   memoryCard: {
     gap: 10,
@@ -561,6 +421,22 @@ const styles = StyleSheet.create({
   editActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  editInput: {
+    minHeight: 84,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.text,
+    textAlignVertical: 'top',
+  },
+  editButton: {
+    minWidth: 72,
   },
   tagRow: {
     flexDirection: 'row',

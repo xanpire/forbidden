@@ -275,6 +275,11 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     settings: {
       ...DEFAULT_SETTINGS,
       ...(db.settings ?? {}),
+      contextMessages: DEFAULT_SETTINGS.contextMessages,
+      retrievalLimit: DEFAULT_SETTINGS.retrievalLimit,
+      autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
+      temperature: DEFAULT_SETTINGS.temperature,
+      maxTokens: DEFAULT_SETTINGS.maxTokens,
     },
     rawLog: Array.isArray(db.rawLog) ? db.rawLog : [],
     entities: Array.isArray(db.entities) ? db.entities : [],

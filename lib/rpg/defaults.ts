@@ -4,9 +4,10 @@ export const DEFAULT_SETTINGS: Settings = {
   narrationModel: 'deepseek/deepseek-v4.1-flash-1017',
   summaryModel: 'deepseek/deepseek-v4.1-flash-1017',
   extractionModel: 'deepseek/deepseek-v4.1-flash-1017',
+  imageModel: 'google/gemini-3.1-flash-image',
   contextMessages: 10,
   retrievalLimit: 4,
-  autoSummarizeThreshold: 16,
+  autoSummarizeThreshold: 12,
   temperature: 0.7,
   maxTokens: 900,
 };
