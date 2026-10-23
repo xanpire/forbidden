@@ -529,7 +529,7 @@ export default function SettingsScreen() {
 
           <View style={styles.about}>
             <Text style={styles.aboutText}>KAN · v0.2</Text>
-            <Text style={styles.aboutText}>An app made by Xanpire.</Text>
+            <Text style={styles.aboutText}>an app made by xanpire.</Text>
           </View>
         </ScrollView>
       </SafeAreaView>
