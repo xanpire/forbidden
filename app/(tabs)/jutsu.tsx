@@ -1,53 +1,46 @@
-import { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Flame, Search } from 'lucide-react-native';
+import { Flame } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
+import { countJutsuByNature, groupJutsuByNature, type JutsuNature } from '@/lib/rpg/jutsu';
 import { useGame } from '@/lib/rpg/game';
-import type { JutsuRecord } from '@/lib/rpg/types';
 
-type JutsuGroup = {
-  user: string;
-  jutsu: JutsuRecord[];
-};
+type NatureFilter = 'all' | JutsuNature;
 
 export default function JutsuScreen() {
   const { db } = useGame();
+  const [natureFilter, setNatureFilter] = useState<NatureFilter>('all');
 
-  const groups = useMemo<JutsuGroup[]>(() => {
+  const groups = useMemo(() => {
     if (!db) {
       return [];
     }
 
-    const byUser = new Map<string, JutsuRecord[]>();
+    return groupJutsuByNature(db.jutsuRecords);
+  }, [db]);
 
-    for (const record of db.jutsuRecords) {
-      const key = record.user;
-      const current = byUser.get(key) ?? [];
-      current.push(record);
-      byUser.set(key, current);
+  const counts = useMemo(() => {
+    if (!db) {
+      return new Map<JutsuNature, number>();
     }
 
-    return [...byUser.entries()]
-      .map(([user, jutsu]) => ({
-        user,
-        jutsu: [...jutsu].sort((a, b) => b.timesUsed - a.timesUsed),
-      }))
-      .sort((a, b) => {
-        const aKan = a.user === 'Kan' ? 1 : 0;
-        const bKan = b.user === 'Kan' ? 1 : 0;
-
-        if (aKan !== bKan) {
-          return bKan - aKan;
-        }
-
-        return a.user.localeCompare(b.user);
-      });
+    return countJutsuByNature(db.jutsuRecords);
   }, [db]);
+
+  const visibleGroups = useMemo(() => {
+    if (natureFilter === 'all') {
+      return groups;
+    }
+
+    return groups.filter((group) => group.nature === natureFilter);
+  }, [groups, natureFilter]);
+
+  const totalJutsu = db?.jutsuRecords.length ?? 0;
 
   return (
     <View style={styles.root}>
@@ -61,11 +54,64 @@ export default function JutsuScreen() {
           <View style={styles.heading}>
             <Text style={styles.title}>Jutsu</Text>
             <Text style={styles.subtitle}>
-              Techniques used by Kan and the people around him.
+              Techniques grouped by chakra nature.
             </Text>
           </View>
 
-          {groups.length === 0 ? (
+          {totalJutsu > 0 ? (
+            <ScrollView
+              contentContainerStyle={styles.natureChipRow}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+            >
+              <Pressable
+                accessibilityLabel="Show all jutsu natures"
+                accessibilityRole="button"
+                accessibilityState={{ selected: natureFilter === 'all' }}
+                onPress={() => setNatureFilter('all')}
+                style={({ pressed }) => [
+                  styles.natureChip,
+                  natureFilter === 'all' && styles.natureChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.natureChipText,
+                    natureFilter === 'all' && styles.natureChipTextActive,
+                  ]}
+                >
+                  All · {totalJutsu}
+                </Text>
+              </Pressable>
+
+              {groups.map((group) => (
+                <Pressable
+                  accessibilityLabel={`Show ${group.nature} jutsu`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: natureFilter === group.nature }}
+                  key={group.nature}
+                  onPress={() => setNatureFilter(group.nature)}
+                  style={({ pressed }) => [
+                    styles.natureChip,
+                    natureFilter === group.nature && styles.natureChipActive,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.natureChipText,
+                      natureFilter === group.nature && styles.natureChipTextActive,
+                    ]}
+                  >
+                    {group.nature} · {counts.get(group.nature) ?? group.jutsu.length}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          {visibleGroups.length === 0 ? (
             <SurfaceCard style={styles.emptyCard}>
               <Flame color={colors.textDim} size={18} strokeWidth={2} />
               <Text style={styles.emptyTitle}>No jutsu recorded yet</Text>
@@ -74,9 +120,9 @@ export default function JutsuScreen() {
               </Text>
             </SurfaceCard>
           ) : (
-            groups.map((group) => (
-              <View key={group.user} style={styles.group}>
-                <Text style={styles.groupLabel}>{group.user}</Text>
+            visibleGroups.map((group) => (
+              <View key={group.nature} style={styles.group}>
+                <Text style={styles.groupLabel}>{group.nature}</Text>
                 <View style={styles.groupList}>
                   {group.jutsu.map((record) => (
                     <SurfaceCard key={record.id} style={styles.jutsuCard}>
@@ -90,13 +136,35 @@ export default function JutsuScreen() {
                           </Text>
                           <Text style={styles.meta}>
                             Used {record.timesUsed}{' '}
-                            {record.timesUsed === 1 ? 'time' : 'times'}
+                            {record.timesUsed === 1 ? 'time' : 'times'} · {record.user}
                           </Text>
                         </View>
                       </View>
 
+                      <View style={styles.natureRow}>
+                        <Text style={styles.natureLabel}>Chakra</Text>
+                        <Text style={styles.natureValue}>{record.chakraNature}</Text>
+                      </View>
+
+                      {record.effect ? (
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>Effect</Text>
+                          <Text style={styles.detailValue}>{record.effect}</Text>
+                        </View>
+                      ) : null}
+
+                      {record.visual ? (
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>Appearance</Text>
+                          <Text style={styles.detailValue}>{record.visual}</Text>
+                        </View>
+                      ) : null}
+
                       {record.description ? (
-                        <Text style={styles.description}>{record.description}</Text>
+                        <View style={styles.detailBlock}>
+                          <Text style={styles.detailLabel}>Notes</Text>
+                          <Text style={styles.detailValue}>{record.description}</Text>
+                        </View>
                       ) : null}
 
                       <Text style={styles.date}>
@@ -146,6 +214,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: colors.textDim,
+  },
+  natureChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  natureChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  natureChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  natureChipText: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textMuted,
+  },
+  natureChipTextActive: {
+    color: colors.onAccent,
+  },
+  pressed: {
+    opacity: 0.65,
   },
   emptyCard: {
     alignItems: 'center',
@@ -210,7 +308,37 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     color: colors.textMuted,
   },
-  description: {
+  natureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  natureLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  natureValue: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.accent,
+  },
+  detailBlock: {
+    gap: 3,
+  },
+  detailLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  detailValue: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,

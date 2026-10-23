@@ -1,4 +1,5 @@
 import { calculateAge, formatDate } from './calendar';
+import { groupJutsuByNature } from './jutsu';
 import { estimateTokens } from '../openrouter';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
@@ -16,6 +17,8 @@ const NARRATION_SYSTEM = `You are the Elite Game Master and immersive novelist f
 WORLD
 - This is the Naruto universe, with canon places, clans, jutsu, organizations, and timeline.
 - The player controls an original character named Kan. You control every NPC, the environment, and the passage of time.
+- Treat character state, world description, bonds, jutsu, facts, threads, lore, memories, and recent scene as one continuous story.
+- Use that combined state to keep mood, appearance, relationships, jutsu, and world details synchronized and consistent.
 
 CRITICAL RULES
 1. You never speak, act, think, emote, or decide for Kan.
@@ -77,7 +80,7 @@ Allowed top-level fields:
     { "name": string, "mood": string, "appearance": string }
   ],
   "jutsuUsed": [
-    { "name": string, "user": string, "description": string }
+    { "name": string, "user": string, "chakraNature": string, "effect": string, "visual": string, "description": string }
   ],
   "bonds": [
     { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean }
@@ -101,6 +104,9 @@ Rules:
 - Update NPC moods when their behavior or circumstances change.
 - Only update appearance when the story clearly changes it.
 - Record any jutsu used by Kan or an NPC in jutsuUsed.
+- For each jutsu, include chakraNature, effect, and visual. Keep them short, concrete, and consistent with earlier uses.
+- chakraNature must use one canonical category: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
+- If a technique blends natures, choose its primary nature and describe the blend in effect or visual.
 - Keep worldDescription to one or two concise sentences about the current state of the world.
 - If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.`;
 
@@ -159,6 +165,7 @@ export function buildNarrationPrompt(
     NARRATION_SYSTEM,
     formatCharacterSheet(db),
     formatState(db),
+    formatJutsu(db),
     formatBonds(db),
     formatFacts(facts),
     formatThreads(db),
@@ -197,6 +204,7 @@ export function buildExtractionPrompt(
     EXTRACTION_SYSTEM,
     formatState(db),
     formatEntities(db),
+    formatJutsu(db),
     formatBonds(db),
     formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 20)),
     formatThreads(db),
@@ -368,6 +376,28 @@ function formatEntities(db: AppDatabase) {
       (entity) =>
         `- ${entity.name}: mood ${entity.mood ?? 'unknown'}; appearance ${entity.appearance ?? 'unknown'}`
     ),
+  ].join('\n');
+}
+
+function formatJutsu(db: AppDatabase) {
+  const groups = groupJutsuByNature(db.jutsuRecords).slice(0, 8);
+
+  if (groups.length === 0) {
+    return 'KNOWN JUTSU\nNone.';
+  }
+
+  return [
+    'KNOWN JUTSU',
+    ...groups.map((group) => {
+      const lines = group.jutsu
+        .slice(0, 5)
+        .map(
+          (record) =>
+            `  - ${record.name} (${record.user}): effect ${record.effect}; visual ${record.visual}`
+        );
+
+      return `${group.nature}\n${lines.join('\n')}`;
+    }),
   ].join('\n');
 }
 

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
+import { normalizeJutsuNature } from './jutsu';
 import { seedDatabase } from './seed';
 import type { AppDatabase, MemoryIndex } from './types';
 
@@ -282,7 +283,15 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       maxTokens: DEFAULT_SETTINGS.maxTokens,
     },
     rawLog: Array.isArray(db.rawLog) ? db.rawLog : [],
-    jutsuRecords: Array.isArray(db.jutsuRecords) ? db.jutsuRecords : [],
+    jutsuRecords: Array.isArray(db.jutsuRecords)
+      ? db.jutsuRecords.map((record) => ({
+          ...record,
+          chakraNature: normalizeJutsuNature(record.chakraNature),
+          effect: record.effect ?? record.description ?? '',
+          visual: record.visual ?? '',
+          description: record.description ?? '',
+        }))
+      : [],
     entities: Array.isArray(db.entities)
       ? db.entities.map((entity) => ({
           ...entity,

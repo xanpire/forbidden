@@ -117,6 +117,11 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('jutsu'),
       name: 'ANBU taijutsu',
       user: 'Kan',
+      chakraNature: 'Physical',
+      effect:
+        'Close-quarters ANBU combat built for silent takedowns, precise strikes, and quick escapes.',
+      visual:
+        'Fast, economical movements with almost no sound; Kan closes distance in a low stance and ends exchanges in one or two blows.',
       firstSeen: DEFAULT_DATE,
       lastSeen: DEFAULT_DATE,
       timesUsed: 1,
@@ -127,6 +132,11 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('jutsu'),
       name: 'Fire Release',
       user: 'Kan',
+      chakraNature: 'Fire',
+      effect:
+        'Uchiha-affinity fire techniques used to burn, signal, create pressure, or force an enemy back.',
+      visual:
+        'Chakra ignites into orange-red flames, often leaving heat shimmer and black scorch marks in the air.',
       firstSeen: DEFAULT_DATE,
       lastSeen: DEFAULT_DATE,
       timesUsed: 1,

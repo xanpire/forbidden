@@ -104,6 +104,9 @@ export type JutsuRecord = {
   id: string;
   name: string;
   user: string;
+  chakraNature: string;
+  effect: string;
+  visual: string;
   firstSeen: CalendarDate;
   lastSeen: CalendarDate;
   timesUsed: number;
@@ -259,6 +262,9 @@ export type TurnDiff = {
   jutsuUsed?: {
     name: string;
     user: string;
+    chakraNature?: string;
+    effect?: string;
+    visual?: string;
     description?: string;
   }[];
   bonds?: {

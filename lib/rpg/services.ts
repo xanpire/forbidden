@@ -2,6 +2,7 @@ import { completeChat } from '../openrouter';
 import { normalizeDate, formatDate, daysBetween } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { makeId } from './id';
+import { normalizeJutsuNature } from './jutsu';
 import { buildIndices } from './db';
 import type {
   AppDatabase,
@@ -309,6 +310,9 @@ function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
       id: makeId('jutsu'),
       name,
       user,
+      chakraNature: normalizeJutsuNature(jutsu.chakraNature),
+      effect: jutsu.effect?.trim() || jutsu.description?.trim() || '',
+      visual: jutsu.visual?.trim() || '',
       firstSeen: db.state.inStoryDate,
       lastSeen: db.state.inStoryDate,
       timesUsed: 1,
@@ -327,6 +331,9 @@ function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
 
   jutsuRecords[existingIndex] = {
     ...existing,
+    chakraNature: normalizeJutsuNature(jutsu.chakraNature ?? existing.chakraNature),
+    effect: jutsu.effect?.trim() || existing.effect,
+    visual: jutsu.visual?.trim() || existing.visual,
     lastSeen: db.state.inStoryDate,
     timesUsed: existing.timesUsed + 1,
     description: jutsu.description?.trim() || existing.description,

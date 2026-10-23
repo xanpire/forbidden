@@ -10,16 +10,35 @@ export const DEFAULT_DATE: CalendarDate = {
 const MONTHS_PER_YEAR = 12;
 const DAYS_PER_MONTH = 30;
 
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+function monthName(month: number) {
+  return MONTH_NAMES[Math.max(0, Math.min(MONTH_NAMES.length - 1, month - 1))];
+}
+
 export function dateKey(date: CalendarDate) {
   return `${date.year}-${date.month}-${date.day}`;
 }
 
 export function formatDate(date: CalendarDate) {
-  return `Year ${date.year} · Month ${date.month} · Day ${date.day} · ${capitalize(date.timeOfDay)}`;
+  return `Day ${date.day}, ${monthName(date.month)} · ${capitalize(date.timeOfDay)}`;
 }
 
 export function formatShortDate(date: CalendarDate) {
-  return `Day ${date.day} · Month ${date.month} · Year ${date.year} · ${capitalize(date.timeOfDay)}`;
+  return `Day ${date.day}, ${monthName(date.month)} · ${capitalize(date.timeOfDay)}`;
 }
 
 export function calculateAge(
@@ -46,7 +65,7 @@ export function formatStoryDate(
 ) {
   const age = calculateAge(date, birthday, birthYear);
 
-  return `Age ${age} · Day ${date.day} · Month ${date.month} · Year ${date.year} · ${capitalize(date.timeOfDay)}`;
+  return `Age ${age} · Day ${date.day}, ${monthName(date.month)} · ${capitalize(date.timeOfDay)}`;
 }
 
 function capitalize(value: string) {
