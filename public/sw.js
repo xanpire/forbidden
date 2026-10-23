@@ -1,5 +1,5 @@
-const CACHE_NAME = 'kan-shell-v6';
-const APP_SHELL = ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
+const CACHE_NAME = 'kan-shell-v7';
+const APP_SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -40,11 +40,11 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('./', copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put('/', copy));
           return response;
         })
         .catch(async () => {
-          const cached = await caches.match('./');
+          const cached = await caches.match('/');
           return cached || new Response('Offline', { status: 503 });
         })
     );
