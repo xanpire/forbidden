@@ -32,7 +32,7 @@ import {
   Smile,
   Sparkles,
   X,
-  Sword,
+  Diamond,
   Undo2,
 } from 'lucide-react-native';
 
@@ -437,32 +437,75 @@ export default function StoryScreen() {
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
-          <View style={styles.modeRow}>
-            <Pressable
-              accessibilityLabel="Insert speech quotation mark"
-              accessibilityRole="button"
-              onPress={() => insertMarker('"')}
-              style={({ pressed }) => [
-                styles.modeButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <MessageCircle color={colors.textMuted} size={13} strokeWidth={2} />
-              <Text style={styles.modeLabel}>Speech</Text>
-            </Pressable>
+          <View style={styles.composerRow}>
+            <View style={styles.composer}>
+              <TextInput
+                accessibilityLabel="What does Kan do?"
+                editable={!isNarrating}
+                maxLength={1000}
+                multiline
+                onChangeText={setInput}
+                onSelectionChange={(event) => {
+                  selectionRef.current = {
+                    start: event.nativeEvent.selection.start,
+                    end: event.nativeEvent.selection.end,
+                  };
+                }}
+                ref={inputRef}
+                placeholder={'Use " for speech and * for action'}
+                placeholderTextColor={colors.textDim}
+                style={styles.composerInput}
+                value={input}
+              />
 
-            <Pressable
-              accessibilityLabel="Insert action asterisk"
-              accessibilityRole="button"
-              onPress={() => insertMarker('*')}
-              style={({ pressed }) => [
-                styles.modeButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Sword color={colors.textMuted} size={13} strokeWidth={2} />
-              <Text style={styles.modeLabel}>Action</Text>
-            </Pressable>
+              <View style={styles.modeRow}>
+                <Pressable
+                  accessibilityLabel="Insert speech quotation mark"
+                  accessibilityRole="button"
+                  onPress={() => insertMarker('"')}
+                  style={({ pressed }) => [
+                    styles.modeButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <MessageCircle color={colors.textMuted} size={13} strokeWidth={2} />
+                  <Text style={styles.modeLabel}>Speech</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityLabel="Insert action diamond"
+                  accessibilityRole="button"
+                  onPress={() => insertMarker('*')}
+                  style={({ pressed }) => [
+                    styles.modeButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Diamond color={colors.textMuted} size={13} strokeWidth={2} />
+                  <Text style={styles.modeLabel}>Action</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.sendColumn}>
+              <Pressable
+                accessibilityLabel="Send Kan's action"
+                accessibilityRole="button"
+                disabled={!input.trim() || isNarrating}
+                onPress={submitCurrent}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  pressed && styles.pressed,
+                  (!input.trim() || isNarrating) && styles.sendDisabled,
+                ]}
+              >
+                {isNarrating ? (
+                  <ActivityIndicator color={colors.onAccent} size="small" />
+                ) : (
+                  <Send color={colors.onAccent} size={19} strokeWidth={2.2} />
+                )}
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.composerMeta}>
@@ -521,44 +564,6 @@ export default function StoryScreen() {
                 <RotateCcw color={colors.textMuted} size={15} strokeWidth={2} />
               </Pressable>
             </View>
-          </View>
-
-          <View style={styles.composer}>
-            <TextInput
-              accessibilityLabel="What does Kan do?"
-              editable={!isNarrating}
-              maxLength={1000}
-              multiline
-              onChangeText={setInput}
-              onSelectionChange={(event) => {
-                selectionRef.current = {
-                  start: event.nativeEvent.selection.start,
-                  end: event.nativeEvent.selection.end,
-                };
-              }}
-              ref={inputRef}
-              placeholder={'Use " for speech and * for action'}
-              placeholderTextColor={colors.textDim}
-              style={styles.composerInput}
-              value={input}
-            />
-            <Pressable
-              accessibilityLabel="Send Kan's action"
-              accessibilityRole="button"
-              disabled={!input.trim() || isNarrating}
-              onPress={submitCurrent}
-              style={({ pressed }) => [
-                styles.sendButton,
-                pressed && styles.pressed,
-                (!input.trim() || isNarrating) && styles.sendDisabled,
-              ]}
-            >
-              {isNarrating ? (
-                <ActivityIndicator color={colors.onAccent} size="small" />
-              ) : (
-                <Send color={colors.onAccent} size={18} strokeWidth={2.2} />
-              )}
-            </Pressable>
           </View>
         </View>
       </SafeAreaView>
@@ -856,22 +861,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  modeRow: {
-    flexDirection: 'row',
-    gap: 6,
-    marginBottom: 8,
-  },
-  modeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    minHeight: 40,
-    paddingHorizontal: 13,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
   modeLabel: {
     fontFamily: fonts.semibold,
     fontSize: 11,
@@ -881,16 +870,21 @@ const styles = StyleSheet.create({
   composerShell: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopWidth: 2,
+    borderTopColor: colors.accent,
     backgroundColor: colors.background,
+  },
+  composerRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.sm,
   },
   composerMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 32,
-    marginBottom: 6,
+    marginTop: 6,
   },
   processingRow: {
     flexDirection: 'row',
@@ -925,9 +919,7 @@ const styles = StyleSheet.create({
     opacity: 0.35,
   },
   composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.sm,
+    flex: 1,
     padding: 5,
     paddingLeft: spacing.lg,
     borderRadius: radius.lg,
@@ -936,8 +928,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   composerInput: {
-    flex: 1,
-    maxHeight: 112,
+    maxHeight: 96,
     minHeight: 42,
     paddingTop: 11,
     paddingBottom: 10,
@@ -946,10 +937,32 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.text,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 2,
+    paddingBottom: 4,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sendColumn: {
+    justifyContent: 'center',
+    paddingBottom: 5,
+  },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 54,
+    height: 54,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.accent,
