@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -15,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router';
 import {
   CircleAlert,
+  Download,
   Heart,
   Image as ImageIcon,
   MapPin,
@@ -23,6 +25,7 @@ import {
   Send,
   Settings2,
   Sparkles,
+  X,
   Sword,
   Undo2,
   Zap,
@@ -36,6 +39,7 @@ import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
+import { downloadImage } from '@/lib/rpg/file';
 import { buildSceneImagePrompt } from '@/lib/rpg/image';
 import { generateImage } from '@/lib/openrouter';
 
@@ -65,6 +69,7 @@ export default function StoryScreen() {
 
   const [input, setInput] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
@@ -292,12 +297,18 @@ export default function StoryScreen() {
                   {message.content}
                 </Text>
                 {message.image ? (
-                  <Image
-                    accessibilityLabel="Generated story scene"
-                    resizeMode="cover"
-                    source={{ uri: message.image }}
-                    style={styles.messageImage}
-                  />
+                  <Pressable
+                    accessibilityLabel="Open generated story image"
+                    accessibilityRole="imagebutton"
+                    onPress={() => setSelectedImage(message.image)}
+                  >
+                    <Image
+                      accessibilityLabel="Generated story scene"
+                      resizeMode="cover"
+                      source={{ uri: message.image }}
+                      style={styles.messageImage}
+                    />
+                  </Pressable>
                 ) : null}
               </View>
             </View>
@@ -487,6 +498,64 @@ export default function StoryScreen() {
         </View>
       </SafeAreaView>
 
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setSelectedImage(null)}
+        transparent
+        visible={Boolean(selectedImage)}
+      >
+        <View
+          style={[
+            styles.imageOverlay,
+            { paddingBottom: Math.max(insets.bottom + 80, spacing.xxxl) },
+          ]}
+        >
+          <Pressable
+            accessibilityLabel="Close image"
+            onPress={() => setSelectedImage(null)}
+            style={StyleSheet.absoluteFill}
+          />
+
+          {selectedImage ? (
+            <>
+              <Image
+                accessibilityLabel="Generated story scene"
+                resizeMode="contain"
+                source={{ uri: selectedImage }}
+                style={styles.fullscreenImage}
+              />
+
+              <View
+                style={[
+                  styles.imageActions,
+                  { bottom: Math.max(insets.bottom + 20, spacing.xl) },
+                ]}
+              >
+                <AppButton
+                  compact
+                  icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
+                  label="Download"
+                  onPress={() =>
+                    downloadImage(
+                      `kan-scene-${Date.now()}.jpg`,
+                      selectedImage
+                    )
+                  }
+                  style={styles.imageActionButton}
+                />
+                <AppButton
+                  compact
+                  icon={<X color={colors.text} size={15} strokeWidth={2} />}
+                  label="Close"
+                  onPress={() => setSelectedImage(null)}
+                  style={styles.imageActionButton}
+                  variant="secondary"
+                />
+              </View>
+            </>
+          ) : null}
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -627,6 +696,25 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
     borderRadius: radius.md,
     backgroundColor: colors.background,
+  },
+  imageOverlay: {
+    flex: 1,
+    padding: spacing.xl,
+    backgroundColor: 'rgba(0, 0, 0, 0.96)',
+  },
+  fullscreenImage: {
+    flex: 1,
+    width: '100%',
+  },
+  imageActions: {
+    position: 'absolute',
+    left: spacing.xl,
+    right: spacing.xl,
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  imageActionButton: {
+    flex: 1,
   },
   userBubble: {
     backgroundColor: colors.accent,
