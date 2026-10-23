@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Asset } from 'expo-asset';
 
 const kanNoCloak = require('../../assets/images/kan-no-cloak.jpg');
 const kanAkatsuki = require('../../assets/images/kan-akatsuki.jpg');
@@ -20,10 +20,10 @@ export function loadKanReferenceImages(wearsAkatsukiCloak: boolean) {
   const alternateFace = wearsAkatsukiCloak ? kanFaceNoCloak : kanFaceAkatsuki;
 
   const references = Promise.all([
-    toDataUri(Image.resolveAssetSource(currentFull).uri),
-    toDataUri(Image.resolveAssetSource(currentFace).uri),
-    toDataUri(Image.resolveAssetSource(alternateFull).uri),
-    toDataUri(Image.resolveAssetSource(alternateFace).uri),
+    toDataUri(Asset.fromModule(currentFull)),
+    toDataUri(Asset.fromModule(currentFace)),
+    toDataUri(Asset.fromModule(alternateFull)),
+    toDataUri(Asset.fromModule(alternateFace)),
   ]).then((values) => values.filter(Boolean));
 
   referenceCache.set(wearsAkatsukiCloak, references);
@@ -31,7 +31,15 @@ export function loadKanReferenceImages(wearsAkatsukiCloak: boolean) {
   return references;
 }
 
-async function toDataUri(uri: string) {
+async function toDataUri(asset: Asset) {
+  try {
+    await asset.downloadAsync();
+  } catch {
+    // downloadAsync is a no-op for web assets; the remote URI still works.
+  }
+
+  const uri = asset.localUri ?? asset.uri;
+
   if (!uri) {
     return '';
   }
