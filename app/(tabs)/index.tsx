@@ -16,10 +16,12 @@ import {
   CircleAlert,
   Heart,
   MapPin,
+  MessageCircle,
   RotateCcw,
   Send,
   Settings2,
   Sparkles,
+  Sword,
   Undo2,
   Zap,
 } from 'lucide-react-native';
@@ -31,6 +33,8 @@ import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
+
+type InputMode = 'speech' | 'action';
 
 type StoryMessage = {
   id: string;
@@ -54,6 +58,7 @@ export default function StoryScreen() {
   } = useGame();
 
   const [input, setInput] = useState('');
+  const [inputMode, setInputMode] = useState<InputMode>('speech');
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const lastActionRef = useRef('');
@@ -83,12 +88,14 @@ export default function StoryScreen() {
   }, [messages.length, streamingText]);
 
   const submit = useCallback(
-    async (value: string) => {
-      const action = value.trim();
+    async (value: string, mode: InputMode) => {
+      const raw = value.trim();
 
-      if (!action || isNarrating) {
+      if (!raw || isNarrating) {
         return;
       }
+
+      const action = formatPlayerInput(raw, mode);
 
       lastActionRef.current = action;
       setInput('');
@@ -96,6 +103,10 @@ export default function StoryScreen() {
     },
     [isNarrating, sendTurn]
   );
+
+  const submitCurrent = useCallback(() => {
+    void submit(input, inputMode);
+  }, [input, inputMode, submit]);
 
   const retry = useCallback(async () => {
     const action = lastActionRef.current;
@@ -187,7 +198,7 @@ export default function StoryScreen() {
               </Text>
               <AppButton
                 label="Kan waits for Itachi"
-                onPress={() => void submit('Kan waits for Itachi in the rain.')}
+                onPress={() => void submit('Kan waits for Itachi in the rain.', 'action')}
                 style={styles.seedButton}
               />
             </SurfaceCard>
@@ -277,6 +288,60 @@ export default function StoryScreen() {
             { paddingBottom: Math.max(insets.bottom, spacing.sm) },
           ]}
         >
+          <View style={styles.modeRow}>
+            <Pressable
+              accessibilityLabel="Speech input mode"
+              accessibilityRole="button"
+              accessibilityState={{ checked: inputMode === 'speech' }}
+              onPress={() => setInputMode('speech')}
+              style={({ pressed }) => [
+                styles.modeButton,
+                inputMode === 'speech' && styles.modeButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <MessageCircle
+                color={inputMode === 'speech' ? colors.onAccent : colors.textMuted}
+                size={13}
+                strokeWidth={2}
+              />
+              <Text
+                style={[
+                  styles.modeLabel,
+                  inputMode === 'speech' && styles.modeLabelActive,
+                ]}
+              >
+                Speech
+              </Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityLabel="Action input mode"
+              accessibilityRole="button"
+              accessibilityState={{ checked: inputMode === 'action' }}
+              onPress={() => setInputMode('action')}
+              style={({ pressed }) => [
+                styles.modeButton,
+                inputMode === 'action' && styles.modeButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Sword
+                color={inputMode === 'action' ? colors.onAccent : colors.textMuted}
+                size={13}
+                strokeWidth={2}
+              />
+              <Text
+                style={[
+                  styles.modeLabel,
+                  inputMode === 'action' && styles.modeLabelActive,
+                ]}
+              >
+                Action
+              </Text>
+            </Pressable>
+          </View>
+
           <View style={styles.composerMeta}>
             {isProcessing ? (
               <View style={styles.processingRow}>
@@ -325,7 +390,11 @@ export default function StoryScreen() {
               maxLength={1000}
               multiline
               onChangeText={setInput}
-              placeholder="Speak, act, or think as Kan…"
+              placeholder={
+                inputMode === 'speech'
+                  ? 'What does Kan say?'
+                  : 'What does Kan do?'
+              }
               placeholderTextColor={colors.textDim}
               style={styles.composerInput}
               value={input}
@@ -334,7 +403,7 @@ export default function StoryScreen() {
               accessibilityLabel="Send Kan's action"
               accessibilityRole="button"
               disabled={!input.trim() || isNarrating}
-              onPress={() => void submit(input)}
+              onPress={submitCurrent}
               style={({ pressed }) => [
                 styles.sendButton,
                 pressed && styles.pressed,
@@ -352,6 +421,20 @@ export default function StoryScreen() {
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
+}
+
+function formatPlayerInput(value: string, mode: InputMode) {
+  const cleaned = value
+    .trim()
+    .replace(/^"+|"+$/g, '')
+    .replace(/^\*\*+|\*\*+$/g, '')
+    .trim();
+
+  if (!cleaned) {
+    return '';
+  }
+
+  return mode === 'speech' ? `"${cleaned}"` : `**${cleaned}**`;
 }
 
 const styles = StyleSheet.create({
@@ -543,6 +626,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 8,
+  },
+  modeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 13,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  modeButtonActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  modeLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    color: colors.textMuted,
+  },
+  modeLabelActive: {
+    color: colors.onAccent,
   },
   composerShell: {
     paddingHorizontal: spacing.lg,

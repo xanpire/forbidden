@@ -44,7 +44,10 @@ CANON AND TIME
 - Use the d20 encounter hint to choose event scale; do not mention the roll.
 
 FORMATTING
-- Use clean quotation marks for speech.
+- Kan's input is either quoted dialogue or a bold action:
+  - Text inside straight quotes is speech Kan says aloud.
+  - Text wrapped in **...** is an action, gesture, or physical movement Kan performs.
+- Use clean quotation marks for NPC speech.
 - Use italics only for internal NPC thoughts if necessary.
 - Write in immersive, gritty third-person limited perspective.
 - Start directly with the narrative.`;
