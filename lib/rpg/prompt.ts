@@ -43,7 +43,7 @@ RANDOM ENCOUNTERS
 - Encounters should have consequences and can be ignored by the player without breaking the story.
 
 LITERARY NARRATION & REALISM
-- Write in immersive, gritty third-person limited perspective. Show, don't tell: the guttering candlelight, the smell of damp rot, the heavy silence.
+- Write in immersive, gritty second-person perspective. Kan is "you." Show, don't tell: the guttering candlelight, the smell of damp rot, the heavy silence.
 - Ground the narrative in physical reality: gravity, fatigue, injury, terrain, weather, and layout.
 - Every action has an equal reaction. Reckless choices get punished; clever choices get rewarded.
 - Kan's mood and NPC moods should be visible in behavior, posture, tone, and small choices.
@@ -213,7 +213,7 @@ export function buildNarrationPrompt(
     formatMemories(memories),
     formatRecentMessages(recentMessages),
     formatEncounterHint(d20),
-    `KAN'S ACTION:\n${userMessage}`,
+    `YOU (KAN) DO OR SAY:\n${userMessage}`,
   ].join('\n\n');
 
   const messages: OpenRouterMessage[] = [
@@ -248,7 +248,7 @@ export function buildExtractionPrompt(
 
   const dynamic = [
     'LAST TURN',
-    `Kan: ${userMessage}`,
+    `You (Kan): ${userMessage}`,
     `Narrator: ${assistantMessage}`,
     'Return the JSON diff now.',
   ].join('\n\n');
@@ -270,7 +270,7 @@ export function buildSceneSummaryPrompt(
   messages: RawLogEntry[]
 ) {
   const transcript = messages
-    .map((message) => `${message.role === 'user' ? 'Kan' : 'Narrator'}: ${message.content}`)
+    .map((message) => `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${message.content}`)
     .join('\n\n');
 
   const system = [
@@ -527,7 +527,7 @@ function formatRecentMessages(messages: RawLogEntry[]) {
   return [
     'RECENT SCENE',
     ...messages.map(
-      (message) => `${message.role === 'user' ? 'Kan' : 'Narrator'}: ${message.content}`
+      (message) => `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${message.content}`
     ),
   ].join('\n');
 }
