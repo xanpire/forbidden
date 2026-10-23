@@ -46,8 +46,8 @@ export type PlayerSheet = {
 
 export type GameState = {
   player: PlayerSheet;
-  hp: { current: number; max: number };
-  chakra: { current: number; max: number };
+  mood: string;
+  worldDescription: string;
   jutsu: string[];
   inventory: string[];
   location: string;
@@ -81,6 +81,8 @@ export type EntityRecord = {
   birthday?: { month: number; day: number };
   status?: string;
   notes?: string;
+  mood?: string;
+  appearance?: string;
   tags: string[];
 };
 
@@ -224,8 +226,8 @@ export type SceneInfo = {
 
 export type TurnDiff = {
   state?: {
-    hpDelta?: number;
-    chakraDelta?: number;
+    mood?: string;
+    worldDescription?: string;
     jutsuAdded?: string[];
     jutsuRemoved?: string[];
     inventoryAdded?: string[];
@@ -236,6 +238,11 @@ export type TurnDiff = {
     chapter?: number;
     scene?: string;
   };
+  entities?: {
+    name: string;
+    mood?: string;
+    appearance?: string;
+  }[];
   bonds?: {
     character: string;
     affinityDelta?: number;

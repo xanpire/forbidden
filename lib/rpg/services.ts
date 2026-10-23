@@ -112,6 +112,12 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     next = applyStateDiff(next, diff.state);
   }
 
+  if (Array.isArray(diff.entities)) {
+    for (const entity of diff.entities) {
+      next = applyEntityDiff(next, entity);
+    }
+  }
+
   if (Array.isArray(diff.bonds)) {
     for (const bond of diff.bonds) {
       next = applyBondDiff(next, bond);
@@ -140,6 +146,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 }
 
 type StateDiff = NonNullable<TurnDiff['state']>;
+type EntityDiff = NonNullable<TurnDiff['entities']>[number];
 type BondDiff = NonNullable<TurnDiff['bonds']>[number];
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
 type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
@@ -147,26 +154,18 @@ type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
 function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   const next = { ...db, state: { ...db.state } };
 
-  if (typeof state.hpDelta === 'number' && Number.isFinite(state.hpDelta)) {
-    next.state.hp = {
-      ...next.state.hp,
-      current: clamp(
-        next.state.hp.current + state.hpDelta,
-        0,
-        next.state.hp.max
-      ),
-    };
+  if (typeof state.mood === 'string' && state.mood.trim()) {
+    next.state.mood = state.mood.trim();
+
+    next.entities = next.entities.map((entity) =>
+      entity.name.toLowerCase() === 'kan'
+        ? { ...entity, mood: next.state.mood }
+        : entity
+    );
   }
 
-  if (typeof state.chakraDelta === 'number' && Number.isFinite(state.chakraDelta)) {
-    next.state.chakra = {
-      ...next.state.chakra,
-      current: clamp(
-        next.state.chakra.current + state.chakraDelta,
-        0,
-        next.state.chakra.max
-      ),
-    };
+  if (typeof state.worldDescription === 'string' && state.worldDescription.trim()) {
+    next.state.worldDescription = state.worldDescription.trim();
   }
 
   if (Array.isArray(state.jutsuAdded)) {
@@ -221,6 +220,65 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   return next;
 }
 
+function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
+  if (!entity?.name || typeof entity.name !== 'string') {
+    return db;
+  }
+
+  const name = entity.name.trim();
+
+  if (!name) {
+    return db;
+  }
+
+  const existingIndex = db.entities.findIndex(
+    (item) =>
+      item.name.toLowerCase() === name.toLowerCase() ||
+      item.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
+  );
+
+  if (existingIndex === -1) {
+    const newEntity = {
+      id: makeId('entity'),
+      name,
+      type: 'character' as const,
+      aliases: [],
+      status: 'Newly met',
+      notes: '',
+      mood: entity.mood?.trim() || 'Unknown',
+      appearance: entity.appearance?.trim() || 'Unknown',
+      tags: [],
+    };
+
+    return {
+      ...db,
+      entities: [...db.entities, newEntity],
+    };
+  }
+
+  const entities = [...db.entities];
+  const existing = entities[existingIndex];
+
+  const nextMood = entity.mood?.trim() || existing.mood;
+
+  entities[existingIndex] = {
+    ...existing,
+    mood: nextMood,
+    appearance: entity.appearance?.trim() || existing.appearance,
+  };
+
+  const nextState =
+    existing.name.toLowerCase() === 'kan' && nextMood
+      ? { ...db.state, mood: nextMood }
+      : db.state;
+
+  return {
+    ...db,
+    state: nextState,
+    entities,
+  };
+}
+
 function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
   if (!bond?.character || typeof bond.character !== 'string') {
     return db;
@@ -246,9 +304,25 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
           )
       ) ?? null;
 
+    let bondEntity = entity;
+
+    if (!bondEntity) {
+      bondEntity = {
+        id: makeId('entity'),
+        name: characterName,
+        type: 'character' as const,
+        aliases: [],
+        status: 'Newly met',
+        notes: '',
+        mood: 'Unknown',
+        appearance: 'Unknown',
+        tags: [],
+      };
+    }
+
     const newBond = {
       id: makeId('bond'),
-      entityId: entity?.id ?? makeId('entity'),
+      entityId: bondEntity.id,
       characterName,
       affinity: clamp(
         typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0,
@@ -262,8 +336,13 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
       updatedInStoryDate: db.state.inStoryDate,
     };
 
+    const entities = bondEntity && !db.entities.some((item) => item.id === bondEntity.id)
+      ? [...db.entities, bondEntity]
+      : db.entities;
+
     return {
       ...db,
+      entities,
       bonds: [...db.bonds, newBond],
     };
   }

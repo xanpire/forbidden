@@ -1,38 +1,65 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Users } from 'lucide-react-native';
+import { Search, UserRound, Users } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
+import type { BondRecord, EntityRecord } from '@/lib/rpg/types';
+
+type CharacterCard = {
+  entity: EntityRecord;
+  bond: BondRecord | null;
+};
 
 export default function CharactersScreen() {
-  const { db, updateBond } = useGame();
+  const { db } = useGame();
   const [query, setQuery] = useState('');
 
-  const bonds = useMemo(() => {
+  const characters = useMemo<CharacterCard[]>(() => {
     if (!db) {
       return [];
     }
 
     const term = query.trim().toLowerCase();
 
-    return [...db.bonds]
-      .filter(
-        (bond) =>
-          !term ||
-          bond.characterName.toLowerCase().includes(term) ||
-          bond.status.toLowerCase().includes(term)
-      )
-      .sort((a, b) => {
-        if (a.isMajor !== b.isMajor) {
-          return a.isMajor ? -1 : 1;
+    return db.entities
+      .filter((entity) => entity.type === 'character')
+      .map((entity) => ({
+        entity,
+        bond:
+          db.bonds.find((bond) => bond.entityId === entity.id) ?? null,
+      }))
+      .filter(({ entity, bond }) => {
+        if (!term) {
+          return true;
         }
 
-        return b.affinity - a.affinity;
+        return (
+          entity.name.toLowerCase().includes(term) ||
+          entity.aliases.some((alias) => alias.toLowerCase().includes(term)) ||
+          (bond?.status.toLowerCase().includes(term) ?? false)
+        );
+      })
+      .sort((a, b) => {
+        const aPlayer = a.entity.name === 'Kan' ? 1 : 0;
+        const bPlayer = b.entity.name === 'Kan' ? 1 : 0;
+
+        if (aPlayer !== bPlayer) {
+          return bPlayer - aPlayer;
+        }
+
+        const aMajor = a.bond?.isMajor ? 1 : 0;
+        const bMajor = b.bond?.isMajor ? 1 : 0;
+
+        if (aMajor !== bMajor) {
+          return bMajor - aMajor;
+        }
+
+        return (b.bond?.affinity ?? 0) - (a.bond?.affinity ?? 0);
       });
   }, [db, query]);
 
@@ -48,7 +75,7 @@ export default function CharactersScreen() {
           <View style={styles.heading}>
             <Text style={styles.title}>Characters</Text>
             <Text style={styles.subtitle}>
-              Bonds earned through the story, not given for free.
+              Moods and appearances shaped by the story.
             </Text>
           </View>
 
@@ -59,78 +86,101 @@ export default function CharactersScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setQuery}
-              placeholder="Search bonds"
+              placeholder="Search characters"
               placeholderTextColor={colors.textDim}
               style={styles.searchInput}
               value={query}
             />
           </View>
 
-          {bonds.length === 0 ? (
+          {characters.length === 0 ? (
             <SurfaceCard style={styles.emptyCard}>
               <Users color={colors.textDim} size={18} strokeWidth={2} />
-              <Text style={styles.emptyTitle}>No bonds yet</Text>
+              <Text style={styles.emptyTitle}>No characters found</Text>
               <Text style={styles.emptyBody}>
-                Meet people in the story and they will appear here.
+                People appear here as the story introduces them.
               </Text>
             </SurfaceCard>
           ) : (
-            bonds.map((bond) => (
-              <SurfaceCard key={bond.id} style={styles.bondCard}>
-                <View style={styles.bondTop}>
+            characters.map(({ entity, bond }) => (
+              <SurfaceCard key={entity.id} style={styles.characterCard}>
+                <View style={styles.topRow}>
+                  <View style={styles.iconWrap}>
+                    <UserRound color={colors.accent} size={17} strokeWidth={2} />
+                  </View>
                   <View style={styles.nameWrap}>
                     <Text numberOfLines={1} style={styles.name}>
-                      {bond.characterName}
+                      {entity.name}
                     </Text>
                     <Text numberOfLines={1} style={styles.status}>
-                      {bond.status}
+                      {entity.status ?? bond?.status ?? 'Unknown'}
                     </Text>
                   </View>
-                  <Text
-                    style={[
-                      styles.affinity,
-                      bond.affinity >= 0 ? styles.affinityPositive : styles.affinityNegative,
-                    ]}
-                  >
-                    {bond.affinity > 0 ? '+' : ''}
-                    {bond.affinity}
+                  {bond ? (
+                    <Text
+                      style={[
+                        styles.affinity,
+                        bond.affinity >= 0
+                          ? styles.affinityPositive
+                          : styles.affinityNegative,
+                      ]}
+                    >
+                      {bond.affinity > 0 ? '+' : ''}
+                      {bond.affinity}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {bond ? (
+                  <View style={styles.trustTrack}>
+                    {Array.from({ length: 10 }).map((_, index) => {
+                      const filled = index < Math.abs(bond.affinity);
+
+                      return (
+                        <View
+                          key={index}
+                          style={[
+                            styles.trustSegment,
+                            filled && styles.trustSegmentFilled,
+                            bond.affinity < 0 && filled && styles.trustSegmentNegative,
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+                ) : null}
+
+                <View style={styles.detailBlock}>
+                  <Text style={styles.detailLabel}>Mood</Text>
+                  <Text style={styles.detailValue}>
+                    {entity.mood ?? 'Unknown'}
                   </Text>
                 </View>
 
-                <View style={styles.trustTrack}>
-                  {Array.from({ length: 10 }).map((_, index) => {
-                    const filled = index < Math.abs(bond.affinity);
-
-                    return (
-                      <View
-                        key={index}
-                        style={[
-                          styles.trustSegment,
-                          filled && styles.trustSegmentFilled,
-                          bond.affinity < 0 && filled && styles.trustSegmentNegative,
-                        ]}
-                      />
-                    );
-                  })}
+                <View style={styles.detailBlock}>
+                  <Text style={styles.detailLabel}>Appearance</Text>
+                  <Text style={styles.detailValue}>
+                    {entity.appearance ?? 'Unknown'}
+                  </Text>
                 </View>
+
+                {bond?.note ? (
+                  <View style={styles.detailBlock}>
+                    <Text style={styles.detailLabel}>Bond note</Text>
+                    <Text style={styles.detailValue}>{bond.note}</Text>
+                  </View>
+                ) : null}
 
                 <View style={styles.footer}>
                   <Text style={styles.meta}>
-                    Updated {formatShortDate(bond.updatedInStoryDate)}
+                    {bond
+                      ? `Updated ${formatShortDate(bond.updatedInStoryDate)}`
+                      : 'No bond yet'}
                   </Text>
-                  {bond.isMajor ? <Text style={styles.majorTag}>Major bond</Text> : null}
+                  {bond?.isMajor ? (
+                    <Text style={styles.majorTag}>Major bond</Text>
+                  ) : null}
                 </View>
-
-                <TextInput
-                  accessibilityLabel={`Edit note for ${bond.characterName}`}
-                  multiline
-                  onBlur={() => void updateBond(bond.id, { note: bond.note })}
-                  onChangeText={(value) => void updateBond(bond.id, { note: value })}
-                  placeholder="Add a note about this bond"
-                  placeholderTextColor={colors.textDim}
-                  style={styles.noteInput}
-                  value={bond.note}
-                />
               </SurfaceCard>
             ))
           )}
@@ -208,14 +258,21 @@ const styles = StyleSheet.create({
     color: colors.textDim,
     textAlign: 'center',
   },
-  bondCard: {
+  characterCard: {
     gap: 10,
   },
-  bondTop: {
+  topRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: spacing.md,
+  },
+  iconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentSoft,
   },
   nameWrap: {
     flex: 1,
@@ -260,6 +317,23 @@ const styles = StyleSheet.create({
   trustSegmentNegative: {
     backgroundColor: colors.danger,
   },
+  detailBlock: {
+    gap: 3,
+  },
+  detailLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  detailValue: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textMuted,
+  },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -277,18 +351,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: colors.accent,
-  },
-  noteInput: {
-    minHeight: 44,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    color: colors.textMuted,
-    textAlignVertical: 'top',
   },
 });

@@ -282,7 +282,17 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       maxTokens: DEFAULT_SETTINGS.maxTokens,
     },
     rawLog: Array.isArray(db.rawLog) ? db.rawLog : [],
-    entities: Array.isArray(db.entities) ? db.entities : [],
+    entities: Array.isArray(db.entities)
+      ? db.entities.map((entity) => ({
+          ...entity,
+          mood:
+            entity.mood ??
+            (entity.type === 'character' ? 'Unknown' : undefined),
+          appearance:
+            entity.appearance ??
+            (entity.type === 'character' ? 'Unknown' : undefined),
+        }))
+      : [],
     events: Array.isArray(db.events) ? db.events : [],
     eventEntities: Array.isArray(db.eventEntities) ? db.eventEntities : [],
     bonds: Array.isArray(db.bonds) ? db.bonds : [],
@@ -290,7 +300,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     threads: Array.isArray(db.threads) ? db.threads : [],
     loreEntries: Array.isArray(db.loreEntries) ? db.loreEntries : [],
     summaries: Array.isArray(db.summaries) ? db.summaries : [],
-    state: db.state ?? seedDatabase(db.meta?.slotId ?? makeId('slot'), DEFAULT_SLOT_NAME).state,
+    state: normalizeState(db.state),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
   };
@@ -338,6 +348,27 @@ export function buildIndices(db: AppDatabase): MemoryIndex {
   }
 
   return index;
+}
+
+function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['state'] {
+  const seeded = seedDatabase(makeId('slot'), DEFAULT_SLOT_NAME).state;
+
+  if (!state) {
+    return seeded;
+  }
+
+  return {
+    player: state.player ?? seeded.player,
+    mood: state.mood ?? seeded.mood,
+    worldDescription: state.worldDescription ?? seeded.worldDescription,
+    jutsu: Array.isArray(state.jutsu) ? state.jutsu : seeded.jutsu,
+    inventory: Array.isArray(state.inventory) ? state.inventory : seeded.inventory,
+    location: state.location ?? seeded.location,
+    inStoryDate: state.inStoryDate ?? seeded.inStoryDate,
+    canonPoint: state.canonPoint ?? seeded.canonPoint,
+    chapter: state.chapter ?? seeded.chapter,
+    scene: state.scene ?? seeded.scene,
+  };
 }
 
 function pushIndex(record: Record<string, string[]>, key: string, value: string) {

@@ -32,8 +32,9 @@ NPC INTEGRITY
 
 LITERARY NARRATION
 - Show, don't tell. Use sensory detail: weather, smell, sound, weight, distance.
-- Ground every action in physical reality: terrain, fatigue, injury, chakra cost, weather, and layout.
+- Ground every action in physical reality: terrain, fatigue, injury, weather, and layout.
 - Actions have realistic consequences. Reckless actions get punished; clever actions get rewarded.
+- Kan's mood and NPC moods should be visible in behavior, posture, tone, and small choices.
 - Quiet moments are allowed. Not every turn needs a major event.
 
 CANON AND TIME
@@ -60,8 +61,8 @@ Return only one JSON object and nothing else. No markdown, no code fences, no co
 Allowed top-level fields:
 {
   "state": {
-    "hpDelta": number,
-    "chakraDelta": number,
+    "mood": string,
+    "worldDescription": string,
     "jutsuAdded": string[],
     "jutsuRemoved": string[],
     "inventoryAdded": string[],
@@ -72,6 +73,9 @@ Allowed top-level fields:
     "chapter": number,
     "scene": string
   },
+  "entities": [
+    { "name": string, "mood": string, "appearance": string }
+  ],
   "bonds": [
     { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean }
   ],
@@ -90,6 +94,10 @@ Rules:
 - Only add facts that are permanent or long-term.
 - Only add bonds for important characters.
 - Use short, concrete notes.
+- Update Kan's mood when the story clearly changes it.
+- Update NPC moods when their behavior or circumstances change.
+- Only update appearance when the story clearly changes it.
+- Keep worldDescription to one or two concise sentences about the current state of the world.
 - If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
@@ -184,6 +192,7 @@ export function buildExtractionPrompt(
   const stable = [
     EXTRACTION_SYSTEM,
     formatState(db),
+    formatEntities(db),
     formatBonds(db),
     formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 20)),
     formatThreads(db),
@@ -328,13 +337,31 @@ function formatState(db: AppDatabase) {
     'CURRENT STATE',
     `Date: ${formatDate(state.inStoryDate)}`,
     `Location: ${state.location}`,
-    `HP: ${state.hp.current}/${state.hp.max}`,
-    `Chakra: ${state.chakra.current}/${state.chakra.max}`,
+    `Kan's mood: ${state.mood}`,
+    `World: ${state.worldDescription}`,
     `Jutsu: ${state.jutsu.join(', ') || 'none'}`,
     `Inventory: ${state.inventory.join(', ') || 'none'}`,
     `Canon point: ${state.canonPoint}`,
     `Chapter: ${state.chapter}`,
     `Scene: ${state.scene}`,
+  ].join('\n');
+}
+
+function formatEntities(db: AppDatabase) {
+  const characters = db.entities
+    .filter((entity) => entity.type === 'character')
+    .slice(0, 20);
+
+  if (characters.length === 0) {
+    return 'CHARACTERS\nNone.';
+  }
+
+  return [
+    'CHARACTERS',
+    ...characters.map(
+      (entity) =>
+        `- ${entity.name}: mood ${entity.mood ?? 'unknown'}; appearance ${entity.appearance ?? 'unknown'}`
+    ),
   ].join('\n');
 }
 

@@ -30,6 +30,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       birthday: { month: 6, day: 30 },
       status: 'ANBU, missing from Konoha',
       notes: 'Original character. Uchiha-Uzumaki lineage, usually goes only by Kan.',
+      mood: 'Numb, guarded, quietly exhausted',
+      appearance: 'Lean teenage shinobi with black hair, dark watchful eyes, an ANBU cloak, and a pale porcelain mask hanging at his hip.',
       tags: ['player', 'uchiha', 'uzumaki', 'anbu'],
     },
     {
@@ -39,6 +41,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       aliases: ['Itachi'],
       status: 'Missing-nin, Akatsuki',
       notes: 'Kan’s closest friend, like an older brother. Joined ANBU one year before Kan.',
+      mood: 'Burdened, controlled, grieving beneath the calm',
+      appearance: 'Slim young man with long black hair tied back, sharp dark eyes, tear troughs, and a black cloak patterned with red clouds.',
       tags: ['uchiha', 'anbu', 'akatsuki', 'friend'],
     },
     {
@@ -48,6 +52,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       aliases: ['Hana'],
       status: 'Konoha shinobi',
       notes: 'Kan’s teammate. He has a secret crush on her.',
+      mood: 'Worried, restless, fiercely loyal',
+      appearance: 'Athletic girl with tousled brown hair, fang-like markings on her cheeks, and a practical Inuzuka jacket.',
       tags: ['inuzuka', 'team-3', 'crush'],
     },
     {
@@ -57,6 +63,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       aliases: ['Izumi'],
       status: 'Deceased',
       notes: 'Kan’s teammate from Team 3.',
+      mood: 'Remembered warmly',
+      appearance: 'Young Uchiha girl with soft dark hair, gentle eyes, and the quiet posture of someone who always waited for others.',
       tags: ['uchiha', 'team-3'],
     },
     {
@@ -66,6 +74,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       aliases: ['Suzume-sensei'],
       status: 'Konoha jonin',
       notes: 'Former sensei of Team 3.',
+      mood: 'Concerned, patient, watchful',
+      appearance: 'Seasoned jonin woman with practical field clothes, tied-back hair, and the calm stance of a teacher who has buried students.',
       tags: ['team-3', 'sensei'],
     },
     {
@@ -317,8 +327,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
           'Rarely mentions his clan names.',
         ],
       },
-      hp: { current: 100, max: 100 },
-      chakra: { current: 100, max: 100 },
+      mood: 'Numb, guarded, quietly exhausted',
+      worldDescription: 'The Hidden Leaf is scarred by the Nine-Tails attack and freshly wounded by the Uchiha massacre. The village is tense, watchful, and rebuilding in silence.',
       jutsu: ['ANBU taijutsu', 'Fire Release'],
       inventory: ['ANBU mask', 'Cloak', 'Tanto'],
       location: 'Forest outside Konoha',

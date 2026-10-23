@@ -23,18 +23,17 @@ import { useRouter } from 'expo-router';
 import {
   CircleAlert,
   Download,
-  Heart,
   Image as ImageIcon,
   MapPin,
   MessageCircle,
   RotateCcw,
   Send,
   Settings2,
+  Smile,
   Sparkles,
   X,
   Sword,
   Undo2,
-  Zap,
 } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
@@ -283,15 +282,9 @@ export default function StoryScreen() {
 
         <View style={styles.statusRow}>
           <View style={styles.statusChip}>
-            <Heart color={colors.accent} size={12} strokeWidth={2} />
-            <Text style={styles.statusText}>
-              HP {state.hp.current}/{state.hp.max}
-            </Text>
-          </View>
-          <View style={styles.statusChip}>
-            <Zap color={colors.accent} size={12} strokeWidth={2} />
-            <Text style={styles.statusText}>
-              Chakra {state.chakra.current}/{state.chakra.max}
+            <Smile color={colors.accent} size={12} strokeWidth={2} />
+            <Text numberOfLines={1} style={styles.statusText}>
+              {state.mood}
             </Text>
           </View>
           <View style={styles.statusChip}>

@@ -1,46 +1,57 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  CircleDot,
-  Pin,
-  ScrollText,
-  Target,
-} from 'lucide-react-native';
+import { CircleDot, Pin, ScrollText, Target } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
 import { AppButton } from '@/components/AppButton';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
 
-export default function JournalScreen() {
-  const {
-    db,
-    editMemory,
-    deleteMemory,
-    toggleMemoryPin,
-  } = useGame();
+type JournalTab = 'story' | 'so-far' | 'world' | 'memories';
 
+export default function JournalScreen() {
+  const { db, editMemory, deleteMemory, toggleMemoryPin } = useGame();
+  const [tab, setTab] = useState<JournalTab>('story');
   const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
   const [editSummary, setEditSummary] = useState('');
 
-  const missions = useMemo(() => {
+  const threads = useMemo(() => {
     if (!db) {
       return [];
     }
 
-    return db.threads.filter((thread) => thread.type === 'quest');
+    return db.threads.filter((thread) => thread.status === 'open');
   }, [db]);
 
-  const goals = useMemo(() => {
+  const missions = threads.filter((thread) => thread.type === 'quest');
+  const goals = threads.filter((thread) => thread.type === 'goal');
+  const otherThreads = threads.filter(
+    (thread) => thread.type !== 'quest' && thread.type !== 'goal'
+  );
+
+  const storySummaries = useMemo(() => {
     if (!db) {
       return [];
     }
 
-    return db.threads.filter((thread) => thread.type === 'goal');
+    return [...db.summaries]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 12);
+  }, [db]);
+
+  const storyEvents = useMemo(() => {
+    if (!db) {
+      return [];
+    }
+
+    return [...db.events]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 20);
   }, [db]);
 
   const memories = useMemo(() => {
@@ -90,26 +101,15 @@ export default function JournalScreen() {
             {thread.title}
           </Text>
           {thread.description ? (
-            <Text numberOfLines={2} style={styles.threadBody}>
+            <Text numberOfLines={3} style={styles.threadBody}>
               {thread.description}
             </Text>
           ) : null}
         </View>
-        <Text
-          style={[
-            styles.threadStatus,
-            thread.status === 'resolved' ? styles.resolved : styles.open,
-          ]}
-        >
-          {thread.status === 'resolved' ? 'Done' : 'Open'}
-        </Text>
       </View>
-
-      <View style={styles.threadFooter}>
-        <Text style={styles.threadMeta}>
-          Opened {formatShortDate(thread.openedAt)}
-        </Text>
-      </View>
+      <Text style={styles.threadMeta}>
+        Opened {formatShortDate(thread.openedAt)}
+      </Text>
     </SurfaceCard>
   );
 
@@ -124,136 +124,231 @@ export default function JournalScreen() {
         >
           <View style={styles.heading}>
             <Text style={styles.title}>Journal</Text>
-            <Text style={styles.subtitle}>Missions, goals, and the moments worth keeping.</Text>
+            <Text style={styles.subtitle}>
+              The story, the world, and what Kan remembers.
+            </Text>
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Missions</Text>
-            {missions.length === 0 ? (
-              <SurfaceCard style={styles.emptyCard}>
-                <ScrollText color={colors.textDim} size={17} strokeWidth={2} />
-                <Text style={styles.emptyTitle}>No missions yet</Text>
-                <Text style={styles.emptyBody}>
-                  When the story gives Kan a job, it will show up here.
+          <SegmentedControl
+            accessibilityLabel="Journal sections"
+            onChange={(value) => setTab(value)}
+            options={[
+              { value: 'story', label: 'Story' },
+              { value: 'so-far', label: 'So far' },
+              { value: 'world', label: 'World' },
+              { value: 'memories', label: 'Memories' },
+            ]}
+            value={tab}
+          />
+
+          {tab === 'story' && db ? (
+            <View style={styles.section}>
+              <SurfaceCard style={styles.card}>
+                <Text style={styles.cardLabel}>Current story</Text>
+                <Text style={styles.cardValue}>
+                  Chapter {db.state.chapter} · {db.state.scene}
+                </Text>
+                <Text style={styles.cardMeta}>
+                  {db.state.location} · {formatShortDate(db.state.inStoryDate)}
                 </Text>
               </SurfaceCard>
-            ) : (
-              missions.map(renderThread)
-            )}
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Goals</Text>
-            {goals.length === 0 ? (
-              <SurfaceCard style={styles.emptyCard}>
-                <CircleDot color={colors.textDim} size={17} strokeWidth={2} />
-                <Text style={styles.emptyTitle}>No goals yet</Text>
-                <Text style={styles.emptyBody}>
-                  Kan’s personal aims will appear here.
+              <View style={styles.threadSection}>
+                <Text style={styles.sectionLabel}>Missions</Text>
+                {missions.length === 0 ? (
+                  <Text style={styles.emptyText}>No open missions.</Text>
+                ) : (
+                  missions.map(renderThread)
+                )}
+              </View>
+
+              <View style={styles.threadSection}>
+                <Text style={styles.sectionLabel}>Goals</Text>
+                {goals.length === 0 ? (
+                  <Text style={styles.emptyText}>No open goals.</Text>
+                ) : (
+                  goals.map(renderThread)
+                )}
+              </View>
+
+              <View style={styles.threadSection}>
+                <Text style={styles.sectionLabel}>Open threads</Text>
+                {otherThreads.length === 0 ? (
+                  <Text style={styles.emptyText}>No other open threads.</Text>
+                ) : (
+                  otherThreads.map(renderThread)
+                )}
+              </View>
+            </View>
+          ) : null}
+
+          {tab === 'so-far' && db ? (
+            <View style={styles.section}>
+              {storySummaries.length === 0 && storyEvents.length === 0 ? (
+                <SurfaceCard style={styles.emptyCard}>
+                  <ScrollText color={colors.textDim} size={18} strokeWidth={2} />
+                  <Text style={styles.emptyTitle}>No story history yet</Text>
+                  <Text style={styles.emptyBody}>
+                    Summaries appear here as chapters and arcs unfold.
+                  </Text>
+                </SurfaceCard>
+              ) : storySummaries.length === 0 ? (
+                storyEvents.map((event) => (
+                  <SurfaceCard key={event.id} style={styles.card}>
+                    <Text style={styles.cardLabel}>
+                      {formatShortDate(event.inStoryDate)} · {event.scene}
+                    </Text>
+                    <Text style={styles.cardValue}>{event.summary}</Text>
+                  </SurfaceCard>
+                ))
+              ) : (
+                storySummaries.map((summary) => (
+                  <SurfaceCard key={summary.id} style={styles.card}>
+                    <Text style={styles.cardLabel}>
+                      {summary.level} · {formatShortDate(summary.range.to)}
+                    </Text>
+                    <Text style={styles.cardValue}>{summary.text}</Text>
+                  </SurfaceCard>
+                ))
+              )}
+            </View>
+          ) : null}
+
+          {tab === 'world' && db ? (
+            <View style={styles.section}>
+              <SurfaceCard style={styles.card}>
+                <Text style={styles.cardLabel}>World</Text>
+                <Text style={styles.cardValue}>{db.state.worldDescription}</Text>
+              </SurfaceCard>
+
+              <SurfaceCard style={styles.card}>
+                <Text style={styles.cardLabel}>Location</Text>
+                <Text style={styles.cardValue}>{db.state.location}</Text>
+                <Text style={styles.cardMeta}>
+                  {formatShortDate(db.state.inStoryDate)}
                 </Text>
               </SurfaceCard>
-            ) : (
-              goals.map(renderThread)
-            )}
-          </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Memories</Text>
-
-            {memories.length === 0 ? (
-              <SurfaceCard style={styles.emptyCard}>
-                <ScrollText color={colors.textDim} size={17} strokeWidth={2} />
-                <Text style={styles.emptyTitle}>No memories yet</Text>
-                <Text style={styles.emptyBody}>
-                  Important moments from the story will be kept here.
-                </Text>
+              <SurfaceCard style={styles.card}>
+                <Text style={styles.cardLabel}>Canon point</Text>
+                <Text style={styles.cardValue}>{db.state.canonPoint}</Text>
               </SurfaceCard>
-            ) : (
-              memories.map((memory) => (
-                <SurfaceCard key={memory.id} style={styles.memoryCard}>
-                  <View style={styles.memoryTop}>
-                    <View style={styles.memoryMeta}>
-                      <Text style={styles.memoryDate}>
-                        {formatShortDate(memory.inStoryDate)}
+
+              <View style={styles.threadSection}>
+                <Text style={styles.sectionLabel}>Lore</Text>
+                {db.loreEntries.length === 0 ? (
+                  <Text style={styles.emptyText}>No lore recorded yet.</Text>
+                ) : (
+                  db.loreEntries.map((lore) => (
+                    <SurfaceCard key={lore.id} style={styles.card}>
+                      <Text style={styles.cardLabel}>
+                        {lore.keywords.join(', ')}
                       </Text>
-                      <Text style={styles.memoryImportance}>
-                        Importance {memory.importance}/5
-                      </Text>
-                    </View>
-                    <View style={styles.memoryActions}>
-                      <AppButton
-                        compact
-                        label={memory.pinned ? 'Unpin' : 'Pin'}
-                        onPress={() => void toggleMemoryPin(memory.id)}
-                        style={styles.memoryActionButton}
-                        variant="secondary"
-                      />
-                      <AppButton
-                        compact
-                        label="Edit"
-                        onPress={() => startEdit(memory)}
-                        style={styles.memoryActionButton}
-                        variant="secondary"
-                      />
-                      <AppButton
-                        compact
-                        label="Delete"
-                        onPress={() => void deleteMemory(memory.id)}
-                        style={styles.memoryActionButton}
-                        variant="secondary"
-                      />
-                    </View>
-                  </View>
+                      <Text style={styles.cardValue}>{lore.text}</Text>
+                    </SurfaceCard>
+                  ))
+                )}
+              </View>
+            </View>
+          ) : null}
 
-                  {editingMemoryId === memory.id ? (
-                    <View style={styles.editWrap}>
-                      <TextInput
-                        accessibilityLabel="Edit memory summary"
-                        multiline
-                        onChangeText={setEditSummary}
-                        style={styles.editInput}
-                        value={editSummary}
-                      />
-                      <View style={styles.editActions}>
+          {tab === 'memories' && db ? (
+            <View style={styles.section}>
+              {memories.length === 0 ? (
+                <SurfaceCard style={styles.emptyCard}>
+                  <CircleDot color={colors.textDim} size={18} strokeWidth={2} />
+                  <Text style={styles.emptyTitle}>No memories yet</Text>
+                  <Text style={styles.emptyBody}>
+                    Important moments will be kept here.
+                  </Text>
+                </SurfaceCard>
+              ) : (
+                memories.map((memory) => (
+                  <SurfaceCard key={memory.id} style={styles.memoryCard}>
+                    <View style={styles.memoryTop}>
+                      <View style={styles.memoryMeta}>
+                        <Text style={styles.memoryDate}>
+                          {formatShortDate(memory.inStoryDate)}
+                        </Text>
+                        <Text style={styles.memoryImportance}>
+                          Importance {memory.importance}/5
+                        </Text>
+                      </View>
+                      <View style={styles.memoryActions}>
                         <AppButton
                           compact
-                          label="Cancel"
-                          onPress={() => setEditingMemoryId(null)}
-                          style={styles.editButton}
+                          label={memory.pinned ? 'Unpin' : 'Pin'}
+                          onPress={() => void toggleMemoryPin(memory.id)}
+                          style={styles.memoryActionButton}
                           variant="secondary"
                         />
                         <AppButton
                           compact
-                          label="Save"
-                          onPress={() => void saveEdit()}
-                          style={styles.editButton}
+                          label="Edit"
+                          onPress={() => startEdit(memory)}
+                          style={styles.memoryActionButton}
+                          variant="secondary"
+                        />
+                        <AppButton
+                          compact
+                          label="Delete"
+                          onPress={() => void deleteMemory(memory.id)}
+                          style={styles.memoryActionButton}
+                          variant="secondary"
                         />
                       </View>
                     </View>
-                  ) : (
-                    <Text style={styles.memorySummary}>{memory.summary}</Text>
-                  )}
 
-                  {memory.tags.length > 0 ? (
-                    <View style={styles.tagRow}>
-                      {memory.tags.map((tag) => (
-                        <Text key={tag} style={styles.tag}>
-                          {tag}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
+                    {editingMemoryId === memory.id ? (
+                      <View style={styles.editWrap}>
+                        <TextInput
+                          accessibilityLabel="Edit memory summary"
+                          multiline
+                          onChangeText={setEditSummary}
+                          style={styles.editInput}
+                          value={editSummary}
+                        />
+                        <View style={styles.editActions}>
+                          <AppButton
+                            compact
+                            label="Cancel"
+                            onPress={() => setEditingMemoryId(null)}
+                            style={styles.editButton}
+                            variant="secondary"
+                          />
+                          <AppButton
+                            compact
+                            label="Save"
+                            onPress={() => void saveEdit()}
+                            style={styles.editButton}
+                          />
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={styles.memorySummary}>{memory.summary}</Text>
+                    )}
 
-                  {memory.pinned ? (
-                    <View style={styles.pinnedRow}>
-                      <Pin color={colors.accent} size={12} strokeWidth={2} />
-                      <Text style={styles.pinnedText}>Pinned</Text>
-                    </View>
-                  ) : null}
-                </SurfaceCard>
-              ))
-            )}
-          </View>
+                    {memory.tags.length > 0 ? (
+                      <View style={styles.tagRow}>
+                        {memory.tags.map((tag) => (
+                          <Text key={tag} style={styles.tag}>
+                            {tag}
+                          </Text>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {memory.pinned ? (
+                      <View style={styles.pinnedRow}>
+                        <Pin color={colors.accent} size={12} strokeWidth={2} />
+                        <Text style={styles.pinnedText}>Pinned</Text>
+                      </View>
+                    ) : null}
+                  </SurfaceCard>
+                ))
+              )}
+            </View>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -275,7 +370,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
     paddingBottom: spacing.giant,
-    gap: spacing.xxxl,
+    gap: spacing.md,
   },
   heading: {
     gap: 4,
@@ -294,7 +389,7 @@ const styles = StyleSheet.create({
     color: colors.textDim,
   },
   section: {
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   sectionLabel: {
     fontFamily: fonts.semibold,
@@ -303,23 +398,33 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: 'uppercase',
     color: colors.textDim,
+    marginTop: spacing.sm,
   },
-  emptyCard: {
-    alignItems: 'center',
+  card: {
     gap: 6,
-    paddingVertical: spacing.xxxl,
   },
-  emptyTitle: {
+  cardLabel: {
     fontFamily: fonts.semibold,
-    fontSize: 15,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  cardValue: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 20,
     color: colors.text,
   },
-  emptyBody: {
+  cardMeta: {
     fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
     color: colors.textDim,
-    textAlign: 'center',
+  },
+  threadSection: {
+    gap: spacing.sm,
   },
   threadCard: {
     gap: 10,
@@ -353,32 +458,33 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     color: colors.textMuted,
   },
-  threadStatus: {
-    fontFamily: fonts.semibold,
-    fontSize: 10,
-    color: colors.textMuted,
-  },
-  resolved: {
-    color: colors.success,
-  },
-  open: {
-    color: colors.accent,
-  },
-  threadFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
   threadMeta: {
     fontFamily: fonts.regular,
     fontSize: 10,
     color: colors.textDim,
   },
-  memoryHeader: {
-    flexDirection: 'row',
+  emptyText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textDim,
+  },
+  emptyCard: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 6,
+    paddingVertical: spacing.xxxl,
+  },
+  emptyTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    color: colors.text,
+  },
+  emptyBody: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textDim,
+    textAlign: 'center',
   },
   memoryCard: {
     gap: 10,
