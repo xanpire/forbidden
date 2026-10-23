@@ -13,6 +13,7 @@ const pageStyles = `
   }
   #root {
     min-height: 100%;
+    background-color: #050505;
   }
   * {
     -webkit-tap-highlight-color: transparent;

@@ -7,10 +7,11 @@ import {
   useFonts,
 } from '@expo-google-fonts/manrope';
 import { Stack } from 'expo-router';
+import * as NavigationBar from 'expo-navigation-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -36,6 +37,14 @@ export default function RootLayout() {
       void SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontError, fontsLoaded]);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      void NavigationBar.setBackgroundColorAsync(colors.background).catch(() => {});
+      void NavigationBar.setButtonStyleAsync('light').catch(() => {});
+      void NavigationBar.setBehaviorAsync('overlay-swipe').catch(() => {});
+    }
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;

@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { BookOpen, Flame, ScrollText, Settings2, Users } from 'lucide-react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts } from '@/constants/theme';
@@ -25,6 +25,14 @@ export default function TabsLayout() {
             paddingBottom: Math.max(insets.bottom, 4),
           },
         ],
+        tabBarBackground: () => (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: colors.background },
+            ]}
+          />
+        ),
       }}
     >
       <Tabs.Screen
