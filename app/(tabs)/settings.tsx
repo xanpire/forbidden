@@ -6,14 +6,8 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
-  Image as ImageIcon,
-  Info,
-  KeyRound,
-  Lock,
   RotateCcw,
-  Sparkles,
   Trash2,
-  WandSparkles,
 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -33,12 +27,10 @@ import { AppBackground } from '@/components/AppBackground';
 import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ModelPickerModal } from '@/components/ModelPickerModal';
-import { SectionHeader } from '@/components/SectionHeader';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { useToast } from '@/components/Toast';
-import { Wordmark } from '@/components/Wordmark';
-import { colors, fonts, radius, spacing, type } from '@/constants/theme';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { testOpenRouterKey } from '@/lib/openrouter';
 import {
   useSettings,
@@ -58,23 +50,10 @@ const narrationOptions: { value: NarrationStyle; label: string }[] = [
   { value: 'literary', label: 'Literary' },
 ];
 
-const narrationCopy: Record<
-  NarrationStyle,
-  { description: string; preview: string }
-> = {
-  cinematic: {
-    description: 'Wide shots, weather and tension. Built for atmosphere.',
-    preview: 'Rain needled the gate. Kan stepped through it without slowing.',
-  },
-  balanced: {
-    description: 'Clear action with room for mood and dialogue.',
-    preview: 'Rain tapped the gate. Kan stepped through and let the silence settle.',
-  },
-  literary: {
-    description: 'Interior, sensory prose. A slower, closer telling.',
-    preview:
-      'The rain remembered every roof it touched. Kan remembered none of them.',
-  },
+const narrationDescription: Record<NarrationStyle, string> = {
+  cinematic: 'Atmospheric and visual. Built for tension and scene-setting.',
+  balanced: 'Clear action with room for mood and dialogue.',
+  literary: 'Closer and more sensory. A slower, more detailed telling.',
 };
 
 const imageFrequencyOptions: { value: Exclude<ImageFrequency, 'off'>; label: string }[] = [
@@ -87,6 +66,15 @@ const imageStyleOptions: { value: ImageStyle; label: string }[] = [
   { value: 'ink', label: 'Ink' },
   { value: 'painterly', label: 'Painterly' },
 ];
+
+function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <View style={styles.sectionHeading}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {hint ? <Text style={styles.sectionHint}>{hint}</Text> : null}
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const {
@@ -257,24 +245,23 @@ export default function SettingsScreen() {
       <View style={styles.root}>
         <AppBackground />
         <SafeAreaView edges={['top']} style={styles.loadingState}>
-          <ActivityIndicator color={colors.gold} size="small" />
-          <Text style={styles.loadingText}>Loading your settings…</Text>
+          <ActivityIndicator color={colors.accent} size="small" />
+          <Text style={styles.loadingText}>Loading settings…</Text>
         </SafeAreaView>
       </View>
     );
   }
 
-  const narration = narrationCopy[settings.narrationStyle];
   const imagesEnabled = settings.imageFrequency !== 'off';
   const imageFrequency = imagesEnabled ? settings.imageFrequency : 'choice';
   const imageDescription =
     imageFrequency === 'action'
-      ? 'A new illustration every time Kan speaks or acts.'
-      : 'A new illustration whenever the narrator offers a fresh set of choices.';
+      ? 'A new image every time Kan speaks or acts.'
+      : 'A new image each time the narrator offers choices.';
   const storageCopy =
     Platform.OS === 'web'
-      ? 'Stored in this browser only. Never sent anywhere except OpenRouter.'
-      : 'Encrypted in this device’s secure storage. Never sent anywhere except OpenRouter.';
+      ? 'Stored in this browser and sent only to OpenRouter.'
+      : 'Stored securely on this device and sent only to OpenRouter.';
 
   return (
     <View style={styles.root}>
@@ -285,57 +272,34 @@ export default function SettingsScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.topBar}>
-            <Wordmark compact />
-            <View style={styles.localPill}>
-              <Lock color={colors.success} size={11} strokeWidth={2} />
-              <Text style={styles.localPillText}>On device</Text>
-            </View>
-          </View>
-
           <View style={styles.pageHeading}>
-            <Text style={type.eyebrow}>The telling</Text>
             <Text style={styles.pageTitle}>Settings</Text>
-            <Text style={styles.pageSubtitle}>
-              Shape the voice, pace and look of Kan’s world.
-            </Text>
+            <Text style={styles.pageSubtitle}>Narrator and story preferences.</Text>
           </View>
 
           <View style={styles.section}>
-            <SectionHeader
-              description="Kan uses your OpenRouter account to narrate every turn."
-              eyebrow="Connection"
+            <SectionTitle
+              hint="Connect your key to enable narration."
               title="OpenRouter"
             />
-            <SurfaceCard style={styles.connectionCard}>
-              <View style={styles.cardTitleRow}>
-                <View style={styles.keyIcon}>
-                  <KeyRound color={colors.gold} size={18} strokeWidth={1.7} />
-                </View>
-                <View style={styles.cardTitleCopy}>
-                  <Text style={styles.cardTitle}>API key</Text>
-                  <Text style={styles.cardSubtitle}>
-                    {apiKey ? 'A key is saved.' : 'No key saved yet.'}
-                  </Text>
-                </View>
+            <SurfaceCard style={styles.card}>
+              <View style={styles.keyStatus}>
                 <View
                   style={[
-                    styles.stateDot,
+                    styles.statusDot,
                     {
                       backgroundColor: apiKey ? colors.success : colors.textDim,
                     },
                   ]}
                 />
+                <Text style={styles.keyStatusText}>
+                  {apiKey ? 'Key saved' : 'No key saved'}
+                </Text>
               </View>
 
               <View style={styles.field}>
-                <Text style={styles.fieldLabel}>OpenRouter key</Text>
-                <View
-                  style={[
-                    styles.inputWrap,
-                    keyError ? styles.inputWrapError : null,
-                  ]}
-                >
+                <Text style={styles.fieldLabel}>API key</Text>
+                <View style={[styles.inputWrap, keyError ? styles.inputError : null]}>
                   <TextInput
                     accessibilityLabel="OpenRouter API key"
                     autoCapitalize="none"
@@ -361,9 +325,9 @@ export default function SettingsScreen() {
                     onPress={() => setShowKey((current) => !current)}
                   >
                     {showKey ? (
-                      <EyeOff color={colors.textDim} size={18} strokeWidth={1.7} />
+                      <EyeOff color={colors.textDim} size={18} strokeWidth={1.8} />
                     ) : (
-                      <Eye color={colors.textDim} size={18} strokeWidth={1.7} />
+                      <Eye color={colors.textDim} size={18} strokeWidth={1.8} />
                     )}
                   </Pressable>
                 </View>
@@ -379,7 +343,7 @@ export default function SettingsScreen() {
               <View style={styles.buttonRow}>
                 <AppButton
                   compact
-                  disabled={removingKey}
+                  disabled={removingKey || testingKey}
                   label="Save key"
                   loading={savingKey}
                   loadingLabel="Saving…"
@@ -399,19 +363,11 @@ export default function SettingsScreen() {
               </View>
 
               {feedback ? (
-                <View
-                  accessibilityLiveRegion="polite"
-                  style={[
-                    styles.feedback,
-                    feedback.tone === 'success'
-                      ? styles.feedbackSuccess
-                      : styles.feedbackError,
-                  ]}
-                >
+                <View accessibilityLiveRegion="polite" style={styles.feedback}>
                   {feedback.tone === 'success' ? (
-                    <CircleCheck color={colors.success} size={17} strokeWidth={1.8} />
+                    <CircleCheck color={colors.success} size={16} strokeWidth={2} />
                   ) : (
-                    <CircleAlert color={colors.danger} size={17} strokeWidth={1.8} />
+                    <CircleAlert color={colors.danger} size={16} strokeWidth={2} />
                   )}
                   <Text style={styles.feedbackText}>{feedback.message}</Text>
                 </View>
@@ -421,31 +377,25 @@ export default function SettingsScreen() {
                 <Pressable
                   accessibilityRole="link"
                   onPress={openKeyPage}
-                  style={({ pressed }) => [
-                    styles.inlineLink,
-                    pressed && styles.pressed,
-                  ]}
+                  style={({ pressed }) => [styles.textLink, pressed && styles.pressed]}
                 >
-                  <Text style={styles.inlineLinkText}>Get an OpenRouter key</Text>
-                  <ExternalLink color={colors.gold} size={13} strokeWidth={1.8} />
+                  <Text style={styles.textLinkLabel}>Get a key</Text>
+                  <ExternalLink color={colors.textMuted} size={13} strokeWidth={1.8} />
                 </Pressable>
                 {apiKey ? (
                   <Pressable
                     accessibilityLabel="Remove saved API key"
                     accessibilityRole="button"
-                    disabled={removingKey}
+                    disabled={removingKey || savingKey || testingKey}
                     onPress={() => void handleRemoveKey()}
-                    style={({ pressed }) => [
-                      styles.inlineLink,
-                      pressed && styles.pressed,
-                    ]}
+                    style={({ pressed }) => [styles.textLink, pressed && styles.pressed]}
                   >
                     {removingKey ? (
                       <ActivityIndicator color={colors.danger} size="small" />
                     ) : (
-                      <Trash2 color={colors.danger} size={12} strokeWidth={1.8} />
+                      <Trash2 color={colors.danger} size={13} strokeWidth={1.8} />
                     )}
-                    <Text style={styles.removeLinkText}>Remove key</Text>
+                    <Text style={styles.removeLabel}>Remove key</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -453,25 +403,14 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
-            <SectionHeader
-              description="Any text model on OpenRouter can take the narrator’s chair."
-              eyebrow="Narrator"
-              title="Voice of the world"
-            />
+            <SectionTitle hint="Any model on OpenRouter." title="Narrator model" />
             <Pressable
               accessibilityLabel="Choose narrator model"
               accessibilityRole="button"
               onPress={() => setModelPickerVisible(true)}
-              style={({ pressed }) => [
-                styles.modelCard,
-                pressed && styles.pressed,
-              ]}
+              style={({ pressed }) => [styles.modelCard, pressed && styles.pressed]}
             >
-              <View style={styles.modelGlyph}>
-                <Sparkles color={colors.accentBright} size={19} strokeWidth={1.8} />
-              </View>
               <View style={styles.modelCopy}>
-                <Text style={styles.modelLabel}>Selected model</Text>
                 <Text numberOfLines={1} style={styles.modelName}>
                   {settings.modelName}
                 </Text>
@@ -484,50 +423,35 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
-            <SectionHeader
-              description="Choose how much room the prose leaves for mood and detail."
-              eyebrow="Narration"
-              title="How the world sounds"
-            />
-            <SurfaceCard>
+            <SectionTitle title="Narration" />
+            <SurfaceCard style={styles.card}>
               <SegmentedControl
                 accessibilityLabel="Narration style"
                 onChange={(value) => void handlePreference({ narrationStyle: value })}
                 options={narrationOptions}
                 value={settings.narrationStyle}
               />
-              <Text style={styles.preferenceDescription}>
-                {narration.description}
+              <Text style={styles.preferenceHint}>
+                {narrationDescription[settings.narrationStyle]}
               </Text>
-              <View style={styles.previewBox}>
-                <Text style={styles.previewLabel}>PREVIEW</Text>
-                <Text style={styles.previewQuote}>{narration.preview}</Text>
-              </View>
             </SurfaceCard>
           </View>
 
           <View style={styles.section}>
-            <SectionHeader
-              description="Give each turn a face. Images are generated through OpenRouter."
-              eyebrow="Scene images"
-              title="Paint the moment"
-            />
-            <SurfaceCard>
+            <SectionTitle title="Scene images" />
+            <SurfaceCard style={styles.card}>
               <View style={styles.switchRow}>
-                <View style={styles.switchIcon}>
-                  <WandSparkles color={colors.gold} size={18} strokeWidth={1.7} />
-                </View>
                 <View style={styles.switchCopy}>
-                  <Text style={styles.switchTitle}>Generate scene images</Text>
+                  <Text style={styles.switchTitle}>Generate images</Text>
                   <Text style={styles.switchHint}>
-                    Illustrate the story as it unfolds.
+                    Uses an image-capable OpenRouter model.
                   </Text>
                 </View>
                 <Switch
                   accessibilityLabel="Generate scene images"
                   ios_backgroundColor={colors.surfaceSoft}
                   onValueChange={handleImageToggle}
-                  thumbColor={colors.text}
+                  thumbColor={colors.white}
                   trackColor={{
                     false: colors.surfaceSoft,
                     true: colors.accent,
@@ -538,94 +462,53 @@ export default function SettingsScreen() {
 
               {imagesEnabled ? (
                 <>
-                  <View style={styles.rule} />
+                  <View style={styles.divider} />
+                  <Text style={styles.fieldLabel}>Frequency</Text>
+                  <SegmentedControl
+                    accessibilityLabel="Image frequency"
+                    onChange={(value) =>
+                      void handlePreference({ imageFrequency: value })
+                    }
+                    options={imageFrequencyOptions}
+                    value={imageFrequency}
+                  />
+                  <Text style={styles.preferenceHint}>{imageDescription}</Text>
 
-                  <View style={styles.preference}>
-                    <Text style={styles.preferenceLabel}>Frequency</Text>
-                    <SegmentedControl
-                      accessibilityLabel="Image frequency"
-                      onChange={(value) =>
-                        void handlePreference({ imageFrequency: value })
-                      }
-                      options={imageFrequencyOptions}
-                      value={imageFrequency}
-                    />
-                    <Text style={styles.preferenceDescription}>
-                      {imageDescription}
-                    </Text>
-                  </View>
-
-                  <View style={styles.rule} />
-
-                  <View style={styles.preference}>
-                    <Text style={styles.preferenceLabel}>Visual language</Text>
-                    <SegmentedControl
-                      accessibilityLabel="Image style"
-                      onChange={(value) =>
-                        void handlePreference({ imageStyle: value })
-                      }
-                      options={imageStyleOptions}
-                      value={settings.imageStyle}
-                    />
-                  </View>
+                  <View style={styles.divider} />
+                  <Text style={styles.fieldLabel}>Style</Text>
+                  <SegmentedControl
+                    accessibilityLabel="Image style"
+                    onChange={(value) => void handlePreference({ imageStyle: value })}
+                    options={imageStyleOptions}
+                    value={settings.imageStyle}
+                  />
                 </>
-              ) : (
-                <View style={styles.imageOffHint}>
-                  <ImageIcon color={colors.textDim} size={15} strokeWidth={1.7} />
-                  <Text style={styles.imageOffText}>
-                    Images stay off until you turn them on.
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.infoNote}>
-                <Info color={colors.textDim} size={14} strokeWidth={1.7} />
-                <Text style={styles.infoText}>
-                  Image generation needs an image-capable model. It will be wired
-                  into the story engine in the next build.
-                </Text>
-              </View>
+              ) : null}
             </SurfaceCard>
           </View>
 
           <View style={styles.section}>
-            <SectionHeader
-              description="The key and preferences above live only on this device."
-              eyebrow="Local data"
-              title="Start fresh"
-            />
+            <SectionTitle title="Data" />
             <Pressable
               accessibilityLabel="Reset all settings"
               accessibilityRole="button"
               onPress={() => setResetVisible(true)}
-              style={({ pressed }) => [
-                styles.resetRow,
-                pressed && styles.pressed,
-              ]}
+              style={({ pressed }) => [styles.resetRow, pressed && styles.pressed]}
             >
-              <View style={styles.resetIcon}>
-                <RotateCcw color={colors.danger} size={18} strokeWidth={1.8} />
-              </View>
-              <View style={styles.resetCopy}>
-                <Text style={styles.resetTitle}>Reset all settings</Text>
-                <Text style={styles.resetBody}>
-                  Clears your key, model and story preferences.
-                </Text>
-              </View>
-              <Trash2 color={colors.textDim} size={17} strokeWidth={1.7} />
+              <RotateCcw color={colors.danger} size={18} strokeWidth={1.8} />
+              <Text style={styles.resetLabel}>Reset all settings</Text>
+              <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
             </Pressable>
           </View>
 
           <View style={styles.about}>
-            <View style={styles.aboutRule} />
-            <Text style={styles.aboutTitle}>KAN · v0.1</Text>
-            <Text style={styles.aboutBody}>
-              A fan-made roleplaying experience set in the world of Naruto.
-              Original character, unofficial story.
+            <Text style={styles.aboutText}>KAN · v0.1</Text>
+            <Text style={styles.aboutText}>
+              Fan-made and unofficial. Set in the world of Naruto.
             </Text>
             {Platform.OS === 'web' ? (
-              <Text style={styles.aboutBody}>
-                Install Kan from your browser menu to play full screen on Android.
+              <Text style={styles.aboutText}>
+                Install from your browser menu to play full screen.
               </Text>
             ) : null}
           </View>
@@ -640,12 +523,12 @@ export default function SettingsScreen() {
       />
 
       <ConfirmDialog
-        body="This removes your OpenRouter key, chosen model, narration style and image preferences from this device. You can reconnect at any time."
+        body="This removes your OpenRouter key, chosen model, narration style and image preferences from this device."
         busy={resetting}
-        confirmLabel="Reset everything"
+        confirmLabel="Reset"
         onCancel={() => setResetVisible(false)}
         onConfirm={() => void handleReset()}
-        title="Forget these settings?"
+        title="Reset everything?"
         visible={resetVisible}
       />
     </View>
@@ -662,10 +545,10 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 680,
+    maxWidth: 640,
     alignSelf: 'center',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.giant,
     gap: spacing.xxxl,
   },
@@ -673,136 +556,106 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
   },
   loadingText: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 13,
     color: colors.textDim,
   },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 44,
-  },
-  localPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(134, 186, 152, 0.2)',
-    backgroundColor: colors.successSoft,
-  },
-  localPillText: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 9,
-    lineHeight: 12,
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-    color: colors.success,
-  },
   pageHeading: {
     gap: 4,
-    marginTop: -spacing.md,
   },
   pageTitle: {
-    fontFamily: fonts.display,
-    fontSize: 44,
-    lineHeight: 50,
-    letterSpacing: -1,
+    fontFamily: fonts.extrabold,
+    fontSize: 36,
+    lineHeight: 42,
+    letterSpacing: -1.2,
     color: colors.text,
   },
   pageSubtitle: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.textMuted,
-    maxWidth: 400,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textDim,
   },
   section: {
     gap: 0,
   },
-  connectionCard: {
-    gap: spacing.lg,
+  sectionHeading: {
+    gap: 2,
+    marginBottom: spacing.sm,
   },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  keyIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
-  },
-  cardTitleCopy: {
-    flex: 1,
-    gap: 1,
-  },
-  cardTitle: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 15,
-    lineHeight: 20,
+  sectionTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.2,
     color: colors.text,
   },
-  cardSubtitle: {
-    fontFamily: fonts.body,
+  sectionHint: {
+    fontFamily: fonts.regular,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
     color: colors.textDim,
   },
-  stateDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
+  card: {
+    gap: spacing.md,
+  },
+  keyStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  keyStatusText: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textMuted,
   },
   field: {
     gap: 7,
   },
   fieldLabel: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
-    lineHeight: 16,
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.textMuted,
   },
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    minHeight: 50,
-    paddingHorizontal: 14,
-    borderRadius: radius.md,
+    minHeight: 48,
+    paddingHorizontal: 13,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     backgroundColor: colors.background,
   },
-  inputWrapError: {
-    borderColor: 'rgba(227, 107, 93, 0.64)',
+  inputError: {
+    borderColor: colors.danger,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
-    fontFamily: fonts.mono,
-    fontSize: 14,
+    paddingVertical: 11,
+    fontFamily: fonts.medium,
+    fontSize: 15,
     color: colors.text,
   },
   fieldHint: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 16,
     color: colors.textDim,
   },
   fieldError: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.medium,
     fontSize: 11,
     lineHeight: 16,
     color: colors.danger,
@@ -817,263 +670,134 @@ const styles = StyleSheet.create({
   feedback: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 9,
-    padding: 11,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-  },
-  feedbackSuccess: {
-    borderColor: 'rgba(134, 186, 152, 0.22)',
-    backgroundColor: colors.successSoft,
-  },
-  feedbackError: {
-    borderColor: 'rgba(227, 107, 93, 0.24)',
-    backgroundColor: colors.dangerSoft,
+    gap: 8,
+    paddingTop: 2,
   },
   feedbackText: {
     flex: 1,
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
     color: colors.textMuted,
   },
-  inlineLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    alignSelf: 'flex-start',
-    minHeight: 24,
-  },
   keyLinks: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  inlineLinkText: {
-    fontFamily: fonts.bodyMedium,
+  textLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    minHeight: 32,
+  },
+  textLinkLabel: {
+    fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 17,
-    color: colors.gold,
+    color: colors.textMuted,
   },
-  removeLinkText: {
-    fontFamily: fonts.bodyMedium,
+  removeLabel: {
+    fontFamily: fonts.medium,
     fontSize: 12,
     lineHeight: 17,
     color: colors.danger,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.65,
   },
   modelCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 82,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
+    minHeight: 68,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-  },
-  modelGlyph: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-    backgroundColor: colors.accentSoft,
   },
   modelCopy: {
     flex: 1,
     gap: 2,
   },
-  modelLabel: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 15,
-    color: colors.textDim,
-  },
   modelName: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 15,
     lineHeight: 20,
     color: colors.text,
   },
   modelId: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.regular,
     fontSize: 10,
     lineHeight: 14,
     color: colors.textDim,
   },
-  preferenceDescription: {
-    fontFamily: fonts.body,
+  preferenceHint: {
+    fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
     color: colors.textDim,
-    marginTop: spacing.sm,
-  },
-  previewBox: {
-    gap: 5,
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  previewLabel: {
-    fontFamily: fonts.mono,
-    fontSize: 8,
-    lineHeight: 11,
-    letterSpacing: 1.2,
-    color: colors.textDim,
-  },
-  previewQuote: {
-    fontFamily: fonts.display,
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.textMuted,
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 48,
-  },
-  switchIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
+    minHeight: 44,
   },
   switchCopy: {
     flex: 1,
-    gap: 1,
+    gap: 2,
   },
   switchTitle: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 14,
     lineHeight: 19,
     color: colors.text,
   },
   switchHint: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 16,
     color: colors.textDim,
   },
-  rule: {
+  divider: {
     height: 1,
     backgroundColor: colors.border,
-    marginVertical: spacing.lg,
-  },
-  preference: {
-    gap: 0,
-  },
-  preferenceLabel: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textMuted,
-    marginBottom: spacing.sm,
-  },
-  imageOffHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    marginTop: spacing.lg,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  imageOffText: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.textDim,
-  },
-  infoNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-    marginTop: spacing.lg,
-  },
-  infoText: {
-    flex: 1,
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.textDim,
+    marginVertical: 2,
   },
   resetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 78,
-    padding: spacing.lg,
-    borderRadius: radius.xl,
+    minHeight: 60,
+    paddingHorizontal: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(227, 107, 93, 0.16)',
+    borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  resetIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(227, 107, 93, 0.22)',
-    backgroundColor: colors.dangerSoft,
-  },
-  resetCopy: {
+  resetLabel: {
     flex: 1,
-    gap: 2,
-  },
-  resetTitle: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 14,
     lineHeight: 19,
     color: colors.danger,
   },
-  resetBody: {
-    fontFamily: fonts.body,
+  about: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  aboutText: {
+    fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 16,
     color: colors.textDim,
-  },
-  about: {
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  aboutRule: {
-    width: 32,
-    height: 1,
-    backgroundColor: colors.goldBorder,
-    marginBottom: spacing.xs,
-  },
-  aboutTitle: {
-    fontFamily: fonts.mono,
-    fontSize: 9,
-    lineHeight: 12,
-    letterSpacing: 1.2,
-    color: colors.textDim,
-  },
-  aboutBody: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 17,
-    color: colors.textDim,
     textAlign: 'center',
-    maxWidth: 330,
   },
 });

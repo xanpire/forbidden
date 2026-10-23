@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 
 import { AppButton } from '@/components/AppButton';
-import { colors, fonts, radius, spacing, type } from '@/constants/theme';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
 
 type ConfirmDialogProps = {
   visible: boolean;
@@ -44,17 +44,17 @@ export function ConfirmDialog({
           style={StyleSheet.absoluteFill}
         />
         <View style={styles.dialog}>
-          <View style={styles.icon}>
-            <TriangleAlert color={colors.danger} size={22} strokeWidth={1.8} />
+          <View style={styles.labelRow}>
+            <TriangleAlert color={colors.danger} size={15} strokeWidth={2} />
+            <Text style={styles.label}>Reset settings</Text>
           </View>
-          <Text style={type.eyebrow}>Careful</Text>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.body}>{body}</Text>
           <View style={styles.actions}>
             <AppButton
               compact
               disabled={busy}
-              label="Keep settings"
+              label="Cancel"
               onPress={onCancel}
               style={styles.action}
               variant="secondary"
@@ -70,8 +70,8 @@ export function ConfirmDialog({
           </View>
           {busy ? (
             <View style={styles.busyRow}>
-              <ActivityIndicator color={colors.danger} size="small" />
-              <Text style={styles.busyText}>Clearing local settings…</Text>
+              <ActivityIndicator color={colors.textMuted} size="small" />
+              <Text style={styles.busyText}>Clearing settings…</Text>
             </View>
           ) : null}
         </View>
@@ -90,37 +90,41 @@ const styles = StyleSheet.create({
   },
   dialog: {
     width: '100%',
-    maxWidth: 420,
-    padding: 22,
+    maxWidth: 400,
+    padding: 20,
     gap: spacing.sm,
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceRaised,
   },
-  icon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  labelRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(227, 107, 93, 0.24)',
+    gap: 6,
+    marginBottom: 2,
+  },
+  label: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.danger,
   },
   title: {
-    fontFamily: fonts.display,
-    fontSize: 25,
-    lineHeight: 31,
+    fontFamily: fonts.bold,
+    fontSize: 23,
+    lineHeight: 29,
+    letterSpacing: -0.5,
     color: colors.text,
   },
   body: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    lineHeight: 21,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 20,
     color: colors.textMuted,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   actions: {
     flexDirection: 'row',
@@ -136,7 +140,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   busyText: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 12,
     color: colors.textDim,
   },

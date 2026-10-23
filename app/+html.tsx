@@ -3,7 +3,7 @@ import { type PropsWithChildren } from 'react';
 
 const pageStyles = `
   html, body {
-    background-color: #0A0908;
+    background-color: #050505;
     color-scheme: dark;
   }
   body {
@@ -18,8 +18,8 @@ const pageStyles = `
     -webkit-tap-highlight-color: transparent;
   }
   ::selection {
-    background: #C94A34;
-    color: #FFF6E8;
+    background: #E50914;
+    color: #FFFFFF;
   }
 `;
 
@@ -46,7 +46,7 @@ export default function Root({ children }: PropsWithChildren) {
           content="An AI-driven roleplaying story. Play as Kan, an original shinobi in the world of Naruto."
           name="description"
         />
-        <meta content="#0A0908" name="theme-color" />
+        <meta content="#050505" name="theme-color" />
         <meta content="yes" name="mobile-web-app-capable" />
         <meta content="yes" name="apple-mobile-web-app-capable" />
         <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style" />

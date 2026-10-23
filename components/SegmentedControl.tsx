@@ -68,32 +68,29 @@ const styles = StyleSheet.create({
   },
   option: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 38,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: 'transparent',
   },
   optionSelected: {
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.borderStrong,
+    backgroundColor: colors.accent,
   },
   optionPressed: {
-    opacity: 0.72,
+    opacity: 0.75,
   },
   label: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 12,
     lineHeight: 16,
-    color: colors.textDim,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   labelSelected: {
-    color: colors.text,
+    color: colors.onAccent,
   },
   disabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
 });

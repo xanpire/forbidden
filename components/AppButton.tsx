@@ -47,7 +47,7 @@ export function AppButton({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
       accessibilityState={{ busy: loading, disabled: inactive }}
-      android_ripple={{ color: 'rgba(255, 255, 255, 0.08)' }}
+      android_ripple={{ color: 'rgba(255, 255, 255, 0.12)' }}
       disabled={inactive}
       onPress={onPress}
       style={({ pressed }) => [
@@ -75,12 +75,11 @@ export function AppButton({
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 50,
+    minHeight: 48,
     paddingHorizontal: 20,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
     overflow: 'hidden',
   },
   compact: {
@@ -91,36 +90,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 9,
+    gap: 8,
   },
   label: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 14,
     lineHeight: 20,
-    letterSpacing: 0.2,
   },
   primary: {
     backgroundColor: colors.accent,
-    borderColor: colors.accent,
   },
   secondary: {
-    backgroundColor: colors.surfaceRaised,
-    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   ghost: {
     backgroundColor: 'transparent',
-    borderColor: 'transparent',
   },
   destructive: {
     backgroundColor: colors.dangerSoft,
-    borderColor: 'rgba(227, 107, 93, 0.26)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 90, 95, 0.24)',
   },
   pressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.995 }],
+    opacity: 0.8,
   },
   inactive: {
-    opacity: 0.42,
+    opacity: 0.4,
   },
 });
 

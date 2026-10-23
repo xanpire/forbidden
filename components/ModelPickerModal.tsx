@@ -1,4 +1,4 @@
-import { Check, CircleAlert, RefreshCw, Search, Sparkles, X } from 'lucide-react-native';
+import { Check, CircleAlert, RefreshCw, Search, X } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppButton } from '@/components/AppButton';
-import { colors, fonts, radius, spacing, type } from '@/constants/theme';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
 import {
   FALLBACK_MODELS,
   fetchNarratorModels,
@@ -115,10 +115,7 @@ export function ModelPickerModal({
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={type.eyebrow}>Narrator</Text>
-              <Text style={styles.title}>Choose a model</Text>
-            </View>
+            <Text style={styles.title}>Choose model</Text>
             <View style={styles.headerActions}>
               <Pressable
                 accessibilityLabel="Refresh model list"
@@ -126,10 +123,7 @@ export function ModelPickerModal({
                 disabled={loadState === 'loading'}
                 hitSlop={8}
                 onPress={() => void loadModels()}
-                style={({ pressed }) => [
-                  styles.iconButton,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               >
                 {loadState === 'loading' ? (
                   <ActivityIndicator color={colors.textMuted} size="small" />
@@ -142,12 +136,9 @@ export function ModelPickerModal({
                 accessibilityRole="button"
                 hitSlop={8}
                 onPress={onClose}
-                style={({ pressed }) => [
-                  styles.iconButton,
-                  pressed && styles.pressed,
-                ]}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
               >
-                <X color={colors.textMuted} size={19} strokeWidth={1.8} />
+                <X color={colors.textMuted} size={20} strokeWidth={1.8} />
               </Pressable>
             </View>
           </View>
@@ -159,7 +150,7 @@ export function ModelPickerModal({
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setQuery}
-              placeholder="Search by name or provider"
+              placeholder="Search models"
               placeholderTextColor={colors.textDim}
               style={styles.searchInput}
               value={query}
@@ -177,9 +168,9 @@ export function ModelPickerModal({
 
           {loadState === 'error' ? (
             <View style={styles.notice}>
-              <CircleAlert color={colors.gold} size={17} strokeWidth={1.8} />
+              <CircleAlert color={colors.textMuted} size={16} strokeWidth={1.8} />
               <Text style={styles.noticeText}>
-                Couldn&apos;t refresh OpenRouter. Showing the recommended set.
+                Couldn&apos;t refresh OpenRouter. Showing recommended models.
               </Text>
               <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void loadModels()}>
                 <Text style={styles.retry}>Retry</Text>
@@ -189,8 +180,8 @@ export function ModelPickerModal({
 
           {loadState === 'loading' && !loadedOnce.current ? (
             <View style={styles.notice}>
-              <ActivityIndicator color={colors.gold} size="small" />
-              <Text style={styles.noticeText}>Refreshing the OpenRouter catalog…</Text>
+              <ActivityIndicator color={colors.textMuted} size="small" />
+              <Text style={styles.noticeText}>Refreshing models…</Text>
             </View>
           ) : null}
 
@@ -222,20 +213,13 @@ export function ModelPickerModal({
                     pressed && styles.pressed,
                   ]}
                 >
-                  <View style={[styles.modelIcon, selected && styles.modelIconSelected]}>
-                    <Sparkles
-                      color={selected ? colors.accentBright : colors.textDim}
-                      size={16}
-                      strokeWidth={1.8}
-                    />
-                  </View>
                   <View style={styles.modelCopy}>
                     <View style={styles.modelTitleRow}>
                       <Text numberOfLines={1} style={styles.modelName}>
                         {item.name}
                       </Text>
                       {item.recommended ? (
-                        <Text style={styles.recommended}>PICK</Text>
+                        <Text style={styles.recommended}>Recommended</Text>
                       ) : null}
                     </View>
                     <Text numberOfLines={1} style={styles.modelId}>
@@ -244,9 +228,7 @@ export function ModelPickerModal({
                     <Text style={styles.modelMeta}>{modelMeta(item)}</Text>
                   </View>
                   {selected ? (
-                    <View style={styles.check}>
-                      <Check color={colors.onAccent} size={13} strokeWidth={2.4} />
-                    </View>
+                    <Check color={colors.accent} size={18} strokeWidth={2.2} />
                   ) : null}
                 </Pressable>
               );
@@ -255,7 +237,7 @@ export function ModelPickerModal({
           />
 
           <View style={styles.customBox}>
-            <Text style={styles.customLabel}>Use a specific model ID</Text>
+            <Text style={styles.customLabel}>Custom model ID</Text>
             <View style={styles.customRow}>
               <TextInput
                 accessibilityLabel="Custom model ID"
@@ -278,9 +260,6 @@ export function ModelPickerModal({
                 variant="secondary"
               />
             </View>
-            <Text style={styles.customHint}>
-              Any text model available to your OpenRouter key works here.
-            </Text>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -304,109 +283,101 @@ const styles = StyleSheet.create({
     height: '89%',
     paddingTop: 10,
     paddingHorizontal: 18,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
   },
   handle: {
-    width: 38,
+    width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.borderStrong,
     alignSelf: 'center',
-    marginBottom: 18,
+    marginBottom: 16,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.lg,
   },
-  headerCopy: {
-    gap: 2,
-  },
   title: {
-    fontFamily: fonts.display,
-    fontSize: 27,
-    lineHeight: 33,
+    fontFamily: fonts.bold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.6,
     color: colors.text,
   },
   headerActions: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: 4,
   },
   iconButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   pressed: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    minHeight: 48,
+    gap: 9,
+    minHeight: 46,
     marginTop: spacing.lg,
-    paddingHorizontal: 14,
-    borderRadius: radius.md,
+    paddingHorizontal: 13,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontFamily: fonts.body,
+    paddingVertical: 11,
+    fontFamily: fonts.regular,
     fontSize: 16,
     color: colors.text,
   },
   notice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 8,
     marginTop: spacing.md,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
+    backgroundColor: colors.surfaceRaised,
   },
   noticeText: {
     flex: 1,
-    fontFamily: fonts.body,
-    fontSize: 12,
-    lineHeight: 17,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
     color: colors.textMuted,
   },
   retry: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.gold,
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    color: colors.accent,
   },
   list: {
     flex: 1,
     marginTop: spacing.md,
   },
   listContent: {
-    gap: spacing.sm,
+    gap: 6,
     paddingBottom: spacing.sm,
   },
   modelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 13,
+    gap: spacing.md,
+    padding: 12,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -416,23 +387,9 @@ const styles = StyleSheet.create({
     borderColor: colors.accentBorder,
     backgroundColor: colors.accentSoft,
   },
-  modelIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modelIconSelected: {
-    borderColor: colors.accentBorder,
-    backgroundColor: 'rgba(201, 74, 52, 0.16)',
-  },
   modelCopy: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   modelTitleRow: {
     flexDirection: 'row',
@@ -441,44 +398,28 @@ const styles = StyleSheet.create({
   },
   modelName: {
     flexShrink: 1,
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 14,
     lineHeight: 19,
     color: colors.text,
   },
   recommended: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 8,
+    fontFamily: fonts.medium,
+    fontSize: 9,
     lineHeight: 12,
-    letterSpacing: 1,
-    color: colors.gold,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
-    overflow: 'hidden',
+    color: colors.accent,
   },
   modelId: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.regular,
     fontSize: 10,
     lineHeight: 14,
     color: colors.textDim,
   },
   modelMeta: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 15,
     color: colors.textMuted,
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
   },
   empty: {
     alignItems: 'center',
@@ -487,12 +428,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   emptyTitle: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 14,
     color: colors.text,
   },
   emptyBody: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 19,
     color: colors.textDim,
@@ -506,8 +447,9 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   customLabel: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
     color: colors.textMuted,
   },
   customRow: {
@@ -518,21 +460,15 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 44,
     paddingHorizontal: 13,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    fontFamily: fonts.mono,
+    fontFamily: fonts.regular,
     fontSize: 13,
     color: colors.text,
   },
   customButton: {
     minWidth: 68,
-  },
-  customHint: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.textDim,
   },
 });

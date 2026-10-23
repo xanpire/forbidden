@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
   ChevronRight,
-  Feather,
   Image as ImageIcon,
   Send,
   Settings2,
@@ -23,8 +22,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackground } from '@/components/AppBackground';
-import { SceneArt } from '@/components/SceneArt';
-import { colors, fonts, radius, spacing, type } from '@/constants/theme';
+import { SurfaceCard } from '@/components/SurfaceCard';
+import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { useSettings } from '@/lib/settings';
 
 type Turn = {
@@ -86,19 +85,14 @@ export default function StoryScreen() {
             accessibilityRole="button"
             hitSlop={8}
             onPress={goBack}
-            style={({ pressed }) => [
-              styles.headerButton,
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
-            <ArrowLeft color={colors.textMuted} size={20} strokeWidth={1.8} />
+            <ArrowLeft color={colors.text} size={22} strokeWidth={2} />
           </Pressable>
 
           <View style={styles.headerCopy}>
-            <Text style={styles.headerEyebrow}>CHAPTER I</Text>
-            <Text numberOfLines={1} style={styles.headerTitle}>
-              Rain at the gate
-            </Text>
+            <Text style={styles.headerTitle}>Kan</Text>
+            <Text style={styles.headerSubtitle}>Chapter 01 · Rain at the gate</Text>
           </View>
 
           <Pressable
@@ -106,12 +100,9 @@ export default function StoryScreen() {
             accessibilityRole="button"
             hitSlop={8}
             onPress={() => router.navigate('/(tabs)/settings')}
-            style={({ pressed }) => [
-              styles.headerButton,
-              pressed && styles.pressed,
-            ]}
+            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
           >
-            <Settings2 color={colors.textMuted} size={19} strokeWidth={1.8} />
+            <Settings2 color={colors.text} size={21} strokeWidth={2} />
           </Pressable>
         </View>
 
@@ -121,61 +112,45 @@ export default function StoryScreen() {
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.previewBanner}>
-            <Sparkles color={colors.gold} size={15} strokeWidth={1.8} />
-            <Text style={styles.previewText}>
-              Interface preview · narration and images arrive in the next build.
-            </Text>
-          </View>
-
-          <View style={styles.sceneFrame}>
-            <SceneArt />
-            <LinearGradient
-              colors={['transparent', 'rgba(8, 7, 6, 0.18)', 'rgba(8, 7, 6, 0.92)']}
-              locations={[0, 0.5, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.sceneTopRow}>
-              <View style={styles.scenePill}>
-                <Text style={styles.scenePillText}>SCENE I</Text>
-              </View>
-              <View style={styles.scenePill}>
+          <LinearGradient
+            colors={['#24080B', '#131313', '#0D0D0D']}
+            locations={[0, 0.55, 1]}
+            style={styles.sceneCard}
+          >
+            <View style={styles.sceneTop}>
+              <Text style={styles.sceneLabel}>Scene 01</Text>
+              <View style={styles.sceneMeta}>
                 <ImageIcon
-                  color={settings.imageFrequency === 'off' ? colors.textDim : colors.gold}
-                  size={11}
+                  color={settings.imageFrequency === 'off' ? colors.textDim : colors.accent}
+                  size={13}
                   strokeWidth={1.8}
                 />
-                <Text style={styles.scenePillText}>
-                  {settings.imageFrequency === 'off' ? 'IMAGE OFF' : 'ILLUSTRATED'}
+                <Text
+                  style={[
+                    styles.sceneMetaText,
+                    settings.imageFrequency !== 'off' && styles.sceneMetaActive,
+                  ]}
+                >
+                  {settings.imageFrequency === 'off' ? 'Images off' : 'Illustrated'}
                 </Text>
               </View>
             </View>
             <View style={styles.sceneCopy}>
-              <Text style={styles.sceneEyebrow}>LAND OF FIRE · DUSK</Text>
+              <Text style={styles.sceneLocation}>Land of Fire · Dusk</Text>
               <Text style={styles.sceneTitle}>Rain at the gate</Text>
             </View>
-          </View>
+          </LinearGradient>
 
           <View style={styles.narration}>
-            <View style={styles.narrationHeading}>
-              <View style={styles.narrationMark}>
-                <Feather color={colors.accentBright} size={15} strokeWidth={1.8} />
-              </View>
-              <Text style={type.eyebrow}>Narrator</Text>
-              <View style={styles.narrationRule} />
-              <Text style={styles.narrationIndex}>01</Text>
-            </View>
-
+            <Text style={styles.eyebrow}>Narrator</Text>
             <Text style={styles.prose}>
               Rain moved through the gate in silver threads. The village beyond
               it had no name on any map Kan had seen, but the gatekeeper looked
               at him as if he had been expected for years.
             </Text>
-
             <View style={styles.dialogue}>
               <Text style={styles.dialogueText}>“You’re late,” she said.</Text>
             </View>
-
             <Text style={styles.prose}>
               Kan kept his hood low. Somewhere behind the rain, a bell rang once.
             </Text>
@@ -184,35 +159,38 @@ export default function StoryScreen() {
           {turns.length === 0 ? (
             <View style={styles.choiceSection}>
               <Text style={styles.choicePrompt}>What does Kan do?</Text>
-              {choices.map((choice, index) => (
-                <Pressable
-                  accessibilityLabel={`Choose: ${choice}`}
-                  accessibilityRole="button"
-                  key={choice}
-                  onPress={() => submitAction(choice)}
-                  style={({ pressed }) => [
-                    styles.choice,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <View style={styles.choiceLetter}>
-                    <Text style={styles.choiceLetterText}>
-                      {String.fromCharCode(65 + index)}
-                    </Text>
+              <SurfaceCard style={styles.choiceCard}>
+                {choices.map((choice, index) => (
+                  <View key={choice}>
+                    {index > 0 ? <View style={styles.divider} /> : null}
+                    <Pressable
+                      accessibilityLabel={`Choose: ${choice}`}
+                      accessibilityRole="button"
+                      onPress={() => submitAction(choice)}
+                      style={({ pressed }) => [
+                        styles.choice,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={styles.choiceNumber}>
+                        {String(index + 1).padStart(2, '0')}
+                      </Text>
+                      <Text style={styles.choiceText}>{choice}</Text>
+                      <ChevronRight
+                        color={colors.textDim}
+                        size={17}
+                        strokeWidth={1.8}
+                      />
+                    </Pressable>
                   </View>
-                  <Text style={styles.choiceText}>{choice}</Text>
-                  <ChevronRight color={colors.textDim} size={17} strokeWidth={1.8} />
-                </Pressable>
-              ))}
+                ))}
+              </SurfaceCard>
             </View>
           ) : null}
 
           {turns.map((turn) => (
             <View key={turn.id} style={styles.turnBlock}>
-              <View style={styles.turnHeading}>
-                <Text style={styles.turnLabel}>KAN</Text>
-                <View style={styles.turnRule} />
-              </View>
+              <Text style={styles.turnLabel}>Kan</Text>
               <View style={styles.turnBubble}>
                 <Text style={styles.turnText}>{turn.text}</Text>
               </View>
@@ -220,18 +198,18 @@ export default function StoryScreen() {
           ))}
 
           {turns.length > 0 ? (
-            <View style={styles.waitingCard}>
+            <SurfaceCard style={styles.waitingCard}>
               <View style={styles.waitingIcon}>
-                <Sparkles color={colors.gold} size={18} strokeWidth={1.8} />
+                <Sparkles color={colors.accent} size={18} strokeWidth={2} />
               </View>
               <View style={styles.waitingCopy}>
                 <Text style={styles.waitingTitle}>
-                  {hasNarrator ? 'The narrator is ready' : 'Wake the narrator'}
+                  {hasNarrator ? 'Preview scene' : 'Narrator not connected'}
                 </Text>
                 <Text style={styles.waitingBody}>
                   {hasNarrator
-                    ? 'Story generation connects in the next build. Your move is waiting.'
-                    : 'Connect OpenRouter to let the world answer Kan’s next move.'}
+                    ? 'Narration will appear here when the story engine is connected.'
+                    : 'Connect OpenRouter in Settings to continue.'}
                 </Text>
               </View>
               {!hasNarrator ? (
@@ -244,29 +222,25 @@ export default function StoryScreen() {
                     pressed && styles.pressed,
                   ]}
                 >
-                  <Text style={styles.connectButtonText}>Connect</Text>
+                  <Text style={styles.connectLabel}>Connect</Text>
                 </Pressable>
               ) : null}
-            </View>
+            </SurfaceCard>
           ) : null}
 
           {turns.length > 0 ? (
             <Pressable
-              accessibilityLabel="Return to the moment before acting"
+              accessibilityLabel="Clear the preview action"
               accessibilityRole="button"
               onPress={() => setTurns([])}
-              style={({ pressed }) => [styles.rewind, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.clearAction, pressed && styles.pressed]}
             >
-              <Text style={styles.rewindText}>Rewind this preview</Text>
+              <Text style={styles.clearLabel}>Clear action</Text>
             </Pressable>
           ) : null}
         </ScrollView>
 
         <View style={styles.composerShell}>
-          <View style={styles.composerMeta}>
-            <Text style={styles.composerRole}>YOU ARE KAN</Text>
-            <Text style={styles.composerMode}>PREVIEW</Text>
-          </View>
           <View style={styles.composer}>
             <TextInput
               accessibilityLabel="What does Kan do?"
@@ -289,7 +263,7 @@ export default function StoryScreen() {
                 pressed && draft.trim() ? styles.pressed : null,
               ]}
             >
-              <Send color={colors.onAccent} size={18} strokeWidth={2} />
+              <Send color={colors.onAccent} size={18} strokeWidth={2.2} />
             </Pressable>
           </View>
         </View>
@@ -309,154 +283,120 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     minHeight: 58,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: 'rgba(10, 9, 8, 0.92)',
+    backgroundColor: colors.background,
   },
-  headerButton: {
+  iconButton: {
     width: 40,
     height: 40,
-    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+  },
+  pressed: {
+    opacity: 0.6,
   },
   headerCopy: {
     flex: 1,
     alignItems: 'center',
     gap: 1,
   },
-  headerEyebrow: {
-    fontFamily: fonts.mono,
-    fontSize: 8,
-    lineHeight: 11,
-    letterSpacing: 1.4,
-    color: colors.textDim,
-  },
   headerTitle: {
-    fontFamily: fonts.display,
-    fontSize: 18,
-    lineHeight: 24,
+    fontFamily: fonts.bold,
+    fontSize: 16,
+    lineHeight: 21,
     color: colors.text,
   },
-  pressed: {
-    opacity: 0.7,
+  headerSubtitle: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textDim,
   },
   content: {
     width: '100%',
-    maxWidth: 680,
+    maxWidth: 640,
     alignSelf: 'center',
     paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.xxxl,
-    gap: spacing.xl,
+    gap: spacing.xxl,
   },
-  previewBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
-  },
-  previewText: {
-    flex: 1,
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
-    color: colors.textMuted,
-  },
-  sceneFrame: {
-    height: 254,
+  sceneCard: {
+    minHeight: 168,
+    padding: 18,
     borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
-    overflow: 'hidden',
+    borderColor: colors.border,
     justifyContent: 'space-between',
-    padding: spacing.lg,
-    backgroundColor: '#120D0B',
+    gap: spacing.xxxl,
   },
-  sceneTopRow: {
+  sceneTop: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.md,
   },
-  scenePill: {
+  sceneLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.textMuted,
+  },
+  sceneMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(244, 234, 214, 0.16)',
-    backgroundColor: 'rgba(10, 9, 8, 0.42)',
   },
-  scenePillText: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 8,
-    lineHeight: 11,
-    letterSpacing: 1,
-    color: colors.textMuted,
+  sceneMetaText: {
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    lineHeight: 14,
+    color: colors.textDim,
+  },
+  sceneMetaActive: {
+    color: colors.accent,
   },
   sceneCopy: {
     gap: 3,
   },
-  sceneEyebrow: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 9,
-    lineHeight: 12,
-    letterSpacing: 1.5,
-    color: colors.gold,
+  sceneLocation: {
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.accent,
   },
   sceneTitle: {
-    fontFamily: fonts.display,
-    fontSize: 31,
-    lineHeight: 37,
-    letterSpacing: -0.3,
+    fontFamily: fonts.extrabold,
+    fontSize: 28,
+    lineHeight: 34,
+    letterSpacing: -0.8,
     color: colors.text,
   },
   narration: {
-    gap: spacing.md,
+    gap: spacing.lg,
   },
-  narrationHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  narrationMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.accentBorder,
-    backgroundColor: colors.accentSoft,
-  },
-  narrationRule: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  narrationIndex: {
-    fontFamily: fonts.mono,
-    fontSize: 9,
+  eyebrow: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
     color: colors.textDim,
   },
   prose: {
-    fontFamily: fonts.display,
-    fontSize: 18,
-    lineHeight: 29,
-    color: colors.textMuted,
+    fontFamily: fonts.regular,
+    fontSize: 17,
+    lineHeight: 28,
+    color: colors.text,
   },
   dialogue: {
     paddingLeft: spacing.lg,
@@ -464,89 +404,72 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.accent,
   },
   dialogueText: {
-    fontFamily: fonts.display,
-    fontSize: 20,
-    lineHeight: 29,
+    fontFamily: fonts.medium,
+    fontSize: 18,
+    lineHeight: 27,
     color: colors.text,
-    fontStyle: 'italic',
   },
   choiceSection: {
     gap: spacing.sm,
   },
   choicePrompt: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 11,
     lineHeight: 15,
-    letterSpacing: 1.6,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: colors.gold,
-    marginBottom: 2,
+    color: colors.textDim,
+  },
+  choiceCard: {
+    padding: 0,
+    overflow: 'hidden',
   },
   choice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 62,
-    padding: spacing.md,
+    minHeight: 60,
     paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
   },
-  choiceLetter: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceRaised,
-  },
-  choiceLetterText: {
-    fontFamily: fonts.mono,
+  choiceNumber: {
+    fontFamily: fonts.semibold,
     fontSize: 10,
-    color: colors.textMuted,
+    lineHeight: 14,
+    color: colors.textDim,
   },
   choiceText: {
     flex: 1,
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.medium,
     fontSize: 14,
     lineHeight: 20,
     color: colors.text,
   },
+  divider: {
+    height: 1,
+    marginLeft: 42,
+    backgroundColor: colors.border,
+  },
   turnBlock: {
     gap: spacing.sm,
   },
-  turnHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   turnLabel: {
-    fontFamily: fonts.mono,
-    fontSize: 9,
-    letterSpacing: 1.4,
-    color: colors.accentBright,
-  },
-  turnRule: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.accentBorder,
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.accent,
   },
   turnBubble: {
-    alignSelf: 'flex-end',
-    maxWidth: '88%',
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderBottomRightRadius: 4,
+    maxWidth: '90%',
+    padding: 14,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.accentBorder,
-    backgroundColor: colors.accentSoft,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceRaised,
   },
   turnText: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
     color: colors.text,
@@ -555,98 +478,71 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
   },
   waitingIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: 'rgba(199, 164, 103, 0.08)',
+    backgroundColor: colors.accentSoft,
   },
   waitingCopy: {
     flex: 1,
     gap: 2,
   },
   waitingTitle: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 13,
     lineHeight: 18,
     color: colors.text,
   },
   waitingBody: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 16,
-    color: colors.textMuted,
+    color: colors.textDim,
   },
   connectButton: {
-    minHeight: 38,
+    minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: 13,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.goldBorder,
-    backgroundColor: colors.goldSoft,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accent,
   },
-  connectButtonText: {
-    fontFamily: fonts.bodyMedium,
+  connectLabel: {
+    fontFamily: fonts.semibold,
     fontSize: 11,
-    color: colors.gold,
+    lineHeight: 15,
+    color: colors.onAccent,
   },
-  rewind: {
+  clearAction: {
     alignSelf: 'flex-start',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
-  rewindText: {
-    fontFamily: fonts.bodyMedium,
+  clearLabel: {
+    fontFamily: fonts.medium,
     fontSize: 11,
+    lineHeight: 16,
     color: colors.textDim,
-    textDecorationLine: 'underline',
   },
   composerShell: {
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    gap: 6,
+    paddingVertical: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  composerMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-  },
-  composerRole: {
-    fontFamily: fonts.mono,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: colors.accentBright,
-  },
-  composerMode: {
-    fontFamily: fonts.mono,
-    fontSize: 8,
-    letterSpacing: 1.2,
-    color: colors.textDim,
+    backgroundColor: colors.background,
   },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-    padding: 6,
+    padding: 5,
     paddingLeft: spacing.lg,
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.background,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   composerInput: {
     flex: 1,
@@ -654,7 +550,7 @@ const styles = StyleSheet.create({
     minHeight: 42,
     paddingTop: 11,
     paddingBottom: 10,
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 16,
     lineHeight: 22,
     color: colors.text,
@@ -668,6 +564,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
   },
   sendButtonDisabled: {
-    opacity: 0.35,
+    opacity: 0.3,
   },
 });

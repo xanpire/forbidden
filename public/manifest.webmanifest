@@ -6,12 +6,18 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "portrait",
-  "background_color": "#0A0908",
-  "theme_color": "#0A0908",
+  "background_color": "#050505",
+  "theme_color": "#050505",
   "lang": "en",
-  "categories": ["games", "entertainment"],
+  "categories": [
+    "games",
+    "entertainment"
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

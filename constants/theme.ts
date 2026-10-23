@@ -1,57 +1,35 @@
-import { Platform, type TextStyle } from 'react-native';
+import type { TextStyle } from 'react-native';
 
 export const colors = {
-  background: '#0A0908',
-  backgroundTop: '#15100E',
-  surface: '#12100E',
-  surfaceRaised: '#1A1613',
-  surfaceSoft: '#211B17',
-  border: 'rgba(244, 234, 214, 0.10)',
-  borderStrong: 'rgba(244, 234, 214, 0.18)',
-  text: '#F4EAD6',
-  textMuted: '#B9AC99',
-  textDim: '#817667',
-  accent: '#C94A34',
-  accentBright: '#E36B4F',
-  accentSoft: 'rgba(201, 74, 52, 0.15)',
-  accentBorder: 'rgba(227, 107, 79, 0.34)',
-  gold: '#C7A467',
-  goldSoft: 'rgba(199, 164, 103, 0.12)',
-  goldBorder: 'rgba(199, 164, 103, 0.28)',
-  success: '#86BA98',
-  successSoft: 'rgba(134, 186, 152, 0.12)',
-  danger: '#E36B5D',
-  dangerSoft: 'rgba(227, 107, 93, 0.12)',
-  onAccent: '#FFF6E8',
-  overlay: 'rgba(4, 3, 3, 0.76)',
+  background: '#050505',
+  backgroundTop: '#120507',
+  surface: '#0F0F0F',
+  surfaceRaised: '#181818',
+  surfaceSoft: '#222222',
+  border: '#232323',
+  borderStrong: '#343434',
+  text: '#F5F5F5',
+  textMuted: '#A3A3A3',
+  textDim: '#7D7D7D',
+  accent: '#E50914',
+  accentBright: '#FF1F2D',
+  accentSoft: 'rgba(229, 9, 20, 0.12)',
+  accentBorder: 'rgba(229, 9, 20, 0.42)',
+  success: '#46D369',
+  successSoft: 'rgba(70, 211, 105, 0.10)',
+  danger: '#FF5A5F',
+  dangerSoft: 'rgba(229, 9, 20, 0.10)',
+  onAccent: '#FFFFFF',
+  overlay: 'rgba(0, 0, 0, 0.82)',
   white: '#FFFFFF',
 };
 
 export const fonts = {
-  display:
-    Platform.select({
-      ios: 'Georgia',
-      android: 'serif',
-      default: 'Georgia, "Times New Roman", serif',
-    }) ?? 'serif',
-  body:
-    Platform.select({
-      ios: 'System',
-      android: 'sans-serif',
-      default: 'Inter, ui-sans-serif, system-ui, sans-serif',
-    }) ?? 'sans-serif',
-  bodyMedium:
-    Platform.select({
-      ios: 'System',
-      android: 'sans-serif-medium',
-      default: 'Inter, ui-sans-serif, system-ui, sans-serif',
-    }) ?? 'sans-serif',
-  mono:
-    Platform.select({
-      ios: 'Menlo',
-      android: 'monospace',
-      default: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    }) ?? 'monospace',
+  regular: 'Manrope_400Regular',
+  medium: 'Manrope_500Medium',
+  semibold: 'Manrope_600SemiBold',
+  bold: 'Manrope_700Bold',
+  extrabold: 'Manrope_800ExtraBold',
 };
 
 export const spacing = {
@@ -67,75 +45,56 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 10,
-  md: 14,
-  lg: 18,
-  xl: 22,
-  xxl: 28,
+  sm: 8,
+  md: 10,
+  lg: 12,
+  xl: 16,
+  xxl: 20,
   full: 999,
 };
 
 export const type: Record<
-  'eyebrow' | 'display' | 'title' | 'heading' | 'body' | 'caption' | 'mono',
+  'eyebrow' | 'display' | 'title' | 'heading' | 'body' | 'caption',
   TextStyle
 > = {
   eyebrow: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 11,
-    lineHeight: 15,
-    letterSpacing: 1.8,
+    lineHeight: 16,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: colors.gold,
+    color: colors.textDim,
   },
   display: {
-    fontFamily: fonts.display,
-    fontSize: 54,
-    lineHeight: 58,
-    letterSpacing: -1.4,
+    fontFamily: fonts.extrabold,
+    fontSize: 58,
+    lineHeight: 62,
+    letterSpacing: -2,
     color: colors.text,
   },
   title: {
-    fontFamily: fonts.display,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.6,
+    fontFamily: fonts.bold,
+    fontSize: 30,
+    lineHeight: 36,
+    letterSpacing: -0.8,
     color: colors.text,
   },
   heading: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 17,
-    lineHeight: 23,
+    fontFamily: fonts.semibold,
+    fontSize: 16,
+    lineHeight: 22,
     color: colors.text,
   },
   body: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 15,
-    lineHeight: 24,
+    lineHeight: 23,
     color: colors.textMuted,
   },
   caption: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.textDim,
-  },
-  mono: {
-    fontFamily: fonts.mono,
+    fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
     color: colors.textDim,
   },
 };
-
-export const shadows = Platform.select({
-  web: {
-    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.35)',
-  },
-  default: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.32,
-    shadowRadius: 28,
-    elevation: 10,
-  },
-});

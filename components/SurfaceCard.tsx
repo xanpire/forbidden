@@ -15,8 +15,8 @@ export function SurfaceCard({
 
 const styles = StyleSheet.create({
   card: {
-    padding: 18,
-    borderRadius: radius.xl,
+    padding: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,

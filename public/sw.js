@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kan-shell-v1';
+const CACHE_NAME = 'kan-shell-v2';
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {

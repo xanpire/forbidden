@@ -38,7 +38,7 @@ const useNativeDriver = Platform.OS !== 'web';
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(10)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
   const insets = useSafeAreaInsets();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -56,7 +56,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
 
     opacity.setValue(0);
-    translateY.setValue(10);
+    translateY.setValue(8);
     Animated.parallel([
       Animated.timing(opacity, {
         toValue: 1,
@@ -104,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       ? colors.success
       : toast?.tone === 'error'
         ? colors.danger
-        : colors.gold;
+        : colors.textMuted;
 
   return (
     <ToastContext.Provider value={value}>
@@ -115,14 +115,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           style={[
             styles.toastDock,
             {
-              bottom: insets.bottom + 86,
+              bottom: insets.bottom + 82,
               opacity,
               transform: [{ translateY }],
             },
           ]}
         >
           <View accessibilityLiveRegion="polite" style={styles.toast}>
-            <ToneIcon color={toneColor} size={18} strokeWidth={1.8} />
+            <ToneIcon color={toneColor} size={18} strokeWidth={2} />
             <Text style={styles.message}>{toast.message}</Text>
           </View>
         </Animated.View>
@@ -155,20 +155,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingVertical: 13,
-    paddingHorizontal: 15,
+    paddingHorizontal: 14,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceRaised,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
     elevation: 12,
   },
   message: {
     flex: 1,
-    fontFamily: fonts.body,
+    fontFamily: fonts.medium,
     fontSize: 13,
     lineHeight: 19,
     color: colors.text,

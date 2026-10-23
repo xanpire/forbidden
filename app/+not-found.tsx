@@ -1,27 +1,32 @@
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppBackground } from '@/components/AppBackground';
+import { AppButton } from '@/components/AppButton';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, spacing } from '@/constants/theme';
 
 export default function NotFoundScreen() {
+  const router = useRouter();
+
   return (
     <View style={styles.root}>
       <AppBackground />
       <SafeAreaView style={styles.safe}>
         <Wordmark />
         <View style={styles.copy}>
-          <Text style={styles.eyebrow}>LOST ON THE ROAD</Text>
+          <Text style={styles.eyebrow}>Page not found</Text>
           <Text style={styles.title}>This path ends here.</Text>
           <Text style={styles.body}>
             The page you were looking for is not part of Kan’s story.
           </Text>
         </View>
-        <Link href="/(tabs)" style={styles.link}>
-          <Text style={styles.linkText}>Return to the story</Text>
-        </Link>
+        <AppButton
+          label="Back to story"
+          onPress={() => router.replace('/(tabs)')}
+          style={styles.button}
+        />
       </SafeAreaView>
     </View>
   );
@@ -42,35 +47,29 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   eyebrow: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: fonts.semibold,
     fontSize: 10,
-    letterSpacing: 1.8,
-    color: colors.gold,
+    lineHeight: 14,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.textDim,
   },
   title: {
-    fontFamily: fonts.display,
-    fontSize: 38,
-    lineHeight: 44,
+    fontFamily: fonts.extrabold,
+    fontSize: 36,
+    lineHeight: 42,
+    letterSpacing: -1.2,
     color: colors.text,
   },
   body: {
-    fontFamily: fonts.body,
+    fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
     color: colors.textMuted,
     maxWidth: 340,
   },
-  link: {
+  button: {
     alignSelf: 'flex-start',
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    backgroundColor: colors.accent,
-  },
-  linkText: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
-    color: colors.onAccent,
+    minWidth: 150,
   },
 });
