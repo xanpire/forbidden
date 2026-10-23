@@ -44,9 +44,9 @@ CANON AND TIME
 - Use the d20 encounter hint to choose event scale; do not mention the roll.
 
 FORMATTING
-- Kan's input can contain quoted dialogue, bold actions, or both in the same turn:
-  - Text inside straight quotes is speech Kan says aloud.
-  - Text wrapped in **...** is an action, gesture, or physical movement Kan performs.
+- Kan's input uses manual markers for speech and action:
+  - Text inside straight quotation marks is speech Kan says aloud.
+  - Text wrapped in asterisks is an action, gesture, or physical movement Kan performs.
   - A single player message may mix speech and action in one line.
 - Use clean quotation marks for NPC speech.
 - Use italics only for internal NPC thoughts if necessary.

@@ -34,8 +34,6 @@ import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 
-type InputMode = 'speech' | 'action';
-
 type StoryMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -58,9 +56,10 @@ export default function StoryScreen() {
   } = useGame();
 
   const [input, setInput] = useState('');
-  const [inputMode, setInputMode] = useState<InputMode>('speech');
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const selectionRef = useRef<{ start: number; end: number } | null>(null);
   const lastActionRef = useRef('');
 
   const messages = useMemo<StoryMessage[]>(() => {
@@ -88,25 +87,48 @@ export default function StoryScreen() {
   }, [messages.length, streamingText]);
 
   const submit = useCallback(
-    async (value: string, mode: InputMode) => {
-      const raw = value.trim();
+    async (value: string) => {
+      const action = value.trim();
 
-      if (!raw || isNarrating) {
+      if (!action || isNarrating) {
         return;
       }
 
-      const action = formatPlayerInput(raw, mode);
-
       lastActionRef.current = action;
       setInput('');
+      selectionRef.current = null;
       await sendTurn(action);
     },
     [isNarrating, sendTurn]
   );
 
+  const insertMarker = useCallback((marker: string) => {
+    setInput((current) => {
+      const selection = selectionRef.current;
+
+      if (!selection) {
+        return current + marker;
+      }
+
+      const next =
+        current.slice(0, selection.start) +
+        marker +
+        current.slice(selection.end);
+
+      selectionRef.current = {
+        start: selection.start + marker.length,
+        end: selection.start + marker.length,
+      };
+
+      return next;
+    });
+
+    inputRef.current?.focus();
+  }, []);
+
   const submitCurrent = useCallback(() => {
-    void submit(input, inputMode);
-  }, [input, inputMode, submit]);
+    void submit(input);
+  }, [input, submit]);
 
   const retry = useCallback(async () => {
     const action = lastActionRef.current;
@@ -198,7 +220,7 @@ export default function StoryScreen() {
               </Text>
               <AppButton
                 label="Kan waits for Itachi"
-                onPress={() => void submit('Kan waits for Itachi in the rain.', 'action')}
+                onPress={() => void submit('Kan waits for Itachi in the rain.')}
                 style={styles.seedButton}
               />
             </SurfaceCard>
@@ -290,55 +312,29 @@ export default function StoryScreen() {
         >
           <View style={styles.modeRow}>
             <Pressable
-              accessibilityLabel="Speech input mode"
+              accessibilityLabel="Insert speech quotation mark"
               accessibilityRole="button"
-              accessibilityState={{ checked: inputMode === 'speech' }}
-              onPress={() => setInputMode('speech')}
+              onPress={() => insertMarker('"')}
               style={({ pressed }) => [
                 styles.modeButton,
-                inputMode === 'speech' && styles.modeButtonActive,
                 pressed && styles.pressed,
               ]}
             >
-              <MessageCircle
-                color={inputMode === 'speech' ? colors.onAccent : colors.textMuted}
-                size={13}
-                strokeWidth={2}
-              />
-              <Text
-                style={[
-                  styles.modeLabel,
-                  inputMode === 'speech' && styles.modeLabelActive,
-                ]}
-              >
-                Speech
-              </Text>
+              <MessageCircle color={colors.textMuted} size={13} strokeWidth={2} />
+              <Text style={styles.modeLabel}>Speech</Text>
             </Pressable>
 
             <Pressable
-              accessibilityLabel="Action input mode"
+              accessibilityLabel="Insert action asterisk"
               accessibilityRole="button"
-              accessibilityState={{ checked: inputMode === 'action' }}
-              onPress={() => setInputMode('action')}
+              onPress={() => insertMarker('*')}
               style={({ pressed }) => [
                 styles.modeButton,
-                inputMode === 'action' && styles.modeButtonActive,
                 pressed && styles.pressed,
               ]}
             >
-              <Sword
-                color={inputMode === 'action' ? colors.onAccent : colors.textMuted}
-                size={13}
-                strokeWidth={2}
-              />
-              <Text
-                style={[
-                  styles.modeLabel,
-                  inputMode === 'action' && styles.modeLabelActive,
-                ]}
-              >
-                Action
-              </Text>
+              <Sword color={colors.textMuted} size={13} strokeWidth={2} />
+              <Text style={styles.modeLabel}>Action</Text>
             </Pressable>
           </View>
 
@@ -390,7 +386,14 @@ export default function StoryScreen() {
               maxLength={1000}
               multiline
               onChangeText={setInput}
-              placeholder={'Action and "speech" in one line'}
+              onSelectionChange={(event) => {
+                selectionRef.current = {
+                  start: event.nativeEvent.selection.start,
+                  end: event.nativeEvent.selection.end,
+                };
+              }}
+              ref={inputRef}
+              placeholder={'Use " for speech and * for action'}
               placeholderTextColor={colors.textDim}
               style={styles.composerInput}
               value={input}
@@ -417,98 +420,6 @@ export default function StoryScreen() {
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
-}
-
-type InputSegment = {
-  type: 'speech' | 'action';
-  text: string;
-};
-
-function formatPlayerInput(value: string, mode: InputMode) {
-  const normalized = value
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .trim();
-
-  if (!normalized) {
-    return '';
-  }
-
-  const segments = parseInputSegments(normalized);
-  const hasSpeech = segments.some((segment) => segment.type === 'speech');
-  const hasAction = segments.some((segment) => segment.type === 'action');
-
-  if (hasSpeech && hasAction) {
-    return segments
-      .map((segment) =>
-        segment.type === 'speech'
-          ? `"${segment.text}"`
-          : `**${cleanActionText(segment.text)}**`
-      )
-      .join(' ');
-  }
-
-  if (hasSpeech) {
-    return segments
-      .filter((segment) => segment.type === 'speech')
-      .map((segment) => `"${segment.text}"`)
-      .join(' ');
-  }
-
-  if (hasAction && segments.length > 1) {
-    return segments
-      .filter((segment) => segment.type === 'action')
-      .map((segment) => `**${cleanActionText(segment.text)}**`)
-      .join(' ');
-  }
-
-  const cleaned = normalized
-    .replace(/^"+|"+$/g, '')
-    .replace(/^\*\*+|\*\*+$/g, '')
-    .trim();
-
-  if (!cleaned) {
-    return '';
-  }
-
-  return mode === 'speech' ? `"${cleaned}"` : `**${cleaned}**`;
-}
-
-function cleanActionText(value: string) {
-  return value
-    .replace(/^\*\*+|\*\*+$/g, '')
-    .trim();
-}
-
-function parseInputSegments(value: string): InputSegment[] {
-  const segments: InputSegment[] = [];
-  const quotePattern = /"([^"]*)"/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = quotePattern.exec(value)) !== null) {
-    const before = value.slice(cursor, match.index).trim();
-
-    if (before) {
-      segments.push({ type: 'action', text: before });
-    }
-
-    const speech = match[1].trim();
-
-    if (speech) {
-      segments.push({ type: 'speech', text: speech });
-    }
-
-    cursor = match.index + match[0].length;
-  }
-
-  const after = value.slice(cursor).trim();
-
-  if (after) {
-    segments.push({ type: 'action', text: after });
-  }
-
-  return segments;
 }
 
 const styles = StyleSheet.create({
@@ -717,18 +628,11 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  modeButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
   modeLabel: {
     fontFamily: fonts.semibold,
     fontSize: 11,
     lineHeight: 15,
     color: colors.textMuted,
-  },
-  modeLabelActive: {
-    color: colors.onAccent,
   },
   composerShell: {
     paddingHorizontal: spacing.lg,
