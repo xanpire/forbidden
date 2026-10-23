@@ -13,6 +13,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import {
   CircleAlert,
@@ -70,6 +76,12 @@ export default function StoryScreen() {
   const [input, setInput] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const imageScale = useSharedValue(1);
+  const imageTranslateX = useSharedValue(0);
+  const imageTranslateY = useSharedValue(0);
+  const gestureStartScale = useSharedValue(1);
+  const gestureStartTranslateX = useSharedValue(0);
+  const gestureStartTranslateY = useSharedValue(0);
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
@@ -116,6 +128,51 @@ export default function StoryScreen() {
     },
     [isNarrating, sendTurn]
   );
+
+  const resetImageZoom = useCallback(() => {
+    imageScale.value = withTiming(1);
+    imageTranslateX.value = withTiming(0);
+    imageTranslateY.value = withTiming(0);
+  }, [imageScale, imageTranslateX, imageTranslateY]);
+
+  const imagePinchGesture = Gesture.Pinch()
+    .onBegin(() => {
+      gestureStartScale.value = imageScale.value;
+    })
+    .onUpdate((event) => {
+      const nextScale = gestureStartScale.value * event.scale;
+      imageScale.value = Math.min(5, Math.max(1, nextScale));
+    });
+
+  const imagePanGesture = Gesture.Pan()
+    .onBegin(() => {
+      gestureStartTranslateX.value = imageTranslateX.value;
+      gestureStartTranslateY.value = imageTranslateY.value;
+    })
+    .onUpdate((event) => {
+      if (imageScale.value <= 1) {
+        return;
+      }
+
+      imageTranslateX.value = gestureStartTranslateX.value + event.translationX;
+      imageTranslateY.value = gestureStartTranslateY.value + event.translationY;
+    });
+
+  const imageDoubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      imageScale.value = withTiming(1);
+      imageTranslateX.value = withTiming(0);
+      imageTranslateY.value = withTiming(0);
+    });
+
+  const fullscreenImageStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: imageTranslateX.value },
+      { translateY: imageTranslateY.value },
+      { scale: imageScale.value },
+    ],
+  }));
 
   const generateSceneImage = useCallback(async () => {
     if (!db || isGeneratingImage || !apiKey) {
@@ -300,7 +357,10 @@ export default function StoryScreen() {
                   <Pressable
                     accessibilityLabel="Open generated story image"
                     accessibilityRole="imagebutton"
-                    onPress={() => setSelectedImage(message.image)}
+                    onPress={() => {
+                      resetImageZoom();
+                      setSelectedImage(message.image);
+                    }}
                   >
                     <Image
                       accessibilityLabel="Generated story scene"
@@ -500,7 +560,10 @@ export default function StoryScreen() {
 
       <Modal
         animationType="fade"
-        onRequestClose={() => setSelectedImage(null)}
+        onRequestClose={() => {
+          resetImageZoom();
+          setSelectedImage(null);
+        }}
         transparent
         visible={Boolean(selectedImage)}
       >
@@ -518,12 +581,20 @@ export default function StoryScreen() {
 
           {selectedImage ? (
             <>
-              <Image
-                accessibilityLabel="Generated story scene"
-                resizeMode="contain"
-                source={{ uri: selectedImage }}
-                style={styles.fullscreenImage}
-              />
+              <GestureDetector
+                gesture={Gesture.Simultaneous(
+                  imagePinchGesture,
+                  imagePanGesture,
+                  imageDoubleTapGesture
+                )}
+              >
+                <Animated.Image
+                  accessibilityLabel="Generated story scene"
+                  resizeMode="contain"
+                  source={{ uri: selectedImage }}
+                  style={[styles.fullscreenImage, fullscreenImageStyle]}
+                />
+              </GestureDetector>
 
               <View
                 style={[
@@ -535,19 +606,23 @@ export default function StoryScreen() {
                   compact
                   icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
                   label="Download"
-                  onPress={() =>
+                  onPress={() => {
                     downloadImage(
                       `kan-scene-${Date.now()}.jpg`,
                       selectedImage
-                    )
-                  }
+                    );
+                    resetImageZoom();
+                  }}
                   style={styles.imageActionButton}
                 />
                 <AppButton
                   compact
                   icon={<X color={colors.text} size={15} strokeWidth={2} />}
                   label="Close"
-                  onPress={() => setSelectedImage(null)}
+                  onPress={() => {
+                    resetImageZoom();
+                    setSelectedImage(null);
+                  }}
                   style={styles.imageActionButton}
                   variant="secondary"
                 />
