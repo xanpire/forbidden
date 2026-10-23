@@ -2,6 +2,8 @@ import { Image } from 'react-native';
 
 const kanNoCloak = require('../../assets/images/kan-no-cloak.jpg');
 const kanAkatsuki = require('../../assets/images/kan-akatsuki.jpg');
+const kanFaceNoCloak = require('../../assets/images/kan-face-no-cloak.jpg');
+const kanFaceAkatsuki = require('../../assets/images/kan-face-akatsuki.jpg');
 
 let cachedReferences: Promise<string[]> | null = null;
 
@@ -10,6 +12,8 @@ export function loadKanReferenceImages() {
     cachedReferences = Promise.all([
       toDataUri(Image.resolveAssetSource(kanNoCloak).uri),
       toDataUri(Image.resolveAssetSource(kanAkatsuki).uri),
+      toDataUri(Image.resolveAssetSource(kanFaceNoCloak).uri),
+      toDataUri(Image.resolveAssetSource(kanFaceAkatsuki).uri),
     ]).then((references) => references.filter(Boolean));
   }
 
