@@ -84,6 +84,7 @@ type GameContextValue = {
     patch: Partial<Pick<EventRecord, 'summary' | 'tags' | 'importance' | 'pinned'>>
   ) => Promise<void>;
   deleteMemory: (eventId: string) => Promise<void>;
+  attachImage: (logId: string, image: string) => Promise<void>;
   addMemory: (
     summary: string,
     tags: string[],
@@ -667,6 +668,30 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const attachImage = useCallback(
+    async (logId: string, image: string) => {
+      if (backgroundPromiseRef.current) {
+        await backgroundPromiseRef.current;
+      }
+
+      const current = dbRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const rawLog = current.rawLog.map((entry) =>
+        entry.id === logId ? { ...entry, image } : entry
+      );
+
+      await commitDb({
+        ...current,
+        rawLog,
+      });
+    },
+    [commitDb]
+  );
+
   const addMemory = useCallback(
     async (summary: string, tags: string[], importance: 1 | 2 | 3 | 4 | 5) => {
       const current = dbRef.current;
@@ -726,6 +751,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       toggleMemoryPin,
       editMemory,
       deleteMemory,
+      attachImage,
       addMemory,
     }),
     [
@@ -734,6 +760,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       createNewSlot,
       db,
       deleteMemory,
+      attachImage,
       deleteSlotById,
       duplicateSlotById,
       editMemory,

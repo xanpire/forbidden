@@ -162,7 +162,8 @@ export async function generateImage({
     resolution: '1K',
     aspect_ratio: '16:9',
     quality: 'high',
-    output_format: 'png',
+    output_format: 'jpeg',
+    output_compression: 80,
   };
 
   let response = await fetch(IMAGES_URL, {

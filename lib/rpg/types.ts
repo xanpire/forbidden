@@ -70,6 +70,7 @@ export type RawLogEntry = {
   scene: string;
   inStoryDate: CalendarDate;
   createdAt: number;
+  image?: string | null;
 };
 
 export type EntityRecord = {

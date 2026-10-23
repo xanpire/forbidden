@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -36,6 +35,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
+import { useToast } from '@/components/Toast';
 import { buildSceneImagePrompt } from '@/lib/rpg/image';
 import { generateImage } from '@/lib/openrouter';
 
@@ -43,6 +43,7 @@ type StoryMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  image: string | null;
 };
 
 export default function StoryScreen() {
@@ -58,12 +59,12 @@ export default function StoryScreen() {
     sendTurn,
     regenerate,
     undoLastTurn,
+    attachImage,
   } = useGame();
+  const { showToast } = useToast();
 
   const [input, setInput] = useState('');
-  const [imageUri, setImageUri] = useState<string | null>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [imageError, setImageError] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
@@ -81,6 +82,7 @@ export default function StoryScreen() {
         id: message.id,
         role: message.role === 'user' ? 'user' : 'assistant',
         content: message.content,
+        image: message.image ?? null,
       }));
   }, [db]);
 
@@ -115,8 +117,16 @@ export default function StoryScreen() {
       return;
     }
 
+    const latestAssistant = [...db.rawLog]
+      .reverse()
+      .find((message) => message.kind === 'story' && message.role === 'assistant');
+
+    if (!latestAssistant) {
+      showToast('Start the story before generating an image.', 'error');
+      return;
+    }
+
     setIsGeneratingImage(true);
-    setImageError(null);
 
     try {
       const prompt = buildSceneImagePrompt(db);
@@ -125,15 +135,15 @@ export default function StoryScreen() {
         model: db.settings.imageModel,
         prompt,
       });
-      setImageUri(result.dataUri);
+      await attachImage(latestAssistant.id, result.dataUri);
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'Could not generate the scene image.';
-      setImageError(message);
+      showToast(message, 'error');
     } finally {
       setIsGeneratingImage(false);
     }
-  }, [apiKey, db, isGeneratingImage]);
+  }, [apiKey, attachImage, db, isGeneratingImage, showToast]);
 
   const insertMarker = useCallback((marker: string) => {
     setInput((current) => {
@@ -281,6 +291,14 @@ export default function StoryScreen() {
                 >
                   {message.content}
                 </Text>
+                {message.image ? (
+                  <Image
+                    accessibilityLabel="Generated story scene"
+                    resizeMode="cover"
+                    source={{ uri: message.image }}
+                    style={styles.messageImage}
+                  />
+                ) : null}
               </View>
             </View>
           ))}
@@ -469,94 +487,11 @@ export default function StoryScreen() {
         </View>
       </SafeAreaView>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={() => {
-          setImageUri(null);
-          setImageError(null);
-        }}
-        transparent
-        visible={Boolean(imageUri || imageError)}
-      >
-        <View style={styles.imageOverlay}>
-          <Pressable
-            accessibilityLabel="Close image"
-            onPress={() => {
-              setImageUri(null);
-              setImageError(null);
-            }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.imageSheet}>
-            {imageUri ? (
-              <>
-                <Image
-                  accessibilityLabel="Generated story scene"
-                  resizeMode="contain"
-                  source={{ uri: imageUri }}
-                  style={styles.generatedImage}
-                />
-                <AppButton
-                  compact
-                  label="Regenerate image"
-                  loading={isGeneratingImage}
-                  onPress={() => void generateSceneImage()}
-                  style={styles.imageButton}
-                />
-              </>
-            ) : (
-              <View style={styles.imageErrorRow}>
-                <CircleAlert color={colors.danger} size={16} strokeWidth={2} />
-                <Text style={styles.imageErrorText}>{imageError}</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  imageOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl,
-    backgroundColor: colors.overlay,
-  },
-  imageSheet: {
-    width: '100%',
-    maxWidth: 640,
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceRaised,
-  },
-  generatedImage: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    borderRadius: radius.lg,
-    backgroundColor: colors.background,
-  },
-  imageButton: {
-    alignSelf: 'center',
-    minWidth: 168,
-  },
-  imageErrorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  imageErrorText: {
-    flex: 1,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: colors.textMuted,
-  },
   root: {
     flex: 1,
     backgroundColor: colors.background,
@@ -685,6 +620,13 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: radius.lg,
     borderWidth: 1,
+    gap: 10,
+  },
+  messageImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
   },
   userBubble: {
     backgroundColor: colors.accent,
