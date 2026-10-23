@@ -80,6 +80,11 @@ export type EntityRecord = {
   type: EntityType;
   aliases: string[];
   birthday?: { month: number; day: number };
+  birthYear?: number;
+  age?: number;
+  role?: string;
+  personality?: string;
+  speechStyle?: string;
   status?: string;
   notes?: string;
   mood?: string;
@@ -256,6 +261,10 @@ export type TurnDiff = {
   };
   entities?: {
     name: string;
+    age?: number;
+    role?: string;
+    personality?: string;
+    speechStyle?: string;
     mood?: string;
     appearance?: string;
   }[];

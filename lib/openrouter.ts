@@ -197,6 +197,21 @@ export async function generateImage({
     signal,
   });
 
+  if ((response.status === 400 || response.status === 422) && references.length > 2) {
+    response = await fetch(IMAGES_URL, {
+      method: 'POST',
+      headers: buildHeaders(apiKey, false),
+      body: JSON.stringify({
+        ...fullBody,
+        input_references: references.slice(0, 2).map((url) => ({
+          type: 'image_url',
+          image_url: { url },
+        })),
+      }),
+      signal,
+    });
+  }
+
   if ((response.status === 400 || response.status === 422) && references.length > 0) {
     const withoutReferences = { ...fullBody };
     delete withoutReferences.input_references;

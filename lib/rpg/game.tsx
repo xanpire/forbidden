@@ -85,11 +85,6 @@ type GameContextValue = {
   ) => Promise<void>;
   deleteMemory: (eventId: string) => Promise<void>;
   attachImage: (logId: string, image: string) => Promise<void>;
-  addMemory: (
-    summary: string,
-    tags: string[],
-    importance: 1 | 2 | 3 | 4 | 5
-  ) => Promise<void>;
 };
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -692,35 +687,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
-  const addMemory = useCallback(
-    async (summary: string, tags: string[], importance: 1 | 2 | 3 | 4 | 5) => {
-      const current = dbRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const event: EventRecord = {
-        id: makeId('event'),
-        chapter: current.state.chapter,
-        scene: current.state.scene,
-        inStoryDate: current.state.inStoryDate,
-        summary,
-        importance,
-        tags,
-        pinned: false,
-        sourceLogId: null,
-        createdAt: Date.now(),
-      };
-
-      await commitDb({
-        ...current,
-        events: [...current.events, event],
-      });
-    },
-    [commitDb]
-  );
-
   const value = useMemo<GameContextValue>(
     () => ({
       db,
@@ -752,10 +718,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       editMemory,
       deleteMemory,
       attachImage,
-      addMemory,
     }),
     [
-      addMemory,
       apiKey,
       createNewSlot,
       db,

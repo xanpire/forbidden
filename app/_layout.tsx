@@ -11,6 +11,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ToastProvider } from '@/components/Toast';
@@ -41,10 +42,11 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <GameProvider>
-        <ToastProvider>
-          <View style={styles.root}>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <GameProvider>
+          <ToastProvider>
+            <View style={styles.root}>
             <Stack
               screenOptions={{
                 headerShown: false,
@@ -56,10 +58,11 @@ export default function RootLayout() {
               <Stack.Screen name="+not-found" />
             </Stack>
             <StatusBar backgroundColor={colors.background} style="light" />
-          </View>
-        </ToastProvider>
-      </GameProvider>
-    </SafeAreaProvider>
+            </View>
+          </ToastProvider>
+        </GameProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

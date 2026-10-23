@@ -161,6 +161,7 @@ type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
 
 function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   const next = { ...db, state: { ...db.state } };
+  const previousDate = db.state.inStoryDate;
 
   if (typeof state.mood === 'string' && state.mood.trim()) {
     next.state.mood = state.mood.trim();
@@ -207,10 +208,18 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (state.inStoryDate) {
-    next.state.inStoryDate = normalizeDate(
-      state.inStoryDate,
-      next.state.inStoryDate
-    );
+    const nextDate = normalizeDate(state.inStoryDate, next.state.inStoryDate);
+    const yearDelta = nextDate.year - previousDate.year;
+
+    next.state.inStoryDate = nextDate;
+
+    if (yearDelta > 0) {
+      next.entities = next.entities.map((entity) =>
+        entity.birthYear === undefined && entity.age !== undefined
+          ? { ...entity, age: entity.age + yearDelta }
+          : entity
+      );
+    }
   }
 
   if (typeof state.canonPoint === 'string' && state.canonPoint.trim()) {
@@ -251,6 +260,14 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
       name,
       type: 'character' as const,
       aliases: [],
+      birthYear:
+        entity.age !== undefined
+          ? db.state.inStoryDate.year - entity.age
+          : undefined,
+      age: entity.age,
+      role: entity.role?.trim() || 'Unknown',
+      personality: entity.personality?.trim() || 'Unknown',
+      speechStyle: entity.speechStyle?.trim() || 'Unknown',
       status: 'Newly met',
       notes: '',
       mood: entity.mood?.trim() || 'Unknown',
@@ -268,9 +285,18 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
   const existing = entities[existingIndex];
 
   const nextMood = entity.mood?.trim() || existing.mood;
+  const nextAge = entity.age !== undefined ? entity.age : existing.age;
 
   entities[existingIndex] = {
     ...existing,
+    age: nextAge,
+    birthYear:
+      entity.age !== undefined
+        ? db.state.inStoryDate.year - entity.age
+        : existing.birthYear,
+    role: entity.role?.trim() || existing.role,
+    personality: entity.personality?.trim() || existing.personality,
+    speechStyle: entity.speechStyle?.trim() || existing.speechStyle,
     mood: nextMood,
     appearance: entity.appearance?.trim() || existing.appearance,
   };

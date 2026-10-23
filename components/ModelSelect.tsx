@@ -48,7 +48,7 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
               name: model.name,
               contextLength: 0,
               promptPrice: null,
-              recommended: false,
+              recommended: model.supportsImageInput,
             }))
           : await fetchOpenRouterModels();
 
@@ -204,9 +204,14 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
                     ]}
                   >
                     <View style={styles.modelCopy}>
-                      <Text numberOfLines={1} style={styles.modelName}>
-                        {model.name}
-                      </Text>
+                      <View style={styles.modelTitleRow}>
+                        <Text numberOfLines={1} style={styles.modelName}>
+                          {model.name}
+                        </Text>
+                        {kind === 'image' && model.recommended ? (
+                          <Text style={styles.referenceBadge}>refs</Text>
+                        ) : null}
+                      </View>
                       <Text numberOfLines={1} style={styles.modelId}>
                         {model.id}
                       </Text>
@@ -373,6 +378,18 @@ const styles = StyleSheet.create({
   },
   modelCopy: {
     gap: 2,
+  },
+  modelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  referenceBadge: {
+    fontFamily: fonts.semibold,
+    fontSize: 8,
+    lineHeight: 11,
+    color: colors.accent,
+    textTransform: 'uppercase',
   },
   modelName: {
     fontFamily: fonts.semibold,

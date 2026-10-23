@@ -192,7 +192,10 @@ export default function StoryScreen() {
 
     try {
       const prompt = buildSceneImagePrompt(db);
-      const inputReferences = await loadKanReferenceImages();
+      const wearsAkatsukiCloak = db.state.inventory.some((item) =>
+        /akatsuki cloak/i.test(item)
+      );
+      const inputReferences = await loadKanReferenceImages(wearsAkatsukiCloak);
       const result = await generateImage({
         apiKey,
         model: db.settings.imageModel,

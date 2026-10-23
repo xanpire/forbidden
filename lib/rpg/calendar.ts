@@ -34,7 +34,7 @@ export function dateKey(date: CalendarDate) {
 }
 
 export function formatDate(date: CalendarDate) {
-  return `Day ${date.day}, ${monthName(date.month)} · ${capitalize(date.timeOfDay)}`;
+  return `Year ${date.year} · Day ${date.day}, ${monthName(date.month)} · ${capitalize(date.timeOfDay)}`;
 }
 
 export function formatShortDate(date: CalendarDate) {

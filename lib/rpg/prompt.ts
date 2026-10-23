@@ -32,6 +32,8 @@ NPC INTEGRITY
 - NPCs have private goals, secrets, biases, and parallel stories. They may lie, refuse, disagree, or pursue their own objectives.
 - Relationships must be earned. NPCs do not instantly trust, love, or agree with Kan.
 - Minor NPCs should still feel like people with their own concerns.
+- Create original NPCs when the world needs them: villagers, shinobi, merchants, rivals, clients, enemies.
+- Canon strength is real. Powerful characters stay powerful, weak characters stay limited, and no one knows events that have not happened yet.
 
 LITERARY NARRATION
 - Show, don't tell. Use sensory detail: weather, smell, sound, weight, distance.
@@ -77,7 +79,7 @@ Allowed top-level fields:
     "scene": string
   },
   "entities": [
-    { "name": string, "mood": string, "appearance": string }
+    { "name": string, "age": number, "role": string, "personality": string, "speechStyle": string, "mood": string, "appearance": string }
   ],
   "jutsuUsed": [
     { "name": string, "user": string, "chakraNature": string, "effect": string, "visual": string, "description": string }
@@ -103,6 +105,7 @@ Rules:
 - Update Kan's mood when the story clearly changes it.
 - Update NPC moods when their behavior or circumstances change.
 - Only update appearance when the story clearly changes it.
+- Give every new recurring original character an entities entry with age, role, personality, speechStyle, mood, and appearance.
 - Record any jutsu used by Kan or an NPC in jutsuUsed.
 - For each jutsu, include chakraNature, effect, and visual. Keep them short, concrete, and consistent with earlier uses.
 - chakraNature must use one canonical category: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
@@ -373,8 +376,18 @@ function formatEntities(db: AppDatabase) {
   return [
     'CHARACTERS',
     ...characters.map(
-      (entity) =>
-        `- ${entity.name}: mood ${entity.mood ?? 'unknown'}; appearance ${entity.appearance ?? 'unknown'}`
+      (entity) => {
+        const age =
+          entity.birthYear !== undefined && entity.birthday
+            ? calculateAge(
+                db.state.inStoryDate,
+                entity.birthday,
+                entity.birthYear
+              )
+            : entity.age;
+
+        return `- ${entity.name}${age !== undefined ? `, age ${age}` : ''}${entity.role ? `, ${entity.role}` : ''}: personality ${entity.personality ?? 'unknown'}; speech ${entity.speechStyle ?? 'unknown'}; mood ${entity.mood ?? 'unknown'}; appearance ${entity.appearance ?? 'unknown'}`;
+      }
     ),
   ].join('\n');
 }

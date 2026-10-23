@@ -6,13 +6,14 @@ import { Search, UserRound, Users } from 'lucide-react-native';
 import { AppBackground } from '@/components/AppBackground';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { formatShortDate } from '@/lib/rpg/calendar';
+import { calculateAge, formatShortDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import type { BondRecord, EntityRecord } from '@/lib/rpg/types';
 
 type CharacterCard = {
   entity: EntityRecord;
   bond: BondRecord | null;
+  age?: number;
 };
 
 export default function CharactersScreen() {
@@ -32,6 +33,14 @@ export default function CharactersScreen() {
         entity,
         bond:
           db.bonds.find((bond) => bond.entityId === entity.id) ?? null,
+        age:
+          entity.birthYear !== undefined && entity.birthday
+            ? calculateAge(
+                db.state.inStoryDate,
+                entity.birthday,
+                entity.birthYear
+              )
+            : entity.age,
       }))
       .filter(({ entity, bond }) => {
         if (!term) {
@@ -102,7 +111,7 @@ export default function CharactersScreen() {
               </Text>
             </SurfaceCard>
           ) : (
-            characters.map(({ entity, bond }) => (
+            characters.map(({ entity, bond, age }) => (
               <SurfaceCard key={entity.id} style={styles.characterCard}>
                 <View style={styles.topRow}>
                   <View style={styles.iconWrap}>
@@ -149,6 +158,27 @@ export default function CharactersScreen() {
                     })}
                   </View>
                 ) : null}
+
+                <View style={styles.detailBlock}>
+                  <Text style={styles.detailLabel}>Age / Role</Text>
+                  <Text style={styles.detailValue}>
+                    {age !== undefined ? `Age ${age}` : 'Age unknown'} · {entity.role ?? 'Role unknown'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailBlock}>
+                  <Text style={styles.detailLabel}>Personality</Text>
+                  <Text style={styles.detailValue}>
+                    {entity.personality ?? 'Unknown'}
+                  </Text>
+                </View>
+
+                <View style={styles.detailBlock}>
+                  <Text style={styles.detailLabel}>Speech style</Text>
+                  <Text style={styles.detailValue}>
+                    {entity.speechStyle ?? 'Unknown'}
+                  </Text>
+                </View>
 
                 <View style={styles.detailBlock}>
                   <Text style={styles.detailLabel}>Mood</Text>

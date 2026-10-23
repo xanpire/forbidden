@@ -5,19 +5,30 @@ const kanAkatsuki = require('../../assets/images/kan-akatsuki.jpg');
 const kanFaceNoCloak = require('../../assets/images/kan-face-no-cloak.jpg');
 const kanFaceAkatsuki = require('../../assets/images/kan-face-akatsuki.jpg');
 
-let cachedReferences: Promise<string[]> | null = null;
+const referenceCache = new Map<boolean, Promise<string[]>>();
 
-export function loadKanReferenceImages() {
-  if (!cachedReferences) {
-    cachedReferences = Promise.all([
-      toDataUri(Image.resolveAssetSource(kanNoCloak).uri),
-      toDataUri(Image.resolveAssetSource(kanAkatsuki).uri),
-      toDataUri(Image.resolveAssetSource(kanFaceNoCloak).uri),
-      toDataUri(Image.resolveAssetSource(kanFaceAkatsuki).uri),
-    ]).then((references) => references.filter(Boolean));
+export function loadKanReferenceImages(wearsAkatsukiCloak: boolean) {
+  const cached = referenceCache.get(wearsAkatsukiCloak);
+
+  if (cached) {
+    return cached;
   }
 
-  return cachedReferences;
+  const currentFull = wearsAkatsukiCloak ? kanAkatsuki : kanNoCloak;
+  const currentFace = wearsAkatsukiCloak ? kanFaceAkatsuki : kanFaceNoCloak;
+  const alternateFull = wearsAkatsukiCloak ? kanNoCloak : kanAkatsuki;
+  const alternateFace = wearsAkatsukiCloak ? kanFaceNoCloak : kanFaceAkatsuki;
+
+  const references = Promise.all([
+    toDataUri(Image.resolveAssetSource(currentFull).uri),
+    toDataUri(Image.resolveAssetSource(currentFace).uri),
+    toDataUri(Image.resolveAssetSource(alternateFull).uri),
+    toDataUri(Image.resolveAssetSource(alternateFace).uri),
+  ]).then((values) => values.filter(Boolean));
+
+  referenceCache.set(wearsAkatsukiCloak, references);
+
+  return references;
 }
 
 async function toDataUri(uri: string) {
