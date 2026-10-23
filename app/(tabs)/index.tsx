@@ -870,8 +870,6 @@ const styles = StyleSheet.create({
   composerShell: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    borderTopWidth: 2,
-    borderTopColor: colors.accent,
     backgroundColor: colors.background,
   },
   composerRow: {

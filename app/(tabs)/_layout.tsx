@@ -20,6 +20,7 @@ export default function TabsLayout() {
         tabBarStyle: [
           styles.tabBar,
           {
+            borderTopColor: colors.accent,
             height: 58 + Math.max(insets.bottom, Platform.OS === 'web' ? 8 : 4),
             paddingBottom: Math.max(insets.bottom, 4),
           },
