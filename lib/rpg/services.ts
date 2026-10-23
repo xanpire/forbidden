@@ -118,6 +118,12 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     }
   }
 
+  if (Array.isArray(diff.jutsuUsed)) {
+    for (const jutsu of diff.jutsuUsed) {
+      next = applyJutsuDiff(next, jutsu);
+    }
+  }
+
   if (Array.isArray(diff.bonds)) {
     for (const bond of diff.bonds) {
       next = applyBondDiff(next, bond);
@@ -147,6 +153,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
 type StateDiff = NonNullable<TurnDiff['state']>;
 type EntityDiff = NonNullable<TurnDiff['entities']>[number];
+type JutsuDiff = NonNullable<TurnDiff['jutsuUsed']>[number];
 type BondDiff = NonNullable<TurnDiff['bonds']>[number];
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
 type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
@@ -276,6 +283,58 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
     ...db,
     state: nextState,
     entities,
+  };
+}
+
+function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
+  if (!jutsu?.name || typeof jutsu.name !== 'string' || !jutsu.user) {
+    return db;
+  }
+
+  const name = jutsu.name.trim();
+  const user = jutsu.user.trim();
+
+  if (!name || !user) {
+    return db;
+  }
+
+  const existingIndex = db.jutsuRecords.findIndex(
+    (item) =>
+      item.name.toLowerCase() === name.toLowerCase() &&
+      item.user.toLowerCase() === user.toLowerCase()
+  );
+
+  if (existingIndex === -1) {
+    const record = {
+      id: makeId('jutsu'),
+      name,
+      user,
+      firstSeen: db.state.inStoryDate,
+      lastSeen: db.state.inStoryDate,
+      timesUsed: 1,
+      description: jutsu.description?.trim() || '',
+      tags: [],
+    };
+
+    return {
+      ...db,
+      jutsuRecords: [...db.jutsuRecords, record],
+    };
+  }
+
+  const jutsuRecords = [...db.jutsuRecords];
+  const existing = jutsuRecords[existingIndex];
+
+  jutsuRecords[existingIndex] = {
+    ...existing,
+    lastSeen: db.state.inStoryDate,
+    timesUsed: existing.timesUsed + 1,
+    description: jutsu.description?.trim() || existing.description,
+  };
+
+  return {
+    ...db,
+    jutsuRecords,
   };
 }
 

@@ -1,4 +1,4 @@
-import { formatDate } from './calendar';
+import { calculateAge, formatDate } from './calendar';
 import { estimateTokens } from '../openrouter';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
@@ -76,6 +76,9 @@ Allowed top-level fields:
   "entities": [
     { "name": string, "mood": string, "appearance": string }
   ],
+  "jutsuUsed": [
+    { "name": string, "user": string, "description": string }
+  ],
   "bonds": [
     { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean }
   ],
@@ -97,6 +100,7 @@ Rules:
 - Update Kan's mood when the story clearly changes it.
 - Update NPC moods when their behavior or circumstances change.
 - Only update appearance when the story clearly changes it.
+- Record any jutsu used by Kan or an NPC in jutsuUsed.
 - Keep worldDescription to one or two concise sentences about the current state of the world.
 - If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.`;
 
@@ -318,6 +322,8 @@ function formatCharacterSheet(db: AppDatabase) {
     `Name: ${player.name}`,
     `Lineage: ${player.lineage.join(', ')}`,
     `Birthday: month ${player.birthday.month}, day ${player.birthday.day}`,
+    `Birth year: ${player.birthYear}`,
+    `Age: ${calculateAge(db.state.inStoryDate, player.birthday, player.birthYear)}`,
     `Rank/Role: ${player.rank} / ${player.role}`,
     `Team: ${player.team.join(', ')}`,
     `Sensei: ${player.sensei}`,

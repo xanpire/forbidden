@@ -19,7 +19,34 @@ export function formatDate(date: CalendarDate) {
 }
 
 export function formatShortDate(date: CalendarDate) {
-  return `Y${date.year}/M${date.month}/D${date.day} · ${capitalize(date.timeOfDay)}`;
+  return `Day ${date.day} · Month ${date.month} · Year ${date.year} · ${capitalize(date.timeOfDay)}`;
+}
+
+export function calculateAge(
+  date: CalendarDate,
+  birthday: { month: number; day: number },
+  birthYear: number
+) {
+  let age = date.year - birthYear;
+
+  if (
+    date.month < birthday.month ||
+    (date.month === birthday.month && date.day < birthday.day)
+  ) {
+    age -= 1;
+  }
+
+  return Math.max(0, age);
+}
+
+export function formatStoryDate(
+  date: CalendarDate,
+  birthday: { month: number; day: number },
+  birthYear: number
+) {
+  const age = calculateAge(date, birthday, birthYear);
+
+  return `Age ${age} · Day ${date.day} · Month ${date.month} · Year ${date.year} · ${capitalize(date.timeOfDay)}`;
 }
 
 function capitalize(value: string) {

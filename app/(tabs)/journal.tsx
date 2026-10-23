@@ -8,7 +8,7 @@ import { AppButton } from '@/components/AppButton';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { formatShortDate } from '@/lib/rpg/calendar';
+import { formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
 
@@ -149,7 +149,11 @@ export default function JournalScreen() {
                   Chapter {db.state.chapter} · {db.state.scene}
                 </Text>
                 <Text style={styles.cardMeta}>
-                  {db.state.location} · {formatShortDate(db.state.inStoryDate)}
+                  {db.state.location} · {formatStoryDate(
+                    db.state.inStoryDate,
+                    db.state.player.birthday,
+                    db.state.player.birthYear
+                  )}
                 </Text>
               </SurfaceCard>
 
@@ -225,7 +229,11 @@ export default function JournalScreen() {
                 <Text style={styles.cardLabel}>Location</Text>
                 <Text style={styles.cardValue}>{db.state.location}</Text>
                 <Text style={styles.cardMeta}>
-                  {formatShortDate(db.state.inStoryDate)}
+                  {formatStoryDate(
+                    db.state.inStoryDate,
+                    db.state.player.birthday,
+                    db.state.player.birthYear
+                  )}
                 </Text>
               </SurfaceCard>
 

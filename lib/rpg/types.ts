@@ -36,6 +36,7 @@ export type PlayerSheet = {
   name: string;
   lineage: string[];
   birthday: { month: number; day: number };
+  birthYear: number;
   rank: string;
   role: string;
   team: string[];
@@ -97,6 +98,17 @@ export type EventRecord = {
   pinned: boolean;
   sourceLogId: string | null;
   createdAt: number;
+};
+
+export type JutsuRecord = {
+  id: string;
+  name: string;
+  user: string;
+  firstSeen: CalendarDate;
+  lastSeen: CalendarDate;
+  timesUsed: number;
+  description: string;
+  tags: string[];
 };
 
 export type EventEntityRecord = {
@@ -197,6 +209,7 @@ export type AppDatabase = {
   settings: Settings;
   rawLog: RawLogEntry[];
   entities: EntityRecord[];
+  jutsuRecords: JutsuRecord[];
   events: EventRecord[];
   eventEntities: EventEntityRecord[];
   bonds: BondRecord[];
@@ -242,6 +255,11 @@ export type TurnDiff = {
     name: string;
     mood?: string;
     appearance?: string;
+  }[];
+  jutsuUsed?: {
+    name: string;
+    user: string;
+    description?: string;
   }[];
   bonds?: {
     character: string;

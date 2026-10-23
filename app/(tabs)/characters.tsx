@@ -73,20 +73,20 @@ export default function CharactersScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.heading}>
-            <Text style={styles.title}>Characters</Text>
+            <Text style={styles.title}>Bonds</Text>
             <Text style={styles.subtitle}>
-              Moods and appearances shaped by the story.
+              Moods, appearances, and bonds shaped by the story.
             </Text>
           </View>
 
           <View style={styles.searchWrap}>
             <Search color={colors.textDim} size={16} strokeWidth={2} />
             <TextInput
-              accessibilityLabel="Search characters"
+              accessibilityLabel="Search bonds"
               autoCapitalize="none"
               autoCorrect={false}
               onChangeText={setQuery}
-              placeholder="Search characters"
+              placeholder="Search bonds"
               placeholderTextColor={colors.textDim}
               style={styles.searchInput}
               value={query}
@@ -96,7 +96,7 @@ export default function CharactersScreen() {
           {characters.length === 0 ? (
             <SurfaceCard style={styles.emptyCard}>
               <Users color={colors.textDim} size={18} strokeWidth={2} />
-              <Text style={styles.emptyTitle}>No characters found</Text>
+              <Text style={styles.emptyTitle}>No bonds found</Text>
               <Text style={styles.emptyBody}>
                 People appear here as the story introduces them.
               </Text>

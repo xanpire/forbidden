@@ -7,6 +7,7 @@ import type {
   EntityRecord,
   EventRecord,
   FactRecord,
+  JutsuRecord,
   LoreRecord,
   ThreadRecord,
 } from './types';
@@ -110,6 +111,29 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     sourceLogId: null,
     createdAt: now,
   };
+
+  const jutsuRecords: JutsuRecord[] = [
+    {
+      id: makeId('jutsu'),
+      name: 'ANBU taijutsu',
+      user: 'Kan',
+      firstSeen: DEFAULT_DATE,
+      lastSeen: DEFAULT_DATE,
+      timesUsed: 1,
+      description: 'Close-quarters ANBU hand-to-hand combat focused on speed, silence, and precision.',
+      tags: ['taijutsu', 'anbu', 'kan'],
+    },
+    {
+      id: makeId('jutsu'),
+      name: 'Fire Release',
+      user: 'Kan',
+      firstSeen: DEFAULT_DATE,
+      lastSeen: DEFAULT_DATE,
+      timesUsed: 1,
+      description: 'Uchiha-affinity fire techniques used for offense, signals, and pressure.',
+      tags: ['fire', 'uchiha', 'kan'],
+    },
+  ];
 
   const bonds: BondRecord[] = [
     {
@@ -293,6 +317,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     settings: DEFAULT_SETTINGS,
     rawLog: [],
     entities,
+    jutsuRecords,
     events: [openingEvent],
     eventEntities: [
       { eventId: openingEvent.id, entityId: KAN_ID, role: 'participant' },
@@ -309,6 +334,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
         name: 'Kan',
         lineage: ['Uchiha', 'Uzumaki'],
         birthday: { month: 6, day: 30 },
+        birthYear: 0,
         rank: 'ANBU',
         role: 'Missing shinobi',
         team: ['Hana Inuzuka', 'Izumi Uchiha'],

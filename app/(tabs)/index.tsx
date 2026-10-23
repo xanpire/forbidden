@@ -41,7 +41,7 @@ import { AppButton } from '@/components/AppButton';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { formatShortDate } from '@/lib/rpg/calendar';
+import { formatStoryDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
@@ -294,7 +294,13 @@ export default function StoryScreen() {
             </Text>
           </View>
           <View style={styles.statusChip}>
-            <Text style={styles.statusText}>{formatShortDate(state.inStoryDate)}</Text>
+            <Text numberOfLines={1} style={styles.statusText}>
+              {formatStoryDate(
+                state.inStoryDate,
+                state.player.birthday,
+                state.player.birthYear
+              )}
+            </Text>
           </View>
         </View>
 

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { BookOpen, ScrollText, Settings2, Users } from 'lucide-react-native';
+import { BookOpen, Flame, ScrollText, Settings2, Users } from 'lucide-react-native';
 import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,9 +38,18 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="characters"
         options={{
-          title: 'Characters',
+          title: 'Bonds',
           tabBarIcon: ({ color, focused }) => (
             <Users color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="jutsu"
+        options={{
+          title: 'Jutsu',
+          tabBarIcon: ({ color, focused }) => (
+            <Flame color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
           ),
         }}
       />

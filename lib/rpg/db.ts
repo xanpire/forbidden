@@ -282,6 +282,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       maxTokens: DEFAULT_SETTINGS.maxTokens,
     },
     rawLog: Array.isArray(db.rawLog) ? db.rawLog : [],
+    jutsuRecords: Array.isArray(db.jutsuRecords) ? db.jutsuRecords : [],
     entities: Array.isArray(db.entities)
       ? db.entities.map((entity) => ({
           ...entity,
@@ -358,7 +359,12 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
   }
 
   return {
-    player: state.player ?? seeded.player,
+    player: state.player
+      ? {
+          ...state.player,
+          birthYear: state.player.birthYear ?? seeded.player.birthYear,
+        }
+      : seeded.player,
     mood: state.mood ?? seeded.mood,
     worldDescription: state.worldDescription ?? seeded.worldDescription,
     jutsu: Array.isArray(state.jutsu) ? state.jutsu : seeded.jutsu,
