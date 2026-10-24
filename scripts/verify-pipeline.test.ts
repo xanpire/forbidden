@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { daysBetween } from '../lib/rpg/calendar';
-import { storyMessagesSinceLastSummary } from '../lib/rpg/services';
+import { storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import {
@@ -366,5 +366,33 @@ describe('summarize cadence', () => {
     };
 
     expect(storyMessagesSinceLastSummary(db)).toBe(0);
+  });
+});
+
+describe('summary text hygiene', () => {
+  test('trims mid-sentence truncation to the last complete sentence', () => {
+    const cut = 'Kan fled through the rain. Itachi followed without a word and the boar-masked ANBU captain attacked with Fire Style, but';
+    const trimmed = trimToSentence(cut);
+
+    expect(trimmed.endsWith('but')).toBe(false);
+    expect(trimmed).toBe('Kan fled through the rain.');
+  });
+
+  test('keeps complete text intact', () => {
+    const full = 'Kan fled through the rain. Itachi followed without a word.';
+    expect(trimToSentence(full)).toBe(full);
+  });
+
+  test('strips stray code fences and label lines', () => {
+    expect(trimToSentence('A clean summary.\n\n```json')).toBe('A clean summary.');
+    expect(trimToSentence('Chapter summary:\nAnother sentence here.')).toBe('Another sentence here.');
+  });
+
+  test('save summaries all end at sentence boundaries', () => {
+    const db = loadSave(SAVE_PATHS[1]);
+
+    for (const summary of db.summaries) {
+      expect(/[.!?\"]$/.test(summary.text.trim())).toBe(true);
+    }
   });
 });

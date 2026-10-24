@@ -364,6 +364,7 @@ export async function completeChat({
     temperature,
     max_tokens: maxTokens,
     stream: false,
+    reasoning: { exclude: true },
   };
 
   if (responseFormatJson) {
