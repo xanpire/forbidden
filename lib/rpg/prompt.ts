@@ -569,48 +569,100 @@ export function stripNarrationJson(raw: string): string {
   return narration;
 }
 
+const DIFF_KEY_PATTERN = /"(?:state|bonds|facts|threads|new_characters|image_worthy)"\s*:/;
+const DIFF_OBJECT_START = /\{\s*"(?:state|bonds|facts|threads|new_characters|image_worthy)"/g;
+const FENCE_OPEN = /```(?:json)?/g;
+const TRAILING_LABEL =
+  /^\s*\**\s*(?:state|json)\b[\w\s]{0,40}:\s*\**\s*$/i;
+
+function isDiffLike(content: string, parsed: Record<string, unknown> | null): boolean {
+  if (parsed && looksLikeStateDiff(parsed)) {
+    return true;
+  }
+
+  return DIFF_KEY_PATTERN.test(content);
+}
+
+function cleanNarration(narration: string): string {
+  let cleaned = narration.replace(FENCE_OPEN, '');
+
+  for (;;) {
+    const trimmedEnd = cleaned.replace(/[\s]+$/, '');
+    const lastLineStart = trimmedEnd.lastIndexOf('\n');
+    const lastLine = lastLineStart === -1 ? trimmedEnd : trimmedEnd.slice(lastLineStart + 1);
+
+    if (lastLine.trim() && TRAILING_LABEL.test(lastLine)) {
+      cleaned = trimmedEnd.slice(0, lastLineStart === -1 ? trimmedEnd.length : lastLineStart);
+      continue;
+    }
+
+    cleaned = trimmedEnd;
+    break;
+  }
+
+  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export function splitNarrationAndDiff(raw: string): {
   narration: string;
   inlineDiff: Record<string, unknown> | null;
 } {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/g;
-  let lastBlock: string | null = null;
-  let narrationEnd = raw.length;
-  let match: RegExpExecArray | null;
+  let junkStart = -1;
+  let inlineDiff: Record<string, unknown> | null = null;
 
-  while ((match = fenced.exec(raw)) !== null) {
-    lastBlock = match[1];
-    narrationEnd = match.index;
-  }
+  FENCE_OPEN.lastIndex = 0;
+  let fenceMatch: RegExpExecArray | null;
 
-  if (lastBlock !== null) {
-    const parsed = parseJsonBlock(lastBlock);
+  while ((fenceMatch = FENCE_OPEN.exec(raw)) !== null) {
+    const contentStart = fenceMatch.index + fenceMatch[0].length;
+    const closing = raw.indexOf('```', contentStart);
+    const content =
+      closing === -1 ? raw.slice(contentStart) : raw.slice(contentStart, closing);
+    const parsed = closing === -1 ? null : parseJsonBlock(content);
 
-    if (parsed) {
-      return {
-        narration: raw.slice(0, narrationEnd).trim(),
-        inlineDiff: parsed,
-      };
+    if (isDiffLike(content, parsed)) {
+      junkStart = fenceMatch.index;
+      inlineDiff = parsed && looksLikeStateDiff(parsed) ? parsed : null;
+
+      if (closing !== -1) {
+        FENCE_OPEN.lastIndex = closing + 3;
+      }
+    } else if (closing !== -1) {
+      FENCE_OPEN.lastIndex = closing + 3;
     }
   }
 
-  // Fallback: look for unfenced JSON at the tail (last { to final }).
-  const lastBrace = raw.lastIndexOf('}');
-  const firstBrace = raw.lastIndexOf('{', lastBrace);
+  if (junkStart === -1) {
+    DIFF_OBJECT_START.lastIndex = 0;
+    let markerMatch: RegExpExecArray | null;
+    let lastMarker = -1;
 
-  if (lastBrace !== -1 && firstBrace !== -1 && lastBrace > firstBrace) {
-    const candidate = raw.slice(firstBrace, lastBrace + 1);
-    const parsed = parseJsonBlock(candidate);
+    while ((markerMatch = DIFF_OBJECT_START.exec(raw)) !== null) {
+      const parsed = parseJsonBlock(raw.slice(markerMatch.index));
 
-    if (parsed && looksLikeStateDiff(parsed)) {
-      return {
-        narration: raw.slice(0, firstBrace).trim(),
-        inlineDiff: parsed,
-      };
+      if (parsed && looksLikeStateDiff(parsed)) {
+        junkStart = markerMatch.index;
+        inlineDiff = parsed;
+        break;
+      }
+
+      lastMarker = markerMatch.index;
+    }
+
+    if (junkStart === -1 && lastMarker !== -1) {
+      junkStart = lastMarker;
+      inlineDiff = null;
     }
   }
 
-  return { narration: raw.trim(), inlineDiff: null };
+  if (junkStart === -1) {
+    return { narration: cleanNarration(raw), inlineDiff: null };
+  }
+
+  return {
+    narration: cleanNarration(raw.slice(0, junkStart)),
+    inlineDiff,
+  };
 }
 
 function looksLikeStateDiff(obj: Record<string, unknown>): boolean {
