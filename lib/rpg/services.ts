@@ -65,8 +65,17 @@ export function convertInlineDiff(
     };
   }
 
-  if (sceneEnded) {
-    diff.scene = { ended: true };
+  const charactersPresent = Array.isArray(block.characters_present)
+    ? block.characters_present
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        .slice(0, 8)
+    : [];
+
+  if (sceneEnded || charactersPresent.length > 0) {
+    diff.scene = {
+      ended: sceneEnded,
+      ...(charactersPresent.length > 0 ? { entities: charactersPresent } : {}),
+    };
   }
 
   const state = block.state;
@@ -366,9 +375,32 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     next = recordSceneEvent(next, diff);
   }
 
+  if (Array.isArray(diff.scene?.entities) && diff.scene.entities.length > 0) {
+    next = recordPresence(next, diff.scene.entities);
+  }
+
   next.indices = buildIndices(next);
 
   return next;
+}
+
+function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
+  const lowerNames = new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
+
+  if (lowerNames.size === 0) {
+    return db;
+  }
+
+  return {
+    ...db,
+    entities: db.entities.map((entity) =>
+      entity.type === 'character' &&
+      (lowerNames.has(entity.name.toLowerCase()) ||
+        entity.aliases.some((alias) => lowerNames.has(alias.toLowerCase())))
+        ? { ...entity, lastSeen: db.state.inStoryDate }
+        : entity
+    ),
+  };
 }
 
 type StateDiff = NonNullable<TurnDiff['state']>;

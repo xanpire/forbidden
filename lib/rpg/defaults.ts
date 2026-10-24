@@ -5,11 +5,11 @@ export const DEFAULT_SETTINGS: Settings = {
   summaryModel: 'deepseek/deepseek-v4.1-flash-1017',
   extractionModel: 'deepseek/deepseek-v4.1-flash-1017',
   imageModel: 'google/gemini-3.1-flash-image',
-  contextMessages: 10,
+  contextMessages: 8,
   retrievalLimit: 4,
   autoSummarizeThreshold: 12,
   temperature: 0.7,
-  maxTokens: 900,
+  maxTokens: 1100,
 };
 
 export function emptyIndex(): MemoryIndex {

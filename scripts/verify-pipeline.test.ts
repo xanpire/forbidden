@@ -17,6 +17,7 @@ import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { daysBetween } from '../lib/rpg/calendar';
 import { storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
+import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import {
   appendStoryMessage,
@@ -394,5 +395,56 @@ describe('summary text hygiene', () => {
     for (const summary of db.summaries) {
       expect(/[.!?\"]$/.test(summary.text.trim())).toBe(true);
     }
+  });
+});
+
+describe('presence tracking and bonds ordering', () => {
+  test('characters_present marks entities as seen', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    const { diff } = convertInlineDiff({
+      characters_present: ['Itachi Uchiha'],
+      time: { days_passed: 2, time_of_day: 'morning' },
+    });
+
+    db = applyTurnDiff(db, diff);
+
+    const itachi = db.entities.find((entity) => entity.name === 'Itachi Uchiha');
+
+    expect(itachi?.lastSeen).toBeDefined();
+    expect(itachi?.lastSeen?.day).toBe(db.state.inStoryDate.day);
+    expect(itachi?.lastSeen?.timeOfDay).toBe('morning');
+  });
+
+  test('sleeping through the night advances exactly one day to morning', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const before = db.state.inStoryDate;
+
+    const { diff } = convertInlineDiff({
+      time: { days_passed: 1, time_of_day: 'morning' },
+    });
+
+    db = applyTurnDiff(db, diff);
+
+    expect(daysBetween(before, db.state.inStoryDate)).toBe(1);
+    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
+  });
+
+  test('narration schema documents sleep and characters_present', () => {
+    expect(NARRATION_SYSTEM).toContain('characters_present');
+    expect(NARRATION_SYSTEM).toContain('sleeps through the night');
+    expect(NARRATION_SYSTEM).toContain('days_passed is 1');
+  });
+
+  test('narration prompt does not duplicate the current action', () => {
+    const db = loadSave(SAVE_PATHS[1]);
+    const action = '"We move at dawn." *Kan checks his pack.*';
+
+    const prompt = buildNarrationPrompt(db, action, 10);
+    const dynamic = prompt.messages[1].content;
+
+    const occurrences = dynamic.split(action).length - 1;
+
+    expect(occurrences).toBe(1);
   });
 });

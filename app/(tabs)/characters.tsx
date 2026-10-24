@@ -16,6 +16,21 @@ type CharacterCard = {
   age?: number;
 };
 
+function dateValue(date: { year: number; month: number; day: number } | undefined | null) {
+  if (!date) {
+    return -1;
+  }
+
+  return date.year * 10000 + date.month * 100 + date.day;
+}
+
+function contactDate(card: CharacterCard) {
+  return Math.max(
+    dateValue(card.entity.lastSeen),
+    dateValue(card.bond?.updatedInStoryDate)
+  );
+}
+
 export default function CharactersScreen() {
   const { db } = useGame();
   const [query, setQuery] = useState('');
@@ -59,6 +74,13 @@ export default function CharactersScreen() {
 
         if (aPlayer !== bPlayer) {
           return bPlayer - aPlayer;
+        }
+
+        const aContact = contactDate(a);
+        const bContact = contactDate(b);
+
+        if (aContact !== bContact) {
+          return bContact - aContact;
         }
 
         const aMajor = a.bond?.isMajor ? 1 : 0;
@@ -203,9 +225,11 @@ export default function CharactersScreen() {
 
                 <View style={styles.footer}>
                   <Text style={styles.meta}>
-                    {bond
-                      ? `Updated ${formatShortDate(bond.updatedInStoryDate)}`
-                      : 'No bond yet'}
+                    {entity.lastSeen
+                      ? `Last seen ${formatShortDate(entity.lastSeen)}`
+                      : bond
+                        ? `Updated ${formatShortDate(bond.updatedInStoryDate)}`
+                        : 'No bond yet'}
                   </Text>
                   {bond?.isMajor ? (
                     <Text style={styles.majorTag}>Major bond</Text>

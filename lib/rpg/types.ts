@@ -89,6 +89,7 @@ export type EntityRecord = {
   notes?: string;
   mood?: string;
   appearance?: string;
+  lastSeen?: CalendarDate;
   tags: string[];
 };
 

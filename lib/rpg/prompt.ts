@@ -12,7 +12,7 @@ import type {
   ThreadRecord,
 } from './types';
 
-const NARRATION_SYSTEM = `You are the narrator and game master of an interactive novel set in the Naruto world. The player plays Kan. You control the world and every other character.
+export const NARRATION_SYSTEM = `You are the narrator and game master of an interactive novel set in the Naruto world. The player plays Kan. You control the world and every other character.
 
 CRITICAL EXECUTIVE DIRECTIVE (NEVER VIOLATE):
 You control the environment, the passage of time, and all NPCs. You DO NOT control Kan. You must NEVER speak, act, think, emote, or decide for Kan. Stop your response the moment Kan needs to react, speak, or take action.
@@ -88,12 +88,15 @@ STATE OUTPUT (MANDATORY)
   "facts": [{ "entity": string, "fact": string }],
   "threads": [{ "description": string, "status": "open" | "resolved" }],
   "new_characters": [{ "name": string, "age": number, "role": string, "personality": string, "speech_style": string, "appearance_block": string }],
+  "characters_present": string[],
   "scene_ended": boolean,
   "image_worthy": boolean
 }
 \`\`\`
 - Record only changes. If nothing changed, output \`\`\`json {} \`\`\` with no keys.
-- time: days_passed is 0 if the scene continues immediately, 1 for a normal scene break, more for travel, training, or skips the player requested. time_of_day is when the NEXT beat happens.
+- time: days_passed is 0 if the scene continues immediately, 1 for a normal scene break, more for travel, training, or skips the player requested. When Kan sleeps through the night or a night passes, days_passed is 1 and time_of_day is "morning". time_of_day is when the NEXT beat happens.
+- state.location: set it whenever Kan moves to a new area, building, or settlement.
+- characters_present: names of every NPC present or in direct contact with Kan in this beat (speech, fight, or face-to-face). Omit when Kan is alone.
 - mood: Kan's current mood in 1-3 words, only when it changed.
 - world_description: one sentence about the wider world, only when it changed.
 - scene_ended: true only when the scene clearly concluded (arrival, rest, major beat). Most turns are false.
@@ -187,10 +190,19 @@ export function buildNarrationPrompt(
   userMessage: string,
   d20: number
 ) {
-  const recentMessages = getRecentMessages(db, db.settings.contextMessages);
+  const withCurrent = getRecentMessages(db, db.settings.contextMessages + 1);
+  const currentIsLast =
+    withCurrent.length > 0 &&
+    withCurrent[withCurrent.length - 1].role === 'user' &&
+    withCurrent[withCurrent.length - 1].content === userMessage;
+
+  const recentMessages = currentIsLast
+    ? withCurrent.slice(0, -1).slice(-db.settings.contextMessages)
+    : withCurrent.slice(-db.settings.contextMessages);
+
   const memories = retrieveMemories(
     db,
-    { recentMessages, userMessage },
+    { recentMessages: withCurrent, userMessage },
     db.settings.retrievalLimit
   );
   const entityText = [...recentMessages.map((message) => message.content), userMessage].join('\n');
