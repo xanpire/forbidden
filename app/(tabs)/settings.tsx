@@ -30,6 +30,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ModelSelect } from '@/components/ModelSelect';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { useToast } from '@/components/Toast';
+import { APP_VERSION } from '@/lib/version';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { testOpenRouterKey } from '@/lib/openrouter';
 import { downloadJson, pickJsonFile } from '@/lib/rpg/file';
@@ -528,7 +529,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.about}>
-            <Text style={styles.aboutText}>KAN · v0.2</Text>
+            <Text style={styles.aboutText}>{`KAN · v${APP_VERSION}`}</Text>
             <Text style={styles.aboutText}>an app made by xanpire.</Text>
           </View>
         </ScrollView>
