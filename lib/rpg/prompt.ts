@@ -80,15 +80,23 @@ STATE OUTPUT (MANDATORY)
 \`\`\`json
 {
   "state": { "location": string, "canon_point": string, "inventory_and_jutsu_changes": string[] },
+  "time": { "days_passed": number, "time_of_day": "morning" | "afternoon" | "evening" | "night" },
+  "mood": string,
+  "world_description": string,
   "jutsu_used": [{ "name": string, "user": string, "chakra_nature": string, "effect": string, "visual": string }],
   "bonds": [{ "character": string, "affinity_change": number (-10..10 per turn, cumulative), "status": string, "note": string }],
   "facts": [{ "entity": string, "fact": string }],
   "threads": [{ "description": string, "status": "open" | "resolved" }],
   "new_characters": [{ "name": string, "age": number, "role": string, "personality": string, "speech_style": string, "appearance_block": string }],
+  "scene_ended": boolean,
   "image_worthy": boolean
 }
 \`\`\`
 - Record only changes. If nothing changed, output \`\`\`json {} \`\`\` with no keys.
+- time: days_passed is 0 if the scene continues immediately, 1 for a normal scene break, more for travel, training, or skips the player requested. time_of_day is when the NEXT beat happens.
+- mood: Kan's current mood in 1-3 words, only when it changed.
+- world_description: one sentence about the wider world, only when it changed.
+- scene_ended: true only when the scene clearly concluded (arrival, rest, major beat). Most turns are false.
 - jutsu_used: only when a named jutsu is performed. user is the performer's name (Kan or an NPC). chakra_nature must be one of: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, Unknown.
 - Never contradict the facts ledger or the bonds you are given.
 - Only include bonds for important characters; minor ones go in facts as one-line notes.

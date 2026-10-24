@@ -40,6 +40,7 @@ import {
   restoreLastSnapshot,
   rollArcSummary,
   rollD20,
+  storyMessagesSinceLastSummary,
   summarizeScene,
   summarizeTimeSkip,
 } from './services';
@@ -223,7 +224,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const shouldSummarize =
           (inlineDiff !== null && inlineImageWorthy) ||
           extraction?.scene?.ended ||
-          story.length >= next.settings.autoSummarizeThreshold;
+          storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
 
         if (shouldSummarize) {
           const sceneMessages = story.slice(-Math.min(story.length, 8));

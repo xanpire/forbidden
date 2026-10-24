@@ -1,5 +1,5 @@
 import { completeChat } from '../openrouter';
-import { normalizeDate, formatDate, daysBetween } from './calendar';
+import { normalizeDate, formatDate, daysBetween, shiftDate } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { makeId } from './id';
 import { normalizeJutsuNature } from './jutsu';
@@ -29,7 +29,45 @@ export function convertInlineDiff(
   }
 
   const imageWorthy = block.image_worthy === true;
+  const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
+
+  const time = block.time;
+
+  if (time && typeof time === 'object' && !Array.isArray(time)) {
+    const rawTime = time as { days_passed?: unknown; time_of_day?: unknown };
+
+    if (typeof rawTime.days_passed === 'number' && Number.isFinite(rawTime.days_passed)) {
+      diff.state = {
+        ...diff.state,
+        advanceDays: Math.max(0, Math.min(3650, Math.round(rawTime.days_passed))),
+      };
+    }
+
+    if (
+      rawTime.time_of_day === 'morning' ||
+      rawTime.time_of_day === 'afternoon' ||
+      rawTime.time_of_day === 'evening' ||
+      rawTime.time_of_day === 'night'
+    ) {
+      diff.state = { ...diff.state, timeOfDay: rawTime.time_of_day };
+    }
+  }
+
+  if (typeof block.mood === 'string' && block.mood.trim()) {
+    diff.state = { ...diff.state, mood: block.mood.trim().slice(0, 60) };
+  }
+
+  if (typeof block.world_description === 'string' && block.world_description.trim()) {
+    diff.state = {
+      ...diff.state,
+      worldDescription: block.world_description.trim().slice(0, 220),
+    };
+  }
+
+  if (sceneEnded) {
+    diff.scene = { ended: true };
+  }
 
   const state = block.state;
 
@@ -273,6 +311,16 @@ export function getLastExchange(db: AppDatabase) {
   };
 }
 
+export function storyMessagesSinceLastSummary(db: AppDatabase): number {
+  const lastChapterSummaryAt = [...db.summaries]
+    .filter((summary) => summary.level === 'chapter')
+    .sort((a, b) => b.createdAt - a.createdAt)[0]?.createdAt ?? 0;
+
+  return db.rawLog.filter(
+    (message) => message.kind === 'story' && message.createdAt > lastChapterSummaryAt
+  ).length;
+}
+
 export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDatabase {
   if (!diff || typeof diff !== 'object') {
     return db;
@@ -378,11 +426,19 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.location = state.location.trim().slice(0, 100);
   }
 
-  if (state.inStoryDate) {
-    const nextDate = normalizeDate(state.inStoryDate, next.state.inStoryDate);
-    const yearDelta = nextDate.year - previousDate.year;
+  if (state.inStoryDate || (state.advanceDays !== undefined && state.advanceDays > 0)) {
+    const nextDate = state.inStoryDate
+      ? normalizeDate(state.inStoryDate, next.state.inStoryDate)
+      : shiftDate(next.state.inStoryDate, Math.min(3650, Math.max(0, Math.round(state.advanceDays ?? 0))));
 
-    next.state.inStoryDate = nextDate;
+    const finalDate: CalendarDate = {
+      ...nextDate,
+      timeOfDay: state.timeOfDay ?? nextDate.timeOfDay,
+    };
+
+    const yearDelta = finalDate.year - previousDate.year;
+
+    next.state.inStoryDate = finalDate;
 
     if (yearDelta !== 0) {
       next.entities = next.entities.map((entity) => {
@@ -402,9 +458,11 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
       next.bonds = next.bonds.map((bond) => ({
         ...bond,
-        updatedInStoryDate: nextDate,
+        updatedInStoryDate: finalDate,
       }));
     }
+  } else if (state.timeOfDay) {
+    next.state.inStoryDate = { ...next.state.inStoryDate, timeOfDay: state.timeOfDay };
   }
 
   if (typeof state.canonPoint === 'string' && state.canonPoint.trim()) {

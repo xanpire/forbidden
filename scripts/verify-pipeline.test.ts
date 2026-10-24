@@ -14,6 +14,8 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
+import { daysBetween } from '../lib/rpg/calendar';
+import { storyMessagesSinceLastSummary } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import {
@@ -270,5 +272,99 @@ describe('image reference pipeline', () => {
 
     const recent = collectRecentSceneImages(db);
     expect(recent.length).toBe(2);
+  });
+});
+
+describe('time progression via inline diffs', () => {
+  test('days_passed and time_of_day advance the date', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const before = db.state.inStoryDate;
+
+    const { diff } = convertInlineDiff({
+      time: { days_passed: 3, time_of_day: 'morning' },
+      mood: 'Weary but resolute',
+    });
+
+    expect(diff).not.toBeNull();
+
+    db = applyTurnDiff(db, diff);
+
+    expect(daysBetween(before, db.state.inStoryDate)).toBe(3);
+    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
+    expect(db.state.mood).toBe('Weary but resolute');
+  });
+
+  test('time_of_day alone shifts only the time of day', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const before = { ...db.state.inStoryDate };
+
+    db = applyTurnDiff(db, {
+      state: { timeOfDay: 'evening' },
+    });
+
+    expect(db.state.inStoryDate.day).toBe(before.day);
+    expect(db.state.inStoryDate.timeOfDay).toBe('evening');
+  });
+
+  test('absolute inStoryDate from extraction still works and ages NPCs', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const yearBefore = db.state.inStoryDate.year;
+    const agable = db.entities.find((e) => e.type === 'character' && e.birthYear === undefined && e.age !== undefined);
+
+    db = applyTurnDiff(db, {
+      state: { inStoryDate: { year: yearBefore + 1, month: 1, day: 1, timeOfDay: 'morning' } },
+    });
+
+    expect(db.state.inStoryDate.year).toBe(yearBefore + 1);
+
+    if (agable) {
+      const after = db.entities.find((e) => e.id === agable.id);
+      expect(after?.age).toBe((agable.age ?? 0) + 1);
+    }
+  });
+
+  test('scene_ended inline diff records a memory event', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const eventsBefore = db.events.length;
+
+    const { diff } = convertInlineDiff({ scene_ended: true });
+
+    expect(diff?.scene?.ended).toBe(true);
+
+    db = applyTurnDiff(db, diff);
+
+    expect(db.events.length).toBe(eventsBefore + 1);
+  });
+});
+
+describe('summarize cadence', () => {
+  test('counts only messages since the last chapter summary', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    for (let i = 0; i < 14; i += 1) {
+      db = appendStoryMessage(db, 'user', `msg ${i}`, 'm', 0, 0);
+    }
+
+    const sinceBefore = storyMessagesSinceLastSummary(db);
+    expect(sinceBefore).toBeGreaterThan(12);
+
+    const now = Date.now();
+    db = {
+      ...db,
+      summaries: [
+        ...db.summaries,
+        {
+          id: 'summary_test',
+          level: 'chapter' as const,
+          range: { fromEventId: '', toEventId: '', from: db.state.inStoryDate, to: db.state.inStoryDate },
+          text: 'A fresh summary resetting the cadence.',
+          tokenCount: 10,
+          eventIds: [],
+          createdAt: now,
+        },
+      ],
+    };
+
+    expect(storyMessagesSinceLastSummary(db)).toBe(0);
   });
 });

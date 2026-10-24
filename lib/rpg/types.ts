@@ -256,6 +256,8 @@ export type TurnDiff = {
     inventoryRemoved?: string[];
     location?: string;
     inStoryDate?: CalendarDate;
+    advanceDays?: number;
+    timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
     canonPoint?: string;
     chapter?: number;
     scene?: string;
