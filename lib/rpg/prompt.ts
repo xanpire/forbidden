@@ -542,7 +542,10 @@ function formatRecentMessages(messages: RawLogEntry[]) {
   return [
     'RECENT SCENE',
     ...messages.map(
-      (message) => `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${message.content}`
+      (message) =>
+        `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${
+          message.role === 'assistant' ? stripNarrationJson(message.content) : message.content
+        }`
     ),
   ].join('\n');
 }
@@ -561,6 +564,11 @@ function formatEncounterHint(d20: number) {
   return `ENCOUNTER HINT (d20 ${d20}): ${hint}`;
 }
 
+export function stripNarrationJson(raw: string): string {
+  const { narration } = splitNarrationAndDiff(raw);
+  return narration;
+}
+
 export function splitNarrationAndDiff(raw: string): {
   narration: string;
   inlineDiff: Record<string, unknown> | null;
@@ -575,20 +583,48 @@ export function splitNarrationAndDiff(raw: string): {
     narrationEnd = match.index;
   }
 
-  if (lastBlock === null) {
-    return { narration: raw.trim(), inlineDiff: null };
+  if (lastBlock !== null) {
+    const parsed = parseJsonBlock(lastBlock);
+
+    if (parsed) {
+      return {
+        narration: raw.slice(0, narrationEnd).trim(),
+        inlineDiff: parsed,
+      };
+    }
   }
 
-  const parsed = parseJsonBlock(lastBlock);
+  // Fallback: look for unfenced JSON at the tail (last { to final }).
+  const lastBrace = raw.lastIndexOf('}');
+  const firstBrace = raw.lastIndexOf('{', lastBrace);
 
-  if (!parsed) {
-    return { narration: raw.trim(), inlineDiff: null };
+  if (lastBrace !== -1 && firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = raw.slice(firstBrace, lastBrace + 1);
+    const parsed = parseJsonBlock(candidate);
+
+    if (parsed && looksLikeStateDiff(parsed)) {
+      return {
+        narration: raw.slice(0, firstBrace).trim(),
+        inlineDiff: parsed,
+      };
+    }
   }
 
-  return {
-    narration: raw.slice(0, narrationEnd).trim(),
-    inlineDiff: parsed,
-  };
+  return { narration: raw.trim(), inlineDiff: null };
+}
+
+function looksLikeStateDiff(obj: Record<string, unknown>): boolean {
+  const keys = Object.keys(obj);
+
+  if (keys.length === 0) {
+    return false;
+  }
+
+  const knownKeys = [
+    'state', 'bonds', 'facts', 'threads', 'new_characters', 'image_worthy',
+  ];
+
+  return keys.some((key) => knownKeys.includes(key));
 }
 
 function parseJsonBlock(text: string): Record<string, unknown> | null {

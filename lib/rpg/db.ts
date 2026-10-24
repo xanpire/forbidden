@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
+import { stripNarrationJson } from './prompt';
 import { normalizeJutsuNature } from './jutsu';
 import { seedDatabase } from './seed';
 import type { AppDatabase, MemoryIndex } from './types';
@@ -332,7 +333,13 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
     },
-    rawLog: Array.isArray(db.rawLog) ? db.rawLog : [],
+    rawLog: Array.isArray(db.rawLog)
+      ? db.rawLog.map((entry) =>
+          entry.kind === 'story' && entry.role === 'assistant' && entry.content
+            ? { ...entry, content: stripNarrationJson(entry.content) }
+            : entry
+        )
+      : [],
     jutsuRecords: Array.isArray(db.jutsuRecords)
       ? db.jutsuRecords.map((record) => ({
           ...record,
