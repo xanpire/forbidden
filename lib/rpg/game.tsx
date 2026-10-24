@@ -44,7 +44,6 @@ import {
   summarizeTimeSkip,
 } from './services';
 import { daysBetween } from './calendar';
-import { generateSceneImageForTurn } from './sceneImage';
 import type {
   AppDatabase,
   BondRecord,
@@ -177,8 +176,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     ) => {
       setIsProcessing(true);
       setProcessingError(null);
-      const imageWorthy = inlineImageWorthy;
-
       try {
         const beforeDate = currentDb.state.inStoryDate;
         const extraction = inlineDiff
@@ -321,32 +318,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
               ...next,
               summaries: [...next.summaries, yearRecord],
             };
-          }
-        }
-
-        if (imageWorthy && activeKey) {
-          const latestAssistant = [...next.rawLog]
-            .reverse()
-            .find((message) => message.kind === 'story' && message.role === 'assistant');
-
-          if (latestAssistant && !latestAssistant.image) {
-            try {
-              const dataUri = await generateSceneImageForTurn({
-                apiKey: activeKey,
-                db: next,
-                logId: latestAssistant.id,
-              });
-
-              next = {
-                ...next,
-                rawLog: next.rawLog.map((entry) =>
-                  entry.id === latestAssistant.id
-                    ? { ...entry, image: dataUri }
-                    : entry
-                ),
-              };
-            } catch {
-            }
           }
         }
 

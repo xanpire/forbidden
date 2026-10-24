@@ -1,6 +1,15 @@
 import type { AppDatabase } from './types';
 
-export function buildSceneImagePrompt(db: AppDatabase) {
+const RECENT_IMAGE_LIMIT = 2;
+
+export function collectRecentSceneImages(db: AppDatabase) {
+  return db.rawLog
+    .filter((message) => message.kind === 'story' && message.role === 'assistant' && message.image)
+    .slice(-RECENT_IMAGE_LIMIT)
+    .map((message) => message.image as string);
+}
+
+export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = []) {
   const latestAssistant = [...db.rawLog]
     .reverse()
     .find((message) => message.kind === 'story' && message.role === 'assistant');
@@ -25,14 +34,39 @@ export function buildSceneImagePrompt(db: AppDatabase) {
     ? 'the plain black shinobi outfit without the Akatsuki cloak'
     : 'the Akatsuki cloak';
 
-  return [
+  const lines = [
     'Cinematic dark anime illustration.',
     'Visual image only. Do not render any words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere in the image.',
     'Use the attached reference images of Kan to match his face, black spiky hair, build, and anime art style exactly.',
-    `Reference image 1: full-body Kan in ${currentOutfit}.`,
-    `Reference image 2: close-up of Kan’s face in ${currentOutfit}.`,
-    `Reference image 3: full-body Kan in ${alternateOutfit}.`,
-    `Reference image 4: close-up of Kan’s face in ${alternateOutfit}.`,
+  ];
+
+  let index = 1;
+
+  if (recentImages.length > 0) {
+    lines.push(
+      `Reference image ${index}: a previous scene image. Continue the exact same art style, color palette, lighting, and rendering as this image for visual continuity.`,
+    );
+    index += 1;
+  }
+
+  lines.push(
+    `Reference image ${index}: full-body Kan in ${currentOutfit}.`,
+  );
+  index += 1;
+  lines.push(
+    `Reference image ${index}: close-up of Kan’s face in ${currentOutfit}.`,
+  );
+  index += 1;
+  lines.push(
+    `Reference image ${index}: full-body Kan in ${alternateOutfit}.`,
+  );
+  index += 1;
+  lines.push(
+    `Reference image ${index}: close-up of Kan’s face in ${alternateOutfit}.`,
+  );
+  index += 1;
+
+  lines.push(
     'Use the close-up references to match facial structure, eyes, nose, mouth, hairline, and expression.',
     'Use the full-body references for build, posture, and outfit.',
     `Kan currently wears ${currentOutfit}.`,
@@ -44,5 +78,7 @@ export function buildSceneImagePrompt(db: AppDatabase) {
     `Visual subject: ${visualScene.slice(0, 500)}`,
     'Style: Naruto-inspired anime, gritty realism, moody lighting, rain, red accents, high detail.',
     'Final reminder: no text, lettering, captions, or watermarks in the image.',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }

@@ -45,7 +45,7 @@ import { formatStoryDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
-import { buildSceneImagePrompt } from '@/lib/rpg/image';
+import { buildSceneImagePrompt, collectRecentSceneImages } from '@/lib/rpg/image';
 import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
 import { generateImage } from '@/lib/openrouter';
 
@@ -191,11 +191,13 @@ export default function StoryScreen() {
     setIsGeneratingImage(true);
 
     try {
-      const prompt = buildSceneImagePrompt(db);
+      const recentImages = collectRecentSceneImages(db);
+      const prompt = buildSceneImagePrompt(db, recentImages);
       const wearsAkatsukiCloak = db.state.inventory.some((item) =>
         /akatsuki cloak/i.test(item)
       );
-      const inputReferences = await loadKanReferenceImages(wearsAkatsukiCloak);
+      const staticReferences = await loadKanReferenceImages(wearsAkatsukiCloak);
+      const inputReferences = [...recentImages, ...staticReferences];
       const result = await generateImage({
         apiKey,
         model: db.settings.imageModel,
