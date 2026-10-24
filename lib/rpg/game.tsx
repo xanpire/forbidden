@@ -407,8 +407,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
           temperature: withUser.settings.temperature,
           maxTokens: withUser.settings.maxTokens,
           signal: controller.signal,
-          onDelta: (delta: string) => {
-            setStreamingText((previous) => previous + delta);
+          onDelta: () => {
+            // Text is hidden until complete to avoid layout shifts from JSON blocks.
           },
         });
 
@@ -418,7 +418,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const withAssistant = appendStoryMessage(
           withUser,
           'assistant',
-          narration || result.text,
+          narration,
           withUser.settings.narrationModel,
           result.promptTokens,
           result.completionTokens
@@ -439,7 +439,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           activeKey,
           saved,
           action,
-          narration || result.text,
+          narration,
           inlineTurnDiff,
           imageWorthy
         );

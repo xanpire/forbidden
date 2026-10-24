@@ -91,11 +91,39 @@ export async function loadSlot(slotId: string): Promise<AppDatabase> {
   }
 }
 
-export async function saveSlot(db: AppDatabase) {
-  const next = {
+const MAX_STORED_IMAGES = 3;
+const MAX_SNAPSHOTS = 1;
+
+function trimDatabase(db: AppDatabase): AppDatabase {
+  const imageIndexes: number[] = [];
+
+  for (let index = db.rawLog.length - 1; index >= 0; index -= 1) {
+    const entry = db.rawLog[index];
+
+    if (entry.image) {
+      imageIndexes.push(index);
+    }
+  }
+
+  const keepImages = new Set(imageIndexes.slice(0, MAX_STORED_IMAGES));
+
+  const rawLog = db.rawLog.map((entry, index) =>
+    entry.image && !keepImages.has(index) ? { ...entry, image: null } : entry
+  );
+
+  return {
     ...db,
+    rawLog,
+    snapshots: db.snapshots.slice(-MAX_SNAPSHOTS),
+  };
+}
+
+export async function saveSlot(db: AppDatabase) {
+  const trimmed = trimDatabase(db);
+  const next = {
+    ...trimmed,
     meta: {
-      ...db.meta,
+      ...trimmed.meta,
       updatedAt: Date.now(),
     },
   };

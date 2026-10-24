@@ -382,14 +382,10 @@ export default function StoryScreen() {
           {isNarrating ? (
             <View style={styles.messageRow}>
               <View style={styles.assistantBubble}>
-                {streamingText.length > 0 ? (
-                  <Text style={styles.assistantText}>{streamingText}</Text>
-                ) : (
-                  <View style={styles.typingRow}>
-                    <ActivityIndicator color={colors.accent} size="small" />
-                    <Text style={styles.typingText}>The world is moving…</Text>
-                  </View>
-                )}
+                <View style={styles.typingRow}>
+                  <ActivityIndicator color={colors.accent} size="small" />
+                  <Text style={styles.typingText}>The world is moving…</Text>
+                </View>
               </View>
             </View>
           ) : null}
