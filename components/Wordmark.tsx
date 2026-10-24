@@ -1,19 +1,32 @@
-import { StyleSheet, Text } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
 
+const cloudIcon = require('../assets/images/akatsuki-cloud.png');
+
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
-    <Text
-      accessibilityLabel="Kan"
-      style={[styles.word, compact && styles.wordCompact]}
-    >
-      KAN
-    </Text>
+    <View style={styles.row} accessibilityLabel="Kan">
+      <Image source={cloudIcon} style={[styles.cloud, compact && styles.cloudCompact]} />
+      <Text style={[styles.word, compact && styles.wordCompact]}>KAN</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  cloud: {
+    width: 26,
+    height: 26,
+  },
+  cloudCompact: {
+    width: 22,
+    height: 22,
+  },
   word: {
     fontFamily: fonts.extrabold,
     fontSize: 22,

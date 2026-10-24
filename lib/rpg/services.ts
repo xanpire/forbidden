@@ -61,6 +61,35 @@ export function convertInlineDiff(
     };
   }
 
+  if (Array.isArray(block.jutsu_used)) {
+    diff.jutsuUsed = block.jutsu_used
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const jutsu = item as {
+          name?: unknown;
+          user?: unknown;
+          chakra_nature?: unknown;
+          chakraNature?: unknown;
+          effect?: unknown;
+          visual?: unknown;
+        };
+
+        return {
+          name: typeof jutsu.name === 'string' ? jutsu.name : '',
+          user: typeof jutsu.user === 'string' && jutsu.user.trim() ? jutsu.user.trim() : 'Kan',
+          chakraNature:
+            typeof jutsu.chakra_nature === 'string'
+              ? jutsu.chakra_nature
+              : typeof jutsu.chakraNature === 'string'
+                ? jutsu.chakraNature
+                : undefined,
+          effect: typeof jutsu.effect === 'string' ? jutsu.effect : undefined,
+          visual: typeof jutsu.visual === 'string' ? jutsu.visual : undefined,
+        };
+      })
+      .filter((item) => item.name.trim().length > 0);
+  }
+
   if (Array.isArray(block.bonds)) {
     diff.bonds = block.bonds
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
@@ -306,7 +335,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   const previousDate = db.state.inStoryDate;
 
   if (typeof state.mood === 'string' && state.mood.trim()) {
-    next.state.mood = state.mood.trim();
+    next.state.mood = state.mood.trim().slice(0, 60);
 
     next.entities = next.entities.map((entity) =>
       entity.name.toLowerCase() === 'kan'
@@ -316,14 +345,14 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (typeof state.worldDescription === 'string' && state.worldDescription.trim()) {
-    next.state.worldDescription = state.worldDescription.trim();
+    next.state.worldDescription = state.worldDescription.trim().slice(0, 220);
   }
 
   if (Array.isArray(state.jutsuAdded)) {
     next.state.jutsu = uniqueList([
       ...next.state.jutsu,
       ...state.jutsuAdded.filter(Boolean),
-    ]);
+    ]).slice(-12);
   }
 
   if (Array.isArray(state.jutsuRemoved)) {
@@ -336,7 +365,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.inventory = uniqueList([
       ...next.state.inventory,
       ...state.inventoryAdded.filter(Boolean),
-    ]);
+    ]).slice(-12);
   }
 
   if (Array.isArray(state.inventoryRemoved)) {
@@ -346,7 +375,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (typeof state.location === 'string' && state.location.trim()) {
-    next.state.location = state.location.trim();
+    next.state.location = state.location.trim().slice(0, 100);
   }
 
   if (state.inStoryDate) {
@@ -379,7 +408,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (typeof state.canonPoint === 'string' && state.canonPoint.trim()) {
-    next.state.canonPoint = state.canonPoint.trim();
+    next.state.canonPoint = state.canonPoint.trim().slice(0, 220);
   }
 
   if (typeof state.chapter === 'number' && Number.isFinite(state.chapter)) {
@@ -387,7 +416,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (typeof state.scene === 'string' && state.scene.trim()) {
-    next.state.scene = state.scene.trim();
+    next.state.scene = state.scene.trim().slice(0, 140);
   }
 
   return next;
@@ -700,14 +729,21 @@ function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabase {
     return db;
   }
 
-  const title = thread.title.trim();
+  const title = thread.title.trim().toLowerCase();
 
   if (!title) {
     return db;
   }
 
+  const descriptionKey = (thread.description?.trim() || title).toLowerCase().slice(0, 40);
   const existingIndex = db.threads.findIndex(
-    (item) => item.title.toLowerCase() === title.toLowerCase()
+    (item) =>
+      item.title.toLowerCase() === title ||
+      (thread.description?.trim() &&
+        item.status === 'open' &&
+        (item.title.toLowerCase().startsWith(descriptionKey) ||
+          item.description.toLowerCase().startsWith(descriptionKey) ||
+          descriptionKey.startsWith(item.title.toLowerCase().slice(0, 40))))
   );
 
   if (thread.action === 'resolve') {

@@ -80,6 +80,7 @@ STATE OUTPUT (MANDATORY)
 \`\`\`json
 {
   "state": { "location": string, "canon_point": string, "inventory_and_jutsu_changes": string[] },
+  "jutsu_used": [{ "name": string, "user": string, "chakra_nature": string, "effect": string, "visual": string }],
   "bonds": [{ "character": string, "affinity_change": number (-10..10 per turn, cumulative), "status": string, "note": string }],
   "facts": [{ "entity": string, "fact": string }],
   "threads": [{ "description": string, "status": "open" | "resolved" }],
@@ -88,6 +89,7 @@ STATE OUTPUT (MANDATORY)
 }
 \`\`\`
 - Record only changes. If nothing changed, output \`\`\`json {} \`\`\` with no keys.
+- jutsu_used: only when a named jutsu is performed. user is the performer's name (Kan or an NPC). chakra_nature must be one of: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, Unknown.
 - Never contradict the facts ledger or the bonds you are given.
 - Only include bonds for important characters; minor ones go in facts as one-line notes.
 - image_worthy is true only for visually striking moments (conflict, reunion, dramatic weather, strong emotion). It is false for pure dialogue or quiet turns.`;
@@ -201,6 +203,7 @@ export function buildNarrationPrompt(
     NARRATION_SYSTEM,
     formatCharacterSheet(db),
     formatState(db),
+    formatMatchedEntities(db, matchedEntityIds),
     formatJutsu(db),
     formatBonds(db),
     formatFacts(facts),
@@ -270,7 +273,10 @@ export function buildSceneSummaryPrompt(
   messages: RawLogEntry[]
 ) {
   const transcript = messages
-    .map((message) => `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${message.content}`)
+    .map(
+      (message) =>
+        `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${truncate(message.content, 1000)}`
+    )
     .join('\n\n');
 
   const system = [
@@ -386,20 +392,57 @@ function formatState(db: AppDatabase) {
   return [
     'CURRENT STATE',
     `Date: ${formatDate(state.inStoryDate)}`,
-    `Location: ${state.location}`,
-    `Kan's mood: ${state.mood}`,
-    `World: ${state.worldDescription}`,
-    `Jutsu: ${state.jutsu.join(', ') || 'none'}`,
-    `Inventory: ${state.inventory.join(', ') || 'none'}`,
-    `Canon point: ${state.canonPoint}`,
+    `Location: ${truncate(state.location, 100)}`,
+    `Kan's mood: ${truncate(state.mood, 60)}`,
+    `World: ${truncate(state.worldDescription, 220)}`,
+    `Jutsu: ${truncate(state.jutsu.slice(-10).join(', '), 240) || 'none'}`,
+    `Inventory: ${truncate(state.inventory.slice(-10).join(', '), 240) || 'none'}`,
+    `Canon point: ${truncate(state.canonPoint, 220)}`,
     `Chapter: ${state.chapter}`,
-    `Scene: ${state.scene}`,
+    `Scene: ${truncate(state.scene, 140)}`,
+  ].join('\n');
+}
+
+function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
+  if (entityIds.size === 0) {
+    return '';
+  }
+
+  const characters = db.entities
+    .filter(
+      (entity) =>
+        entity.type === 'character' &&
+        entityIds.has(entity.id) &&
+        entity.name.toLowerCase() !== 'kan'
+    )
+    .slice(0, 6);
+
+  if (characters.length === 0) {
+    return '';
+  }
+
+  return [
+    'CHARACTERS IN SCENE',
+    ...characters.map(
+      (entity) =>
+        `- ${entity.name}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`
+    ),
   ].join('\n');
 }
 
 function formatEntities(db: AppDatabase) {
   const characters = db.entities
     .filter((entity) => entity.type === 'character')
+    .sort((a, b) => {
+      const aKan = a.name.toLowerCase() === 'kan' ? 1 : 0;
+      const bKan = b.name.toLowerCase() === 'kan' ? 1 : 0;
+
+      if (aKan !== bKan) {
+        return bKan - aKan;
+      }
+
+      return b.id.localeCompare(a.id);
+    })
     .slice(0, 12);
 
   if (characters.length === 0) {
@@ -487,7 +530,15 @@ function formatFacts(facts: FactRecord[]) {
 }
 
 function formatThreads(db: AppDatabase) {
-  const threads = db.threads.filter((thread) => thread.status === 'open').slice(0, 8);
+  const threads = db.threads
+    .filter((thread) => thread.status === 'open')
+    .sort((a, b) => {
+      const aTime = a.openedAt ? dateKey(a.openedAt) : 0;
+      const bTime = b.openedAt ? dateKey(b.openedAt) : 0;
+
+      return bTime - aTime;
+    })
+    .slice(0, 8);
 
   if (threads.length === 0) {
     return 'OPEN THREADS\nNone.';
@@ -497,6 +548,10 @@ function formatThreads(db: AppDatabase) {
     'OPEN THREADS',
     ...threads.map((thread) => `- ${truncate(thread.title, 60)}: ${truncate(thread.description, 80)}`),
   ].join('\n');
+}
+
+function dateKey(date: { year: number; month: number; day: number }) {
+  return date.year * 10000 + date.month * 100 + date.day;
 }
 
 function formatLore(lore: AppDatabase['loreEntries']) {
@@ -544,7 +599,9 @@ function formatRecentMessages(messages: RawLogEntry[]) {
     ...messages.map(
       (message) =>
         `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${
-          message.role === 'assistant' ? stripNarrationJson(message.content) : message.content
+          message.role === 'assistant'
+            ? truncate(stripNarrationJson(message.content), 1400)
+            : truncate(message.content, 600)
         }`
     ),
   ].join('\n');

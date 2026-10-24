@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kan",
     "slug": "kan",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "kan",
@@ -17,7 +17,7 @@
       "package": "com.kan.story",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#E50914"
+        "backgroundColor": "#0A0A0A"
       },
       "edgeToEdgeEnabled": true
     },
@@ -33,7 +33,7 @@
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png",
-      "name": "Kan — Interactive Naruto RPG",
+      "name": "Kan \u2014 Interactive Naruto RPG",
       "shortName": "Kan",
       "lang": "en",
       "scope": "/",

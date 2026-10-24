@@ -42,7 +42,7 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
 
   let index = 1;
 
-  if (recentImages.length > 0) {
+  for (const _ of recentImages) {
     lines.push(
       `Reference image ${index}: a previous scene image. Continue the exact same art style, color palette, lighting, and rendering as this image for visual continuity.`,
     );
