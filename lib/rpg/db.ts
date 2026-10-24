@@ -94,7 +94,7 @@ export async function loadSlot(slotId: string): Promise<AppDatabase> {
 const MAX_STORED_IMAGES = 3;
 const MAX_SNAPSHOTS = 1;
 
-function trimDatabase(db: AppDatabase): AppDatabase {
+function trimDatabase(db: AppDatabase, maxImages: number, maxSnapshots: number): AppDatabase {
   const imageIndexes: number[] = [];
 
   for (let index = db.rawLog.length - 1; index >= 0; index -= 1) {
@@ -105,7 +105,7 @@ function trimDatabase(db: AppDatabase): AppDatabase {
     }
   }
 
-  const keepImages = new Set(imageIndexes.slice(0, MAX_STORED_IMAGES));
+  const keepImages = new Set(imageIndexes.slice(0, maxImages));
 
   const rawLog = db.rawLog.map((entry, index) =>
     entry.image && !keepImages.has(index) ? { ...entry, image: null } : entry
@@ -114,24 +114,40 @@ function trimDatabase(db: AppDatabase): AppDatabase {
   return {
     ...db,
     rawLog,
-    snapshots: db.snapshots.slice(-MAX_SNAPSHOTS),
+    snapshots: db.snapshots.slice(-maxSnapshots),
   };
 }
 
 export async function saveSlot(db: AppDatabase) {
-  const trimmed = trimDatabase(db);
   const next = {
-    ...trimmed,
+    ...db,
     meta: {
-      ...trimmed.meta,
+      ...db.meta,
       updatedAt: Date.now(),
     },
   };
 
-  await AsyncStorage.setItem(
-    `${SLOT_PREFIX}${next.meta.slotId}.v1`,
-    JSON.stringify(next)
-  );
+  const key = `${SLOT_PREFIX}${next.meta.slotId}.v1`;
+
+  // Progressive trimming: try the full save first, then strip increasingly
+  // heavy data until the write succeeds or there is nothing left to cut.
+  const attempts = [
+    next,
+    trimDatabase(next, MAX_STORED_IMAGES, MAX_SNAPSHOTS),
+    trimDatabase(next, 1, 0),
+    trimDatabase(next, 0, 0),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(attempt));
+      return;
+    } catch (error) {
+      if (attempt === attempts[attempts.length - 1]) {
+        throw error;
+      }
+    }
+  }
 }
 
 export async function createSlot(slotName: string): Promise<AppDatabase> {
@@ -179,11 +195,17 @@ export async function deleteSlot(slotId: string) {
   const meta = await loadStorageMeta();
   const slotOrder = meta.slotOrder.filter((id) => id !== slotId);
 
+  await AsyncStorage.removeItem(`${SLOT_PREFIX}${slotId}.v1`);
+
   if (slotOrder.length === 0) {
+    const fresh = seedDatabase(slotId, DEFAULT_SLOT_NAME);
+    await saveSlot(fresh);
+    await saveStorageMeta({
+      activeSlotId: slotId,
+      slotOrder: [slotId],
+    });
     return;
   }
-
-  await AsyncStorage.removeItem(`${SLOT_PREFIX}${slotId}.v1`);
 
   const activeSlotId =
     meta.activeSlotId === slotId ? slotOrder[slotOrder.length - 1] : meta.activeSlotId;

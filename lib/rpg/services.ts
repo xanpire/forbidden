@@ -665,11 +665,23 @@ function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
       ) ?? null
     : null;
 
+  const duplicate = db.facts.find(
+    (item) =>
+      item.validTo === null &&
+      (item.text.toLowerCase() === text.toLowerCase() ||
+        (text.length > 30 &&
+          item.text.toLowerCase().includes(text.toLowerCase())))
+  );
+
+  if (duplicate) {
+    return db;
+  }
+
   const newFact = {
     id: makeId('fact'),
     subjectEntityId: subjectEntity?.id ?? null,
     type: fact.type ?? 'other',
-    text,
+    text: text.slice(0, 200),
     whoKnows: Array.isArray(fact.whoKnows) ? fact.whoKnows.filter(Boolean) : [],
     validFrom: currentDate,
     validTo: null,
@@ -775,9 +787,9 @@ function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
     chapter: db.state.chapter,
     scene: db.state.scene,
     inStoryDate: db.state.inStoryDate,
-    summary,
+    summary: summary.slice(0, 160),
     importance: scene?.importance ?? 3,
-    tags: Array.isArray(scene?.tags) ? scene.tags.filter(Boolean).slice(0, 12) : [],
+    tags: Array.isArray(scene?.tags) ? scene.tags.filter(Boolean).slice(0, 6) : [],
     pinned: false,
     sourceLogId: null,
     createdAt: Date.now(),

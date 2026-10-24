@@ -160,7 +160,7 @@ export function relevantFacts(
     }
   }
 
-  return [...matched].slice(0, 12);
+  return [...matched].slice(0, 10);
 }
 
 export function triggeredLore(db: AppDatabase, text: string): LoreRecord[] {

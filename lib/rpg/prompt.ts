@@ -242,7 +242,7 @@ export function buildExtractionPrompt(
     formatEntities(db),
     formatJutsu(db),
     formatBonds(db),
-    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 20)),
+    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
     formatThreads(db),
   ].join('\n\n');
 
@@ -321,7 +321,7 @@ export function buildTimeSkipPrompt(
     TIME_SKIP_SYSTEM,
     formatState(db),
     formatBonds(db),
-    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 20)),
+    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
   ].join('\n\n');
 
   const user = `TIME SKIP:\nFrom ${from}\nTo ${to}\n\nWrite the "meanwhile" summary now.`;
@@ -400,7 +400,7 @@ function formatState(db: AppDatabase) {
 function formatEntities(db: AppDatabase) {
   const characters = db.entities
     .filter((entity) => entity.type === 'character')
-    .slice(0, 20);
+    .slice(0, 12);
 
   if (characters.length === 0) {
     return 'CHARACTERS\nNone.';
@@ -419,14 +419,20 @@ function formatEntities(db: AppDatabase) {
               )
             : entity.age;
 
-        return `- ${entity.name}${age !== undefined ? `, age ${age}` : ''}${entity.role ? `, ${entity.role}` : ''}: personality ${entity.personality ?? 'unknown'}; speech ${entity.speechStyle ?? 'unknown'}; mood ${entity.mood ?? 'unknown'}; appearance ${entity.appearance ?? 'unknown'}`;
+        const mood = truncate(entity.mood ?? 'unknown', 60);
+        const appearance = truncate(entity.appearance ?? 'unknown', 80);
+        const personality = truncate(entity.personality ?? 'unknown', 60);
+        const speech = truncate(entity.speechStyle ?? 'unknown', 50);
+        const role = truncate(entity.role ?? '', 40);
+
+        return `- ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}: personality ${personality}; speech ${speech}; mood ${mood}; appearance ${appearance}`;
       }
     ),
   ].join('\n');
 }
 
 function formatJutsu(db: AppDatabase) {
-  const groups = groupJutsuByNature(db.jutsuRecords).slice(0, 8);
+  const groups = groupJutsuByNature(db.jutsuRecords).slice(0, 5);
 
   if (groups.length === 0) {
     return 'KNOWN JUTSU\nNone.';
@@ -436,10 +442,10 @@ function formatJutsu(db: AppDatabase) {
     'KNOWN JUTSU',
     ...groups.map((group) => {
       const lines = group.jutsu
-        .slice(0, 5)
+        .slice(0, 3)
         .map(
           (record) =>
-            `  - ${record.name} (${record.user}): effect ${record.effect}; visual ${record.visual}`
+            `  - ${record.name} (${record.user}): effect ${truncate(record.effect, 60)}; visual ${truncate(record.visual, 60)}`
         );
 
       return `${group.nature}\n${lines.join('\n')}`;
@@ -461,7 +467,7 @@ function formatBonds(db: AppDatabase) {
     'BONDS',
     ...bonds.map(
       (bond) =>
-        `- ${bond.characterName} (${bond.affinity}/10): ${bond.status}. ${bond.note}`
+        `- ${bond.characterName} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}`
     ),
   ].join('\n');
 }
@@ -475,13 +481,13 @@ function formatFacts(facts: FactRecord[]) {
     'PERMANENT FACTS',
     ...facts.map(
       (fact) =>
-        `- ${fact.text}${fact.whoKnows.length > 0 ? ` (known by: ${fact.whoKnows.join(', ')})` : ''}`
+        `- ${truncate(fact.text, 100)}${fact.whoKnows.length > 0 ? ` (known by: ${truncate(fact.whoKnows.join(', '), 40)})` : ''}`
     ),
   ].join('\n');
 }
 
 function formatThreads(db: AppDatabase) {
-  const threads = db.threads.filter((thread) => thread.status === 'open').slice(0, 12);
+  const threads = db.threads.filter((thread) => thread.status === 'open').slice(0, 8);
 
   if (threads.length === 0) {
     return 'OPEN THREADS\nNone.';
@@ -489,7 +495,7 @@ function formatThreads(db: AppDatabase) {
 
   return [
     'OPEN THREADS',
-    ...threads.map((thread) => `- ${thread.title}: ${thread.description}`),
+    ...threads.map((thread) => `- ${truncate(thread.title, 60)}: ${truncate(thread.description, 80)}`),
   ].join('\n');
 }
 
@@ -500,12 +506,21 @@ function formatLore(lore: AppDatabase['loreEntries']) {
 
   return [
     'RELEVANT LORE',
-    ...lore.map((entry) => `- ${entry.text}`),
+    ...lore.map((entry) => `- ${truncate(entry.text, 150)}`),
   ].join('\n');
 }
 
+
+function truncate(value: string, maxLength: number) {
+  if (!value || value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength).trimEnd()}…`;
+}
+
 function formatArcSummary(summary: string | null) {
-  return `CURRENT ARC SUMMARY\n${summary ?? 'No arc summary yet.'}`;
+  return `CURRENT ARC SUMMARY\n${truncate(summary ?? 'No arc summary yet.', 400)}`;
 }
 
 function formatMemories(memories: EventRecord[]) {
@@ -515,7 +530,7 @@ function formatMemories(memories: EventRecord[]) {
 
   return [
     'RELEVANT MEMORIES',
-    ...memories.map((memory) => `- ${memory.summary}`),
+    ...memories.map((memory) => `- ${truncate(memory.summary, 120)}`),
   ].join('\n');
 }
 
