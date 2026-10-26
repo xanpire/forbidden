@@ -1,34 +1,26 @@
 import { Asset } from 'expo-asset';
 
-const kanNoCloak = require('../../assets/images/kan-no-cloak.jpg');
-const kanAkatsuki = require('../../assets/images/kan-akatsuki.jpg');
-const kanFaceNoCloak = require('../../assets/images/kan-face-no-cloak.jpg');
-const kanFaceAkatsuki = require('../../assets/images/kan-face-akatsuki.jpg');
+const kanFaceSheet = require('../../assets/images/kan-face-sheet.jpg');
+const kanOutfitBlack = require('../../assets/images/kan-outfit-black.jpg');
+const kanOutfitAkatsuki = require('../../assets/images/kan-outfit-akatsuki.jpg');
 
-const referenceCache = new Map<boolean, Promise<string[]>>();
+let referencesPromise: Promise<string[]> | null = null;
 
-export function loadKanReferenceImages(wearsAkatsukiCloak: boolean) {
-  const cached = referenceCache.get(wearsAkatsukiCloak);
-
-  if (cached) {
-    return cached;
+export function loadKanReferenceImages(wearsAkatsukiCloak: boolean): Promise<string[]> {
+  if (!referencesPromise) {
+    referencesPromise = Promise.all([
+      toDataUri(Asset.fromModule(kanFaceSheet)),
+      toDataUri(Asset.fromModule(kanOutfitBlack)),
+      toDataUri(Asset.fromModule(kanOutfitAkatsuki)),
+    ]).then((values) => values.filter(Boolean));
   }
 
-  const currentFull = wearsAkatsukiCloak ? kanAkatsuki : kanNoCloak;
-  const currentFace = wearsAkatsukiCloak ? kanFaceAkatsuki : kanFaceNoCloak;
-  const alternateFull = wearsAkatsukiCloak ? kanNoCloak : kanAkatsuki;
-  const alternateFace = wearsAkatsukiCloak ? kanFaceNoCloak : kanFaceAkatsuki;
+  return referencesPromise.then(([face, black, akatsuki]) => {
+    const current = wearsAkatsukiCloak ? akatsuki : black;
+    const alternate = wearsAkatsukiCloak ? black : akatsuki;
 
-  const references = Promise.all([
-    toDataUri(Asset.fromModule(currentFull)),
-    toDataUri(Asset.fromModule(currentFace)),
-    toDataUri(Asset.fromModule(alternateFull)),
-    toDataUri(Asset.fromModule(alternateFace)),
-  ]).then((values) => values.filter(Boolean));
-
-  referenceCache.set(wearsAkatsukiCloak, references);
-
-  return references;
+    return [face, current, alternate].filter(Boolean);
+  });
 }
 
 async function toDataUri(asset: Asset) {

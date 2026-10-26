@@ -252,9 +252,11 @@ describe('image reference pipeline', () => {
     const prompt = buildSceneImagePrompt(db, recent);
 
     expect(prompt).toContain('Reference image 1: a previous scene image');
-    expect(prompt).toContain('Reference image 6');
+    expect(prompt).toContain('Reference image 5');
     expect(prompt).toContain(db.state.location.slice(0, 20));
     expect(prompt).toContain('no text');
+    expect(prompt).toContain('face sheet');
+    expect(prompt).toContain('NO person');
   });
 
   test('recent images collect from assistant messages in order', () => {

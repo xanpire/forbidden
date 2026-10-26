@@ -52,7 +52,7 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
   const lines = [
     'Cinematic dark anime illustration.',
     'Visual image only. Do not render any words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere in the image.',
-    'Use the attached reference images of Kan to match his face, black spiky hair, build, and anime art style exactly.',
+    'Use the attached reference images of Kan to depict him accurately: his face from the face sheet, his clothes from the outfit sheet, and the same anime art style throughout.',
   ];
 
   let index = 1;
@@ -65,25 +65,21 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
   }
 
   lines.push(
-    `Reference image ${index}: full-body Kan in ${currentOutfit}.`,
+    `Reference image ${index}: Kan's face sheet — front, both profiles, and back of head, with no clothes shown. Match his face exactly: black spiky hair, brown eyes, facial structure, hairline.`,
   );
   index += 1;
   lines.push(
-    `Reference image ${index}: close-up of Kan’s face in ${currentOutfit}.`,
+    `Reference image ${index}: the clothes Kan currently wears (${currentOutfit}) — front, side, and back views with NO person. Dress the face reference in exactly these clothes.`,
   );
   index += 1;
   lines.push(
-    `Reference image ${index}: full-body Kan in ${alternateOutfit}.`,
-  );
-  index += 1;
-  lines.push(
-    `Reference image ${index}: close-up of Kan’s face in ${alternateOutfit}.`,
+    `Reference image ${index}: the alternate outfit (${alternateOutfit}) — front, side, and back views with NO person. Use only if the story explicitly changes his clothing.`,
   );
   index += 1;
 
   lines.push(
-    'Use the close-up references to match facial structure, eyes, nose, mouth, hairline, and expression.',
-    'Use the full-body references for build, posture, and outfit.',
+    'Use the face sheet for facial structure, eyes, nose, mouth, hairline, hairstyle, and expression.',
+    'The outfit sheets show clothes without a person: combine the face sheet with the correct outfit sheet to depict Kan accurately.',
     `Kan currently wears ${currentOutfit}.`,
     'Do not redesign Kan’s face or hairstyle. Keep his likeness consistent across images.',
     `Scene: ${db.state.scene}.`,
