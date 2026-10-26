@@ -388,17 +388,73 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   return next;
 }
 
-// The masked person is known by many names; the REAL Madara is a separate
-// character who appears later and must never be merged with the masked man.
+// Shared-identity clusters (Naruto lore): characters known by many names, or
+// bodies controlled by one mind. Members of the same group are ONE character:
+// - The masked man is known as Tobi, Obito, "fake Madara".
+// - The REAL Madara Uchiha is a separate person who appears later.
+// - Pain is the Six Paths of Pain — six bodies (Deva, Asura, Animal, Human,
+//   Preta, Naraka) controlled by Nagato Uzumaki, who is Pain's true identity.
+//   Nagato knows everything every Pain body has seen or heard.
+// - Zetsu is one being split into Black Zetsu and White Zetsu halves.
 const FAKE_HINTS = ['tobi', 'obito', 'masked man', 'fake madara'];
-const PERSON_HINTS = [...FAKE_HINTS, 'madara'];
+const REAL_MADARA_HINTS = ['madara'];
+const PAIN_HINTS = [
+  'pain',
+  'nagato',
+  'six paths of pain',
+  'deva path',
+  'asura path',
+  'animal path',
+  'human path',
+  'preta path',
+  'naraka path',
+];
+const ZETSU_HINTS = ['zetsu', 'black zetsu', 'white zetsu'];
 
-function entityHints(entity: EntityRecord): Set<string> {
+const PERSON_HINTS = [...FAKE_HINTS, ...REAL_MADARA_HINTS, ...PAIN_HINTS, ...ZETSU_HINTS];
+
+type IdentityGroup = 'masked-man' | 'real-madara' | 'pain' | 'zetsu';
+
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function containsHint(name: string, hint: string) {
+  // "pain" is a common English word; only treat it as a name hint in short
+  // proper names ("Pain", "Nagato's Pain", "Six Paths of Pain" via its own hint).
+  if (hint === 'pain') {
+    return countWords(name) <= 3 && containsWord(name, 'pain');
+  }
+
+  return containsWord(name, hint);
+}
+
+export function entityGroup(hints: Set<string>): IdentityGroup | null {
+  if ([...hints].some((hint) => FAKE_HINTS.includes(hint))) {
+    return 'masked-man';
+  }
+
+  if (hints.has('madara')) {
+    return 'real-madara';
+  }
+
+  if ([...hints].some((hint) => PAIN_HINTS.includes(hint))) {
+    return 'pain';
+  }
+
+  if ([...hints].some((hint) => ZETSU_HINTS.includes(hint))) {
+    return 'zetsu';
+  }
+
+  return null;
+}
+
+export function entityHints(entity: EntityRecord): Set<string> {
   const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
 
   return new Set(
     [...names, ...names.flatMap((name) => nameCandidates(name))].flatMap((name) =>
-      PERSON_HINTS.filter((hint) => containsWord(name, hint))
+      PERSON_HINTS.filter((hint) => containsHint(name, hint))
     )
   );
 }
@@ -407,25 +463,35 @@ function nameHints(rawName: string): Set<string> {
   const names = [rawName.toLowerCase(), ...nameCandidates(rawName).map((candidate) => candidate.toLowerCase())];
 
   return new Set(
-    PERSON_HINTS.filter((hint) => names.some((name) => containsWord(name, hint)))
+    PERSON_HINTS.filter((hint) => names.some((name) => containsHint(name, hint)))
   );
 }
 
 function entityIsFake(entity: EntityRecord): boolean {
-  return [...entityHints(entity)].some((hint) => FAKE_HINTS.includes(hint));
+  return entityGroup(entityHints(entity)) === 'masked-man';
+}
+
+// Bare "Madara" refers to the masked man, who claims that name. Qualified
+// real-Madara names ("Madara Uchiha", "the real Madara") refer to the real
+// Madara, who appears much later in the story.
+function isBareMadara(rawName: string) {
+  return normalizeName(rawName).toLowerCase() === 'madara';
 }
 
 function findFakeEntity(db: AppDatabase): EntityRecord | null {
-  return db.entities.find((entity) => entity.type === 'character' && entityIsFake(entity)) ?? null;
+  return findEntityByGroup(db, 'masked-man');
+}
+
+function findEntityByGroup(db: AppDatabase, group: IdentityGroup): EntityRecord | null {
+  return (
+    db.entities.find(
+      (entity) => entity.type === 'character' && entityGroup(entityHints(entity)) === group
+    ) ?? null
+  );
 }
 
 function findRealMadara(db: AppDatabase): EntityRecord | null {
-  return (
-    db.entities.find(
-      (entity) =>
-        entity.type === 'character' && !entityIsFake(entity) && entityHints(entity).has('madara')
-    ) ?? null
-  );
+  return findEntityByGroup(db, 'real-madara');
 }
 
 function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
@@ -457,17 +523,13 @@ function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
         continue;
       }
 
-      const primaryIsFake = [...primaryHints].some((hint) => FAKE_HINTS.includes(hint));
-      const otherIsFake = [...otherHints].some((hint) => FAKE_HINTS.includes(hint));
+      // Merge only when both entities belong to the same identity group
+      // (duplicates of the masked man, of Pain, of Zetsu, or of the real
+      // Madara). Members of different groups are different people.
+      const primaryGroup = entityGroup(primaryHints);
+      const otherGroup = entityGroup(otherHints);
 
-      // Merge only when both are the masked person, or when both are plain
-      // "Madara" references (duplicates of the REAL Madara). A fake entity and
-      // the real Madara must never merge.
-      const shouldMerge =
-        (primaryIsFake && otherIsFake) ||
-        (!primaryIsFake && !otherIsFake && primaryHints.has('madara') && otherHints.has('madara'));
-
-      if (!shouldMerge) {
+      if (!primaryGroup || primaryGroup !== otherGroup) {
         continue;
       }
 
@@ -482,7 +544,7 @@ function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
         (alias, index, list) =>
           alias.toLowerCase() !== keep.name.toLowerCase() &&
           list.findIndex((item) => item.toLowerCase() === alias.toLowerCase()) === index
-      ).slice(0, 6);
+      ).slice(0, 8);
 
       const merged: EntityRecord = {
         ...keep,
@@ -620,8 +682,18 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
     return null;
   }
 
+  const hints = nameHints(rawName);
+  const isRealMadara = hints.has('madara') && ![...hints].some((hint) => FAKE_HINTS.includes(hint));
+  const realMadaraExists = isRealMadara ? findEntityByGroup(db, 'real-madara') !== null : false;
+
   for (const entity of db.entities) {
     if (entity.type !== 'character') {
+      continue;
+    }
+
+    // Once the real Madara exists, "Madara" (and any real-Madara name) refers
+    // to him — never to the masked man, even via the masked man's aliases.
+    if (isRealMadara && realMadaraExists && entityIsFake(entity)) {
       continue;
     }
 
@@ -637,11 +709,8 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
       continue;
     }
 
-    // An unqualified "Madara" reference must never fall back to the masked
-    // man entity once the real Madara exists.
-    const hints = nameHints(rawName);
-    const isRealMadara = hints.has('madara') && ![...hints].some((hint) => FAKE_HINTS.includes(hint));
-
+    // A real-Madara reference must never fall back to the masked man entity,
+    // even when the real Madara has not been registered yet.
     if (isRealMadara && entityIsFake(entity)) {
       continue;
     }
@@ -655,6 +724,27 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
     ) {
       return entity;
     }
+  }
+
+  // Group fallback: shared-identity names resolve to their one entity even
+  // without a direct name match. "Nagato" resolves to the Pain entity, "Tobi"
+  // to the masked man, "Black Zetsu" to the Zetsu entity. Once the real
+  // Madara exists, an unqualified "Madara" refers to him; before that, it
+  // refers to the masked man (who claims that name).
+  const group = entityGroup(hints);
+
+  if (group === 'real-madara') {
+    const realMadara = findEntityByGroup(db, 'real-madara');
+
+    if (realMadara) {
+      return realMadara;
+    }
+
+    return isBareMadara(rawName) ? findEntityByGroup(db, 'masked-man') : null;
+  }
+
+  if (group) {
+    return findEntityByGroup(db, group);
   }
 
   return null;
@@ -769,20 +859,27 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   const name = entity.name.trim();
   const hints = nameHints(name);
-  const isFake = [...hints].some((hint) => FAKE_HINTS.includes(hint));
-  const isRealMadara = hints.has('madara') && !isFake;
+  const group = entityGroup(hints);
 
   let existing = resolveEntity(db, name);
 
   // The real Madara must never be merged into the masked man entity.
-  if (existing && isRealMadara && entityIsFake(existing)) {
+  if (existing && group === 'real-madara' && entityIsFake(existing)) {
     existing = findRealMadara(db);
   }
 
-  // Masked-man aliases (Obito, Tobi, masked man, ...) always resolve to the
-  // one masked entity, never a new character.
-  if (isFake && !existing) {
-    existing = findFakeEntity(db);
+  // Shared-identity aliases always resolve to their one entity, never a new
+  // character: masked-man names (Tobi, Obito, ...), Pain/Nagato and the six
+  // paths, and Zetsu halves.
+  if (!existing && group) {
+    existing = findEntityByGroup(db, group);
+
+    // Bare "Madara" with no real Madara in the story yet refers to the masked
+    // man, who claims that name. Qualified names ("Madara Uchiha") create the
+    // real Madara as a new character.
+    if (!existing && group === 'real-madara' && isBareMadara(name)) {
+      existing = findFakeEntity(db);
+    }
   }
 
   if (!existing) {

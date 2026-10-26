@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { daysBetween } from '../lib/rpg/calendar';
-import { applyEntityDiff, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
+import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
@@ -483,13 +483,63 @@ describe('masked man identity resolution', () => {
 
     const maskedId = resolveEntity(db, 'Masked Man')?.id;
 
-    db = applyEntityDiff(db, { name: 'Madara', role: 'Legend', age: 40 });
+    // Bare "Madara" is the masked man's claimed name while the real Madara
+    // has not appeared yet.
+    db = applyEntityDiff(db, { name: 'Madara', role: 'Mystery' });
+    expect(resolveEntity(db, 'Madara')?.id).toBe(maskedId);
 
-    const madaraId = resolveEntity(db, 'Madara')?.id;
+    // The real Madara Uchiha appears much later and stays a separate entity.
+    db = applyEntityDiff(db, { name: 'Madara Uchiha', role: 'Legend', age: 40 });
+
+    const madaraId = resolveEntity(db, 'Madara Uchiha')?.id;
 
     expect(madaraId).toBeDefined();
     expect(madaraId).not.toBe(maskedId);
     expect(resolveEntity(db, 'Masked Man')?.id).toBe(maskedId);
+    expect(resolveEntity(db, 'Madara')?.id).toBe(madaraId);
+  });
+
+  test('Pain, Nagato, and the six paths are one character', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyEntityDiff(db, { name: 'Pain', role: 'Akatsuki leader' });
+    db = applyEntityDiff(db, { name: 'Nagato', role: 'Akatsuki leader' });
+    db = applyEntityDiff(db, { name: 'Deva Path', role: 'Akatsuki' });
+
+    const painId = resolveEntity(db, 'Pain')?.id;
+
+    expect(resolveEntity(db, 'Nagato')?.id).toBe(painId);
+    expect(resolveEntity(db, 'Deva Path')?.id).toBe(painId);
+    expect(resolveEntity(db, 'Nagato')?.name).toBe('Pain');
+
+    const painEntities = db.entities.filter((entity) =>
+      entityGroup(entityHints(entity)) === 'pain'
+    );
+
+    expect(painEntities.length).toBe(1);
+  });
+
+  test('Pain never merges with the masked man or the real Madara', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
+    db = applyEntityDiff(db, { name: 'Madara Uchiha', role: 'Legend', age: 40 });
+    db = applyEntityDiff(db, { name: 'Pain', role: 'Akatsuki leader' });
+
+    expect(resolveEntity(db, 'Pain')?.id).not.toBe(resolveEntity(db, 'Masked Man')?.id);
+    expect(resolveEntity(db, 'Pain')?.id).not.toBe(resolveEntity(db, 'Madara Uchiha')?.id);
+  });
+
+  test('Black Zetsu and White Zetsu resolve to one entity', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyEntityDiff(db, { name: 'Black Zetsu', role: 'Akatsuki' });
+    db = applyEntityDiff(db, { name: 'White Zetsu', role: 'Akatsuki' });
+
+    const zetsuId = resolveEntity(db, 'Black Zetsu')?.id;
+
+    expect(resolveEntity(db, 'White Zetsu')?.id).toBe(zetsuId);
+    expect(db.entities.filter((entity) => entity.name.toLowerCase().includes('zetsu')).length).toBe(1);
   });
 
   test('existing masked man and Tobi entities merge on any turn', () => {

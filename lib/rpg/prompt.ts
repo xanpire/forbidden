@@ -81,6 +81,8 @@ MEMORY & CONTINUITY
 - Respect who-knows-what. Characters only know secrets they have learned in the story.
 - IDENTITY RULE: "the masked man", "Tobi", "Obito", and "the fake Madara" are ALWAYS one and the same person. Use one consistent character for all of these names and never create a second entry for them.
 - The REAL Madara Uchiha is a DIFFERENT character who has not appeared in this story yet. If he ever appears later, create him as a separate new character. Never merge him with the masked man and never treat the masked man as the real Madara.
+- PAIN RULE: "Pain" is the Six Paths of Pain — six bodies (Deva Path, Asura Path, Animal Path, Human Path, Preta Path, Naraka Path) that are ONE entity controlled by Nagato. Never create separate entities for the individual paths. "Nagato" and "Pain" are the same person; when Nagato is revealed, he is the same character who has been operating as Pain, and he knows everything every Pain body has seen or heard. Never merge Pain with the masked man or the real Madara.
+- ZETSU RULE: "Black Zetsu" and "White Zetsu" are two halves of one being — treat them as one character "Zetsu". White Zetsu clones/swarm are expendable copies, not characters; do not create entries for them.
 
 STATE OUTPUT (MANDATORY)
 - After your narration, on the last lines, output exactly one fenced JSON block with changes only.
