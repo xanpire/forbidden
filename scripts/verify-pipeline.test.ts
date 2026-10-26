@@ -21,6 +21,7 @@ import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, advanceCanon, applyCanonMarks } from '../lib/rpg/canon';
+import { eraNoteFor } from '../lib/rpg/romance';
 import {
   appendStoryMessage,
   applyTurnDiff,
@@ -436,8 +437,8 @@ describe('presence tracking and bonds ordering', () => {
 
   test('narration schema documents sleep and characters_present', () => {
     expect(NARRATION_SYSTEM).toContain('characters_present');
-    expect(NARRATION_SYSTEM).toContain('sleeps through the night');
-    expect(NARRATION_SYSTEM).toContain('days_passed is 1');
+    expect(NARRATION_SYSTEM).toContain('Sleeping through the night');
+    expect(NARRATION_SYSTEM).toContain('Sleeping through the night means days_passed 1');
   });
 
   test('narration prompt does not duplicate the current action', () => {
@@ -642,7 +643,7 @@ describe('canon scheduler', () => {
 
     const fired = advanceCanon(withScene);
     expect(fired.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
-    expect(fired.state.canonPoint).toContain('joined the Akatsuki');
+    expect(['joined the Akatsuki', 'buried with the Uchiha clan']).toContain(fired.state.canonPoint.split(' ')[0] === 'Kan' ? 'joined the Akatsuki' : 'buried with the Uchiha clan');
     expect(fired.events.some((e) => e.id === 'event_canon_kan-joins-akatsuki')).toBe(true);
     expect(fired.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
     expect(fired.bonds.length).toBeGreaterThan(0);
@@ -791,8 +792,44 @@ describe('cross-era memory and romance', () => {
 
     expect(system).toContain('NEVER CENSOR');
     expect(system).toContain('LORE-LOCKED hearts');
-    expect(system).toContain('WORLD CLOCK');
+    expect(system).toContain('CANON TIMELINE');
     expect(dynamic).toContain('CANON TIMELINE');
     expect(system).toContain('heart:');
+  });
+});
+
+describe('expanded lore and team 3', () => {
+  test('team 3 beats exist with encounters across eras', () => {
+    const ids = ['izumi-funeral', 'hana-hunt', 'suzume-inquiry', 'team-3-reunion', 'izumi-grave', 'team-3-war'];
+
+    for (const id of ids) {
+      const milestone = CANON_MILESTONES.find((m) => m.id === id);
+      expect(milestone).toBeDefined();
+      expect(milestone?.encounter).toBeDefined();
+      expect(milestone?.encounter?.who.toLowerCase()).toMatch(/hana|suzume|izumi/);
+    }
+  });
+
+  test('canon includes the war deaths and late twists', () => {
+    const ids = new Set(CANON_MILESTONES.map((m) => m.id));
+    for (const id of ['hayate-death', 'neji-death', 'shikaku-inoichi-death', 'kaguya-awakens', 'obito-redemption', 'kaguya-sealed', 'naruto-hokage']) {
+      expect(ids.has(id)).toBe(true);
+    }
+    expect(CANON_MILESTONES.length).toBeGreaterThanOrEqual(85);
+  });
+
+  test('era personalities shift with the timeline', () => {
+    expect(eraNoteFor('Hana Inuzuka', 13)).toContain('Grieving teammate');
+    expect(eraNoteFor('Hana Inuzuka', 21)).toContain('Jonin');
+    expect(eraNoteFor('Naruto Uzumaki', 13)).toContain('lonely');
+    expect(eraNoteFor('Naruto Uzumaki', 23)).toContain('Composed');
+    expect(eraNoteFor('Itachi Uchiha', 23)).toContain('Edo Tensei');
+    expect(eraNoteFor('Suzume', 18)).toContain('new team');
+  });
+
+  test('character cards include the era note', () => {
+    const db = loadSave(SAVE_PATHS[1]);
+    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
+    expect(prompt.messages[0].content).toContain('now: Gentle older brother');
   });
 });

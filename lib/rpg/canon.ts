@@ -43,6 +43,25 @@ export type CanonMilestone = {
 // year 22-23 is the Fourth War. Windows use (year, month); day is ignored.
 export const CANON_MILESTONES: CanonMilestone[] = [
   {
+    id: 'izumi-funeral',
+    era: 'Ashes',
+    title: "Izumi Uchiha's funeral",
+    description:
+      "Izumi Uchiha is buried with the rest of the clan. Hana and Suzume stand at the grave; Kan is a ghost at the edge of the ceremony.",
+    canonPoint: "Izumi Uchiha has been buried with the Uchiha clan.",
+    from: { year: 13, month: 10 },
+    to: { year: 14, month: 3 },
+    minScenes: 2,
+    facts: ["Izumi Uchiha was buried with the Uchiha clan after the massacre."],
+    encounter: {
+      who: "Hana Inuzuka and Suzume",
+      where: "the Uchiha cemetery outside Konoha",
+      context:
+        "Hana and Suzume are grieving and angry. Kan can attend in disguise, watch from the treeline, or stay away.",
+    },
+    attendanceFact: "Kan was at Izumi Uchiha's funeral.",
+  },
+  {
     id: 'kan-joins-akatsuki',
     era: 'Ashes',
     title: 'Kan joins the Akatsuki',
@@ -102,6 +121,25 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     facts: ['Kan completed his first missions for the Akatsuki.'],
   },
   {
+    id: 'mission-first-blood',
+    era: 'Ashes',
+    title: "The first execution",
+    description:
+      "Pain assigns Kan his first execution for the Akatsuki: a deserter whose mouth has grown too loud.",
+    canonPoint: "Kan has blood on his hands from his first Akatsuki assignment.",
+    from: { year: 14, month: 1 },
+    to: { year: 15, month: 6 },
+    minScenes: 6,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "a marked Akatsuki target",
+      where: "a border town",
+      context:
+        "The target begs, bargains, or fights. Kan decides what kind of Akatsuki he is becoming.",
+    }
+  },
+  {
     id: 'juzo-death',
     era: 'Ashes',
     title: 'Jūzō Biwa falls in Kumo',
@@ -124,6 +162,26 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     attendanceFact: 'Kan was on the mission when Jūzō Biwa fell to the Raikage\'s squad.',
   },
   {
+    id: 'hana-hunt',
+    era: 'The shadow war',
+    title: "Hana's patrol",
+    description:
+      "Hana, now a chunin, leads a patrol that picks up Kan's trail. She has to decide whether the missing-nin in the cloak is still her teammate.",
+    canonPoint: "Hana Inuzuka's patrol crossed Kan's trail.",
+    from: { year: 14, month: 6 },
+    to: { year: 16, month: 9 },
+    minScenes: 8,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Hana Inuzuka",
+      where: "the border woods of the Land of Fire",
+      context:
+        "Hana is torn between duty and memory. She may report Kan, warn him, or let him vanish.",
+    },
+    attendanceFact: "Kan crossed paths with Hana Inuzuka's patrol.",
+  },
+  {
     id: 'kisame-joins',
     era: 'Ashes',
     title: 'Kisame becomes Itachi\'s partner',
@@ -140,6 +198,26 @@ export const CANON_MILESTONES: CanonMilestone[] = [
       context:
         'Kisame is introduced to Itachi — and to Kan, if Itachi brings him along. Samehada chose Kisame after Jūzō\'s death.',
     },
+  },
+  {
+    id: 'suzume-inquiry',
+    era: 'The shadow war',
+    title: "Suzume's inquiry",
+    description:
+      "Suzume quietly investigates Kan's disappearance, the massacre, and the things Konoha will not say aloud.",
+    canonPoint: "Suzume is quietly investigating what happened to Kan and the Uchiha.",
+    from: { year: 15, month: 1 },
+    to: { year: 17, month: 6 },
+    minScenes: 12,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Suzume",
+      where: "Konoha archives and the roads beyond",
+      context:
+        "Suzume follows records and rumors. She may find Kan, or find only the shape of the lie.",
+    },
+    attendanceFact: "Kan crossed paths with Suzume during her inquiry.",
   },
   {
     id: 'orochimaru-betrayal',
@@ -160,6 +238,25 @@ export const CANON_MILESTONES: CanonMilestone[] = [
       context:
         'Orochimaru\'s ambush of Itachi ends with him trapped in genjutsu. Kan could witness the Snake Sannin\'s humiliation.',
     },
+  },
+  {
+    id: 'mission-bounty',
+    era: 'The shadow war',
+    title: "The bounty that went wrong",
+    description:
+      "A bounty hunt with Itachi and Kisame goes wrong when the target turns out to be someone Kan knows.",
+    canonPoint: "Kan's bounty mission went wrong.",
+    from: { year: 15, month: 6 },
+    to: { year: 17, month: 6 },
+    minScenes: 14,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Kisame Hoshigaki and Itachi Uchiha",
+      where: "a bounty station in the Land of Water",
+      context:
+        "The target is connected to Kan's past. Itachi watches what Kan chooses.",
+    }
   },
   {
     id: 'deidara-recruited',
@@ -285,6 +382,25 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
   },
   {
+    id: 'mission-ame-riot',
+    era: 'The shadow war',
+    title: "The rain riot",
+    description:
+      "A riot in Amegakure forces Kan to choose between the Akatsuki's order and the people under Pain's rain.",
+    canonPoint: "Kan faced the people of Amegakure during a riot.",
+    from: { year: 16, month: 6 },
+    to: { year: 18, month: 6 },
+    minScenes: 18,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Konan",
+      where: "Amegakure's flooded streets",
+      context:
+        "Konan watches Kan handle the crowd. Pain's order is absolute; the people are starving.",
+    }
+  },
+  {
     id: 'masked-man-rumors',
     era: 'The shadow war',
     title: 'Rumors of the masked man',
@@ -400,6 +516,18 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     facts: ['Orochimaru branded Sasuke Uchiha with the cursed seal.'],
   },
   {
+    id: 'hayate-death',
+    era: 'Part 1',
+    title: "Hayate falls",
+    description:
+      "Gekko Hayate is killed by Baki of the Sand before the invasion, his body left in the dark.",
+    canonPoint: "Gekko Hayate has been murdered before the invasion.",
+    from: { year: 18, month: 2 },
+    to: { year: 18, month: 10 },
+    minScenes: 30,
+    facts: ["Gekko Hayate was killed by Baki before the invasion of Konoha."],
+  },
+  {
     id: 'konoha-invasion',
     era: 'Part 1',
     title: 'The Invasion of Konoha',
@@ -419,6 +547,26 @@ export const CANON_MILESTONES: CanonMilestone[] = [
         'The village Kan abandoned is burning. He could be inside the walls, outside them, or far away.',
     },
     major: true,
+  },
+  {
+    id: 'team-3-reunion',
+    era: 'Part 1',
+    title: "The team that was",
+    description:
+      "After the invasion, Hana and Suzume cross Kan's path — the team that was, standing on opposite sides of the same war.",
+    canonPoint: "Kan met Hana and Suzume again after the invasion.",
+    from: { year: 18, month: 3 },
+    to: { year: 19, month: 9 },
+    minScenes: 34,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Hana Inuzuka and Suzume",
+      where: "the ruined edge of Konoha",
+      context:
+        "Suzume wants answers; Hana wants to know why Kan abandoned them. Both still care, under the anger.",
+    },
+    attendanceFact: "Kan met Hana and Suzume after the invasion.",
   },
   {
     id: 'tsunade-hokage',
@@ -582,6 +730,38 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
   },
   {
+    id: 'gaara-kage',
+    era: 'The hidden years',
+    title: "Gaara becomes Kazekage",
+    description:
+      "Gaara becomes the Fifth Kazekage, the monster of the Sand remade as its protector.",
+    canonPoint: "Gaara is the Fifth Kazekage.",
+    from: { year: 20, month: 6 },
+    to: { year: 21, month: 2 },
+    minScenes: 40,
+    facts: ["Gaara became the Fifth Kazekage."],
+  },
+  {
+    id: 'izumi-grave',
+    era: 'Shippuden',
+    title: "Izumi's grave",
+    description:
+      "Kan returns to Izumi's grave. Hana is there, and neither of them has the words.",
+    canonPoint: "Kan returned to Izumi's grave.",
+    from: { year: 20, month: 6 },
+    to: { year: 22, month: 12 },
+    minScenes: 42,
+    facts: [],
+    playerDriven: true,
+    encounter: {
+      who: "Hana Inuzuka",
+      where: "Izumi's grave outside Konoha",
+      context:
+        "Hana is visiting Izumi. The two survivors of Team 3 can talk, fight, or stand in silence.",
+    },
+    attendanceFact: "Kan met Hana at Izumi's grave.",
+  },
+  {
     id: 'gaara-captured',
     era: 'Shippuden',
     title: 'Gaara captured',
@@ -608,6 +788,18 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 21, month: 8 },
     minScenes: 42,
     facts: ['Sasori of the Red Sand was killed by Chiyo and Sakura Haruno.'],
+  },
+  {
+    id: 'naruto-sage-training',
+    era: 'Shippuden',
+    title: "Sage training",
+    description:
+      "Naruto trains sage mode at Mount Myoboku, learning stillness and the shape of the world's chakra.",
+    canonPoint: "Naruto is training in sage mode at Mount Myoboku.",
+    from: { year: 21, month: 3 },
+    to: { year: 21, month: 9 },
+    minScenes: 44,
+    facts: ["Naruto Uzumaki trained in sage mode at Mount Myoboku."],
   },
   {
     id: 'team-kakashi-bridge',
@@ -719,6 +911,18 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
   },
   {
+    id: 'itachi-crow',
+    era: 'Shippuden',
+    title: "Itachi's crow",
+    description:
+      "Before his final battle, Itachi feeds Naruto a crow carrying Shisui's eye — insurance against a certain masked man.",
+    canonPoint: "Itachi gave Naruto a crow carrying Shisui's eye.",
+    from: { year: 21, month: 8 },
+    to: { year: 22, month: 3 },
+    minScenes: 50,
+    facts: ["Itachi gave Naruto a crow carrying Shisui Uchiha's eye."],
+  },
+  {
     id: 'itachi-vs-sasuke',
     era: 'Shippuden',
     title: 'Itachi falls',
@@ -775,6 +979,18 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 22, month: 4 },
     minScenes: 52,
     facts: ['Team Hawk failed to capture Killer Bee, the Eight-Tails\' jinchūriki.'],
+  },
+  {
+    id: 'killer-bee-training',
+    era: 'Shippuden',
+    title: "Training with Killer Bee",
+    description:
+      "Naruto trains with Killer Bee to control the Nine-Tails' chakra.",
+    canonPoint: "Naruto is training with Killer Bee to control the Nine-Tails.",
+    from: { year: 21, month: 11 },
+    to: { year: 22, month: 6 },
+    minScenes: 52,
+    facts: ["Naruto trained with Killer Bee to control the Nine-Tails."],
   },
   {
     id: 'itachi-posthumous',
@@ -970,6 +1186,27 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     attendanceFact: 'Kan met Itachi again on the battlefield during the war.',
   },
   {
+    id: 'team-3-war',
+    era: 'The Fourth War',
+    title: "Team 3 on the battlefield",
+    description:
+      "Hana Inuzuka and Suzume fight in the Allied Shinobi Forces. On a battlefield full of masked shinobi, the old team finds each other again.",
+    canonPoint: "Kan met Hana and Suzume on the war's battlefield.",
+    from: { year: 23, month: 1 },
+    to: { year: 23, month: 10 },
+    minScenes: 60,
+    facts: [],
+    major: true,
+    playerDriven: true,
+    encounter: {
+      who: "Hana Inuzuka and Suzume",
+      where: "a battlefield of the Fourth War",
+      context:
+        "Hana and Suzume are exhausted and outnumbered. Kan's side of the war matters more than ever here.",
+    },
+    attendanceFact: "Kan fought beside Hana and Suzume during the war.",
+  },
+  {
     id: 'madara-revived',
     era: 'The Fourth War',
     title: 'Madara is revived',
@@ -982,6 +1219,19 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     facts: [
       'The real Madara Uchiha was revived by Edo Tensei during the war.',
     ],
+    major: true,
+  },
+  {
+    id: 'hokage-edo',
+    era: 'The Fourth War',
+    title: "The four Hokage return",
+    description:
+      "Orochimaru revives the four Hokage with Edo Tensei. Minato, Hashirama, Tobirama, and Hiruzen walk the battlefield again.",
+    canonPoint: "The four Hokage have been revived by Edo Tensei.",
+    from: { year: 23, month: 2 },
+    to: { year: 23, month: 9 },
+    minScenes: 62,
+    facts: ["Orochimaru revived the four Hokage with Edo Tensei during the war."],
     major: true,
   },
   {
@@ -1021,6 +1271,18 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     major: true,
   },
   {
+    id: 'shikaku-inoichi-death',
+    era: 'The Fourth War',
+    title: "Headquarters falls",
+    description:
+      "The Ten-Tails destroys the Alliance headquarters, killing Shikaku Nara and Inoichi Yamanaka.",
+    canonPoint: "Shikaku Nara and Inoichi Yamanaka are dead.",
+    from: { year: 23, month: 4 },
+    to: { year: 23, month: 10 },
+    minScenes: 64,
+    facts: ["Shikaku Nara and Inoichi Yamanaka died when the Ten-Tails destroyed headquarters."],
+  },
+  {
     id: 'obito-jinchuriki',
     era: 'The Fourth War',
     title: 'Obito becomes the Ten-Tails\' jinchūriki',
@@ -1031,6 +1293,19 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 23, month: 10 },
     minScenes: 64,
     facts: ['Obito became the Ten-Tails\' jinchūriki.'],
+    major: true,
+  },
+  {
+    id: 'neji-death',
+    era: 'The Fourth War',
+    title: "Neji dies",
+    description:
+      "Neji Hyuga dies shielding Naruto and Hinata from the Ten-Tails' attack.",
+    canonPoint: "Neji Hyuga is dead.",
+    from: { year: 23, month: 5 },
+    to: { year: 23, month: 11 },
+    minScenes: 64,
+    facts: ["Neji Hyuga died protecting Naruto and Hinata."],
     major: true,
   },
   {
@@ -1047,11 +1322,50 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     major: true,
   },
   {
+    id: 'kaguya-awakens',
+    era: 'The Fourth War',
+    title: "Kaguya returns",
+    description:
+      "Black Zetsu betrays Madara and Kaguya Otsutsuki returns, the true architect of the infinite dream.",
+    canonPoint: "Kaguya Otsutsuki has returned.",
+    from: { year: 23, month: 6 },
+    to: { year: 23, month: 12 },
+    minScenes: 66,
+    facts: ["Kaguya Otsutsuki returned through Madara."],
+    major: true,
+  },
+  {
+    id: 'obito-redemption',
+    era: 'The Fourth War',
+    title: "Obito's choice",
+    description:
+      "Obito turns against Madara and dies protecting Kakashi and Naruto, choosing the boy he could have been.",
+    canonPoint: "Obito Uchiha turned against Madara and died defending his old team.",
+    from: { year: 23, month: 6 },
+    to: { year: 24, month: 1 },
+    minScenes: 66,
+    facts: ["Obito Uchiha turned against Madara and died defending Kakashi and Naruto."],
+    major: true,
+  },
+  {
+    id: 'kaguya-sealed',
+    era: 'The Fourth War',
+    title: "The infinite dream ends",
+    description:
+      "Team 7 seals Kaguya and ends the infinite dream.",
+    canonPoint: "Kaguya has been sealed by Team 7.",
+    from: { year: 23, month: 7 },
+    to: { year: 24, month: 1 },
+    minScenes: 66,
+    facts: ["Team 7 sealed Kaguya Otsutsuki."],
+    major: true,
+  },
+  {
     id: 'war-ends',
     era: 'The Fourth War',
     title: 'The sealing',
     description:
-      'The combined forces seal the beast and end the Fourth Shinobi World War.',
+      'The Allied Forces prevail and the Fourth Shinobi World War formally ends.',
     canonPoint: 'The Fourth Shinobi World War has ended.',
     from: { year: 23, month: 6 },
     to: { year: 24, month: 1 },
@@ -1083,6 +1397,44 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 25, month: 6 },
     minScenes: 70,
     facts: ['Kakashi Hatake became Hokage after the war.'],
+    playerDriven: true,
+  },
+{
+    id: 'sasuke-trial',
+    era: 'After',
+    title: "Sasuke's pardon",
+    description:
+      "Sasuke is pardoned and leaves Konoha to walk the world, atoning in his own way.",
+    canonPoint: "Sasuke Uchiha has been pardoned and left Konoha.",
+    from: { year: 24, month: 3 },
+    to: { year: 25, month: 6 },
+    minScenes: 68,
+    facts: ["Sasuke Uchiha was pardoned and left Konoha to travel."],
+  },
+  {
+    id: 'naruto-hokage',
+    era: 'After',
+    title: "The Seventh Hokage",
+    description:
+      "Years later, Naruto Uzumaki becomes the Seventh Hokage.",
+    canonPoint: "Naruto Uzumaki is the Seventh Hokage.",
+    from: { year: 25, month: 1 },
+    to: { year: 27, month: 6 },
+    minScenes: 70,
+    facts: ["Naruto Uzumaki became the Seventh Hokage."],
+    major: true,
+  },
+  {
+    id: 'kan-legacy',
+    era: 'After',
+    title: "Kan's legacy",
+    description:
+      "Kan's place in the new world: the people he saved, the ones he lost, and what he leaves behind.",
+    canonPoint: "Kan's story is settling into its legacy.",
+    from: { year: 24, month: 1 },
+    to: { year: 27, month: 12 },
+    minScenes: 70,
+    facts: [],
     playerDriven: true,
   },
 ];

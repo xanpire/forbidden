@@ -274,8 +274,18 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     romanceAccessibility: 'lore-locked',
     orientation: 'Unknown',
   },
+  'Team 3': {
+    canonDevotion: 'Kan, Hana, Izumi, and Suzume were a team before the massacre split them.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not applicable',
+  },
   'Hana Inuzuka': {
     canonDevotion: 'Loyal to her pack and her village; blunt about everything but her own heart.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Suzume': {
+    canonDevotion: 'Dedicated to her students and the village; guarded about her private life.',
     romanceAccessibility: 'winnable',
     orientation: 'Attracted to men',
   },
@@ -309,13 +319,137 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 
 // Prompt rules: injected into the narration system prompt. Kept compact to
 // protect the token budget.
-export const ROMANCE_RULES = `ROMANCE & HEARTS (LORE-ACCURATE)
-- Characters are people, not reward systems. Romance is slow, earned over many scenes, and can fail.
-- Each bond carries a relationship stage (stranger, friendly, close, romantic interest, partner, rejected), an attraction level (none, warm, strong), and — for canon characters — a lore heart.
-- LORE-LOCKED hearts: canon love wins. Sakura stays devoted to Sasuke, Hinata to Naruto, Jiraiya to Tsunade, Kurenai to Asuma's memory, Rock Lee to Sakura, Konan to Yahiko, Naruto to Sakura then Hinata. Kan's love is ignored or gently refused; deep friendship may still grow.
-- WINNABLE hearts: Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, and player-created characters. Feelings develop only through long, consistent, earned story time — never from one kind gesture.
-- ADULT GATING: while Kan is under 17, adult NPCs respond to romantic advances with in-character deflection, laughter, or a stern no — mentorship and banter remain open. From 17+, adult hearts can open if genuinely earned.
-- AGE & INTIMACY: attraction between teens is narrated honestly (tension, confessions, kissing). Explicit intimacy is narrated in full without fading or censoring — but only when both characters are adults (18+) in-story. If either is under 18, the scene narrates desire and stops at the boundary of explicit content; do not moralize, just let the age be real.
-- NEVER CENSOR: do not fade to black, skip, or sanitize romance or intimacy when ages permit. Write it openly and tastefully — the reader wants the real moment.
-- REJECTION PERSISTS: when a character declines Kan, record it. Do not reset, re-offer, or loop. A rejected heart can still become a friend; it does not become a prize waiting for persistence.
-- Relationships exist independently of Kan: NPCs love, mourn, and want each other, with or without him.`;
+export const ROMANCE_RULES = `ROMANCE & HEARTS
+- Characters are people, not rewards. Romance is slow, earned across many scenes, and can fail. NPCs love, mourn, and want each other with or without Kan.
+- Bonds carry a relationship stage (stranger, friendly, close, romantic interest, partner, rejected), attraction (none, warm, strong), and a lore heart.
+- LORE-LOCKED hearts never bend to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai→Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late). Kan's love is ignored or gently refused; real friendship may still grow.
+- WINNABLE hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, and originals) open only through long, consistent, earned time — never a single kind gesture.
+- Adult NPCs deflect romantic advances while Kan is under 17 (mentorship and banter stay open). From 17+, adult hearts may open if genuinely earned.
+- Teen attraction is narrated honestly (tension, confessions, kissing). Explicit intimacy is written openly with no fade or censor, but only when both characters are 18+ in-story; below that, the scene stops at the boundary without moralizing.
+- NEVER CENSOR romance or intimacy when ages permit; no fade-to-black, no skipping.
+- REJECTION PERSISTS: record it and never reset, re-offer, or loop. A rejected heart can become a friend, not a prize for persistence.`;
+export type EraKey = 'pre' | 'part1' | 'shippuden' | 'war' | 'after';
+
+export function eraKeyForYear(year: number): EraKey {
+  if (year < 17) return 'pre';
+  if (year < 20) return 'part1';
+  if (year < 23) return 'shippuden';
+  if (year < 24) return 'war';
+  return 'after';
+}
+
+// Personality shifts that canon characters undergo between eras. Kept separate
+// from the static lore profile so prompts only pay for the era that matters.
+const ERA_NOTES: Record<string, Partial<Record<EraKey, string>>> = {
+  'Naruto Uzumaki': {
+    pre: 'Loud, lonely, desperate for acknowledgment.',
+    part1: 'Brash and bright; believes effort beats talent.',
+    shippuden: 'Calmer, grieving Jiraiya, carrying the village\'s hope.',
+    war: 'Composed; refuses to give up on Obito or Sasuke.',
+    after: 'The Seventh Hokage: warm, tired, still stubborn.',
+  },
+  'Sasuke Uchiha': {
+    pre: 'Silent survivor; revenge already hardening him.',
+    part1: 'Cold and driven; the cursed seal whispers.',
+    shippuden: 'Calculating, hollowed out by hatred.',
+    war: 'Broken, then slowly reaching for redemption.',
+    after: 'A wandering penitent; quiet and guarded.',
+  },
+  'Sakura Haruno': {
+    pre: 'Book-smart, insecure, smitten with Sasuke.',
+    part1: 'Growing from fangirl to determined kunoichi.',
+    shippuden: 'Formidable medic-nin; still loves Sasuke.',
+    war: 'Battlefield healer holding her team together.',
+  },
+  'Kakashi Hatake': {
+    pre: 'Late, lazy, hiding grief behind a book.',
+    part1: 'Testing his team while remembering Obito.',
+    shippuden: 'Sharper, carrying the weight of command.',
+    war: 'Fighting Obito, facing his oldest wound.',
+    after: 'The Sixth Hokage: steady and quietly proud.',
+  },
+  'Itachi Uchiha': {
+    pre: 'Gentle older brother wearing a killer\'s mask.',
+    part1: 'Cold Akatsuki partner; secretly a double agent.',
+    shippuden: 'Dying, orchestrating his own defeat.',
+    war: 'Edo Tensei: lucid, at peace, fighting for the living.',
+  },
+  'Tsunade Senju': {
+    part1: 'Gambling, drinking, refusing the hat.',
+    shippuden: 'Hokage; stubborn, decisive, protective.',
+    war: 'Leading the Alliance\'s medical corps.',
+  },
+  'Jiraiya': {
+    part1: 'Flirtatious mentor, dodging Tsunade\'s rejection.',
+    shippuden: 'Dying to learn Pain\'s secret.',
+  },
+  'Hinata Hyuga': {
+    pre: 'Shy, watching Naruto from a distance.',
+    part1: 'Braver, still devoted in silence.',
+    shippuden: 'Ready to stand and fight beside him.',
+    war: 'Resolute; love turned into courage.',
+  },
+  'Gaara': {
+    part1: 'Unstable, blood-hungry vessel of the Shukaku.',
+    shippuden: 'Kazekage: calm, protective of his village.',
+    war: 'Leading the Sand, steady as stone.',
+  },
+  'Pain': {
+    shippuden: 'A god of pain, still grieving Yahiko.',
+    war: 'Dead; his will lives on in Konan.',
+  },
+  'Konan': {
+    shippuden: 'Quiet guardian of Nagato\'s dream.',
+    war: 'Defending his grave with her life.',
+  },
+  'Orochimaru': {
+    part1: 'Predatory, curious, plotting the invasion.',
+    shippuden: 'Weakened, then absorbed by Sasuke.',
+    war: 'Reborn: cold, curious, strangely cooperative.',
+  },
+  'Obito Uchiha': {
+    pre: 'A masked manipulator borrowing Madara\'s name.',
+    shippuden: 'Cheerful "Tobi" mask over bottomless grief.',
+    war: 'The mask cracks; the boy beneath is furious and broken.',
+  },
+  'The masked man': {
+    pre: 'A masked manipulator borrowing Madara\'s name.',
+    shippuden: 'Cheerful "Tobi" mask over bottomless grief.',
+    war: 'The mask cracks; the boy beneath is furious and broken.',
+  },
+  'Hana Inuzuka': {
+    pre: 'Grieving teammate; furious Kan vanished without a word.',
+    part1: 'Chunin patrol leader: sharp, hurt, still loyal.',
+    shippuden: 'Jonin; steady, protective, quietly watching for Kan.',
+    war: 'Fighting for Konoha, scanning every battlefield for him.',
+  },
+  'Suzume': {
+    pre: 'Searching for her missing student; betrayed and worried.',
+    part1: 'Sensei of a new team; wary of what Kan became.',
+    shippuden: 'Investigating Kan\'s trail through official channels.',
+    war: 'Serving the Alliance; she will not abandon a student.',
+  },
+  'Kisame Hoshigaki': {
+    pre: 'Loyal monster; respects strength above all.',
+    shippuden: 'Itachi\'s steadfast partner, hiding doubts.',
+    war: 'Dying for a cause he barely understands.',
+  },
+};
+
+
+export function eraNoteFor(name: string, year: number): string | null {
+  const key = loreKey(name);
+  const direct = ERA_NOTES[name];
+  if (direct) {
+    return direct[eraKeyForYear(year)] ?? null;
+  }
+
+  for (const [entryName, notes] of Object.entries(ERA_NOTES)) {
+    const entryKey = loreKey(entryName);
+    if (entryKey.includes(key) || key.includes(entryKey)) {
+      return notes[eraKeyForYear(year)] ?? null;
+    }
+  }
+
+  return null;
+}
