@@ -388,7 +388,45 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   return next;
 }
 
-const SAME_PERSON_HINTS = ['tobi', 'obito', 'madara', 'masked man', 'fake madara'];
+// The masked person is known by many names; the REAL Madara is a separate
+// character who appears later and must never be merged with the masked man.
+const FAKE_HINTS = ['tobi', 'obito', 'masked man', 'fake madara'];
+const PERSON_HINTS = [...FAKE_HINTS, 'madara'];
+
+function entityHints(entity: EntityRecord): Set<string> {
+  const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
+
+  return new Set(
+    [...names, ...names.flatMap((name) => nameCandidates(name))].flatMap((name) =>
+      PERSON_HINTS.filter((hint) => containsWord(name, hint))
+    )
+  );
+}
+
+function nameHints(rawName: string): Set<string> {
+  const names = [rawName.toLowerCase(), ...nameCandidates(rawName).map((candidate) => candidate.toLowerCase())];
+
+  return new Set(
+    PERSON_HINTS.filter((hint) => names.some((name) => containsWord(name, hint)))
+  );
+}
+
+function entityIsFake(entity: EntityRecord): boolean {
+  return [...entityHints(entity)].some((hint) => FAKE_HINTS.includes(hint));
+}
+
+function findFakeEntity(db: AppDatabase): EntityRecord | null {
+  return db.entities.find((entity) => entity.type === 'character' && entityIsFake(entity)) ?? null;
+}
+
+function findRealMadara(db: AppDatabase): EntityRecord | null {
+  return (
+    db.entities.find(
+      (entity) =>
+        entity.type === 'character' && !entityIsFake(entity) && entityHints(entity).has('madara')
+    ) ?? null
+  );
+}
 
 function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
   let next = db;
@@ -400,11 +438,7 @@ function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
       continue;
     }
 
-    const primaryNames = [primary.name.toLowerCase(), ...primary.aliases.map((alias) => alias.toLowerCase())];
-    const primaryHints = new Set(
-      [...primaryNames, ...primaryNames.flatMap((name) => nameCandidates(name))]
-        .flatMap((name) => SAME_PERSON_HINTS.filter((hint) => containsWord(name, hint)))
-    );
+    const primaryHints = entityHints(primary);
 
     if (primaryHints.size === 0) {
       continue;
@@ -417,19 +451,23 @@ function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
         continue;
       }
 
-      const otherNames = [other.name.toLowerCase(), ...other.aliases.map((alias) => alias.toLowerCase())];
-      const otherHints = new Set(
-        [...otherNames, ...otherNames.flatMap((name) => nameCandidates(name))]
-          .flatMap((name) => SAME_PERSON_HINTS.filter((hint) => containsWord(name, hint)))
-      );
+      const otherHints = entityHints(other);
 
       if (otherHints.size === 0) {
         continue;
       }
 
-      const hintsOverlap = [...otherHints].some((hint) => primaryHints.has(hint));
+      const primaryIsFake = [...primaryHints].some((hint) => FAKE_HINTS.includes(hint));
+      const otherIsFake = [...otherHints].some((hint) => FAKE_HINTS.includes(hint));
 
-      if (!hintsOverlap) {
+      // Merge only when both are the masked person, or when both are plain
+      // "Madara" references (duplicates of the REAL Madara). A fake entity and
+      // the real Madara must never merge.
+      const shouldMerge =
+        (primaryIsFake && otherIsFake) ||
+        (!primaryIsFake && !otherIsFake && primaryHints.has('madara') && otherHints.has('madara'));
+
+      if (!shouldMerge) {
         continue;
       }
 
@@ -599,6 +637,15 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
       continue;
     }
 
+    // An unqualified "Madara" reference must never fall back to the masked
+    // man entity once the real Madara exists.
+    const hints = nameHints(rawName);
+    const isRealMadara = hints.has('madara') && ![...hints].some((hint) => FAKE_HINTS.includes(hint));
+
+    if (isRealMadara && entityIsFake(entity)) {
+      continue;
+    }
+
     const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
 
     if (
@@ -715,18 +762,28 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   return next;
 }
 
-function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
+export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
   if (!entity?.name || typeof entity.name !== 'string') {
     return db;
   }
 
   const name = entity.name.trim();
+  const hints = nameHints(name);
+  const isFake = [...hints].some((hint) => FAKE_HINTS.includes(hint));
+  const isRealMadara = hints.has('madara') && !isFake;
 
-  if (!name) {
-    return db;
+  let existing = resolveEntity(db, name);
+
+  // The real Madara must never be merged into the masked man entity.
+  if (existing && isRealMadara && entityIsFake(existing)) {
+    existing = findRealMadara(db);
   }
 
-  const existing = resolveEntity(db, name);
+  // Masked-man aliases (Obito, Tobi, masked man, ...) always resolve to the
+  // one masked entity, never a new character.
+  if (isFake && !existing) {
+    existing = findFakeEntity(db);
+  }
 
   if (!existing) {
     const newEntity = {
@@ -810,7 +867,8 @@ function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
   const existingIndex = db.jutsuRecords.findIndex(
     (item) =>
       item.name.toLowerCase() === name.toLowerCase() &&
-      item.user.toLowerCase() === user.toLowerCase()
+      (item.user.toLowerCase() === user.toLowerCase() ||
+        resolveEntity(db, user)?.id === resolveEntity(db, item.user)?.id)
   );
 
   if (existingIndex === -1) {
@@ -1117,14 +1175,8 @@ function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
   };
 
   const eventEntities = (scene?.entities ?? [])
-    .map((name) =>
-      db.entities.find(
-        (entity) =>
-          entity.name.toLowerCase() === name.toLowerCase() ||
-          entity.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
-      )
-    )
-    .filter((entity): entity is NonNullable<typeof entity> => Boolean(entity))
+    .map((name) => resolveEntity(db, name))
+    .filter((entity): entity is EntityRecord => Boolean(entity))
     .map((entity) => ({
       eventId: event.id,
       entityId: entity.id,

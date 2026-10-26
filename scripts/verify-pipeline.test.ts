@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { daysBetween } from '../lib/rpg/calendar';
-import { storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
+import { applyEntityDiff, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
@@ -449,6 +449,56 @@ describe('presence tracking and bonds ordering', () => {
     const occurrences = dynamic.split(action).length - 1;
 
     expect(occurrences).toBe(1);
+  });
+});
+
+
+describe('masked man identity resolution', () => {
+  test('all masked-man names resolve to one entity', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    const names = ['Masked Man', 'Tobi', 'Obito', 'Masked Man (Madara)'];
+
+    for (const name of names) {
+      db = applyEntityDiff(db, { name, role: 'Mystery' });
+    }
+
+    const maskedEntities = db.entities.filter((entity) =>
+      ['masked man', 'tobi', 'obito'].some((hint) =>
+        [entity.name, ...entity.aliases].some((alias) => alias.toLowerCase().includes(hint))
+      )
+    );
+
+    expect(maskedEntities.length).toBe(1);
+    expect(resolveEntity(db, 'Tobi')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
+    expect(resolveEntity(db, 'Obito')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
+    expect(resolveEntity(db, 'Masked Man (Madara)')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
+  });
+
+  test('the real Madara is a separate character from the masked man', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
+    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
+
+    const maskedId = resolveEntity(db, 'Masked Man')?.id;
+
+    db = applyEntityDiff(db, { name: 'Madara', role: 'Legend', age: 40 });
+
+    const madaraId = resolveEntity(db, 'Madara')?.id;
+
+    expect(madaraId).toBeDefined();
+    expect(madaraId).not.toBe(maskedId);
+    expect(resolveEntity(db, 'Masked Man')?.id).toBe(maskedId);
+  });
+
+  test('existing masked man and Tobi entities merge on any turn', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
+    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
+
+    expect(resolveEntity(db, 'Tobi')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
   });
 });
 

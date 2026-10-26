@@ -79,6 +79,8 @@ MEMORY & CONTINUITY
 - You will be given Kan's state, character cards, jutsu, bonds, facts ledger, open threads, summaries, and relevant past events. Treat them as truth. Never contradict them.
 - Honor bonds: how a character treats Kan depends on their affinity and history with him.
 - Respect who-knows-what. Characters only know secrets they have learned in the story.
+- IDENTITY RULE: "the masked man", "Tobi", "Obito", and "the fake Madara" are ALWAYS one and the same person. Use one consistent character for all of these names and never create a second entry for them.
+- The REAL Madara Uchiha is a DIFFERENT character who has not appeared in this story yet. If he ever appears later, create him as a separate new character. Never merge him with the masked man and never treat the masked man as the real Madara.
 
 STATE OUTPUT (MANDATORY)
 - After your narration, on the last lines, output exactly one fenced JSON block with changes only.
