@@ -221,9 +221,13 @@ export type Settings = {
 };
 
 export type CanonProgress = {
+  version?: number;
+  baselineDate?: CalendarDate;
+  baselineTurn?: number;
   completed: string[];
   active: string[];
   engaged: string[];
+  expired?: string[];
 };
 
 export type RelationshipStage =

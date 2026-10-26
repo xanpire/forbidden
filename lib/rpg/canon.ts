@@ -1,9 +1,13 @@
 import type { AppDatabase, CalendarDate, ThreadType } from './types';
 
 export type CanonProgress = {
+  version?: number;
+  baselineDate?: CalendarDate;
+  baselineTurn?: number;
   completed: string[];
   active: string[];
   engaged: string[];
+  expired?: string[];
 };
 
 export type CanonThreadSeed = {
@@ -25,9 +29,9 @@ export type CanonMilestone = {
   era: string;
   title: string;
   description: string;
-  canonPoint: string;
-  from: { year: number; month: number };
-  to?: { year: number; month: number };
+  canonPoint?: string;
+  from: { year: number; month: number; day?: number };
+  to?: { year: number; month: number; day?: number };
   minScenes: number;
   facts: string[];
   opensThreads?: CanonThreadSeed[];
@@ -41,6 +45,8 @@ export type CanonMilestone = {
 // In-story timeline spine: Kan is 13 in year 13 (the massacre year) and matches
 // Itachi's age throughout. Year 17-18 is Part 1, year 21 is Itachi's death,
 // year 22-23 is the Fourth War. Windows use (year, month); day is ignored.
+export const CANON_VERSION = 2;
+
 export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'izumi-funeral',
@@ -48,8 +54,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     title: "Izumi Uchiha's funeral",
     description:
       "Izumi Uchiha is buried with the rest of the clan. Hana and Suzume stand at the grave; Kan is a ghost at the edge of the ceremony.",
-    canonPoint: "Izumi Uchiha has been buried with the Uchiha clan.",
-    from: { year: 13, month: 10 },
+    from: { year: 13, month: 10, day: 6 },
     to: { year: 14, month: 3 },
     minScenes: 2,
     facts: ["Izumi Uchiha was buried with the Uchiha clan after the massacre."],
@@ -87,6 +92,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
       },
     ],
     major: true,
+    playerDriven: true,
   },
   {
     id: 'masked-man-audience',
@@ -119,6 +125,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     from: { year: 14, month: 1 },
     minScenes: 6,
     facts: ['Kan completed his first missions for the Akatsuki.'],
+    playerDriven: true,
   },
   {
     id: 'mission-first-blood',
@@ -367,6 +374,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 17, month: 6 },
     minScenes: 12,
     facts: ['Bounty ledgers and border reports mention an unidentified Uchiha in an Akatsuki cloak.'],
+    playerDriven: true,
   },
   {
     id: 'kan-life-outside',
@@ -1443,16 +1451,23 @@ const AUTO_MILESTONE_IDS = CANON_MILESTONES.filter(
   (milestone) => !milestone.playerDriven
 ).map((milestone) => milestone.id);
 
-function windowKey(window: { year: number; month: number }) {
-  return window.year * 12 + window.month;
+function windowKey(window: { year: number; month: number; day?: number }) {
+  const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let daysBefore = 0;
+
+  for (let month = 1; month < window.month; month += 1) {
+    daysBefore += days[month - 1] ?? 30;
+  }
+
+  return window.year * 366 + daysBefore + (window.day ?? 1);
 }
 
 function dateWindowKey(date: CalendarDate) {
-  return date.year * 12 + date.month;
+  return windowKey(date);
 }
 
 function defaultProgress(): CanonProgress {
-  return { completed: [], active: [], engaged: [] };
+  return { version: CANON_VERSION, completed: [], active: [], engaged: [] };
 }
 
 function normalizeProgress(db: AppDatabase): CanonProgress {
@@ -1463,9 +1478,15 @@ function normalizeProgress(db: AppDatabase): CanonProgress {
   }
 
   return {
+    version: typeof progress.version === 'number' ? progress.version : 1,
+    baselineDate: progress.baselineDate,
+    baselineTurn: typeof progress.baselineTurn === 'number' ? progress.baselineTurn : 0,
     completed: progress.completed.filter(Boolean),
     active: Array.isArray(progress.active) ? progress.active.filter(Boolean) : [],
     engaged: Array.isArray(progress.engaged) ? progress.engaged.filter(Boolean) : [],
+    expired: Array.isArray((progress as { expired?: string[] }).expired)
+      ? (progress as { expired?: string[] }).expired!.filter(Boolean)
+      : [],
   };
 }
 
@@ -1636,13 +1657,15 @@ function fireMilestone(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
     }
   }
 
-  next = {
-    ...next,
-    state: {
-      ...next.state,
-      canonPoint: milestone.canonPoint.slice(0, 220),
-    },
-  };
+  if (milestone.canonPoint) {
+    next = {
+      ...next,
+      state: {
+        ...next.state,
+        canonPoint: milestone.canonPoint.slice(0, 220),
+      },
+    };
+  }
 
   return next;
 }
@@ -1770,7 +1793,23 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
   const assistantTurns = next.rawLog.filter(
     (entry) => entry.kind === 'story' && entry.role === 'assistant'
   ).length;
-  const scenes = assistantTurns;
+
+  const needsBaseline =
+    progress.version !== CANON_VERSION || !progress.baselineDate;
+
+  if (needsBaseline) {
+    progress = {
+      ...progress,
+      version: CANON_VERSION,
+      baselineDate: next.state.inStoryDate,
+      baselineTurn: assistantTurns,
+    };
+  }
+
+  const baselineKey = progress.baselineDate
+    ? windowKey(progress.baselineDate)
+    : dateWindowKey(next.state.inStoryDate);
+  const scenes = Math.max(0, assistantTurns - (progress.baselineTurn ?? assistantTurns));
   const dateKey = dateWindowKey(next.state.inStoryDate);
   const MAX_AUTO_FIRES_PER_TURN = 4;
   let autoFired = 0;
@@ -1779,6 +1818,18 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
     const milestone = CANON_MILESTONES[index];
 
     if (completed.has(milestone.id)) {
+      continue;
+    }
+
+    if (milestone.to && windowKey(milestone.to) < baselineKey) {
+      completed.add(milestone.id);
+      progress = {
+        ...progress,
+        completed: progress.completed.includes(milestone.id)
+          ? progress.completed
+          : [...progress.completed, milestone.id],
+        expired: [...new Set([...(progress.expired ?? []), milestone.id])],
+      };
       continue;
     }
 
@@ -1928,8 +1979,11 @@ export function recentlyConcludedMilestones(db: AppDatabase, limit = 3): CanonMi
 
   const progress = normalizeProgress(db);
   const completed = new Set(progress.completed);
+  const expired = new Set(progress.expired ?? []);
 
-  return CANON_MILESTONES.filter((milestone) => completed.has(milestone.id))
+  return CANON_MILESTONES.filter(
+    (milestone) => completed.has(milestone.id) && !expired.has(milestone.id)
+  )
     .slice(-limit)
     .reverse();
 }

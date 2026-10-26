@@ -50,10 +50,10 @@ export default function Root({ children }: PropsWithChildren) {
         <meta content="yes" name="apple-mobile-web-app-capable" />
         <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style" />
         <meta content="Kan" name="apple-mobile-web-app-title" />
-        <link href="/manifest.webmanifest?v=1.0.0" rel="manifest" />
-        <link href="/apple-touch-icon.png?v=1.0.0" rel="apple-touch-icon" sizes="180x180" />
-        <link href="/icon-192.png?v=1.0.0" rel="icon" sizes="192x192" type="image/png" />
-        <link href="/icon-512.png?v=1.0.0" rel="icon" sizes="512x512" type="image/png" />
+        <link href="/manifest.webmanifest?v=1.0.1" rel="manifest" />
+        <link href="/apple-touch-icon.png?v=1.0.1" rel="apple-touch-icon" sizes="180x180" />
+        <link href="/icon-192.png?v=1.0.1" rel="icon" sizes="192x192" type="image/png" />
+        <link href="/icon-512.png?v=1.0.1" rel="icon" sizes="512x512" type="image/png" />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: pageStyles }} />
       </head>

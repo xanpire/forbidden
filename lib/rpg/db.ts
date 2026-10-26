@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
+import { CANON_MILESTONES, CANON_VERSION } from './canon';
 import { normalizeJutsuNature } from './jutsu';
 import { seedDatabase } from './seed';
 import type { AppDatabase, MemoryIndex } from './types';
@@ -315,7 +316,66 @@ export async function importDatabase(
   return imported;
 }
 
+function migrateCanonV2(db: AppDatabase): AppDatabase {
+  const progress = db.state?.canonProgress;
+
+  if (!progress || (typeof progress.version === 'number' && progress.version >= CANON_VERSION)) {
+    return db;
+  }
+
+  const canonFactIds = new Set(
+    (db.facts ?? [])
+      .filter((fact) => /^fact_(canon|attended|missed)_/.test(fact.id))
+      .map((fact) => fact.id)
+  );
+  const canonThreadIds = new Set(
+    (db.threads ?? []).filter((thread) => thread.id.startsWith('thread_canon_')).map((thread) => thread.id)
+  );
+  const canonPoints = new Set(
+    CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]
+  );
+  const canonEventIds = new Set(
+    (db.events ?? [])
+      .filter(
+        (event) => event.tags?.includes('canon') || event.id.startsWith('event_canon_')
+      )
+      .map((event) => event.id)
+  );
+
+  const next: AppDatabase = {
+    ...db,
+    events: (db.events ?? []).filter((event) => !canonEventIds.has(event.id)),
+    facts: (db.facts ?? []).filter((fact) => !canonFactIds.has(fact.id)),
+    threads: (db.threads ?? []).filter((thread) => !canonThreadIds.has(thread.id)),
+    eventEntities: (db.eventEntities ?? []).filter(
+      (link) => !canonEventIds.has(link.eventId)
+    ),
+    state: {
+      ...db.state,
+      canonPoint:
+        db.state?.canonPoint && canonPoints.has(db.state.canonPoint)
+          ? (db.state.scene || 'The story is still unfolding.')
+          : db.state?.canonPoint,
+      canonProgress: {
+        version: CANON_VERSION,
+        baselineDate: db.state?.inStoryDate,
+        baselineTurn: (db.rawLog ?? []).filter(
+          (entry) => entry.kind === 'story' && entry.role === 'assistant'
+        ).length,
+        completed: [],
+        active: [],
+        engaged: [],
+        expired: [],
+      },
+    },
+  };
+
+  return next;
+}
+
 export function normalizeDatabase(db: AppDatabase): AppDatabase {
+  const migrated = migrateCanonV2(db);
+  db = migrated;
   const normalized: AppDatabase = {
     schemaVersion: 1,
     meta: db.meta ?? {
@@ -472,6 +532,9 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     canonProgress:
       state.canonProgress && Array.isArray(state.canonProgress.completed)
         ? {
+            version: state.canonProgress.version ?? CANON_VERSION,
+            baselineDate: state.canonProgress.baselineDate,
+            baselineTurn: state.canonProgress.baselineTurn ?? 0,
             completed: state.canonProgress.completed.filter(Boolean),
             active: Array.isArray(state.canonProgress.active)
               ? state.canonProgress.active.filter(Boolean)
@@ -479,8 +542,19 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
             engaged: Array.isArray(state.canonProgress.engaged)
               ? state.canonProgress.engaged.filter(Boolean)
               : [],
+            expired: Array.isArray(state.canonProgress.expired)
+              ? state.canonProgress.expired.filter(Boolean)
+              : [],
           }
-        : { completed: [], active: [], engaged: [] },
+        : {
+            version: CANON_VERSION,
+            baselineDate: state.inStoryDate,
+            baselineTurn: 0,
+            completed: [],
+            active: [],
+            engaged: [],
+            expired: [],
+          },
     chapter: state.chapter ?? seeded.chapter,
     scene: state.scene ?? seeded.scene,
   };

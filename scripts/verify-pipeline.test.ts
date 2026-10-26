@@ -1,5 +1,4 @@
 import { describe, expect, test, mock } from 'bun:test';
-import { readFileSync } from 'fs';
 
 mock.module('@react-native-async-storage/async-storage', () => ({
   default: {
@@ -14,6 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
+import { seedDatabase } from '../lib/rpg/seed';
 import { daysBetween } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
@@ -32,20 +32,14 @@ import {
 import { rollD20 } from '../lib/rpg/services';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
 
-const SAVE_PATHS = [
-  'saves/kan-story-Main_Story.json',
-  'saves/kan-story-Main_Story-clean.json',
-];
-
-function loadSave(path: string): AppDatabase {
-  const raw = readFileSync(path, 'utf8');
-  return normalizeDatabase(JSON.parse(raw) as AppDatabase);
+function loadSave(_path?: string): AppDatabase {
+  return normalizeDatabase(seedDatabase('slot_test', 'Test story'));
 }
 
-describe('save file compatibility', () => {
-  for (const path of SAVE_PATHS) {
-    test(`loads and normalizes ${path}`, () => {
-      const db = loadSave(path);
+describe('seed save compatibility', () => {
+  {
+    test('loads and normalizes the seeded story', () => {
+      const db = loadSave();
 
       expect(db.state).toBeDefined();
       expect(db.state.player).toBeDefined();
@@ -62,8 +56,8 @@ describe('save file compatibility', () => {
       }
     });
 
-    test(`${path} has no JSON pollution in assistant messages`, () => {
-      const db = loadSave(path);
+    test('seeded story has no JSON pollution in assistant messages', () => {
+      const db = loadSave();
 
       for (const entry of db.rawLog) {
         if (entry.kind === 'story' && entry.role === 'assistant' && entry.content) {
@@ -78,7 +72,7 @@ describe('save file compatibility', () => {
 
 describe('inline diff wiring', () => {
   test('jutsu_used creates jutsu records', () => {
-    const db = loadSave(SAVE_PATHS[1]);
+    const db = loadSave();
     const { diff } = convertInlineDiff({
       state: { location: 'Training field' },
       jutsu_used: [
@@ -106,7 +100,7 @@ describe('inline diff wiring', () => {
   });
 
   test('bonds accumulate and clamp, repeated threads dedupe', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const threadsBefore = db.threads.length;
 
     db = applyTurnDiff(db, {
@@ -128,7 +122,7 @@ describe('inline diff wiring', () => {
   });
 
   test('state strings and lists stay capped', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     for (let turn = 0; turn < 40; turn += 1) {
       const diff: TurnDiff = {
@@ -155,7 +149,7 @@ describe('inline diff wiring', () => {
 
 describe('prompt token stability', () => {
   test('tokens plateau as the story grows', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const story = () => db.rawLog.filter((message) => message.kind === 'story');
 
     const tokensAt: Array<[number, number]> = [];
@@ -250,7 +244,7 @@ describe('narration JSON stripping edge cases', () => {
 
 describe('image reference pipeline', () => {
   test('prompt numbers references dynamically and carries scene data', () => {
-    const db = loadSave(SAVE_PATHS[1]);
+    const db = loadSave();
     const recent = ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'];
     const prompt = buildSceneImagePrompt(db, recent);
 
@@ -263,7 +257,7 @@ describe('image reference pipeline', () => {
   });
 
   test('recent images collect from assistant messages in order', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = appendStoryMessage(db, 'assistant', 'First scene.', 'm', 0, 0);
     db = appendStoryMessage(db, 'assistant', 'Second scene.', 'm', 0, 0);
@@ -284,7 +278,7 @@ describe('image reference pipeline', () => {
 
 describe('time progression via inline diffs', () => {
   test('days_passed and time_of_day advance the date', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const before = db.state.inStoryDate;
 
     const { diff } = convertInlineDiff({
@@ -302,7 +296,7 @@ describe('time progression via inline diffs', () => {
   });
 
   test('time_of_day alone shifts only the time of day', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const before = { ...db.state.inStoryDate };
 
     db = applyTurnDiff(db, {
@@ -314,7 +308,7 @@ describe('time progression via inline diffs', () => {
   });
 
   test('absolute inStoryDate from extraction still works and ages NPCs', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const yearBefore = db.state.inStoryDate.year;
     const agable = db.entities.find((e) => e.type === 'character' && e.birthYear === undefined && e.age !== undefined);
 
@@ -331,7 +325,9 @@ describe('time progression via inline diffs', () => {
   });
 
   test('scene_ended inline diff records a memory event', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
+    db = appendStoryMessage(db, 'user', '*Kan waits.*', 'm', 0, 0);
+    db = appendStoryMessage(db, 'assistant', 'Rain falls over the empty road.', 'm', 0, 0);
     const eventsBefore = db.events.length;
 
     const { diff } = convertInlineDiff({ scene_ended: true });
@@ -346,7 +342,7 @@ describe('time progression via inline diffs', () => {
 
 describe('summarize cadence', () => {
   test('counts only messages since the last chapter summary', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     for (let i = 0; i < 14; i += 1) {
       db = appendStoryMessage(db, 'user', `msg ${i}`, 'm', 0, 0);
@@ -396,7 +392,7 @@ describe('summary text hygiene', () => {
   });
 
   test('save summaries all end at sentence boundaries', () => {
-    const db = loadSave(SAVE_PATHS[1]);
+    const db = loadSave();
 
     for (const summary of db.summaries) {
       expect(/[.!?\"]$/.test(summary.text.trim())).toBe(true);
@@ -406,7 +402,7 @@ describe('summary text hygiene', () => {
 
 describe('presence tracking and bonds ordering', () => {
   test('characters_present marks entities as seen', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     const { diff } = convertInlineDiff({
       characters_present: ['Itachi Uchiha'],
@@ -423,7 +419,7 @@ describe('presence tracking and bonds ordering', () => {
   });
 
   test('sleeping through the night advances exactly one day to morning', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const before = db.state.inStoryDate;
 
     const { diff } = convertInlineDiff({
@@ -443,7 +439,7 @@ describe('presence tracking and bonds ordering', () => {
   });
 
   test('narration prompt does not duplicate the current action', () => {
-    const db = loadSave(SAVE_PATHS[1]);
+    const db = loadSave();
     const action = '"We move at dawn." *Kan checks his pack.*';
 
     const prompt = buildNarrationPrompt(db, action, 10);
@@ -458,7 +454,7 @@ describe('presence tracking and bonds ordering', () => {
 
 describe('masked man identity resolution', () => {
   test('all masked-man names resolve to one entity', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     const names = ['Masked Man', 'Tobi', 'Obito', 'Masked Man (Madara)'];
 
@@ -479,7 +475,7 @@ describe('masked man identity resolution', () => {
   });
 
   test('the real Madara is a separate character from the masked man', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
@@ -503,7 +499,7 @@ describe('masked man identity resolution', () => {
   });
 
   test('Pain, Nagato, and the six paths are one character', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Pain', role: 'Akatsuki leader' });
     db = applyEntityDiff(db, { name: 'Nagato', role: 'Akatsuki leader' });
@@ -523,7 +519,7 @@ describe('masked man identity resolution', () => {
   });
 
   test('Pain never merges with the masked man or the real Madara', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Madara Uchiha', role: 'Legend', age: 40 });
@@ -534,7 +530,7 @@ describe('masked man identity resolution', () => {
   });
 
   test('Black Zetsu and White Zetsu resolve to one entity', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Black Zetsu', role: 'Akatsuki' });
     db = applyEntityDiff(db, { name: 'White Zetsu', role: 'Akatsuki' });
@@ -546,7 +542,7 @@ describe('masked man identity resolution', () => {
   });
 
   test('existing masked man and Tobi entities merge on any turn', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
@@ -569,7 +565,7 @@ describe('encounter frequency and image cast', () => {
   });
 
   test('image prompt forbids characters from previous images and lists the cast', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyTurnDiff(db, {
       scene: { ended: false, entities: ['Itachi Uchiha'] },
@@ -583,10 +579,13 @@ describe('encounter frequency and image cast', () => {
     expect(prompt).toContain('only the cast listed below may appear');
   });
 
-  test('saves have no duplicate tobi/madara entities', () => {
-    const db = loadSave(SAVE_PATHS[1]);
-    const matches = db.entities.filter((entity) => /tobi|madara/i.test(entity.name));
-    expect(matches.length).toBeLessThanOrEqual(1);
+  test('masked man aliases stay one entity', () => {
+    let db = loadSave();
+    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
+    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
+
+    const matches = db.entities.filter((entity) => /masked man|tobi/i.test(entity.name));
+    expect(matches.length).toBe(1);
     expect(matches[0]?.aliases.map((a) => a.toLowerCase())).toContain('tobi');
   });
 });
@@ -625,37 +624,74 @@ describe('canon timeline dataset', () => {
 });
 
 describe('canon scheduler', () => {
-  test('fires the first milestone once scenes and date allow', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+  test('no milestones fire on a fresh save before the story advances', () => {
+    const db = loadSave();
+    const next = advanceCanon(db);
+    expect(next.state.canonProgress?.completed ?? []).toEqual([]);
+    expect(next.events.filter((e) => e.tags.includes('canon')).length).toBe(0);
+  });
+
+  test('world milestones wait for the date window and baseline turns', () => {
+    let db = loadSave();
 
     db = {
       ...db,
-      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
-      events: db.events.slice(0, 1),
-      rawLog: db.rawLog.filter((entry) => entry.kind !== 'story' || entry.role !== 'assistant'),
+      state: {
+        ...db.state,
+        inStoryDate: { year: 16, month: 2, day: 1, timeOfDay: 'morning' },
+        canonProgress: {
+          version: 2,
+          baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
+          baselineTurn: 0,
+          completed: [],
+          active: [],
+          engaged: [],
+        },
+      },
+      rawLog: Array.from({ length: 30 }, (_, index) => ({
+        ...db.rawLog[0],
+        id: `log_${index}`,
+        kind: 'story' as const,
+        role: 'assistant' as const,
+        content: 'A turn.',
+        createdAt: index,
+      })),
     };
 
-    const first = advanceCanon(db);
-    expect(first.state.canonProgress?.completed ?? []).not.toContain('kan-joins-akatsuki');
+    const next = advanceCanon(db);
+    expect(next.state.canonProgress?.completed).toContain('juzo-death');
+    expect(next.events.some((e) => e.id === 'event_canon_juzo-death')).toBe(true);
+  });
 
-    const withTurn = {
-      ...first,
-      rawLog: [
-        ...first.rawLog,
-        { ...first.rawLog[0], id: 'log_test_assistant_a', kind: 'story' as const, role: 'assistant' as const },
-        { ...first.rawLog[0], id: 'log_test_assistant_b', kind: 'story' as const, role: 'assistant' as const },
-      ],
+  test('kan joining the Akatsuki is personal and only fires when narrated', () => {
+    let db = loadSave();
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: 2,
+          baselineDate: db.state.inStoryDate,
+          baselineTurn: 0,
+          completed: [],
+          active: [],
+          engaged: [],
+        },
+      },
     };
 
-    const fired = advanceCanon(withTurn);
-    expect(fired.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
-    expect(fired.events.some((e) => e.id === 'event_canon_kan-joins-akatsuki')).toBe(true);
-    expect(fired.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
-    expect(fired.bonds.length).toBeGreaterThan(0);
+    const auto = advanceCanon(db);
+    expect(auto.state.canonProgress?.completed ?? []).not.toContain('kan-joins-akatsuki');
+    expect(auto.threads.some((t) => t.title === 'Prove yourself to the Akatsuki')).toBe(false);
+
+    const narrated = applyCanonMarks(auto, ['kan-joins-akatsuki'], []);
+    expect(narrated.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
+    expect(narrated.threads.some((t) => t.title === 'Prove yourself to the Akatsuki')).toBe(true);
+    expect(narrated.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
   });
 
   test('does not run ahead of its date window', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: {
@@ -672,7 +708,7 @@ describe('canon scheduler', () => {
   });
 
   test('narrator-marked beats complete and stamp attendance', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
@@ -694,7 +730,7 @@ describe('canon scheduler', () => {
   });
 
   test('expired player-driven encounters log a missed fact', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: {
@@ -713,7 +749,7 @@ describe('canon scheduler', () => {
   });
 
   test('disabling canon progression freezes it', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       settings: { ...db.settings, canonProgress: false },
@@ -728,7 +764,7 @@ describe('canon scheduler', () => {
 
 describe('cross-era memory and romance', () => {
   test('old saves migrate romance and canon fields', () => {
-    const db = loadSave(SAVE_PATHS[0]);
+    const db = loadSave();
 
     expect(db.settings.canonProgress).toBe(true);
     expect(Array.isArray(db.state.canonProgress?.completed)).toBe(true);
@@ -746,7 +782,7 @@ describe('cross-era memory and romance', () => {
   });
 
   test('characters met once are remembered across eras', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const itachiId = resolveEntity(db, 'Itachi')?.id;
     const factsBefore = db.facts.length;
 
@@ -762,7 +798,7 @@ describe('cross-era memory and romance', () => {
   });
 
   test('romance state persists rejections without resetting', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
 
     db = applyTurnDiff(db, {
       bonds: [
@@ -786,7 +822,7 @@ describe('cross-era memory and romance', () => {
   });
 
   test('narration prompt carries canon, romance, and lore hearts', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = applyTurnDiff(db, {
       scene: { ended: false, entities: ['Itachi Uchiha'] },
     });
@@ -833,7 +869,7 @@ describe('expanded lore and team 3', () => {
   });
 
   test('character cards include the era note', () => {
-    const db = loadSave(SAVE_PATHS[1]);
+    const db = loadSave();
     const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
     expect(prompt.messages[0].content).toContain('now: Gentle older brother');
   });
@@ -854,7 +890,7 @@ describe('encounter realism', () => {
   });
 
   test('d20 hints are gated by place and time', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: {
@@ -884,7 +920,7 @@ describe('encounter realism', () => {
   });
 
   test('location_kind flows through the diff and fallback classifier', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = applyTurnDiff(db, { state: { location: 'Konoha marketplace' } });
     expect(db.state.locationKind).toBe('settlement');
 
@@ -895,7 +931,7 @@ describe('encounter realism', () => {
 
 describe('clock auto-advance', () => {
   test('advances one period after two silent turns', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       settings: { ...db.settings, autoAdvanceTime: true },
@@ -916,7 +952,7 @@ describe('clock auto-advance', () => {
   });
 
   test('toggle off stops automatic advancement', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       settings: { ...db.settings, autoAdvanceTime: false },
@@ -935,7 +971,7 @@ describe('clock auto-advance', () => {
 
 describe('canon endings and prompt memory', () => {
   test('canon_passed completes an opportunity with a missed fact', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
@@ -948,7 +984,7 @@ describe('canon endings and prompt memory', () => {
   });
 
   test('recent messages keep the newest narration ending', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     const longNarration = `${'The rain falls. '.repeat(150)}FINAL BEAT: the masked man turns away and vanishes.`;
 
     db = appendStoryMessage(db, 'assistant', longNarration, 'm', 0, 0);
@@ -961,7 +997,7 @@ describe('canon endings and prompt memory', () => {
   });
 
   test('prompt budget guard caps runaway context', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     for (let i = 0; i < 12; i += 1) {
       db = appendStoryMessage(db, 'assistant', 'Long narration. '.repeat(400), 'm', 0, 0);
     }
@@ -972,7 +1008,7 @@ describe('canon endings and prompt memory', () => {
   });
 
   test('canon block lists concluded beats', () => {
-    let db = loadSave(SAVE_PATHS[1]);
+    let db = loadSave();
     db = {
       ...db,
       state: {
@@ -984,5 +1020,117 @@ describe('canon endings and prompt memory', () => {
     const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
     expect(prompt.messages[1].content).toContain('RECENTLY CONCLUDED');
     expect(prompt.messages[1].content).toContain('itachi-vs-sasuke');
+  });
+});
+
+describe('canon timing and migration', () => {
+  test('fresh save does not show canon before the story reaches it', () => {
+    const seeded = loadSave();
+    const seededPoint = seeded.state.canonPoint;
+    const db = advanceCanon(seeded);
+
+    expect(db.events.filter((e) => e.tags.includes('canon')).length).toBe(0);
+    expect(db.state.canonProgress?.completed ?? []).toEqual([]);
+    expect(db.threads.some((t) => t.title === 'Prove yourself to the Akatsuki')).toBe(false);
+    expect(db.state.canonPoint).toBe(seededPoint);
+  });
+
+  test('izumi funeral waits until day 6', () => {
+    let db = loadSave();
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: 2,
+          baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
+          baselineTurn: 0,
+          completed: [],
+          active: [],
+          engaged: [],
+          expired: [],
+        },
+      },
+      rawLog: Array.from({ length: 10 }, (_, i) => ({
+        ...db.rawLog[0],
+        id: `t_${i}`,
+        kind: 'story' as const,
+        role: 'assistant' as const,
+        content: 'x',
+        createdAt: i,
+      })),
+    };
+
+    const day1 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' } } });
+    expect(day1.state.canonProgress?.completed ?? []).not.toContain('izumi-funeral');
+
+    const day6 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 6, timeOfDay: 'morning' } } });
+    expect(day6.state.canonProgress?.completed).toContain('izumi-funeral');
+    expect(day6.state.canonPoint).not.toContain('buried');
+  });
+
+  test('v1 saves are cleaned of phantom canon entries', () => {
+    let db = loadSave();
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonPoint: 'Kan and Itachi have joined the Akatsuki together.',
+        canonProgress: { version: 1, completed: ['kan-joins-akatsuki'], active: [], engaged: [] },
+      },
+      events: [
+        ...db.events,
+        {
+          id: 'event_canon_kan-joins-akatsuki',
+          chapter: 1,
+          scene: 'Canon event',
+          inStoryDate: db.state.inStoryDate,
+          summary: 'Kan joins the Akatsuki: he joins.',
+          importance: 5 as const,
+          tags: ['canon'],
+          pinned: true,
+          sourceLogId: null,
+          createdAt: 1,
+        },
+      ],
+      facts: [
+        ...db.facts,
+        {
+          id: 'fact_canon_kan-joins-akatsuki_0',
+          subjectEntityId: null,
+          type: 'event' as const,
+          text: 'Kan joined the Akatsuki together with Itachi Uchiha.',
+          whoKnows: [],
+          validFrom: db.state.inStoryDate,
+          validTo: null,
+          confidence: 'confirmed' as const,
+          sourceEventId: null,
+        },
+      ],
+      threads: [
+        ...db.threads,
+        {
+          id: 'thread_canon_kan-joins-akatsuki_0',
+          type: 'goal' as const,
+          title: 'Prove yourself to the Akatsuki',
+          description: 'Earn a place.',
+          status: 'open' as const,
+          openedAt: db.state.inStoryDate,
+          resolvedAt: null,
+          importance: 4 as const,
+          participants: ['Kan'],
+          sourceEventId: null,
+        },
+      ],
+    };
+
+    const migrated = normalizeDatabase(db);
+
+    expect(migrated.events.some((e) => e.id === 'event_canon_kan-joins-akatsuki')).toBe(false);
+    expect(migrated.facts.some((f) => f.id.startsWith('fact_canon_'))).toBe(false);
+    expect(migrated.threads.some((t) => t.id.startsWith('thread_canon_'))).toBe(false);
+    expect(migrated.state.canonPoint).not.toContain('joined the Akatsuki');
+    expect(migrated.state.canonProgress?.version).toBe(2);
+    expect(migrated.state.canonProgress?.completed).toEqual([]);
   });
 });

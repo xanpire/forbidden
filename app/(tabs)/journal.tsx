@@ -66,8 +66,18 @@ export default function JournalScreen() {
       return [];
     }
 
+    const now = db.state.inStoryDate;
+    const nowKey = now.year * 10000 + now.month * 100 + now.day;
+
     return [...db.events]
-      .filter((event) => event.tags.includes('canon'))
+      .filter(
+        (event) =>
+          event.tags.includes('canon') &&
+          event.inStoryDate.year * 10000 +
+            event.inStoryDate.month * 100 +
+            event.inStoryDate.day <=
+            nowKey
+      )
       .sort(
         (a, b) =>
           b.inStoryDate.year * 10000 +

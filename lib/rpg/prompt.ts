@@ -623,7 +623,10 @@ function formatCanonBlock(db: AppDatabase) {
 
   for (const beat of upcoming) {
     lines.push(
-      `PENDING STORY BEAT (${beat.id}, era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
+      `PERSONAL STORY BEAT — do not assume it happened (${beat.id}, era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
+    );
+    lines.push(
+      '  This only occurs if Kan actually does it in the scene. Never state it has happened because time passed.'
     );
   }
 
