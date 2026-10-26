@@ -333,6 +333,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
       canonProgress: db.settings?.canonProgress ?? DEFAULT_SETTINGS.canonProgress,
+      autoAdvanceTime: db.settings?.autoAdvanceTime ?? DEFAULT_SETTINGS.autoAdvanceTime,
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>
@@ -455,7 +456,18 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     jutsu: Array.isArray(state.jutsu) ? state.jutsu : seeded.jutsu,
     inventory: Array.isArray(state.inventory) ? state.inventory : seeded.inventory,
     location: state.location ?? seeded.location,
+    locationKind:
+      state.locationKind === 'settlement' ||
+      state.locationKind === 'road' ||
+      state.locationKind === 'wilderness' ||
+      state.locationKind === 'structure'
+        ? state.locationKind
+        : undefined,
     inStoryDate: state.inStoryDate ?? seeded.inStoryDate,
+    turnsWithoutTimeChange:
+      typeof state.turnsWithoutTimeChange === 'number'
+        ? Math.max(0, Math.round(state.turnsWithoutTimeChange))
+        : 0,
     canonPoint: state.canonPoint ?? seeded.canonPoint,
     canonProgress:
       state.canonProgress && Array.isArray(state.canonProgress.completed)

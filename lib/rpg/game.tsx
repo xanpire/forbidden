@@ -68,6 +68,8 @@ type GameContextValue = {
   isProcessing: boolean;
   streamingText: string;
   lastPromptTokens: number;
+  worldEventNotice: string | null;
+  dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
   sendTurn: (input: string) => Promise<void>;
   regenerate: () => Promise<void>;
@@ -105,6 +107,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [streamingText, setStreamingText] = useState('');
   const [lastPromptTokens, setLastPromptTokens] = useState(0);
+  const [worldEventNotice, setWorldEventNotice] = useState<string | null>(null);
 
   const dbRef = useRef<AppDatabase | null>(null);
   const backgroundPromiseRef = useRef<Promise<void> | null>(null);
@@ -191,12 +194,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         let next = extraction ? applyTurnDiff(currentDb, extraction) : currentDb;
 
+        const canonBefore = new Set(
+          currentDb.events.filter((event) => event.tags.includes('canon')).map((event) => event.id)
+        );
+
         next = applyCanonMarks(
           next,
           extraction?.canonCompleted ?? [],
-          extraction?.canonEngaged ?? []
+          extraction?.canonEngaged ?? [],
+          extraction?.canonPassed ?? []
         );
         next = advanceCanon(next);
+
+        const newCanonEvents = next.events.filter(
+          (event) => event.tags.includes('canon') && !canonBefore.has(event.id)
+        );
+
+        if (newCanonEvents.length > 0) {
+          const latest = newCanonEvents[newCanonEvents.length - 1];
+          const title = latest.summary.split(':')[0].trim();
+          setWorldEventNotice(title.slice(0, 90));
+        }
 
         if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= 180) {
           const timeSkip = await summarizeTimeSkip({
@@ -734,6 +752,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const dismissWorldEventNotice = useCallback(() => {
+    setWorldEventNotice(null);
+  }, []);
+
   const value = useMemo<GameContextValue>(
     () => ({
       db,
@@ -747,6 +769,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       isProcessing,
       streamingText,
       lastPromptTokens,
+      worldEventNotice,
+      dismissWorldEventNotice,
       setApiKey,
       sendTurn,
       regenerate,
@@ -790,6 +814,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setApiKey,
       slots,
       streamingText,
+      worldEventNotice,
+      dismissWorldEventNotice,
       switchSlotById,
       toggleMemoryPin,
       undoLastTurn,

@@ -67,6 +67,8 @@ export default function StoryScreen() {
     isProcessing,
     streamingText,
     lastPromptTokens,
+    worldEventNotice,
+    dismissWorldEventNotice,
     sendTurn,
     regenerate,
     undoLastTurn,
@@ -315,6 +317,24 @@ export default function StoryScreen() {
             </Text>
           </View>
         </View>
+
+        {worldEventNotice ? (
+          <Pressable
+            accessibilityLabel="Dismiss world event notice"
+            accessibilityRole="button"
+            onPress={dismissWorldEventNotice}
+            style={({ pressed }) => [
+              styles.worldEventStrip,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.worldEventLabel}>WORLD EVENT</Text>
+            <Text numberOfLines={1} style={styles.worldEventText}>
+              {worldEventNotice}
+            </Text>
+            <X color={colors.textDim} size={13} strokeWidth={2} />
+          </Pressable>
+        ) : null}
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -695,6 +715,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.sm,
     paddingBottom: spacing.md,
+  },
+  worldEventStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: spacing.xl,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  worldEventLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 8,
+    letterSpacing: 1.1,
+    color: colors.accent,
+  },
+  worldEventText: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    color: colors.textMuted,
   },
   statusChip: {
     flexDirection: 'row',

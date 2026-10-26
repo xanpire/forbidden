@@ -22,6 +22,7 @@ import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/imag
 import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, advanceCanon, applyCanonMarks } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
+import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
 import {
   appendStoryMessage,
   applyTurnDiff,
@@ -631,19 +632,23 @@ describe('canon scheduler', () => {
       ...db,
       state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
       events: db.events.slice(0, 1),
+      rawLog: db.rawLog.filter((entry) => entry.kind !== 'story' || entry.role !== 'assistant'),
     };
 
     const first = advanceCanon(db);
     expect(first.state.canonProgress?.completed ?? []).not.toContain('kan-joins-akatsuki');
 
-    const withScene = {
+    const withTurn = {
       ...first,
-      events: [...first.events, { ...first.events[0], id: 'event_test_scene', tags: ['scene'] }],
+      rawLog: [
+        ...first.rawLog,
+        { ...first.rawLog[0], id: 'log_test_assistant_a', kind: 'story' as const, role: 'assistant' as const },
+        { ...first.rawLog[0], id: 'log_test_assistant_b', kind: 'story' as const, role: 'assistant' as const },
+      ],
     };
 
-    const fired = advanceCanon(withScene);
+    const fired = advanceCanon(withTurn);
     expect(fired.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
-    expect(['joined the Akatsuki', 'buried with the Uchiha clan']).toContain(fired.state.canonPoint.split(' ')[0] === 'Kan' ? 'joined the Akatsuki' : 'buried with the Uchiha clan');
     expect(fired.events.some((e) => e.id === 'event_canon_kan-joins-akatsuki')).toBe(true);
     expect(fired.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
     expect(fired.bonds.length).toBeGreaterThan(0);
@@ -831,5 +836,153 @@ describe('expanded lore and team 3', () => {
     const db = loadSave(SAVE_PATHS[1]);
     const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
     expect(prompt.messages[0].content).toContain('now: Gentle older brother');
+  });
+});
+
+describe('encounter realism', () => {
+  test('location classification and risk matrix', () => {
+    expect(classifyLocation('Konoha marketplace at noon')).toBe('settlement');
+    expect(classifyLocation('deep forest outside the village')).toBe('wilderness');
+    expect(classifyLocation('abandoned temple in the mountains')).toBe('structure');
+    expect(classifyLocation('the road north')).toBe('road');
+
+    expect(encounterRisk('settlement', 'morning')).toBe('high');
+    expect(encounterRisk('settlement', 'night')).toBe('low');
+    expect(encounterRisk('wilderness', 'afternoon')).toBe('low');
+    expect(encounterRisk('wilderness', 'night')).toBe('none');
+    expect(encounterRisk('structure', 'night')).toBe('none');
+  });
+
+  test('d20 hints are gated by place and time', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        location: 'deep woods',
+        locationKind: 'wilderness',
+        inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'night' },
+      },
+    };
+
+    expect(formatGatedEncounterHint(db, 12)).toContain('no new people');
+    expect(formatGatedEncounterHint(db, 17)).toContain('no new people');
+    expect(formatGatedEncounterHint(db, 18)).toContain('dangerous');
+
+    const village = {
+      ...db,
+      state: {
+        ...db.state,
+        location: 'Konoha market',
+        locationKind: 'settlement' as const,
+        inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'afternoon' as const },
+      },
+    };
+
+    expect(formatGatedEncounterHint(village, 10)).toContain('minor NPC');
+    expect(formatEncounterConditions(village)).toContain('settlement');
+  });
+
+  test('location_kind flows through the diff and fallback classifier', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = applyTurnDiff(db, { state: { location: 'Konoha marketplace' } });
+    expect(db.state.locationKind).toBe('settlement');
+
+    db = applyTurnDiff(db, { state: { location: 'somewhere new', locationKind: 'structure' } });
+    expect(db.state.locationKind).toBe('structure');
+  });
+});
+
+describe('clock auto-advance', () => {
+  test('advances one period after two silent turns', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      settings: { ...db.settings, autoAdvanceTime: true },
+      state: { ...db.state, inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'night' }, turnsWithoutTimeChange: 0 },
+    };
+
+    db = applyTurnDiff(db, {});
+    expect(db.state.inStoryDate.timeOfDay).toBe('night');
+    expect(db.state.turnsWithoutTimeChange).toBe(1);
+
+    db = applyTurnDiff(db, {});
+    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
+    expect(db.state.turnsWithoutTimeChange).toBe(0);
+
+    db = applyTurnDiff(db, { state: { timeOfDay: 'evening' } });
+    expect(db.state.inStoryDate.timeOfDay).toBe('evening');
+    expect(db.state.turnsWithoutTimeChange).toBe(0);
+  });
+
+  test('toggle off stops automatic advancement', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      settings: { ...db.settings, autoAdvanceTime: false },
+      state: { ...db.state, turnsWithoutTimeChange: 0 },
+    };
+
+    const before = db.state.inStoryDate.timeOfDay;
+    db = applyTurnDiff(db, {});
+    db = applyTurnDiff(db, {});
+    db = applyTurnDiff(db, {});
+
+    expect(db.state.inStoryDate.timeOfDay).toBe(before);
+    expect(db.state.turnsWithoutTimeChange).toBe(3);
+  });
+});
+
+describe('canon endings and prompt memory', () => {
+  test('canon_passed completes an opportunity with a missed fact', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
+    };
+
+    const next = applyCanonMarks(db, [], [], ['itachi-hunt-naruto']);
+    expect(next.state.canonProgress?.completed).toContain('itachi-hunt-naruto');
+    expect(next.state.canonProgress?.active ?? []).not.toContain('itachi-hunt-naruto');
+    expect(next.facts.some((f) => f.text.includes('never crossed paths'))).toBe(true);
+  });
+
+  test('recent messages keep the newest narration ending', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const longNarration = `${'The rain falls. '.repeat(150)}FINAL BEAT: the masked man turns away and vanishes.`;
+
+    db = appendStoryMessage(db, 'assistant', longNarration, 'm', 0, 0);
+    const prompt = buildNarrationPrompt(db, '*Kan watches.*', 10);
+    const dynamic = prompt.messages[1].content;
+
+    expect(dynamic).toContain('FINAL BEAT');
+    expect(dynamic).toContain('LAST NARRATED BEAT');
+    expect(dynamic).toContain('CONTINUITY');
+  });
+
+  test('prompt budget guard caps runaway context', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    for (let i = 0; i < 12; i += 1) {
+      db = appendStoryMessage(db, 'assistant', 'Long narration. '.repeat(400), 'm', 0, 0);
+    }
+
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    expect(prompt.estimatedTokens).toBeLessThanOrEqual(5800);
+    expect(prompt.recentMessages.length).toBeGreaterThanOrEqual(4);
+  });
+
+  test('canon block lists concluded beats', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonProgress: { completed: ['gaara-captured', 'itachi-vs-sasuke'], active: [], engaged: [] },
+      },
+    };
+
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    expect(prompt.messages[1].content).toContain('RECENTLY CONCLUDED');
+    expect(prompt.messages[1].content).toContain('itachi-vs-sasuke');
   });
 });

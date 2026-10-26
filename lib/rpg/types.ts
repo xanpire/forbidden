@@ -45,6 +45,8 @@ export type PlayerSheet = {
   secretNotes: string[];
 };
 
+export type LocationKind = 'settlement' | 'road' | 'wilderness' | 'structure';
+
 export type GameState = {
   player: PlayerSheet;
   mood: string;
@@ -52,7 +54,9 @@ export type GameState = {
   jutsu: string[];
   inventory: string[];
   location: string;
+  locationKind?: LocationKind;
   inStoryDate: CalendarDate;
+  turnsWithoutTimeChange?: number;
   canonPoint: string;
   canonProgress?: CanonProgress;
   chapter: number;
@@ -213,6 +217,7 @@ export type Settings = {
   temperature: number;
   maxTokens: number;
   canonProgress: boolean;
+  autoAdvanceTime: boolean;
 };
 
 export type CanonProgress = {
@@ -280,6 +285,7 @@ export type TurnDiff = {
     inventoryAdded?: string[];
     inventoryRemoved?: string[];
     location?: string;
+    locationKind?: LocationKind;
     inStoryDate?: CalendarDate;
     advanceDays?: number;
     timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
@@ -331,6 +337,7 @@ export type TurnDiff = {
   }[];
   canonCompleted?: string[];
   canonEngaged?: string[];
+  canonPassed?: string[];
   scene?: SceneInfo;
 };
 

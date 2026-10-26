@@ -1650,7 +1650,8 @@ function fireMilestone(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
 export function applyCanonMarks(
   db: AppDatabase,
   completedIds: string[],
-  engagedIds: string[]
+  engagedIds: string[],
+  passedIds: string[] = []
 ): AppDatabase {
   if (!canonEnabled(db)) {
     return db;
@@ -1730,6 +1731,28 @@ export function applyCanonMarks(
     };
   }
 
+  for (const id of passedIds) {
+    const milestone = CANON_MILESTONES.find((item) => item.id === id);
+
+    if (!milestone || milestone.attendanceFact === undefined) {
+      continue;
+    }
+
+    if (!progress.completed.includes(id) && !next.events.some((event) => event.id === `event_canon_${id}`)) {
+      next = fireMilestone(next, milestone);
+    }
+
+    progress = {
+      ...progress,
+      completed: progress.completed.includes(id)
+        ? progress.completed
+        : [...progress.completed, id],
+      active: progress.active.filter((activeId) => activeId !== id),
+      engaged: progress.engaged.filter((engagedId) => engagedId !== id),
+    };
+    next = addMissedFact(next, milestone);
+  }
+
   progress = { ...progress, completed: [...new Set(progress.completed)] };
 
   return withProgress(next, progress);
@@ -1744,7 +1767,10 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
   let progress = normalizeProgress(next);
   const completed = new Set(progress.completed);
   const active = new Set(progress.active);
-  const scenes = next.events.length;
+  const assistantTurns = next.rawLog.filter(
+    (entry) => entry.kind === 'story' && entry.role === 'assistant'
+  ).length;
+  const scenes = assistantTurns;
   const dateKey = dateWindowKey(next.state.inStoryDate);
   const MAX_AUTO_FIRES_PER_TURN = 4;
   let autoFired = 0;
@@ -1893,6 +1919,19 @@ export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilest
       dateKey >= windowKey(milestone.from) &&
       (!milestone.to || dateKey <= windowKey(milestone.to))
   ).slice(0, limit);
+}
+
+export function recentlyConcludedMilestones(db: AppDatabase, limit = 3): CanonMilestone[] {
+  if (!canonEnabled(db)) {
+    return [];
+  }
+
+  const progress = normalizeProgress(db);
+  const completed = new Set(progress.completed);
+
+  return CANON_MILESTONES.filter((milestone) => completed.has(milestone.id))
+    .slice(-limit)
+    .reverse();
 }
 
 export function recentCanonEvents(db: AppDatabase, limit = 4) {

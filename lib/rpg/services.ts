@@ -2,6 +2,7 @@ import { completeChat } from '../openrouter';
 import { normalizeDate, formatDate, daysBetween, shiftDate } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { normalizeRelationship, normalizeAttraction } from './romance';
+import { advanceClockOnePeriod, classifyLocation } from './encounters';
 import { makeId } from './id';
 import { normalizeJutsuNature } from './jutsu';
 import { buildIndices } from './db';
@@ -43,6 +44,12 @@ export function convertInlineDiff(
 
   if (Array.isArray(block.canon_engaged)) {
     diff.canonEngaged = block.canon_engaged.filter(
+      (id): id is string => typeof id === 'string' && id.trim().length > 0
+    );
+  }
+
+  if (Array.isArray(block.canon_passed)) {
+    diff.canonPassed = block.canon_passed.filter(
       (id): id is string => typeof id === 'string' && id.trim().length > 0
     );
   }
@@ -100,6 +107,7 @@ export function convertInlineDiff(
       location?: unknown;
       canon_point?: unknown;
       inventory_and_jutsu_changes?: unknown;
+      location_kind?: unknown;
     };
 
     const inventoryChanges =
@@ -114,6 +122,13 @@ export function convertInlineDiff(
       location:
         typeof rawState.location === 'string' && rawState.location.trim()
           ? rawState.location.trim()
+          : undefined,
+      locationKind:
+        rawState.location_kind === 'settlement' ||
+        rawState.location_kind === 'road' ||
+        rawState.location_kind === 'wilderness' ||
+        rawState.location_kind === 'structure'
+          ? rawState.location_kind
           : undefined,
       canonPoint:
         typeof rawState.canon_point === 'string' && rawState.canon_point.trim()
@@ -404,6 +419,8 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     next = recordPresence(next, diff.scene.entities);
   }
 
+  next = applyClockTick(next, diff);
+
   next.indices = buildIndices(next);
 
   return next;
@@ -642,6 +659,47 @@ function remapEntityReferences(
   };
 }
 
+function applyClockTick(db: AppDatabase, diff: TurnDiff): AppDatabase {
+  const state = diff.state;
+  const hadTimeUpdate = Boolean(
+    state?.inStoryDate ||
+    state?.timeOfDay ||
+    (typeof state?.advanceDays === 'number' && state.advanceDays > 0)
+  );
+
+  const turns = db.state.turnsWithoutTimeChange ?? 0;
+
+  if (hadTimeUpdate) {
+    return {
+      ...db,
+      state: { ...db.state, turnsWithoutTimeChange: 0 },
+    };
+  }
+
+  if (!db.settings.autoAdvanceTime) {
+    return {
+      ...db,
+      state: { ...db.state, turnsWithoutTimeChange: Math.min(turns + 1, 9) },
+    };
+  }
+
+  if (turns + 1 >= 2) {
+    return {
+      ...db,
+      state: {
+        ...db.state,
+        inStoryDate: advanceClockOnePeriod(db.state.inStoryDate),
+        turnsWithoutTimeChange: 0,
+      },
+    };
+  }
+
+  return {
+    ...db,
+    state: { ...db.state, turnsWithoutTimeChange: turns + 1 },
+  };
+}
+
 function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
   const matched = new Set(names.map((name) => resolveEntity(db, name)?.id).filter(Boolean) as string[]);
 
@@ -817,6 +875,9 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   if (typeof state.location === 'string' && state.location.trim()) {
     next.state.location = state.location.trim().slice(0, 100);
+    next.state.locationKind = state.locationKind ?? classifyLocation(next.state.location);
+  } else if (state.locationKind) {
+    next.state.locationKind = state.locationKind;
   }
 
   if (state.inStoryDate || (state.advanceDays !== undefined && state.advanceDays > 0)) {

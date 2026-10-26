@@ -446,6 +446,41 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <SectionTitle hint="Keeps days and nights moving when the narrator forgets." title="Time" />
+            <SurfaceCard style={styles.card}>
+              <Pressable
+                accessibilityLabel="Toggle automatic time advancement"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: db.settings.autoAdvanceTime }}
+                onPress={() =>
+                  void updateSettings({ autoAdvanceTime: !db.settings.autoAdvanceTime })
+                }
+                style={({ pressed }) => [styles.toggleRow, pressed && styles.pressed]}
+              >
+                <View style={styles.toggleCopy}>
+                  <Text style={styles.toggleTitle}>Auto-advance time</Text>
+                  <Text style={styles.toggleHint}>
+                    After two silent turns, move one period (morning → afternoon → evening → night).
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.toggleTrack,
+                    db.settings.autoAdvanceTime && styles.toggleTrackOn,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.toggleKnob,
+                      db.settings.autoAdvanceTime && styles.toggleKnobOn,
+                    ]}
+                  />
+                </View>
+              </Pressable>
+            </SurfaceCard>
+          </View>
+
+          <View style={styles.section}>
             <SectionTitle hint="Multiple independent stories." title="Save slots" />
             <SurfaceCard style={styles.card}>
               <View style={styles.newSlotRow}>

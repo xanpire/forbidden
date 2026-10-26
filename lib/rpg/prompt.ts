@@ -5,8 +5,14 @@ import {
   activeCanonMilestones,
   canonEnabled,
   recentCanonEvents,
+  recentlyConcludedMilestones,
   upcomingCanonMilestones,
 } from './canon';
+import {
+  formatEncounterConditions,
+  formatGatedEncounterHint,
+  locationKindOf,
+} from './encounters';
 import { estimateTokens } from '../openrouter';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
@@ -18,6 +24,8 @@ import type {
   RawLogEntry,
   ThreadRecord,
 } from './types';
+
+const PROMPT_TOKEN_BUDGET = 5600;
 
 export const NARRATION_SYSTEM = `You are the narrator and game master of an interactive Naruto novel. The player plays Kan. You control the world and every other character.
 
@@ -32,7 +40,7 @@ WORLD & PACING
 - Responses are 2-4 paragraphs. Do not fast-forward through conversations, combat, or travel unless Kan requests a skip. Compress uneventful travel into one or two paragraphs.
 - Never repeat an NPC gesture, action, or line already used in the recent scene. Every beat must advance the story.
 - Open threads are binding missions: never change a destination, objective, or ally mid-mission unless Kan decides to.
-- Encounters are rare and follow the d20 hint, never mentioning the roll. When the hint says nothing special happens, add no new characters or interruptions. Never stack encounters or run two in a row.
+- Encounters are rare and follow the d20 hint and the ENCOUNTER CONDITIONS, never mentioning the roll. When the hint says no new people, add none — use animals, weather, sounds, tracks, or distant lights. Never put a cheerful stranger in isolated wilderness or an abandoned ruin at night. Never stack encounters or run two in a row.
 
 NEW CHARACTERS
 - Create original villagers, shinobi, merchants, clients, or enemies as needed. Give each a distinct name, age, role, personality, speech style, look, and goals. Keep them within canon power levels.
@@ -59,7 +67,7 @@ STATE OUTPUT (MANDATORY)
 - After the narration, output exactly one fenced JSON block with changes only. If nothing changed, output \`\`\`json {} \`\`\`.
 \`\`\`json
 {
-  "state": { "location": string, "canon_point": string, "inventory_and_jutsu_changes": string[] },
+  "state": { "location": string, "location_kind": "settlement"|"road"|"wilderness"|"structure", "canon_point": string, "inventory_and_jutsu_changes": string[] },
   "time": { "days_passed": number, "time_of_day": "morning" | "afternoon" | "evening" | "night" },
   "mood": string,
   "world_description": string,
@@ -71,12 +79,13 @@ STATE OUTPUT (MANDATORY)
   "characters_present": string[],
   "canon_engaged": string[],
   "canon_completed": string[],
+  "canon_passed": string[],
   "scene_ended": boolean,
   "image_worthy": boolean
 }
 \`\`\`
 - time: days_passed is 0 if the scene continues immediately, 1 for a scene break, more for travel or skips. Sleeping through the night means days_passed 1 and time_of_day "morning".
-- Set state.location whenever Kan moves to a new area, building, or settlement. characters_present lists every NPC in direct contact this beat (omit when Kan is alone).
+- Set state.location whenever Kan moves; always pair it with location_kind (settlement, road, wilderness, structure). characters_present lists every NPC in direct contact this beat (omit when Kan is alone).
 - mood is Kan's mood in 1-3 words, only when changed. world_description is one sentence, only when changed. scene_ended is true only when the scene clearly concluded.
 - jutsu_used only for named jutsu; chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
 - relationship/attraction/romance_note only when they changed. Bonds only for important characters; minor ones go in facts. image_worthy only for visually striking moments, never pure dialogue.`;
@@ -117,6 +126,7 @@ Allowed top-level fields:
   ],
   "canonCompleted": string[],
   "canonEngaged": string[],
+  "canonPassed": string[],
   "scene": { "ended": boolean, "summary": string, "tags": string[], "entities": string[], "importance": 1 | 2 | 3 | 4 | 5 }
 }
 
@@ -213,25 +223,44 @@ export function buildNarrationPrompt(
     formatLore(lore),
   ].join('\n\n');
 
-  const dynamic = [
-    formatArcSummary(arcSummary),
-    formatCanonBlock(db),
-    formatMemories(memories),
-    formatRecentMessages(recentMessages),
-    formatEncounterHint(d20),
-    `YOU (KAN) DO OR SAY:\n${userMessage}`,
-  ].join('\n\n');
+  const buildDynamic = (messagesForScene: RawLogEntry[]) =>
+    [
+      formatArcSummary(arcSummary),
+      formatTimeLine(db),
+      formatCanonBlock(db),
+      formatMemories(memories),
+      formatRecentMessages(messagesForScene),
+      formatLastBeat(messagesForScene),
+      `${formatEncounterConditions(db)}\n${formatGatedEncounterHint(db, d20)}`,
+      `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
+      `YOU (KAN) DO OR SAY:\n${userMessage}`,
+    ].join('\n\n');
 
-  const messages: OpenRouterMessage[] = [
+  let sceneMessages = recentMessages;
+  let dynamic = buildDynamic(sceneMessages);
+  let messages: OpenRouterMessage[] = [
     { role: 'system', content: stable },
     { role: 'user', content: dynamic },
   ];
+  let estimated = estimateTokens(messages);
+
+  // Hard prompt budget: trim the oldest scene messages rather than let the
+  // prompt creep upward over a long story.
+  while (estimated > PROMPT_TOKEN_BUDGET && sceneMessages.length > 4) {
+    sceneMessages = sceneMessages.slice(1);
+    dynamic = buildDynamic(sceneMessages);
+    messages = [
+      { role: 'system', content: stable },
+      { role: 'user', content: dynamic },
+    ];
+    estimated = estimateTokens(messages);
+  }
 
   return {
     messages,
-    estimatedTokens: estimateTokens(messages),
+    estimatedTokens: estimated,
     memories,
-    recentMessages,
+    recentMessages: sceneMessages,
     arcSummary,
   };
 }
@@ -575,9 +604,10 @@ function formatCanonBlock(db: AppDatabase) {
     return '';
   }
 
-  const active = activeCanonMilestones(db);
-  const upcoming = upcomingCanonMilestones(db, 2);
-  const recent = recentCanonEvents(db, 4);
+  const active = activeCanonMilestones(db).slice(0, 2);
+  const upcoming = upcomingCanonMilestones(db, 1);
+  const concluded = recentlyConcludedMilestones(db, 3);
+  const recent = recentCanonEvents(db, 3);
   const lines: string[] = ['CANON TIMELINE'];
 
   if (recent.length > 0) {
@@ -610,9 +640,18 @@ function formatCanonBlock(db: AppDatabase) {
       }
 
       lines.push(
-        '  If this beat plays out in your scene, set "canon_engaged": [id]. If fully dramatized, set "canon_completed": [id].'
+        '  If this beat plays out in your scene, set "canon_engaged": [id]. If fully dramatized, set "canon_completed": [id]. If the opportunity clearly passed (Kan left, time moved on), set "canon_passed": [id].'
       );
     }
+  }
+
+  if (concluded.length > 0) {
+    lines.push(
+      'RECENTLY CONCLUDED (finished — never replay these): ' +
+        concluded
+          .map((milestone) => `${milestone.id} (${truncate(milestone.title, 50)})`)
+          .join('; ')
+    );
   }
 
   return lines.join('\n');
@@ -654,22 +693,59 @@ function formatMemories(memories: EventRecord[]) {
   ].join('\n');
 }
 
+function tail(value: string, maxLength: number) {
+  if (!value || value.length <= maxLength) {
+    return value;
+  }
+
+  return `…${value.slice(-maxLength).trimStart()}`;
+}
+
 function formatRecentMessages(messages: RawLogEntry[]) {
   if (messages.length === 0) {
     return 'RECENT SCENE\nThe story is just beginning.';
   }
 
+  const lastAssistantIndex = [...messages]
+    .map((message, index) => (message.role === 'assistant' ? index : -1))
+    .filter((index) => index >= 0)
+    .pop();
+
   return [
-    'RECENT SCENE',
-    ...messages.map(
-      (message) =>
-        `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${
-          message.role === 'assistant'
-            ? truncate(stripNarrationJson(message.content), 1400)
-            : truncate(message.content, 600)
-        }`
-    ),
+    'RECENT SCENE (oldest first)',
+    ...messages.map((message, index) => {
+      if (message.role === 'user') {
+        return `You (Kan): ${truncate(message.content, 500)}`;
+      }
+
+      const clean = stripNarrationJson(message.content);
+      const cap = index === lastAssistantIndex ? 2200 : 1000;
+
+      return `Narrator: ${tail(clean, cap)}`;
+    }),
   ].join('\n');
+}
+
+function formatLastBeat(messages: RawLogEntry[]) {
+  const lastAssistant = [...messages].reverse().find((message) => message.role === 'assistant');
+
+  if (!lastAssistant) {
+    return 'LAST NARRATED BEAT\nThe story is just beginning.';
+  }
+
+  const clean = stripNarrationJson(lastAssistant.content).trim();
+
+  return `LAST NARRATED BEAT (continue directly from here)\n${tail(clean, 450)}`;
+}
+
+function formatTimeLine(db: AppDatabase) {
+  const stalled = db.state.turnsWithoutTimeChange ?? 0;
+  const nudge =
+    stalled >= 1
+      ? ' — several beats have passed without the clock moving; let time advance naturally.'
+      : '';
+
+  return `TIME\n${formatDate(db.state.inStoryDate)} · ${db.state.inStoryDate.timeOfDay}${nudge}`;
 }
 
 export function formatEncounterHint(d20: number) {
