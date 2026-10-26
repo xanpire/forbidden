@@ -107,23 +107,6 @@ def vulture_canvas(size):
     draw = ImageDraw.Draw(img)
     shapes = build_shapes(size)
 
-    stroke = size * 0.011
-
-    stroke_polygon(draw, shapes['wing_l'], WHITE, stroke, shapes['cx'], size * 0.45)
-    stroke_polygon(draw, shapes['wing_r'], WHITE, stroke, shapes['cx'], size * 0.45)
-    stroke_polygon(draw, shapes['tail'], WHITE, stroke, shapes['cx'], size * 0.45)
-    stroke_polygon(draw, shapes['neck_body'], WHITE, stroke, shapes['cx'], size * 0.45)
-    stroke_polygon(draw, shapes['beak'], WHITE, stroke, shapes['cx'], size * 0.45)
-    draw.ellipse(
-        [
-            shapes['head'][0] - shapes['head_r'] - stroke,
-            shapes['head'][1] - shapes['head_r'] - stroke,
-            shapes['head'][0] + shapes['head_r'] + stroke,
-            shapes['head'][1] + shapes['head_r'] + stroke,
-        ],
-        fill=WHITE,
-    )
-
     draw.polygon(shapes['wing_l'], fill=RED)
     draw.polygon(shapes['wing_r'], fill=RED)
     draw.polygon(shapes['tail'], fill=RED)

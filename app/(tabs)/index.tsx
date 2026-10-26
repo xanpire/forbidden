@@ -42,6 +42,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatStoryDate } from '@/lib/rpg/calendar';
+import { stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
@@ -98,7 +99,10 @@ export default function StoryScreen() {
       .map((message) => ({
         id: message.id,
         role: message.role === 'user' ? 'user' : 'assistant',
-        content: message.content,
+        content:
+          message.role === 'assistant'
+            ? stripNarrationJson(message.content)
+            : message.content,
         image: message.image ?? null,
       }));
   }, [db]);

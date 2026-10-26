@@ -1,24 +1,21 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { CircleDot, Pin, ScrollText, Target } from 'lucide-react-native';
+import { CircleDot, ScrollText, Target } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
-import { AppButton } from '@/components/AppButton';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
-import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
+import type { ThreadRecord } from '@/lib/rpg/types';
 
 type JournalTab = 'story' | 'so-far' | 'world' | 'memories';
 
 export default function JournalScreen() {
-  const { db, editMemory, deleteMemory, toggleMemoryPin } = useGame();
+  const { db } = useGame();
   const [tab, setTab] = useState<JournalTab>('story');
-  const [editingMemoryId, setEditingMemoryId] = useState<string | null>(null);
-  const [editSummary, setEditSummary] = useState('');
 
   const threads = useMemo(() => {
     if (!db) {
@@ -60,35 +57,9 @@ export default function JournalScreen() {
     }
 
     return [...db.events]
-      .sort((a, b) => {
-        if (a.pinned !== b.pinned) {
-          return a.pinned ? -1 : 1;
-        }
-
-        return b.createdAt - a.createdAt;
-      })
+      .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 80);
   }, [db]);
-
-  const startEdit = (memory: EventRecord) => {
-    setEditingMemoryId(memory.id);
-    setEditSummary(memory.summary);
-  };
-
-  const saveEdit = async () => {
-    if (!editingMemoryId) {
-      return;
-    }
-
-    const summary = editSummary.trim();
-
-    if (summary) {
-      await editMemory(editingMemoryId, { summary });
-    }
-
-    setEditingMemoryId(null);
-    setEditSummary('');
-  };
 
   const renderThread = (thread: ThreadRecord) => (
     <SurfaceCard key={thread.id} style={styles.threadCard}>
@@ -273,68 +244,16 @@ export default function JournalScreen() {
               ) : (
                 memories.map((memory) => (
                   <SurfaceCard key={memory.id} style={styles.memoryCard}>
-                    <View style={styles.memoryTop}>
-                      <View style={styles.memoryMeta}>
-                        <Text style={styles.memoryDate}>
-                          {formatShortDate(memory.inStoryDate)}
-                        </Text>
-                        <Text style={styles.memoryImportance}>
-                          Importance {memory.importance}/5
-                        </Text>
-                      </View>
-                      <View style={styles.memoryActions}>
-                        <AppButton
-                          compact
-                          label={memory.pinned ? 'Unpin' : 'Pin'}
-                          onPress={() => void toggleMemoryPin(memory.id)}
-                          style={styles.memoryActionButton}
-                          variant="secondary"
-                        />
-                        <AppButton
-                          compact
-                          label="Edit"
-                          onPress={() => startEdit(memory)}
-                          style={styles.memoryActionButton}
-                          variant="secondary"
-                        />
-                        <AppButton
-                          compact
-                          label="Delete"
-                          onPress={() => void deleteMemory(memory.id)}
-                          style={styles.memoryActionButton}
-                          variant="secondary"
-                        />
-                      </View>
+                    <View style={styles.memoryMeta}>
+                      <Text style={styles.memoryDate}>
+                        {formatShortDate(memory.inStoryDate)}
+                      </Text>
+                      <Text style={styles.memoryImportance}>
+                        Importance {memory.importance}/5
+                      </Text>
                     </View>
 
-                    {editingMemoryId === memory.id ? (
-                      <View style={styles.editWrap}>
-                        <TextInput
-                          accessibilityLabel="Edit memory summary"
-                          multiline
-                          onChangeText={setEditSummary}
-                          style={styles.editInput}
-                          value={editSummary}
-                        />
-                        <View style={styles.editActions}>
-                          <AppButton
-                            compact
-                            label="Cancel"
-                            onPress={() => setEditingMemoryId(null)}
-                            style={styles.editButton}
-                            variant="secondary"
-                          />
-                          <AppButton
-                            compact
-                            label="Save"
-                            onPress={() => void saveEdit()}
-                            style={styles.editButton}
-                          />
-                        </View>
-                      </View>
-                    ) : (
-                      <Text style={styles.memorySummary}>{memory.summary}</Text>
-                    )}
+                    <Text style={styles.memorySummary}>{memory.summary}</Text>
 
                     {memory.tags.length > 0 ? (
                       <View style={styles.tagRow}>
@@ -343,13 +262,6 @@ export default function JournalScreen() {
                             {tag}
                           </Text>
                         ))}
-                      </View>
-                    ) : null}
-
-                    {memory.pinned ? (
-                      <View style={styles.pinnedRow}>
-                        <Pin color={colors.accent} size={12} strokeWidth={2} />
-                        <Text style={styles.pinnedText}>Pinned</Text>
                       </View>
                     ) : null}
                   </SurfaceCard>
@@ -497,12 +409,6 @@ const styles = StyleSheet.create({
   memoryCard: {
     gap: 10,
   },
-  memoryTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
   memoryMeta: {
     gap: 2,
   },
@@ -516,41 +422,11 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textDim,
   },
-  memoryActions: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  memoryActionButton: {
-    minWidth: 52,
-  },
   memorySummary: {
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
     color: colors.text,
-  },
-  editWrap: {
-    gap: 8,
-  },
-  editActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  editInput: {
-    minHeight: 84,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    color: colors.text,
-    textAlignVertical: 'top',
-  },
-  editButton: {
-    minWidth: 72,
   },
   tagRow: {
     flexDirection: 'row',
@@ -566,15 +442,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.accentSoft,
     overflow: 'hidden',
-  },
-  pinnedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  pinnedText: {
-    fontFamily: fonts.semibold,
-    fontSize: 9,
-    color: colors.accent,
   },
 });
