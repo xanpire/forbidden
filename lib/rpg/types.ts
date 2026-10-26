@@ -54,6 +54,7 @@ export type GameState = {
   location: string;
   inStoryDate: CalendarDate;
   canonPoint: string;
+  canonProgress?: CanonProgress;
   chapter: number;
   scene: string;
 };
@@ -90,6 +91,9 @@ export type EntityRecord = {
   mood?: string;
   appearance?: string;
   lastSeen?: CalendarDate;
+  romanceAccessibility?: 'winnable' | 'lore-locked';
+  canonDevotion?: string;
+  orientation?: string;
   tags: string[];
 };
 
@@ -135,6 +139,9 @@ export type BondRecord = {
   lastKeyEventId: string | null;
   note: string;
   isMajor: boolean;
+  relationship?: RelationshipStage;
+  attraction?: Attraction;
+  romanceNote?: string;
   updatedInStoryDate: CalendarDate;
 };
 
@@ -205,7 +212,24 @@ export type Settings = {
   autoSummarizeThreshold: number;
   temperature: number;
   maxTokens: number;
+  canonProgress: boolean;
 };
+
+export type CanonProgress = {
+  completed: string[];
+  active: string[];
+  engaged: string[];
+};
+
+export type RelationshipStage =
+  | 'stranger'
+  | 'friendly'
+  | 'close'
+  | 'romantic interest'
+  | 'partner'
+  | 'rejected';
+
+export type Attraction = 'none' | 'warm' | 'strong';
 
 export type AppDatabase = {
   schemaVersion: 1;
@@ -286,6 +310,9 @@ export type TurnDiff = {
     status?: string;
     note?: string;
     isMajor?: boolean;
+    relationship?: string;
+    attraction?: string;
+    romanceNote?: string;
   }[];
   facts?: {
     action: 'add' | 'end';
@@ -302,6 +329,8 @@ export type TurnDiff = {
     type?: ThreadType;
     participants?: string[];
   }[];
+  canonCompleted?: string[];
+  canonEngaged?: string[];
   scene?: SceneInfo;
 };
 

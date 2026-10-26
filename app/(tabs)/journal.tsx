@@ -9,7 +9,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
-import type { ThreadRecord } from '@/lib/rpg/types';
+import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
 
 type JournalTab = 'story' | 'so-far' | 'world' | 'memories';
 
@@ -60,6 +60,23 @@ export default function JournalScreen() {
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 80);
   }, [db]);
+
+  const canonTimeline = useMemo(() => {
+    if (!db) {
+      return [];
+    }
+
+    return [...db.events]
+      .filter((event) => event.tags.includes('canon'))
+      .sort(
+        (a, b) =>
+          b.inStoryDate.year * 10000 +
+          b.inStoryDate.month * 100 +
+          b.inStoryDate.day -
+          (a.inStoryDate.year * 10000 + a.inStoryDate.month * 100 + a.inStoryDate.day)
+      )
+      .slice(0, 40);
+  }, [db]) as EventRecord[];
 
   const renderThread = (thread: ThreadRecord) => (
     <SurfaceCard key={thread.id} style={styles.threadCard}>
@@ -212,6 +229,25 @@ export default function JournalScreen() {
                 <Text style={styles.cardLabel}>Canon point</Text>
                 <Text style={styles.cardValue}>{db.state.canonPoint}</Text>
               </SurfaceCard>
+
+              <View style={styles.threadSection}>
+                <Text style={styles.sectionLabel}>World timeline</Text>
+                {canonTimeline.length === 0 ? (
+                  <Text style={styles.emptyText}>
+                    World events appear here as the timeline advances.
+                  </Text>
+                ) : (
+                  canonTimeline.map((event) => (
+                    <SurfaceCard key={event.id} style={styles.card}>
+                      <Text style={styles.cardLabel}>
+                        {formatShortDate(event.inStoryDate)}
+                        {event.pinned ? ' · major' : ''}
+                      </Text>
+                      <Text style={styles.cardValue}>{event.summary}</Text>
+                    </SurfaceCard>
+                  ))
+                )}
+              </View>
 
               <View style={styles.threadSection}>
                 <Text style={styles.sectionLabel}>Lore</Text>

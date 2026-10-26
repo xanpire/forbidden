@@ -54,6 +54,9 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       notes: 'Kan’s closest friend, like an older brother. Joined ANBU one year before Kan. Known Kan since he was a toddler.',
       mood: 'Burdened, controlled, grieving beneath the calm',
       appearance: 'Slim young man with long black hair tied back, sharp dark eyes, tear troughs, and a black cloak patterned with red clouds.',
+      romanceAccessibility: 'lore-locked',
+      canonDevotion: 'His heart belongs to his brother and the village; love is a luxury he denied himself.',
+      orientation: 'Not interested; devoted to duty',
       tags: ['uchiha', 'anbu', 'akatsuki', 'friend'],
     },
     {
@@ -70,6 +73,9 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       notes: 'Kan’s teammate. He has a secret crush on her.',
       mood: 'Worried, restless, fiercely loyal',
       appearance: 'Athletic girl with tousled brown hair, fang-like markings on her cheeks, and a practical Inuzuka jacket.',
+      romanceAccessibility: 'winnable',
+      canonDevotion: 'Loyal to her pack and her village; blunt about everything but her own heart.',
+      orientation: 'Attracted to men',
       tags: ['inuzuka', 'team-3', 'crush'],
     },
     {
@@ -86,6 +92,9 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       notes: 'Kan’s teammate from Team 3.',
       mood: 'Remembered warmly',
       appearance: 'Young Uchiha girl with soft dark hair, gentle eyes, and the quiet posture of someone who always waited for others.',
+      romanceAccessibility: 'lore-locked',
+      canonDevotion: 'A gentle memory of Team 3; her heart belonged to the village she died for.',
+      orientation: 'Unknown',
       tags: ['uchiha', 'team-3'],
     },
     {
@@ -102,6 +111,9 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       notes: 'Former sensei of Team 3.',
       mood: 'Concerned, patient, watchful',
       appearance: 'Seasoned jonin woman with practical field clothes, tied-back hair, and the calm stance of a teacher who has buried students.',
+      romanceAccessibility: 'winnable',
+      canonDevotion: 'Dedicated to her students and the village; guarded about her private life.',
+      orientation: 'Attracted to men',
       tags: ['team-3', 'sensei'],
     },
     {
@@ -180,6 +192,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       lastKeyEventId: openingEvent.id,
       note: 'They joined ANBU one year apart and trust each other deeply.',
       isMajor: true,
+      relationship: 'close',
+      attraction: 'none',
       updatedInStoryDate: DEFAULT_DATE,
     },
     {
@@ -191,6 +205,9 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       lastKeyEventId: null,
       note: 'Kan hides his feelings and has never told her.',
       isMajor: true,
+      relationship: 'friendly',
+      attraction: 'warm',
+      romanceNote: 'Kan\'s unspoken crush; she does not know.',
       updatedInStoryDate: DEFAULT_DATE,
     },
     {
@@ -202,6 +219,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       lastKeyEventId: null,
       note: 'Fellow Team 3 member.',
       isMajor: true,
+      relationship: 'close',
+      attraction: 'none',
       updatedInStoryDate: DEFAULT_DATE,
     },
     {
@@ -213,6 +232,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       lastKeyEventId: null,
       note: 'Taught and guided Team 3.',
       isMajor: false,
+      relationship: 'friendly',
+      attraction: 'none',
       updatedInStoryDate: DEFAULT_DATE,
     },
   ];

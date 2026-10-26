@@ -409,6 +409,43 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.section}>
+            <SectionTitle hint="The world moves even when Kan is elsewhere." title="Story" />
+            <SurfaceCard style={styles.card}>
+              <Pressable
+                accessibilityLabel="Toggle canon plot progression"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: db.settings.canonProgress }}
+                onPress={() =>
+                  void updateSettings({ canonProgress: !db.settings.canonProgress })
+                }
+                style={({ pressed }) => [styles.toggleRow, pressed && styles.pressed]}
+              >
+                <View style={styles.toggleCopy}>
+                  <Text style={styles.toggleTitle}>Canon plot progression</Text>
+                  <Text style={styles.toggleHint}>
+                    Hardcoded Naruto milestones advance alongside the story.
+                  </Text>
+                </View>
+                <View
+                  accessibilityLabel={`Canon progression is ${db.settings.canonProgress ? 'on' : 'off'}`}
+                  style={[styles.toggleTrack, db.settings.canonProgress && styles.toggleTrackOn]}
+                >
+                  <View
+                    style={[
+                      styles.toggleKnob,
+                      db.settings.canonProgress && styles.toggleKnobOn,
+                    ]}
+                  />
+                </View>
+              </Pressable>
+              <Text style={styles.toggleValue}>
+                Status: {db.settings.canonProgress ? 'On' : 'Off'} — completed
+                milestones: {(db.state.canonProgress?.completed.length ?? 0)}
+              </Text>
+            </SurfaceCard>
+          </View>
+
+          <View style={styles.section}>
             <SectionTitle hint="Multiple independent stories." title="Save slots" />
             <SurfaceCard style={styles.card}>
               <View style={styles.newSlotRow}>
@@ -842,6 +879,58 @@ const styles = StyleSheet.create({
   about: {
     alignItems: 'center',
     gap: 3,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  toggleCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: colors.text,
+  },
+  toggleHint: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textDim,
+  },
+  toggleTrack: {
+    width: 44,
+    height: 26,
+    borderRadius: 13,
+    padding: 3,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+  },
+  toggleTrackOn: {
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accent,
+  },
+  toggleKnob: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.textMuted,
+  },
+  toggleKnobOn: {
+    backgroundColor: colors.accent,
+    alignSelf: 'flex-end',
+  },
+  toggleValue: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textDim,
   },
   aboutText: {
     fontFamily: fonts.regular,

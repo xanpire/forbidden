@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSummarizeThreshold: 12,
   temperature: 0.7,
   maxTokens: 1100,
+  canonProgress: true,
 };
 
 export function emptyIndex(): MemoryIndex {

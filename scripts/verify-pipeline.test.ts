@@ -20,6 +20,7 @@ import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from 
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
+import { CANON_MILESTONES, advanceCanon, applyCanonMarks } from '../lib/rpg/canon';
 import {
   appendStoryMessage,
   applyTurnDiff,
@@ -585,5 +586,213 @@ describe('encounter frequency and image cast', () => {
     const matches = db.entities.filter((entity) => /tobi|madara/i.test(entity.name));
     expect(matches.length).toBeLessThanOrEqual(1);
     expect(matches[0]?.aliases.map((a) => a.toLowerCase())).toContain('tobi');
+  });
+});
+
+describe('canon timeline dataset', () => {
+  test('milestones are unique, ordered, and lore-gated', () => {
+    const ids = CANON_MILESTONES.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    for (const m of CANON_MILESTONES) {
+      expect(m.minScenes).toBeGreaterThan(0);
+      expect(m.from.year).toBeGreaterThanOrEqual(13);
+      expect(m.facts.length + (m.opensThreads?.length ?? 0)).toBeGreaterThanOrEqual(0);
+      if (m.to) {
+        expect(m.to.year * 12 + m.to.month).toBeGreaterThanOrEqual(
+          m.from.year * 12 + m.from.month
+        );
+      }
+    }
+
+    const unmask = CANON_MILESTONES.find((m) => m.id === 'obito-unmasked');
+    expect(unmask).toBeDefined();
+    const unmaskYear = unmask!.from.year;
+    expect(unmaskYear).toBeGreaterThanOrEqual(23);
+
+    const audience = CANON_MILESTONES.find((m) => m.id === 'masked-man-audience');
+    expect(audience?.description).toContain('masked');
+    expect(audience?.description.toLowerCase()).not.toContain('obito');
+
+    for (const m of CANON_MILESTONES) {
+      if (m.playerDriven && m.encounter) {
+        expect(m.encounter.context.length).toBeGreaterThan(20);
+      }
+    }
+  });
+});
+
+describe('canon scheduler', () => {
+  test('fires the first milestone once scenes and date allow', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = {
+      ...db,
+      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
+      events: db.events.slice(0, 1),
+    };
+
+    const first = advanceCanon(db);
+    expect(first.state.canonProgress?.completed ?? []).not.toContain('kan-joins-akatsuki');
+
+    const withScene = {
+      ...first,
+      events: [...first.events, { ...first.events[0], id: 'event_test_scene', tags: ['scene'] }],
+    };
+
+    const fired = advanceCanon(withScene);
+    expect(fired.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
+    expect(fired.state.canonPoint).toContain('joined the Akatsuki');
+    expect(fired.events.some((e) => e.id === 'event_canon_kan-joins-akatsuki')).toBe(true);
+    expect(fired.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
+    expect(fired.bonds.length).toBeGreaterThan(0);
+  });
+
+  test('does not run ahead of its date window', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        inStoryDate: { year: 14, month: 2, day: 1, timeOfDay: 'morning' },
+        canonProgress: { completed: [], active: [], engaged: [] },
+      },
+      events: [...db.events, ...db.events, ...db.events],
+    };
+
+    const next = advanceCanon(db);
+    expect(next.state.canonProgress?.completed ?? []).not.toContain('gaara-captured');
+    expect(next.state.canonProgress?.completed ?? []).not.toContain('war-begins');
+  });
+
+  test('narrator-marked beats complete and stamp attendance', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
+    };
+
+    const completed = applyCanonMarks(db, ['masked-man-audience'], []);
+    expect(completed.facts.some((f) => f.text.includes('Kan attended'))).toBe(true);
+    expect(completed.state.canonProgress?.completed).toContain('masked-man-audience');
+
+    const engaged = applyCanonMarks(db, [], ['itachi-hunt-naruto']);
+    expect(engaged.state.canonProgress?.engaged).toContain('itachi-hunt-naruto');
+    expect(engaged.state.canonProgress?.active).toContain('itachi-hunt-naruto');
+    expect(engaged.state.canonProgress?.completed ?? []).not.toContain('itachi-hunt-naruto');
+
+    const finished = applyCanonMarks(engaged, ['itachi-hunt-naruto'], []);
+    expect(finished.state.canonProgress?.completed).toContain('itachi-hunt-naruto');
+    expect(finished.state.canonProgress?.engaged ?? []).not.toContain('itachi-hunt-naruto');
+    expect(finished.facts.some((f) => f.text.includes('accompanied Itachi'))).toBe(true);
+  });
+
+  test('expired player-driven encounters log a missed fact', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        inStoryDate: { year: 19, month: 9, day: 1, timeOfDay: 'night' },
+        canonProgress: { completed: [], active: ['itachi-hunt-naruto'], engaged: [] },
+      },
+    };
+
+    const next = advanceCanon(db);
+    expect(next.state.canonProgress?.completed).toContain('itachi-hunt-naruto');
+    expect(next.state.canonProgress?.active ?? []).not.toContain('itachi-hunt-naruto');
+    expect(
+      next.facts.some((f) => f.text.toLowerCase().includes('never crossed paths'))
+    ).toBe(true);
+  });
+
+  test('disabling canon progression freezes it', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = {
+      ...db,
+      settings: { ...db.settings, canonProgress: false },
+      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
+    };
+
+    const next = advanceCanon(db);
+    expect(next.state.canonProgress?.completed).toEqual([]);
+    expect(next.events.length).toBe(db.events.length);
+  });
+});
+
+describe('cross-era memory and romance', () => {
+  test('old saves migrate romance and canon fields', () => {
+    const db = loadSave(SAVE_PATHS[0]);
+
+    expect(db.settings.canonProgress).toBe(true);
+    expect(Array.isArray(db.state.canonProgress?.completed)).toBe(true);
+
+    for (const bond of db.bonds) {
+      expect(['stranger', 'friendly', 'close', 'romantic interest', 'partner', 'rejected'])
+        .toContain(bond.relationship ?? 'stranger');
+    }
+
+    for (const entity of db.entities.filter((e) => e.type === 'character')) {
+      expect(['winnable', 'lore-locked']).toContain(
+        entity.romanceAccessibility ?? 'winnable'
+      );
+    }
+  });
+
+  test('characters met once are remembered across eras', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    const itachiId = resolveEntity(db, 'Itachi')?.id;
+    const factsBefore = db.facts.length;
+
+    db = applyTurnDiff(db, {
+      state: { inStoryDate: { year: 22, month: 1, day: 1, timeOfDay: 'morning' } },
+      entities: [{ name: 'Itachi', role: 'Akatsuki' }],
+    });
+
+    expect(resolveEntity(db, 'Itachi')?.id).toBe(itachiId);
+    expect(db.bonds.some((b) => b.entityId === itachiId)).toBe(true);
+    expect(db.facts.length).toBeGreaterThanOrEqual(factsBefore);
+    expect(db.entities.filter((e) => e.name === 'Itachi Uchiha').length).toBe(1);
+  });
+
+  test('romance state persists rejections without resetting', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyTurnDiff(db, {
+      bonds: [
+        {
+          character: 'Hana Inuzuka',
+          relationship: 'rejected',
+          attraction: 'none',
+          romanceNote: 'She turned Kan down and the awkwardness lingers.',
+        },
+      ],
+    });
+
+    const bond = db.bonds.find((b) => b.characterName === 'Hana Inuzuka');
+    expect(bond?.relationship).toBe('rejected');
+    expect(bond?.romanceNote).toContain('awkwardness');
+
+    db = applyTurnDiff(db, { bonds: [{ character: 'Hana', affinityDelta: 1 }] });
+    expect(db.bonds.find((b) => b.characterName === 'Hana Inuzuka')?.relationship).toBe(
+      'rejected'
+    );
+  });
+
+  test('narration prompt carries canon, romance, and lore hearts', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+    db = applyTurnDiff(db, {
+      scene: { ended: false, entities: ['Itachi Uchiha'] },
+    });
+
+    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
+    const system = prompt.messages[0].content;
+    const dynamic = prompt.messages[1].content;
+
+    expect(system).toContain('NEVER CENSOR');
+    expect(system).toContain('LORE-LOCKED hearts');
+    expect(system).toContain('WORLD CLOCK');
+    expect(dynamic).toContain('CANON TIMELINE');
+    expect(system).toContain('heart:');
   });
 });

@@ -332,6 +332,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
+      canonProgress: db.settings?.canonProgress ?? DEFAULT_SETTINGS.canonProgress,
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>
@@ -358,11 +359,29 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
           appearance:
             entity.appearance ??
             (entity.type === 'character' ? 'Unknown' : undefined),
+          romanceAccessibility:
+            entity.type === 'character'
+              ? (entity.romanceAccessibility ?? 'winnable')
+              : undefined,
         }))
       : [],
     events: Array.isArray(db.events) ? db.events : [],
     eventEntities: Array.isArray(db.eventEntities) ? db.eventEntities : [],
-    bonds: Array.isArray(db.bonds) ? db.bonds : [],
+    bonds: Array.isArray(db.bonds)
+      ? db.bonds.map((bond) => ({
+          ...bond,
+          relationship:
+            bond.relationship ??
+            (bond.affinity >= 7
+              ? 'close'
+              : bond.affinity >= 4
+                ? 'friendly'
+                : bond.affinity <= -4
+                  ? 'rejected'
+                  : 'stranger'),
+          attraction: bond.attraction ?? 'none',
+        }))
+      : [],
     facts: Array.isArray(db.facts) ? db.facts : [],
     threads: Array.isArray(db.threads) ? db.threads : [],
     loreEntries: Array.isArray(db.loreEntries) ? db.loreEntries : [],
@@ -438,6 +457,18 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     location: state.location ?? seeded.location,
     inStoryDate: state.inStoryDate ?? seeded.inStoryDate,
     canonPoint: state.canonPoint ?? seeded.canonPoint,
+    canonProgress:
+      state.canonProgress && Array.isArray(state.canonProgress.completed)
+        ? {
+            completed: state.canonProgress.completed.filter(Boolean),
+            active: Array.isArray(state.canonProgress.active)
+              ? state.canonProgress.active.filter(Boolean)
+              : [],
+            engaged: Array.isArray(state.canonProgress.engaged)
+              ? state.canonProgress.engaged.filter(Boolean)
+              : [],
+          }
+        : { completed: [], active: [], engaged: [] },
     chapter: state.chapter ?? seeded.chapter,
     scene: state.scene ?? seeded.scene,
   };

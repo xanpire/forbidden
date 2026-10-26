@@ -1,6 +1,7 @@
 import { completeChat } from '../openrouter';
 import { normalizeDate, formatDate, daysBetween, shiftDate } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
+import { normalizeRelationship, normalizeAttraction } from './romance';
 import { makeId } from './id';
 import { normalizeJutsuNature } from './jutsu';
 import { buildIndices } from './db';
@@ -33,6 +34,18 @@ export function convertInlineDiff(
   const imageWorthy = block.image_worthy === true;
   const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
+
+  if (Array.isArray(block.canon_completed)) {
+    diff.canonCompleted = block.canon_completed.filter(
+      (id): id is string => typeof id === 'string' && id.trim().length > 0
+    );
+  }
+
+  if (Array.isArray(block.canon_engaged)) {
+    diff.canonEngaged = block.canon_engaged.filter(
+      (id): id is string => typeof id === 'string' && id.trim().length > 0
+    );
+  }
 
   const time = block.time;
 
@@ -148,6 +161,9 @@ export function convertInlineDiff(
           affinity_change?: unknown;
           status?: unknown;
           note?: unknown;
+          relationship?: unknown;
+          attraction?: unknown;
+          romance_note?: unknown;
         };
 
         return {
@@ -156,6 +172,11 @@ export function convertInlineDiff(
             typeof bond.affinity_change === 'number' ? bond.affinity_change : undefined,
           status: typeof bond.status === 'string' ? bond.status : undefined,
           note: typeof bond.note === 'string' ? bond.note : undefined,
+          relationship:
+            typeof bond.relationship === 'string' ? bond.relationship : undefined,
+          attraction: typeof bond.attraction === 'string' ? bond.attraction : undefined,
+          romanceNote:
+            typeof bond.romance_note === 'string' ? bond.romance_note : undefined,
         };
       })
       .filter((item) => item.character.trim().length > 0);
@@ -1057,6 +1078,9 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
       lastKeyEventId: null,
       note: bond.note?.trim() || '',
       isMajor: Boolean(bond.isMajor),
+      relationship: normalizeRelationship(bond.relationship),
+      attraction: normalizeAttraction(bond.attraction),
+      romanceNote: bond.romanceNote?.trim() || undefined,
       updatedInStoryDate: db.state.inStoryDate,
     };
 
@@ -1085,6 +1109,11 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
     status: bond.status?.trim() || existing.status,
     note: bond.note?.trim() || existing.note,
     isMajor: typeof bond.isMajor === 'boolean' ? bond.isMajor : existing.isMajor,
+    relationship:
+      normalizeRelationship(bond.relationship) ?? existing.relationship ?? 'stranger',
+    attraction:
+      normalizeAttraction(bond.attraction) ?? existing.attraction ?? 'none',
+    romanceNote: bond.romanceNote?.trim() || existing.romanceNote,
     updatedInStoryDate: db.state.inStoryDate,
   };
 

@@ -1,5 +1,12 @@
 import { calculateAge, formatDate } from './calendar';
 import { groupJutsuByNature } from './jutsu';
+import { ROMANCE_RULES, loreProfileFor } from './romance';
+import {
+  activeCanonMilestones,
+  canonEnabled,
+  recentCanonEvents,
+  upcomingCanonMilestones,
+} from './canon';
 import { estimateTokens } from '../openrouter';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
@@ -83,6 +90,16 @@ MEMORY & CONTINUITY
 - The REAL Madara Uchiha is a DIFFERENT character who has not appeared in this story yet. If he ever appears later, create him as a separate new character. Never merge him with the masked man and never treat the masked man as the real Madara.
 - PAIN RULE: "Pain" is the Six Paths of Pain — six bodies (Deva Path, Asura Path, Animal Path, Human Path, Preta Path, Naraka Path) that are ONE entity controlled by Nagato. Never create separate entities for the individual paths. "Nagato" and "Pain" are the same person; when Nagato is revealed, he is the same character who has been operating as Pain, and he knows everything every Pain body has seen or heard. Never merge Pain with the masked man or the real Madara.
 - ZETSU RULE: "Black Zetsu" and "White Zetsu" are two halves of one being — treat them as one character "Zetsu". White Zetsu clones/swarm are expendable copies, not characters; do not create entries for them.
+- MASKED MAN IDENTITY: the masked man is known to the Akatsuki as "Madara Uchiha" and never shows his face to Itachi, Kan, or anyone in the organization. Itachi dies still believing him to be Madara. His mask only shatters during the Fourth War, in the battle against Kakashi and Naruto — and only characters present on that battlefield learn he is Obito. Before that moment, no character may know or hint at his true identity.
+
+${ROMANCE_RULES}
+
+WORLD CLOCK & CANON TIMELINE
+- The world advances on its own schedule even when Kan is elsewhere. Canon events recorded in the CANON TIMELINE have happened and are world truth.
+- Kan learns of world events through characters who witnessed them or heard rumors — reports, gossip, mission briefings, changed behavior. Never narrate omnisciently; never have an NPC know something they could not have witnessed or heard about.
+- If an ACTIVE STORY BEAT is listed and Kan's scene reaches it, play it out. If the beat fully happens in your narration, include "canon_engaged": ["<beat-id>"] in your JSON block.
+- When a canon moment has been fully dramatized in your scene (you played it out), include "canon_completed": ["<id>"] so it is not repeated later.
+- Never re-narrate a canon event that is already completed.
 
 STATE OUTPUT (MANDATORY)
 - After your narration, on the last lines, output exactly one fenced JSON block with changes only.
@@ -94,11 +111,13 @@ STATE OUTPUT (MANDATORY)
   "mood": string,
   "world_description": string,
   "jutsu_used": [{ "name": string, "user": string, "chakra_nature": string, "effect": string, "visual": string }],
-  "bonds": [{ "character": string, "affinity_change": number (-10..10 per turn, cumulative), "status": string, "note": string }],
+  "bonds": [{ "character": string, "affinity_change": number (-10..10 per turn, cumulative), "status": string, "note": string, "relationship": "stranger"|"friendly"|"close"|"romantic interest"|"partner"|"rejected" (only when it changed), "attraction": "none"|"warm"|"strong" (only when it changed), "romance_note": string (short, only for romance developments) }],
   "facts": [{ "entity": string, "fact": string }],
   "threads": [{ "description": string, "status": "open" | "resolved" }],
   "new_characters": [{ "name": string, "age": number, "role": string, "personality": string, "speech_style": string, "appearance_block": string }],
   "characters_present": string[],
+  "canon_engaged": string[] (beat ids fully played out this turn),
+  "canon_completed": string[] (canon moment ids fully dramatized),
   "scene_ended": boolean,
   "image_worthy": boolean
 }
@@ -141,7 +160,7 @@ Allowed top-level fields:
     { "name": string, "user": string, "chakraNature": string, "effect": string, "visual": string, "description": string }
   ],
   "bonds": [
-    { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean }
+    { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean, "relationship": "stranger" | "friendly" | "close" | "romantic interest" | "partner" | "rejected", "attraction": "none" | "warm" | "strong", "romanceNote": string }
   ],
   "facts": [
     { "action": "add" | "end", "type": "death" | "injury" | "secret" | "knowledge" | "membership" | "possession" | "event" | "other", "text": string, "subject": string, "whoKnows": string[], "validFrom": { "year": number, "month": number, "day": number, "timeOfDay": "morning" | "afternoon" | "evening" | "night" } }
@@ -149,6 +168,8 @@ Allowed top-level fields:
   "threads": [
     { "action": "open" | "update" | "resolve", "title": string, "description": string, "type": "promise" | "debt" | "grudge" | "mystery" | "quest" | "goal" | "other", "participants": string[] }
   ],
+  "canonCompleted": string[],
+  "canonEngaged": string[],
   "scene": { "ended": boolean, "summary": string, "tags": string[], "entities": string[], "importance": 1 | 2 | 3 | 4 | 5 }
 }
 
@@ -167,7 +188,11 @@ Rules:
 - chakraNature must use one canonical category: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
 - If a technique blends natures, choose its primary nature and describe the blend in effect or visual.
 - Keep worldDescription to one or two concise sentences about the current state of the world.
-- If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.`;
+- If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.
+- bonds.relationship: only set when the relationship stage visibly changed this scene; use one of stranger, friendly, close, romantic interest, partner, rejected.
+- bonds.attraction: only set when attraction visibly changed; one of none, warm, strong.
+- bonds.romanceNote: one short line about a romance development, only when one happened.
+- canonCompleted / canonEngaged: copy the ids from the ACTIVE or PENDING story beats shown in the CANON TIMELINE if they fully played out in this scene.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -243,6 +268,7 @@ export function buildNarrationPrompt(
 
   const dynamic = [
     formatArcSummary(arcSummary),
+    formatCanonBlock(db),
     formatMemories(memories),
     formatRecentMessages(recentMessages),
     formatEncounterHint(d20),
@@ -455,7 +481,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`
+        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${formatLoreProfile(entity.name)}`
     ),
   ].join('\n');
 }
@@ -542,7 +568,7 @@ function formatBonds(db: AppDatabase) {
     'BONDS',
     ...bonds.map(
       (bond) =>
-        `- ${bond.characterName} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}`
+        `- ${bond.characterName} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}`
     ),
   ].join('\n');
 }
@@ -597,6 +623,64 @@ function formatLore(lore: AppDatabase['loreEntries']) {
   ].join('\n');
 }
 
+function formatCanonBlock(db: AppDatabase) {
+  if (!canonEnabled(db)) {
+    return '';
+  }
+
+  const active = activeCanonMilestones(db);
+  const upcoming = upcomingCanonMilestones(db, 2);
+  const recent = recentCanonEvents(db, 4);
+  const lines: string[] = ['CANON TIMELINE'];
+
+  if (recent.length > 0) {
+    lines.push(
+      ...recent.map(
+        (event) =>
+          `- World event (${formatDate(event.inStoryDate)}): ${truncate(event.summary, 110)}`
+      )
+    );
+  } else {
+    lines.push('- No world events recorded yet; the world is quiet.');
+  }
+
+  for (const beat of upcoming) {
+    lines.push(
+      `PENDING STORY BEAT (${beat.id}, era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
+    );
+  }
+
+  if (active.length > 0) {
+    for (const milestone of active) {
+      lines.push(
+        `ACTIVE STORY BEAT (${milestone.id}): ${truncate(milestone.title, 70)}`
+      );
+
+      if (milestone.encounter) {
+        lines.push(
+          `  Encounter opportunity: ${milestone.encounter.who} — ${milestone.encounter.where}. ${truncate(milestone.encounter.context, 180)}`
+        );
+      }
+
+      lines.push(
+        '  If this beat plays out in your scene, set "canon_engaged": [id]. If fully dramatized, set "canon_completed": [id].'
+      );
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function formatLoreProfile(name: string) {
+  const profile = loreProfileFor(name);
+
+  if (!profile) {
+    return '';
+  }
+
+  return `; heart: ${truncate(profile.canonDevotion, 90)} (${profile.romanceAccessibility})`;
+}
+
 
 function truncate(value: string, maxLength: number) {
   if (!value || value.length <= maxLength) {
@@ -643,7 +727,7 @@ export function formatEncounterHint(d20: number) {
   let hint = 'nothing special happens; keep the turn quiet';
 
   if (d20 >= 20) {
-    hint = 'a major canon event or crisis occurs';
+    hint = 'a major canon event stirs — check the CANON TIMELINE and pull the nearest pending beat or world event into the scene if plausible';
   } else if (d20 >= 17) {
     hint = 'a named canon character appears, if plausible for the timeline';
   } else if (d20 >= 13) {

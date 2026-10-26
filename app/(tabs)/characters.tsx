@@ -223,6 +223,21 @@ export default function CharactersScreen() {
                   </View>
                 ) : null}
 
+                {bond?.relationship && bond.relationship !== 'stranger' ? (
+                  <View style={styles.detailBlock}>
+                    <Text style={styles.detailLabel}>Relationship</Text>
+                    <Text style={styles.detailValue}>
+                      {bond.relationship}
+                      {bond.attraction && bond.attraction !== 'none'
+                        ? ` · attraction ${bond.attraction}`
+                        : ''}
+                    </Text>
+                    {bond.romanceNote ? (
+                      <Text style={styles.detailValue}>{bond.romanceNote}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 <View style={styles.footer}>
                   <Text style={styles.meta}>
                     {entity.lastSeen

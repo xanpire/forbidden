@@ -28,6 +28,7 @@ import {
 } from './db';
 import { makeId } from './id';
 import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
+import { advanceCanon, applyCanonMarks } from './canon';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
@@ -189,6 +190,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
             });
 
         let next = extraction ? applyTurnDiff(currentDb, extraction) : currentDb;
+
+        next = applyCanonMarks(
+          next,
+          extraction?.canonCompleted ?? [],
+          extraction?.canonEngaged ?? []
+        );
+        next = advanceCanon(next);
 
         if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= 180) {
           const timeSkip = await summarizeTimeSkip({
