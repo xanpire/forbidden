@@ -6,7 +6,9 @@ import { normalizeJutsuNature } from './jutsu';
 import { buildIndices } from './db';
 import type {
   AppDatabase,
+  BondRecord,
   CalendarDate,
+  EntityRecord,
   EventRecord,
   RawLogEntry,
   TurnDiff,
@@ -375,6 +377,8 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     next = recordSceneEvent(next, diff);
   }
 
+  next = mergeDuplicateEntities(next);
+
   if (Array.isArray(diff.scene?.entities) && diff.scene.entities.length > 0) {
     next = recordPresence(next, diff.scene.entities);
   }
@@ -384,19 +388,150 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   return next;
 }
 
-function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
-  const lowerNames = new Set(names.map((name) => name.trim().toLowerCase()).filter(Boolean));
+const SAME_PERSON_HINTS = ['tobi', 'obito', 'madara', 'masked man', 'fake madara'];
 
-  if (lowerNames.size === 0) {
+function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
+  let next = db;
+
+  for (let i = 0; i < next.entities.length; i += 1) {
+    const primary = next.entities[i];
+
+    if (primary.type !== 'character') {
+      continue;
+    }
+
+    const primaryNames = [primary.name.toLowerCase(), ...primary.aliases.map((alias) => alias.toLowerCase())];
+    const primaryHints = new Set(
+      [...primaryNames, ...primaryNames.flatMap((name) => nameCandidates(name))]
+        .flatMap((name) => SAME_PERSON_HINTS.filter((hint) => containsWord(name, hint)))
+    );
+
+    if (primaryHints.size === 0) {
+      continue;
+    }
+
+    for (let j = next.entities.length - 1; j > i; j -= 1) {
+      const other = next.entities[j];
+
+      if (other.type !== 'character') {
+        continue;
+      }
+
+      const otherNames = [other.name.toLowerCase(), ...other.aliases.map((alias) => alias.toLowerCase())];
+      const otherHints = new Set(
+        [...otherNames, ...otherNames.flatMap((name) => nameCandidates(name))]
+          .flatMap((name) => SAME_PERSON_HINTS.filter((hint) => containsWord(name, hint)))
+      );
+
+      if (otherHints.size === 0) {
+        continue;
+      }
+
+      const hintsOverlap = [...otherHints].some((hint) => primaryHints.has(hint));
+
+      if (!hintsOverlap) {
+        continue;
+      }
+
+      const keep = i < j ? primary : other;
+      const drop = keep === primary ? other : primary;
+
+      const newAliases = [
+        ...keep.aliases,
+        drop.name,
+        ...drop.aliases,
+      ].filter(
+        (alias, index, list) =>
+          alias.toLowerCase() !== keep.name.toLowerCase() &&
+          list.findIndex((item) => item.toLowerCase() === alias.toLowerCase()) === index
+      ).slice(0, 6);
+
+      const merged: EntityRecord = {
+        ...keep,
+        aliases: newAliases,
+        age: keep.age ?? drop.age,
+        birthYear: keep.birthYear ?? drop.birthYear,
+        role: keep.role !== 'Unknown' ? keep.role : drop.role,
+        personality: keep.personality !== 'Unknown' ? keep.personality : drop.personality,
+        speechStyle: keep.speechStyle !== 'Unknown' ? keep.speechStyle : drop.speechStyle,
+        mood: keep.mood !== 'Unknown' ? keep.mood : drop.mood,
+        appearance: keep.appearance !== 'Unknown' ? keep.appearance : drop.appearance,
+        lastSeen: keep.lastSeen ?? drop.lastSeen,
+      };
+
+      const entities = next.entities.filter((entity) => entity.id !== drop.id);
+      const keepIndex = entities.findIndex((entity) => entity.id === keep.id);
+
+      entities[keepIndex] = merged;
+
+      const idMap = new Map([[drop.id, keep.id]]);
+
+      next = remapEntityReferences(next, entities, idMap);
+    }
+  }
+
+  return next;
+}
+
+function remapEntityReferences(
+  db: AppDatabase,
+  entities: EntityRecord[],
+  idMap: Map<string, string>
+): AppDatabase {
+  const bonds = db.bonds.map((bond) => {
+    const entityId = idMap.get(bond.entityId) ?? bond.entityId;
+
+    return { ...bond, entityId };
+  });
+
+  const dedupedBonds: BondRecord[] = [];
+  const seenBond = new Map<string, BondRecord>();
+
+  for (const bond of bonds) {
+    const prev = seenBond.get(bond.entityId);
+
+    if (!prev) {
+      seenBond.set(bond.entityId, bond);
+      dedupedBonds.push(bond);
+      continue;
+    }
+
+    const newer =
+      (bond.updatedInStoryDate?.year ?? 0) > (prev.updatedInStoryDate?.year ?? 0) ? bond : prev;
+
+    if (newer !== prev) {
+      dedupedBonds[dedupedBonds.findIndex((item) => item.id === prev.id)] = newer;
+    }
+  }
+
+  return {
+    ...db,
+    entities,
+    bonds: dedupedBonds,
+    facts: db.facts.map((fact) => ({
+      ...fact,
+      subjectEntityId: fact.subjectEntityId
+        ? (idMap.get(fact.subjectEntityId) ?? fact.subjectEntityId)
+        : null,
+    })),
+    eventEntities: db.eventEntities.map((link) => ({
+      ...link,
+      entityId: idMap.get(link.entityId) ?? link.entityId,
+    })),
+  };
+}
+
+function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
+  const matched = new Set(names.map((name) => resolveEntity(db, name)?.id).filter(Boolean) as string[]);
+
+  if (matched.size === 0) {
     return db;
   }
 
   return {
     ...db,
     entities: db.entities.map((entity) =>
-      entity.type === 'character' &&
-      (lowerNames.has(entity.name.toLowerCase()) ||
-        entity.aliases.some((alias) => lowerNames.has(alias.toLowerCase())))
+      entity.type === 'character' && matched.has(entity.id)
         ? { ...entity, lastSeen: db.state.inStoryDate }
         : entity
     ),
@@ -409,6 +544,74 @@ type JutsuDiff = NonNullable<TurnDiff['jutsuUsed']>[number];
 type BondDiff = NonNullable<TurnDiff['bonds']>[number];
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
 type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
+
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function containsWord(haystack: string, needle: string) {
+  if (needle.length < 3) {
+    return false;
+  }
+
+  return new RegExp(`\\b${escapeRegExp(needle)}\\b`, 'i').test(haystack);
+}
+
+function normalizeName(rawName: string) {
+  return rawName.replace(/\s*\([^)]*\)\s*/g, '').trim();
+}
+
+function nameCandidates(rawName: string) {
+  const name = rawName.trim();
+  const core = normalizeName(name);
+  const parentheticals = [...name.matchAll(/\(([^)]+)\)/g)].map((match) => match[1].trim());
+
+  return [...new Set([name, core, ...parentheticals])].filter(
+    (candidate) => candidate.length > 0
+  );
+}
+
+export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | null {
+  if (!rawName || typeof rawName !== 'string') {
+    return null;
+  }
+
+  const candidates = nameCandidates(rawName).map((candidate) => candidate.toLowerCase());
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  for (const entity of db.entities) {
+    if (entity.type !== 'character') {
+      continue;
+    }
+
+    const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
+
+    if (candidates.some((candidate) => names.includes(candidate))) {
+      return entity;
+    }
+  }
+
+  for (const entity of db.entities) {
+    if (entity.type !== 'character') {
+      continue;
+    }
+
+    const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
+
+    if (
+      candidates.some((candidate) =>
+        names.some((name) => containsWord(name, candidate) || containsWord(candidate, name))
+      )
+    ) {
+      return entity;
+    }
+  }
+
+  return null;
+}
 
 function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   const next = { ...db, state: { ...db.state } };
@@ -523,13 +726,9 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
     return db;
   }
 
-  const existingIndex = db.entities.findIndex(
-    (item) =>
-      item.name.toLowerCase() === name.toLowerCase() ||
-      item.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
-  );
+  const existing = resolveEntity(db, name);
 
-  if (existingIndex === -1) {
+  if (!existing) {
     const newEntity = {
       id: makeId('entity'),
       name,
@@ -557,7 +756,7 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
   }
 
   const entities = [...db.entities];
-  const existing = entities[existingIndex];
+  const existingIndex = entities.findIndex((item) => item.id === existing.id);
 
   const nextMood = entity.mood?.trim() || existing.mood;
   const nextAge = entity.age !== undefined ? entity.age : existing.age;
@@ -570,7 +769,7 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
 
   entities[existingIndex] = {
     ...existing,
-    aliases: [...existing.aliases, ...extraAlias].slice(0, 4),
+    aliases: [...existing.aliases, ...extraAlias].slice(0, 6),
     lastSeen: db.state.inStoryDate,
     age: nextAge,
     birthYear:
@@ -665,21 +864,16 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
     return db;
   }
 
+  const existingEntity = resolveEntity(db, characterName);
+
   const existingIndex = db.bonds.findIndex(
-    (item) => item.characterName.toLowerCase() === characterName.toLowerCase()
+    (item) =>
+      item.characterName.toLowerCase() === characterName.toLowerCase() ||
+      (existingEntity !== null && item.entityId === existingEntity.id)
   );
 
   if (existingIndex === -1) {
-    const entity =
-      db.entities.find(
-        (item) =>
-          item.name.toLowerCase() === characterName.toLowerCase() ||
-          item.aliases.some(
-            (alias) => alias.toLowerCase() === characterName.toLowerCase()
-          )
-      ) ?? null;
-
-    let bondEntity = entity;
+    let bondEntity = existingEntity;
 
     if (!bondEntity) {
       bondEntity = {
@@ -698,7 +892,7 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
     const newBond = {
       id: makeId('bond'),
       entityId: bondEntity.id,
-      characterName,
+      characterName: bondEntity.name,
       affinity: clamp(
         typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0,
         -10,
@@ -782,15 +976,7 @@ function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
     };
   }
 
-  const subjectEntity = fact.subject
-    ? db.entities.find(
-        (entity) =>
-          entity.name.toLowerCase() === fact.subject?.toLowerCase() ||
-          entity.aliases.some(
-            (alias) => alias.toLowerCase() === fact.subject?.toLowerCase()
-          )
-      ) ?? null
-    : null;
+  const subjectEntity = fact.subject ? resolveEntity(db, fact.subject) : null;
 
   const duplicate = db.facts.find(
     (item) =>
