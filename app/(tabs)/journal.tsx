@@ -8,6 +8,7 @@ import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
+import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { useGame } from '@/lib/rpg/game';
 import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
 
@@ -68,11 +69,13 @@ export default function JournalScreen() {
 
     const now = db.state.inStoryDate;
     const nowKey = now.year * 10000 + now.month * 100 + now.day;
+    const heard = db.state.canonProgress?.heard ?? {};
 
     return [...db.events]
       .filter(
         (event) =>
           event.tags.includes('canon') &&
+          Boolean(heard[event.id]) &&
           event.inStoryDate.year * 10000 +
             event.inStoryDate.month * 100 +
             event.inStoryDate.day <=
@@ -147,7 +150,7 @@ export default function JournalScreen() {
                   Chapter {db.state.chapter} · {db.state.scene}
                 </Text>
                 <Text style={styles.cardMeta}>
-                  {db.state.location} · {formatStoryDate(
+                  {localizePlaceNames(db.state.location)} · {formatStoryDate(
                     db.state.inStoryDate,
                     db.state.player.birthday,
                     db.state.player.birthYear
@@ -220,12 +223,12 @@ export default function JournalScreen() {
             <View style={styles.section}>
               <SurfaceCard style={styles.card}>
                 <Text style={styles.cardLabel}>World</Text>
-                <Text style={styles.cardValue}>{db.state.worldDescription}</Text>
+                <Text style={styles.cardValue}>{localizePlaceNames(db.state.worldDescription)}</Text>
               </SurfaceCard>
 
               <SurfaceCard style={styles.card}>
                 <Text style={styles.cardLabel}>Location</Text>
-                <Text style={styles.cardValue}>{db.state.location}</Text>
+                <Text style={styles.cardValue}>{localizePlaceNames(db.state.location)}</Text>
                 <Text style={styles.cardMeta}>
                   {formatStoryDate(
                     db.state.inStoryDate,
@@ -237,7 +240,7 @@ export default function JournalScreen() {
 
               <SurfaceCard style={styles.card}>
                 <Text style={styles.cardLabel}>Canon point</Text>
-                <Text style={styles.cardValue}>{db.state.canonPoint}</Text>
+                <Text style={styles.cardValue}>{localizePlaceNames(db.state.canonPoint)}</Text>
               </SurfaceCard>
 
               <View style={styles.threadSection}>
@@ -252,6 +255,9 @@ export default function JournalScreen() {
                       <Text style={styles.cardLabel}>
                         {formatShortDate(event.inStoryDate)}
                         {event.pinned ? ' · major' : ''}
+                        {db.state.canonProgress?.heard?.[event.id]
+                          ? ` · ${db.state.canonProgress.heard[event.id].from === 'witnessed' ? 'witnessed' : `heard from ${db.state.canonProgress.heard[event.id].from}`}`
+                          : ''}
                       </Text>
                       <Text style={styles.cardValue}>{event.summary}</Text>
                     </SurfaceCard>

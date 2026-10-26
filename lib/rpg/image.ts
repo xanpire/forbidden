@@ -1,4 +1,5 @@
 import { sameDate } from './calendar';
+import { localizePlaceNames } from './glossary';
 import type { AppDatabase } from './types';
 
 const RECENT_IMAGE_LIMIT = 2;
@@ -94,5 +95,5 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
     'Final reminder: no text, lettering, captions, or watermarks in the image.',
   );
 
-  return lines.join('\n');
+  return localizePlaceNames(lines.join('\n'));
 }

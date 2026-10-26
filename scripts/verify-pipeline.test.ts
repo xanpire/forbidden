@@ -20,8 +20,9 @@ import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from 
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, advanceCanon, applyCanonMarks } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
+import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
 import {
   appendStoryMessage,
@@ -640,7 +641,7 @@ describe('canon scheduler', () => {
         ...db.state,
         inStoryDate: { year: 16, month: 2, day: 1, timeOfDay: 'morning' },
         canonProgress: {
-          version: 2,
+          version: CANON_VERSION,
           baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
           baselineTurn: 0,
           completed: [],
@@ -670,7 +671,7 @@ describe('canon scheduler', () => {
       state: {
         ...db.state,
         canonProgress: {
-          version: 2,
+          version: CANON_VERSION,
           baselineDate: db.state.inStoryDate,
           baselineTurn: 0,
           completed: [],
@@ -1042,7 +1043,7 @@ describe('canon timing and migration', () => {
       state: {
         ...db.state,
         canonProgress: {
-          version: 2,
+          version: CANON_VERSION,
           baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
           baselineTurn: 0,
           completed: [],
@@ -1130,7 +1131,110 @@ describe('canon timing and migration', () => {
     expect(migrated.facts.some((f) => f.id.startsWith('fact_canon_'))).toBe(false);
     expect(migrated.threads.some((t) => t.id.startsWith('thread_canon_'))).toBe(false);
     expect(migrated.state.canonPoint).not.toContain('joined the Akatsuki');
-    expect(migrated.state.canonProgress?.version).toBe(2);
+    expect(migrated.state.canonProgress?.version).toBe(CANON_VERSION);
     expect(migrated.state.canonProgress?.completed).toEqual([]);
+  });
+});
+
+describe('english place names', () => {
+  test('glossary localizes Japanese place names', () => {
+    expect(localizePlaceNames('Return to Konoha from Amegakure')).toBe(
+      'Return to Hidden Leaf from Hidden Rain Village'
+    );
+    expect(localizePlaceNames('Sunagakure and Kirigakure')).toBe(
+      'Hidden Sand Village and Hidden Mist Village'
+    );
+    expect(localizePlaceNames('Hokage, genin, jinchūriki, Akatsuki')).toBe(
+      'Hokage, genin, jinchūriki, Akatsuki'
+    );
+  });
+
+  test('canon data contains no Japanese place names', () => {
+    for (const milestone of CANON_MILESTONES) {
+      expect(hasJapanesePlaceName(`${milestone.title} ${milestone.description} ${milestone.canonPoint ?? ''}`)).toBe(false);
+    }
+  });
+
+  test('prompt uses English place names', () => {
+    const db = loadSave();
+    const prompt = buildNarrationPrompt(db, '*Kan walks.*', 10);
+    expect(prompt.messages[0].content).toContain('Hidden Leaf');
+    expect(hasJapanesePlaceName(prompt.messages[1].content)).toBe(false);
+    expect(prompt.messages[0].content).toContain('Use English place names only');
+  });
+});
+
+describe('world news and couriers', () => {
+  test('milestones carry world locations and knowledge classes', () => {
+    const summit = CANON_MILESTONES.find((m) => m.id === 'kage-summit')!;
+    expect(milestoneRegion(summit)).toBe('Land of Iron');
+    expect(milestoneLocation(summit)).toContain('Summit hall');
+
+    const gaara = CANON_MILESTONES.find((m) => m.id === 'gaara-captured')!;
+    expect(milestoneRegion(gaara)).toBe('Hidden Sand');
+
+    const funeral = CANON_MILESTONES.find((m) => m.id === 'izumi-funeral')!;
+    expect(milestoneKnowledge(funeral)).toBe('village');
+    expect(milestoneBearers(funeral)).toContain('Itachi Uchiha');
+    expect(milestoneChannel(funeral)).toContain('hawk');
+
+    expect(milestoneChannel(summit)).toContain('samurai');
+
+    const truth = CANON_MILESTONES.find((m) => m.id === 'masked-man-truth')!;
+    expect(milestoneKnowledge(truth)).toBe('secret');
+    expect(milestoneBearers(truth)).toContain('Sasuke Uchiha');
+  });
+
+  test('unheard news stays queued until relayed', () => {
+    let db = loadSave();
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: CANON_VERSION,
+          baselineDate: db.state.inStoryDate,
+          baselineTurn: 0,
+          completed: [],
+          active: [],
+          engaged: [],
+          expired: [],
+          heard: {},
+        },
+      },
+    };
+
+    db = applyCanonMarks(db, ['gaara-captured'], []);
+    const news = unheardCanonNews(db, 5);
+    expect(news.some((n) => n.milestoneId === 'gaara-captured')).toBe(true);
+
+    const delivered = markNewsHeard(db, [{ id: 'gaara-captured', from: 'a traveling merchant' }]);
+    expect(unheardCanonNews(delivered, 5).some((n) => n.milestoneId === 'gaara-captured')).toBe(false);
+    expect(delivered.state.canonProgress?.heard?.['event_canon_gaara-captured']?.from).toBe('a traveling merchant');
+  });
+
+  test('witnessed beats are marked heard automatically', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['itachi-vs-sasuke'], []);
+    const heard = db.state.canonProgress?.heard?.['event_canon_itachi-vs-sasuke'];
+    expect(heard?.from).toBe('witnessed');
+  });
+
+  test('news block appears in prompt with courier channel', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['gaara-captured'], []);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const dynamic = prompt.messages[1].content;
+
+    expect(dynamic).toContain('NEWS & RUMORS');
+    expect(dynamic).toContain('gaara-captured');
+  });
+
+  test('heard news disappears from the prompt queue', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['gaara-captured'], []);
+    db = markNewsHeard(db, [{ id: 'gaara-captured', from: 'a traveling merchant' }]);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    expect(prompt.messages[1].content).not.toContain('NEWS & RUMORS');
   });
 });

@@ -54,6 +54,16 @@ export function convertInlineDiff(
     );
   }
 
+  if (Array.isArray(block.news_relayed)) {
+    diff.newsRelayed = block.news_relayed
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        id: typeof item.id === 'string' ? item.id : '',
+        from: typeof item.from === 'string' ? item.from : undefined,
+      }))
+      .filter((item) => item.id.trim().length > 0);
+  }
+
   const time = block.time;
 
   if (time && typeof time === 'object' && !Array.isArray(time)) {

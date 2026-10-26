@@ -366,6 +366,7 @@ function migrateCanonV2(db: AppDatabase): AppDatabase {
         active: [],
         engaged: [],
         expired: [],
+        heard: {},
       },
     },
   };
@@ -545,6 +546,10 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
             expired: Array.isArray(state.canonProgress.expired)
               ? state.canonProgress.expired.filter(Boolean)
               : [],
+            heard:
+              state.canonProgress.heard && typeof state.canonProgress.heard === 'object'
+                ? state.canonProgress.heard
+                : {},
           }
         : {
             version: CANON_VERSION,
@@ -554,6 +559,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
             active: [],
             engaged: [],
             expired: [],
+            heard: {},
           },
     chapter: state.chapter ?? seeded.chapter,
     scene: state.scene ?? seeded.scene,

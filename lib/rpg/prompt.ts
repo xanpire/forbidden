@@ -7,6 +7,8 @@ import {
   recentCanonEvents,
   recentlyConcludedMilestones,
   upcomingCanonMilestones,
+  unheardCanonNews,
+  hasHeardNews,
 } from './canon';
 import {
   formatEncounterConditions,
@@ -14,6 +16,7 @@ import {
   locationKindOf,
 } from './encounters';
 import { estimateTokens } from '../openrouter';
+import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
   AppDatabase,
@@ -30,6 +33,7 @@ const PROMPT_TOKEN_BUDGET = 5600;
 export const NARRATION_SYSTEM = `You are the narrator and game master of an interactive Naruto novel. The player plays Kan. You control the world and every other character.
 
 EXECUTIVE RULES
+- ${PLACE_NAME_RULE}
 - You never speak, act, think, emote, or decide for Kan. Describe the world and NPC reactions, then stop the moment Kan must react. End every turn on a sensory hook, unanswered question, NPC line, or looming threat.
 - Respect the in-story date. Characters are the age, rank, and position they would hold then, and know only what they could know at that point. Never reference future events.
 - Canon power levels are real: no power creep, no convenient nerfing. Characters have their own goals and can refuse, lie, disagree, or leave. Trust and love must be earned.
@@ -60,7 +64,7 @@ ${ROMANCE_RULES}
 
 CANON TIMELINE
 - The world advances even when Kan is elsewhere. Events in the CANON TIMELINE are world truth; never re-narrate a completed event.
-- Kan learns world events through witnesses, reports, gossip, briefings, or changed behavior. Never narrate omnisciently and never let an NPC know something they could not have witnessed or heard.
+- Kan learns world events through witnesses, reports, gossip, briefings, couriers, or changed behavior. Never narrate omnisciently. The NEWS & RUMORS block lists events Kan has not learned; deliver them through a plausible bearer or channel and mark "news_relayed" with the speaker.
 - If an ACTIVE STORY BEAT is listed and Kan's scene reaches it, play it out. If the beat fully happens, include "canon_engaged": ["<beat-id>"]. When a canon moment is fully dramatized, include "canon_completed": ["<id>"].
 
 STATE OUTPUT (MANDATORY)
@@ -80,6 +84,7 @@ STATE OUTPUT (MANDATORY)
   "canon_engaged": string[],
   "canon_completed": string[],
   "canon_passed": string[],
+  "news_relayed": [{ "id": string, "from": string }],
   "scene_ended": boolean,
   "image_worthy": boolean
 }
@@ -127,6 +132,7 @@ Allowed top-level fields:
   "canonCompleted": string[],
   "canonEngaged": string[],
   "canonPassed": string[],
+  "newsRelayed": [{ "id": string, "from": string }],
   "scene": { "ended": boolean, "summary": string, "tags": string[], "entities": string[], "importance": 1 | 2 | 3 | 4 | 5 }
 }
 
@@ -227,6 +233,7 @@ export function buildNarrationPrompt(
     [
       formatArcSummary(arcSummary),
       formatTimeLine(db),
+      formatNewsBlock(db),
       formatCanonBlock(db),
       formatMemories(memories),
       formatRecentMessages(messagesForScene),
@@ -256,9 +263,14 @@ export function buildNarrationPrompt(
     estimated = estimateTokens(messages);
   }
 
+  const localizedMessages: OpenRouterMessage[] = messages.map((message) => ({
+    ...message,
+    content: localizePlaceNames(message.content),
+  }));
+
   return {
-    messages,
-    estimatedTokens: estimated,
+    messages: localizedMessages,
+    estimatedTokens: estimateTokens(localizedMessages),
     memories,
     recentMessages: sceneMessages,
     arcSummary,
@@ -599,6 +611,41 @@ function formatLore(lore: AppDatabase['loreEntries']) {
   ].join('\n');
 }
 
+function formatNewsBlock(db: AppDatabase) {
+  if (!canonEnabled(db)) {
+    return '';
+  }
+
+  const news = unheardCanonNews(db, 3);
+
+  if (news.length === 0) {
+    return '';
+  }
+
+  const lines = ['NEWS & RUMORS (events Kan has NOT learned yet)'];
+
+  for (const item of news) {
+    const urgency =
+      item.major && item.daysOld >= 7
+        ? ' OVERDUE: deliver this through the courier channel now — a crow, hawk, paper butterfly, or rider arriving with word.'
+        : '';
+
+    const bearerText =
+      item.bearers.length > 0
+        ? `Could be known by ${item.bearers.slice(0, 4).join(', ')}.`
+        : 'Only someone present could know.';
+
+    lines.push(
+      `- ${item.title} (${item.location}, ${item.region}). ${bearerText} Channel: ${item.channel}.${urgency}`
+    );
+    lines.push(
+      `  If a bearer is present or Kan is somewhere news reaches, let it surface naturally in dialogue or a report. Never narrate it omnisciently. When told, set "news_relayed": [{ "id": "${item.milestoneId}", "from": "<speaker>" }].`
+    );
+  }
+
+  return lines.join('\n');
+}
+
 function formatCanonBlock(db: AppDatabase) {
   if (!canonEnabled(db)) {
     return '';
@@ -607,7 +654,7 @@ function formatCanonBlock(db: AppDatabase) {
   const active = activeCanonMilestones(db).slice(0, 2);
   const upcoming = upcomingCanonMilestones(db, 1);
   const concluded = recentlyConcludedMilestones(db, 3);
-  const recent = recentCanonEvents(db, 3);
+  const recent = recentCanonEvents(db, 6).filter((event) => hasHeardNews(db, event.id)).slice(0, 3);
   const lines: string[] = ['CANON TIMELINE'];
 
   if (recent.length > 0) {
@@ -748,7 +795,7 @@ function formatTimeLine(db: AppDatabase) {
       ? ' — several beats have passed without the clock moving; let time advance naturally.'
       : '';
 
-  return `TIME\n${formatDate(db.state.inStoryDate)} · ${db.state.inStoryDate.timeOfDay}${nudge}`;
+  return `TIME\n${formatDate(db.state.inStoryDate)}${nudge}`;
 }
 
 export function formatEncounterHint(d20: number) {

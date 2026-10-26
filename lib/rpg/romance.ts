@@ -421,7 +421,7 @@ const ERA_NOTES: Record<string, Partial<Record<EraKey, string>>> = {
     pre: 'Grieving teammate; furious Kan vanished without a word.',
     part1: 'Chunin patrol leader: sharp, hurt, still loyal.',
     shippuden: 'Jonin; steady, protective, quietly watching for Kan.',
-    war: 'Fighting for Konoha, scanning every battlefield for him.',
+    war: 'Fighting for Hidden Leaf, scanning every battlefield for him.',
   },
   'Suzume': {
     pre: 'Searching for her missing student; betrayed and worried.',

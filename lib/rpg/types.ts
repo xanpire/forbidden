@@ -228,6 +228,7 @@ export type CanonProgress = {
   active: string[];
   engaged: string[];
   expired?: string[];
+  heard?: Record<string, { from: string; date: CalendarDate }>;
 };
 
 export type RelationshipStage =
@@ -342,6 +343,7 @@ export type TurnDiff = {
   canonCompleted?: string[];
   canonEngaged?: string[];
   canonPassed?: string[];
+  newsRelayed?: { id: string; from?: string }[];
   scene?: SceneInfo;
 };
 

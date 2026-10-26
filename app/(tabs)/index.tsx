@@ -42,6 +42,7 @@ import { SurfaceCard } from '@/components/SurfaceCard';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatStoryDate } from '@/lib/rpg/calendar';
+import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
@@ -304,7 +305,7 @@ export default function StoryScreen() {
           <View style={styles.statusChip}>
             <MapPin color={colors.textMuted} size={12} strokeWidth={2} />
             <Text numberOfLines={1} style={styles.statusText}>
-              {state.location}
+              {localizePlaceNames(state.location)}
             </Text>
           </View>
           <View style={styles.statusChip}>

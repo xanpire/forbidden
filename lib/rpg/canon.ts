@@ -1,3 +1,4 @@
+import { daysBetween } from './calendar';
 import type { AppDatabase, CalendarDate, ThreadType } from './types';
 
 export type CanonProgress = {
@@ -8,6 +9,7 @@ export type CanonProgress = {
   active: string[];
   engaged: string[];
   expired?: string[];
+  heard?: Record<string, { from: string; date: CalendarDate }>;
 };
 
 export type CanonThreadSeed = {
@@ -45,7 +47,7 @@ export type CanonMilestone = {
 // In-story timeline spine: Kan is 13 in year 13 (the massacre year) and matches
 // Itachi's age throughout. Year 17-18 is Part 1, year 21 is Itachi's death,
 // year 22-23 is the Fourth War. Windows use (year, month); day is ignored.
-export const CANON_VERSION = 2;
+export const CANON_VERSION = 3;
 
 export const CANON_MILESTONES: CanonMilestone[] = [
   {
@@ -60,7 +62,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     facts: ["Izumi Uchiha was buried with the Uchiha clan after the massacre."],
     encounter: {
       who: "Hana Inuzuka and Suzume",
-      where: "the Uchiha cemetery outside Konoha",
+      where: "the Uchiha cemetery outside Hidden Leaf",
       context:
         "Hana and Suzume are grieving and angry. Kan can attend in disguise, watch from the treeline, or stay away.",
     },
@@ -211,7 +213,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "Suzume's inquiry",
     description:
-      "Suzume quietly investigates Kan's disappearance, the massacre, and the things Konoha will not say aloud.",
+      "Suzume quietly investigates Kan's disappearance, the massacre, and the things Hidden Leaf will not say aloud.",
     canonPoint: "Suzume is quietly investigating what happened to Kan and the Uchiha.",
     from: { year: 15, month: 1 },
     to: { year: 17, month: 6 },
@@ -220,7 +222,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
     encounter: {
       who: "Suzume",
-      where: "Konoha archives and the roads beyond",
+      where: "Hidden Leaf archives and the roads beyond",
       context:
         "Suzume follows records and rumors. She may find Kan, or find only the shape of the lie.",
     },
@@ -302,7 +304,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Ashes',
     title: 'Itachi\'s double life',
     description:
-      'Itachi quietly feeds intelligence to Konoha while wearing the Akatsuki cloak. Kan may notice the errands his partner takes alone.',
+      'Itachi quietly feeds intelligence to Hidden Leaf while wearing the Akatsuki cloak. Kan may notice the errands his partner takes alone.',
     canonPoint: 'Rumors whisper that some Akatsuki members have loyalties besides the cloak.',
     from: { year: 14, month: 4 },
     to: { year: 17, month: 4 },
@@ -322,7 +324,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'pain-civil-war',
     era: 'The shadow war',
-    title: 'Pain\'s civil war in Amegakure',
+    title: 'Pain\'s civil war in Hidden Rain',
     description:
       'Pain defeats Hanzo the Salamander and takes control of the Hidden Rain. The village begins to worship its new god.',
     canonPoint: 'Pain rules the Hidden Rain after defeating Hanzo.',
@@ -334,7 +336,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     ],
     encounter: {
       who: 'Pain and Konan',
-      where: 'Amegakure, in the rain',
+      where: 'Hidden Rain, in the rain',
       context:
         'The civil war against Hanzo. Kan could witness Pain\'s power for the first time.',
     },
@@ -342,10 +344,10 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'ame-stronghold',
     era: 'The shadow war',
-    title: 'Amegakure becomes the stronghold',
+    title: 'Hidden Rain becomes the stronghold',
     description:
       'The Hidden Rain becomes the Akatsuki\'s home base. Kan\'s second home is a city of perpetual rain and worshipful eyes.',
-    canonPoint: 'Amegakure serves as the Akatsuki\'s stronghold under Pain.',
+    canonPoint: 'Hidden Rain serves as the Akatsuki\'s stronghold under Pain.',
     from: { year: 16, month: 2 },
     to: { year: 17, month: 6 },
     minScenes: 20,
@@ -354,14 +356,14 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kabuto-embedded',
     era: 'The shadow war',
-    title: 'Kabuto embedded in Konoha',
+    title: 'Kabuto embedded in Hidden Leaf',
     description:
-      'Kabuto Yakushi becomes Sasori\'s spy inside Konoha, wearing the village\'s trust like a mask.',
-    canonPoint: 'Kabuto Yakushi spies on Konoha for Sasori.',
+      'Kabuto Yakushi becomes Sasori\'s spy inside Hidden Leaf, wearing the village\'s trust like a mask.',
+    canonPoint: 'Kabuto Yakushi spies on Hidden Leaf for Sasori.',
     from: { year: 16, month: 4 },
     to: { year: 17, month: 6 },
     minScenes: 20,
-    facts: ['Kabuto Yakushi works as Sasori\'s spy inside Konoha.'],
+    facts: ['Kabuto Yakushi works as Sasori\'s spy inside Hidden Leaf.'],
   },
   {
     id: 'kan-reputation',
@@ -394,8 +396,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "The rain riot",
     description:
-      "A riot in Amegakure forces Kan to choose between the Akatsuki's order and the people under Pain's rain.",
-    canonPoint: "Kan faced the people of Amegakure during a riot.",
+      "A riot in Hidden Rain forces Kan to choose between the Akatsuki's order and the people under Pain's rain.",
+    canonPoint: "Kan faced the people of Hidden Rain during a riot.",
     from: { year: 16, month: 6 },
     to: { year: 18, month: 6 },
     minScenes: 18,
@@ -403,7 +405,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
     encounter: {
       who: "Konan",
-      where: "Amegakure's flooded streets",
+      where: "Hidden Rain's flooded streets",
       context:
         "Konan watches Kan handle the crowd. Pain's order is absolute; the people are starving.",
     }
@@ -437,7 +439,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'otogakure-grows',
     era: 'The shadow war',
-    title: 'Otogakure rises',
+    title: 'Hidden Sound rises',
     description:
       'Orochimaru\'s hidden Sound Village grows in secret — cursed seals, experiments, and an army of disposable shinobi.',
     canonPoint: 'Orochimaru\'s Hidden Sound Village is growing in secret.',
@@ -479,15 +481,15 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'Shadows over Team 7',
     description:
-      'Kan crosses paths with the Konoha rookies from the outside — a figure in a cloak watching the team his village sent to hunt him.',
-    canonPoint: 'Kan has seen Konoha\'s new genin from the shadows.',
+      'Kan crosses paths with the Hidden Leaf rookies from the outside — a figure in a cloak watching the team his village sent to hunt him.',
+    canonPoint: 'Kan has seen Hidden Leaf\'s new genin from the shadows.',
     from: { year: 17, month: 10 },
     to: { year: 18, month: 10 },
     minScenes: 24,
     facts: [],
     encounter: {
       who: 'Naruto Uzumaki, Sasuke Uchiha, or Team 7',
-      where: 'a road or border town Konoha\'s genin pass through',
+      where: 'a road or border town Hidden Leaf\'s genin pass through',
       context:
         'Kan is five years older than these genin. They would see a stranger in a black cloak with red clouds — a dangerous man, not a peer. Kan chooses whether to show himself.',
     },
@@ -498,17 +500,17 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'The Chunin Exams convene',
     description:
-      'Every village sends its genin to Konoha for the Chunin Exams — the rookies, Gaara of the Sand, and dangers hiding in every crowd.',
-    canonPoint: 'The Chunin Exams are convening in Konoha.',
+      'Every village sends its genin to Hidden Leaf for the Chunin Exams — the rookies, Gaara of the Sand, and dangers hiding in every crowd.',
+    canonPoint: 'The Chunin Exams are convening in Hidden Leaf.',
     from: { year: 18, month: 1 },
     to: { year: 18, month: 8 },
     minScenes: 30,
-    facts: ['The Chunin Exams are being held in Konoha.'],
+    facts: ['The Chunin Exams are being held in Hidden Leaf.'],
     encounter: {
-      who: 'the exam crowds — Konoha rookies, Gaara of the Sand, and foreign genin',
-      where: 'Konoha, in the exam halls and streets',
+      who: 'the exam crowds — Hidden Leaf rookies, Gaara of the Sand, and foreign genin',
+      where: 'Hidden Leaf, in the exam halls and streets',
       context:
-        'Konoha is full of foreign shinobi. A missing-nin could slip in disguised — or watch from outside the walls.',
+        'Hidden Leaf is full of foreign shinobi. A missing-nin could slip in disguised — or watch from outside the walls.',
     },
   },
   {
@@ -533,24 +535,24 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     from: { year: 18, month: 2 },
     to: { year: 18, month: 10 },
     minScenes: 30,
-    facts: ["Gekko Hayate was killed by Baki before the invasion of Konoha."],
+    facts: ["Gekko Hayate was killed by Baki before the invasion of Hidden Leaf."],
   },
   {
     id: 'konoha-invasion',
     era: 'Part 1',
-    title: 'The Invasion of Konoha',
+    title: 'The Invasion of Hidden Leaf',
     description:
-      'Sand and Sound attack Konoha during the exams\' final round. The Third Hokage dies sealing Orochimaru\'s arms. The village burns.',
-    canonPoint: 'The Third Hokage is dead; Konoha was invaded by Sand and Sound.',
+      'Sand and Sound attack Hidden Leaf during the exams\' final round. The Third Hokage dies sealing Orochimaru\'s arms. The village burns.',
+    canonPoint: 'The Third Hokage is dead; Hidden Leaf was invaded by Sand and Sound.',
     from: { year: 18, month: 3 },
     to: { year: 18, month: 10 },
     minScenes: 34,
     facts: [
-      'Konoha was invaded by Sand and Sound forces; the Third Hokage, Hiruzen Sarutobi, died sealing Orochimaru\'s arms.',
+      'Hidden Leaf was invaded by Sand and Sound forces; the Third Hokage, Hiruzen Sarutobi, died sealing Orochimaru\'s arms.',
     ],
     encounter: {
       who: 'Orochimaru, or the invading forces',
-      where: 'Konoha, under attack',
+      where: 'Hidden Leaf, under attack',
       context:
         'The village Kan abandoned is burning. He could be inside the walls, outside them, or far away.',
     },
@@ -570,7 +572,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
     encounter: {
       who: "Hana Inuzuka and Suzume",
-      where: "the ruined edge of Konoha",
+      where: "the ruined edge of Hidden Leaf",
       context:
         "Suzume wants answers; Hana wants to know why Kan abandoned them. Both still care, under the anger.",
     },
@@ -581,8 +583,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'Tsunade becomes Fifth Hokage',
     description:
-      'Tsunade Senju returns to Konoha and takes the hat of the Fifth Hokage with Jiraiya at her side.',
-    canonPoint: 'Tsunade Senju is the Fifth Hokage of Konoha.',
+      'Tsunade Senju returns to Hidden Leaf and takes the hat of the Fifth Hokage with Jiraiya at her side.',
+    canonPoint: 'Tsunade Senju is the Fifth Hokage of Hidden Leaf.',
     from: { year: 18, month: 4 },
     to: { year: 19, month: 2 },
     minScenes: 36,
@@ -603,7 +605,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     ],
     encounter: {
       who: 'Itachi Uchiha, Kisame Hoshigaki, Naruto Uzumaki, and Jiraiya',
-      where: 'a roadside inn outside Konoha',
+      where: 'a roadside inn outside Hidden Leaf',
       context:
         'Itachi could ask Kan to accompany them on this mission — or Kan could follow them. What he sees of Itachi\'s hesitation is his to witness.',
     },
@@ -616,12 +618,12 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'Sasuke defects',
     description:
-      'Sasuke Uchiha abandons Konoha for Orochimaru, escorted out by the Sound Four.',
-    canonPoint: 'Sasuke Uchiha has defected from Konoha to Orochimaru.',
+      'Sasuke Uchiha abandons Hidden Leaf for Orochimaru, escorted out by the Sound Four.',
+    canonPoint: 'Sasuke Uchiha has defected from Hidden Leaf to Orochimaru.',
     from: { year: 18, month: 5 },
     to: { year: 19, month: 4 },
     minScenes: 36,
-    facts: ['Sasuke Uchiha defected from Konoha to join Orochimaru.'],
+    facts: ['Sasuke Uchiha defected from Hidden Leaf to join Orochimaru.'],
   },
   {
     id: 'valley-of-the-end',
@@ -642,7 +644,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'A fork in the road',
     description:
-      'The night Sasuke flees Konoha, his path could cross Kan\'s. One conversation could change everything — or nothing.',
+      'The night Sasuke flees Hidden Leaf, his path could cross Kan\'s. One conversation could change everything — or nothing.',
     canonPoint: 'Kan crossed paths with Sasuke Uchiha on the night of his defection.',
     from: { year: 18, month: 5 },
     to: { year: 19, month: 6 },
@@ -662,7 +664,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     title: 'Sasuke under Orochimaru',
     description:
       'Sasuke trains under Orochimaru\'s wing, and the cursed seal deepens its hold on him.',
-    canonPoint: 'Sasuke trains under Orochimaru at Otogakure.',
+    canonPoint: 'Sasuke trains under Orochimaru at Hidden Sound.',
     from: { year: 18, month: 7 },
     to: { year: 20, month: 6 },
     minScenes: 38,
@@ -673,12 +675,12 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The hidden years',
     title: 'Naruto under Jiraiya',
     description:
-      'Naruto leaves the village to train under Jiraiya. Konoha rebuilds around Tsunade.',
+      'Naruto leaves the village to train under Jiraiya. Hidden Leaf rebuilds around Tsunade.',
     canonPoint: 'Naruto is away training under Jiraiya.',
     from: { year: 18, month: 7 },
     to: { year: 20, month: 6 },
     minScenes: 38,
-    facts: ['Naruto Uzumaki left Konoha to train under Jiraiya.'],
+    facts: ['Naruto Uzumaki left Hidden Leaf to train under Jiraiya.'],
   },
   {
     id: 'itachi-illness',
@@ -763,7 +765,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     playerDriven: true,
     encounter: {
       who: "Hana Inuzuka",
-      where: "Izumi's grave outside Konoha",
+      where: "Izumi's grave outside Hidden Leaf",
       context:
         "Hana is visiting Izumi. The two survivors of Team 3 can talk, fight, or stand in silence.",
     },
@@ -958,13 +960,13 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Shippuden',
     title: 'The masked man\'s truth',
     description:
-      'The masked man, still masked and still calling himself Madara, tells Sasuke that Konoha\'s leadership ordered the Uchiha massacre.',
-    canonPoint: 'The masked man claims Konoha\'s leadership ordered the Uchiha massacre.',
+      'The masked man, still masked and still calling himself Madara, tells Sasuke that Hidden Leaf\'s leadership ordered the Uchiha massacre.',
+    canonPoint: 'The masked man claims Hidden Leaf\'s leadership ordered the Uchiha massacre.',
     from: { year: 21, month: 9 },
     to: { year: 22, month: 3 },
     minScenes: 50,
     facts: [
-      'The masked man told Sasuke that Konoha\'s leadership ordered the Uchiha massacre.',
+      'The masked man told Sasuke that Hidden Leaf\'s leadership ordered the Uchiha massacre.',
     ],
     encounter: {
       who: 'the masked man (with Sasuke Uchiha)',
@@ -974,7 +976,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     },
     major: true,
     attendanceFact:
-      'Kan heard the masked man reveal that Konoha\'s leadership ordered the Uchiha massacre.',
+      'Kan heard the masked man reveal that Hidden Leaf\'s leadership ordered the Uchiha massacre.',
   },
   {
     id: 'killer-bee-fail',
@@ -1018,8 +1020,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The sky falls',
     title: 'Jiraiya dies in the rain',
     description:
-      'Jiraiya infiltrates Amegakure and dies against Pain, sending his final intel out with a coded message on Fukasaku\'s back.',
-    canonPoint: 'Jiraiya is dead, killed by Pain in Amegakure.',
+      'Jiraiya infiltrates Hidden Rain and dies against Pain, sending his final intel out with a coded message on Fukasaku\'s back.',
+    canonPoint: 'Jiraiya is dead, killed by Pain in Hidden Rain.',
     from: { year: 21, month: 11 },
     to: { year: 22, month: 5 },
     minScenes: 52,
@@ -1031,20 +1033,20 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'pain-assault',
     era: 'The sky falls',
-    title: 'Pain\'s assault on Konoha',
+    title: 'Pain\'s assault on Hidden Leaf',
     description:
-      'Six bodies flatten Konoha. Naruto defeats Pain and meets Nagato, whose sacrifice revives the dead of the village.',
-    canonPoint: 'Pain destroyed and was repelled from Konoha; Nagato sacrificed himself to revive the dead.',
+      'Six bodies flatten Hidden Leaf. Naruto defeats Pain and meets Nagato, whose sacrifice revives the dead of the village.',
+    canonPoint: 'Pain destroyed and was repelled from Hidden Leaf; Nagato sacrificed himself to revive the dead.',
     from: { year: 22, month: 1 },
     to: { year: 22, month: 6 },
     minScenes: 54,
     facts: [
-      'Pain destroyed Konoha; Naruto defeated him and Nagato sacrificed his life to revive the dead.',
+      'Pain destroyed Hidden Leaf; Naruto defeated him and Nagato sacrificed his life to revive the dead.',
       'The world now knows Pain is Nagato, working with Konan.',
     ],
     encounter: {
       who: 'Pain',
-      where: 'Konoha or Amegakure',
+      where: 'Hidden Leaf or Hidden Rain',
       context:
         'If Kan is in the rain city or the ruined Leaf, he sees the Six Paths of Pain at war.',
     },
@@ -1065,10 +1067,10 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kage-summit',
     era: 'The sky falls',
-    title: 'The Five Kage Summit',
+    title: 'The Five Kage Summit in the Land of Iron',
     description:
-      'The five Kage meet to answer the Akatsuki. The masked man appears and declares war on the shinobi world.',
-    canonPoint: 'The masked man has declared war on the shinobi world at the Kage Summit.',
+      'The five Kage meet in the Land of Iron to answer the Akatsuki. The masked man appears and declares war on the shinobi world.',
+    canonPoint: 'At the summit in the Land of Iron, the masked man declared war on the shinobi world.',
     from: { year: 22, month: 3 },
     to: { year: 22, month: 9 },
     minScenes: 56,
@@ -1412,12 +1414,12 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'After',
     title: "Sasuke's pardon",
     description:
-      "Sasuke is pardoned and leaves Konoha to walk the world, atoning in his own way.",
-    canonPoint: "Sasuke Uchiha has been pardoned and left Konoha.",
+      "Sasuke is pardoned and leaves Hidden Leaf to walk the world, atoning in his own way.",
+    canonPoint: "Sasuke Uchiha has been pardoned and left Hidden Leaf.",
     from: { year: 24, month: 3 },
     to: { year: 25, month: 6 },
     minScenes: 68,
-    facts: ["Sasuke Uchiha was pardoned and left Konoha to travel."],
+    facts: ["Sasuke Uchiha was pardoned and left Hidden Leaf to travel."],
   },
   {
     id: 'naruto-hokage',
@@ -1487,6 +1489,10 @@ function normalizeProgress(db: AppDatabase): CanonProgress {
     expired: Array.isArray((progress as { expired?: string[] }).expired)
       ? (progress as { expired?: string[] }).expired!.filter(Boolean)
       : [],
+    heard:
+      progress.heard && typeof progress.heard === 'object'
+        ? progress.heard
+        : {},
   };
 }
 
@@ -1701,6 +1707,19 @@ export function applyCanonMarks(
     }
 
     if (milestone.attendanceFact) {
+      const eventId = `event_canon_${id}`;
+
+      progress = {
+        ...progress,
+        heard: {
+          ...(progress.heard ?? {}),
+          [eventId]: {
+            from: 'witnessed',
+            date: next.state.inStoryDate,
+          },
+        },
+      };
+
       const attendance = milestone.attendanceFact;
 
       if (
@@ -2015,3 +2034,296 @@ export const CANON_ERA_ORDER = [
 ];
 
 export { AUTO_MILESTONE_IDS };
+// ---------------------------------------------------------------------------
+// World news: where events happen, who could know, and how word travels.
+// ---------------------------------------------------------------------------
+
+export type CanonKnowledge = 'public' | 'village' | 'akatsuki' | 'witnesses' | 'secret';
+
+const LOCATION_BY_ID: Record<string, { region: string; location: string }> = {
+  'izumi-funeral': { region: 'Land of Fire', location: 'the Uchiha cemetery outside the Hidden Leaf' },
+  'kan-joins-akatsuki': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'masked-man-audience': { region: 'Land of Fire', location: 'a hidden meeting place near the Hidden Leaf' },
+  'juzo-death': { region: 'Land of Lightning', location: 'the border passes of the Land of Lightning' },
+  'kisame-joins': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'orochimaru-betrayal': { region: 'Hidden Rain', location: 'an Akatsuki hideout in the Hidden Rain' },
+  'deidara-recruited': { region: 'Land of Earth', location: 'a stone quarry in the Land of Earth' },
+  'roster-completes': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'pain-civil-war': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'ame-stronghold': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'kabuto-embedded': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'masked-man-rumors': { region: 'Land of Fire', location: 'the roads of the Land of Fire' },
+  'rasa-assassinated': { region: 'Hidden Sand', location: 'the desert outside the Hidden Sand Village' },
+  'otogakure-grows': { region: 'Hidden Sound', location: 'the Hidden Sound Village' },
+  'team-7-formed': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'land-of-waves': { region: 'Land of Water', location: 'the Land of Waves' },
+  'kan-shadow-team-7': { region: 'Land of Fire', location: 'the roads of the Land of Fire' },
+  'chunin-exams': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'sasuke-cursed-seal': { region: 'Hidden Leaf', location: 'the Forest of Death' },
+  'konoha-invasion': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'tsunade-hokage': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'itachi-hunt-naruto': { region: 'Land of Fire', location: 'a roadside inn outside the Hidden Leaf' },
+  'sasuke-defects': { region: 'Land of Fire', location: 'the roads out of the Hidden Leaf' },
+  'valley-of-the-end': { region: 'Land of Fire', location: 'the Valley of the End' },
+  'kan-intercept-sasuke': { region: 'Land of Fire', location: 'the roads out of the Land of Fire' },
+  'gaara-kage': { region: 'Hidden Sand', location: 'the Hidden Sand Village' },
+  'izumi-grave': { region: 'Land of Fire', location: 'the Uchiha cemetery outside the Hidden Leaf' },
+  'gaara-captured': { region: 'Hidden Sand', location: 'the Hidden Sand Village' },
+  'sasori-falls': { region: 'Land of Wind', location: 'an Akatsuki cave lair in the Land of Wind' },
+  'naruto-sage-training': { region: 'Land of Fire', location: 'Mount Myoboku' },
+  'team-kakashi-bridge': { region: 'Land of Fire', location: 'a bridge in the Land of Fire' },
+  'hidan-kakuzu': { region: 'Land of Fire', location: 'the forests of the Land of Fire' },
+  'two-tails-captured': { region: 'Land of Lightning', location: 'the Land of Lightning' },
+  'three-tails-captured': { region: 'Land of Water', location: 'a lake in the Land of Water' },
+  'sasuke-absorbs-orochimaru': { region: 'Hidden Sound', location: 'the Hidden Sound Village' },
+  'deidara-dies': { region: 'Land of Earth', location: 'the badlands of the Land of Earth' },
+  'sasuke-rescue': { region: 'Land of Earth', location: 'the ruins of Deidara\'s battlefield' },
+  'itachi-crow': { region: 'Land of Fire', location: 'a forest in the Land of Fire' },
+  'itachi-vs-sasuke': { region: 'Land of Fire', location: 'an abandoned Uchiha hideout' },
+  'masked-man-truth': { region: 'Land of Fire', location: 'the Uchiha hideout' },
+  'killer-bee-fail': { region: 'Land of Lightning', location: 'the Land of Lightning' },
+  'killer-bee-training': { region: 'Land of Lightning', location: 'the Falls of Truth' },
+  'jiraiya-dies': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'pain-assault': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'danzo-hokage': { region: 'Hidden Leaf', location: 'the Hidden Leaf Village' },
+  'kage-summit': { region: 'Land of Iron', location: 'the Summit hall in the Land of Iron' },
+  'sasuke-rampage': { region: 'Land of Iron', location: 'the Land of Iron' },
+  'kisame-dies': { region: 'Land of Lightning', location: 'the sea off the Land of Lightning' },
+  'konan-falls': { region: 'Hidden Rain', location: 'the Hidden Rain Village' },
+  'kabuto-pact': { region: 'Hidden Sound', location: 'a hidden lair of the Hidden Sound' },
+  'war-begins': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'hokage-edo': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'madara-revived': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'obito-unmasked': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'ten-tails': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'shikaku-inoichi-death': { region: 'Land of Lightning', location: 'the Allied headquarters' },
+  'obito-jinchuriki': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'neji-death': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'madara-betrayal': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'kaguya-awakens': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'obito-redemption': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'kaguya-sealed': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'war-ends': { region: 'Land of Lightning', location: 'the Fourth War front' },
+  'valleys-end': { region: 'Land of Fire', location: 'the Valley of the End' },
+};
+
+const KNOWLEDGE_BY_ID: Record<string, CanonKnowledge> = {
+  'izumi-funeral': 'village',
+  'kan-joins-akatsuki': 'akatsuki',
+  'masked-man-audience': 'secret',
+  'juzo-death': 'akatsuki',
+  'kisame-joins': 'akatsuki',
+  'orochimaru-betrayal': 'akatsuki',
+  'deidara-recruited': 'akatsuki',
+  'roster-completes': 'akatsuki',
+  'pain-civil-war': 'public',
+  'ame-stronghold': 'akatsuki',
+  'itachi-double-life': 'secret',
+  'masked-man-rumors': 'village',
+  'gaara-captured': 'public',
+  'sasori-falls': 'akatsuki',
+  'hidan-kakuzu': 'public',
+  'two-tails-captured': 'akatsuki',
+  'three-tails-captured': 'akatsuki',
+  'killer-bee-fail': 'akatsuki',
+  'itachi-crow': 'secret',
+  'itachi-vs-sasuke': 'witnesses',
+  'masked-man-truth': 'secret',
+  'itachi-posthumous': 'secret',
+  'itachi-illness': 'secret',
+  'jiraiya-dies': 'public',
+  'pain-assault': 'public',
+  'kage-summit': 'public',
+  'sasuke-rampage': 'public',
+  'kisame-dies': 'akatsuki',
+  'konan-falls': 'akatsuki',
+  'kabuto-pact': 'akatsuki',
+  'war-begins': 'public',
+  'hokage-edo': 'public',
+  'madara-revived': 'public',
+  'obito-unmasked': 'witnesses',
+  'neji-death': 'public',
+  'obito-redemption': 'witnesses',
+  'kaguya-awakens': 'public',
+  'kaguya-sealed': 'public',
+  'war-ends': 'public',
+  'valleys-end': 'witnesses',
+  'sasuke-trial': 'public',
+  'naruto-hokage': 'public',
+};
+
+const BEARERS_BY_KNOWLEDGE: Record<CanonKnowledge, string[]> = {
+  akatsuki: ['Itachi Uchiha', 'Kisame Hoshigaki', 'Konan', 'Pain', 'Sasori', 'Deidara', 'Zetsu'],
+  village: ['Hana Inuzuka', 'Suzume', 'Itachi Uchiha'],
+  public: ['Itachi Uchiha', 'Hana Inuzuka', 'Suzume', 'a traveling merchant', 'a bounty-station keeper'],
+  witnesses: [],
+  secret: [],
+};
+
+const SECRET_BEARERS: Record<string, string[]> = {
+  'masked-man-audience': ['Itachi Uchiha'],
+  'itachi-double-life': ['Itachi Uchiha'],
+  'itachi-crow': ['Itachi Uchiha', 'Naruto Uzumaki'],
+  'masked-man-truth': ['Sasuke Uchiha', 'the masked man'],
+  'itachi-posthumous': ['Itachi Uchiha', 'Naruto Uzumaki', 'Sasuke Uchiha'],
+  'itachi-illness': ['Itachi Uchiha'],
+};
+
+const CHANNEL_BY_KNOWLEDGE: Record<CanonKnowledge, string> = {
+  akatsuki: "Itachi's crow, Konan's paper butterfly, or Zetsu",
+  village: 'a Leaf messenger hawk or a Hidden Leaf courier',
+  public: 'a traveling merchant, a town crier, or a bounty-station bulletin',
+  witnesses: 'only someone who was actually there',
+  secret: 'only a named confidant, face to face',
+};
+
+export function milestoneRegion(milestone: CanonMilestone): string {
+  return LOCATION_BY_ID[milestone.id]?.region ?? 'the shinobi world';
+}
+
+export function milestoneLocation(milestone: CanonMilestone): string {
+  return LOCATION_BY_ID[milestone.id]?.location ?? milestoneRegion(milestone);
+}
+
+export function milestoneKnowledge(milestone: CanonMilestone): CanonKnowledge {
+  return KNOWLEDGE_BY_ID[milestone.id] ?? 'public';
+}
+
+export function milestoneBearers(milestone: CanonMilestone): string[] {
+  const knowledge = milestoneKnowledge(milestone);
+
+  if (knowledge === 'secret') {
+    return SECRET_BEARERS[milestone.id] ?? [];
+  }
+
+  return BEARERS_BY_KNOWLEDGE[knowledge];
+}
+
+const REGION_CHANNEL: Record<string, string> = {
+  'Hidden Sand': 'a desert caravan or a Sand courier bird',
+  'Land of Wind': 'a desert caravan or a Sand courier bird',
+  'Hidden Mist': "a sailor or a ship's captain out of the Mist",
+  'Land of Water': "a sailor or a ship's captain out of the Mist",
+  'Hidden Cloud': 'a swift Cloud runner',
+  'Land of Lightning': 'a swift Cloud runner',
+  'Hidden Stone': 'a stone-route courier',
+  'Land of Earth': 'a stone-route courier',
+  'Land of Iron': 'a samurai rider or an official envoy',
+  'Hidden Rain': "Itachi's crow or Konan's paper butterfly",
+};
+
+export function milestoneChannel(milestone: CanonMilestone): string {
+  const knowledge = milestoneKnowledge(milestone);
+
+  if (knowledge === 'public' || knowledge === 'village') {
+    const regional = REGION_CHANNEL[milestoneRegion(milestone)];
+
+    if (regional) {
+      return regional;
+    }
+  }
+
+  return CHANNEL_BY_KNOWLEDGE[knowledge];
+}
+
+export type UnheardNews = {
+  eventId: string;
+  milestoneId: string;
+  title: string;
+  summary: string;
+  date: CalendarDate;
+  major: boolean;
+  region: string;
+  location: string;
+  bearers: string[];
+  channel: string;
+  knowledge: CanonKnowledge;
+  daysOld: number;
+};
+
+export function unheardCanonNews(db: AppDatabase, limit = 3): UnheardNews[] {
+  if (!canonEnabled(db)) {
+    return [];
+  }
+
+  const progress = normalizeProgress(db);
+  const heard = progress.heard ?? {};
+
+  const news: UnheardNews[] = [];
+
+  for (const event of db.events) {
+    if (!event.tags.includes('canon')) {
+      continue;
+    }
+
+    const milestoneId = event.id.replace('event_canon_', '');
+    const milestone = CANON_MILESTONES.find((item) => item.id === milestoneId);
+
+    if (!milestone || heard[event.id]) {
+      continue;
+    }
+
+    news.push({
+      eventId: event.id,
+      milestoneId,
+      title: milestone.title,
+      summary: milestone.description,
+      date: event.inStoryDate,
+      major: Boolean(milestone.major),
+      region: milestoneRegion(milestone),
+      location: milestoneLocation(milestone),
+      bearers: milestoneBearers(milestone),
+      channel: milestoneChannel(milestone),
+      knowledge: milestoneKnowledge(milestone),
+      daysOld: Math.max(0, daysBetween(event.inStoryDate, db.state.inStoryDate)),
+    });
+  }
+
+  return news
+    .sort((a, b) => {
+      if (a.major !== b.major) {
+        return a.major ? -1 : 1;
+      }
+
+      return (
+        a.date.year * 10000 + a.date.month * 100 + a.date.day -
+        (b.date.year * 10000 + b.date.month * 100 + b.date.day)
+      );
+    })
+    .slice(0, limit);
+}
+
+export function markNewsHeard(
+  db: AppDatabase,
+  relays: { id: string; from?: string }[]
+): AppDatabase {
+  if (!canonEnabled(db) || relays.length === 0) {
+    return db;
+  }
+
+  const progress = normalizeProgress(db);
+  const heard = { ...(progress.heard ?? {}) };
+
+  for (const relay of relays) {
+    const eventId = relay.id.startsWith('event_canon_')
+      ? relay.id
+      : `event_canon_${relay.id}`;
+    const event = db.events.find((item) => item.id === eventId);
+
+    if (!event) {
+      continue;
+    }
+
+    heard[eventId] = {
+      from: relay.from?.trim() || 'a rumor',
+      date: db.state.inStoryDate,
+    };
+  }
+
+  return withProgress(db, { ...progress, heard });
+}
+
+export function hasHeardNews(db: AppDatabase, eventId: string): boolean {
+  const progress = normalizeProgress(db);
+  return Boolean(progress.heard?.[eventId]);
+}

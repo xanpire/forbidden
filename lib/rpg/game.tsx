@@ -28,7 +28,7 @@ import {
 } from './db';
 import { makeId } from './id';
 import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
-import { advanceCanon, applyCanonMarks } from './canon';
+import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
@@ -194,9 +194,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         let next = extraction ? applyTurnDiff(currentDb, extraction) : currentDb;
 
-        const canonBefore = new Set(
-          currentDb.events.filter((event) => event.tags.includes('canon')).map((event) => event.id)
-        );
+        const relays = extraction?.newsRelayed ?? [];
 
         next = applyCanonMarks(
           next,
@@ -204,16 +202,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
           extraction?.canonEngaged ?? [],
           extraction?.canonPassed ?? []
         );
+        next = markNewsHeard(next, relays);
         next = advanceCanon(next);
 
-        const newCanonEvents = next.events.filter(
-          (event) => event.tags.includes('canon') && !canonBefore.has(event.id)
-        );
+        if (relays.length > 0) {
+          const delivered = next.events.find((event) => {
+            const id = relays[0].id.startsWith('event_canon_')
+              ? relays[0].id
+              : `event_canon_${relays[0].id}`;
+            return event.id === id;
+          });
 
-        if (newCanonEvents.length > 0) {
-          const latest = newCanonEvents[newCanonEvents.length - 1];
-          const title = latest.summary.split(':')[0].trim();
-          setWorldEventNotice(title.slice(0, 90));
+          if (delivered) {
+            const title = delivered.summary.split(':')[0].trim();
+            const from = relays[0].from?.trim() || 'a rumor';
+            setWorldEventNotice(`${title} — from ${from}`.slice(0, 110));
+          }
         }
 
         if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= 180) {
