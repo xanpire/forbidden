@@ -7,13 +7,15 @@ const pkg = JSON.parse(
 const version = pkg.version;
 const cacheName = `kan-shell-${version.replace(/\./g, '-')}`;
 
+const v = `?v=${version}`;
+
 const APP_SHELL = [
   '/',
-  '/manifest.webmanifest',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-512.png',
-  '/apple-touch-icon.png',
+  `/manifest.webmanifest${v}`,
+  `/icon-192.png${v}`,
+  `/icon-512.png${v}`,
+  `/icon-maskable-512.png${v}`,
+  `/apple-touch-icon.png${v}`,
 ];
 
 const sw = `const CACHE_NAME = '${cacheName}';
