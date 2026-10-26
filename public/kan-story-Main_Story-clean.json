@@ -643,26 +643,12 @@
       ]
     },
     {
-      "id": "entity_mvlqqlwy0vrfu5",
-      "name": "Tobi (Masked Man)",
-      "type": "character",
-      "aliases": [],
-      "birthYear": -18,
-      "age": 31,
-      "role": "Shadow leader of Akatsuki / Itachi's accomplice in the massacre",
-      "personality": "Cold, manipulative, enigmatic, ruthless",
-      "speechStyle": "Deep, calm baritone; mocking yet ominously measured",
-      "status": "Newly met",
-      "notes": "",
-      "mood": "Unknown",
-      "appearance": "Tall man wearing a black cloak with red clouds and an orange swirled one-eyed mask concealing his face, with a single visible Sharingan.",
-      "tags": []
-    },
-    {
       "id": "entity_mvlqw10c4o3tbm",
       "name": "Madara (Masked Man)",
       "type": "character",
-      "aliases": [],
+      "aliases": [
+        "Tobi"
+      ],
       "birthYear": -18,
       "age": 31,
       "role": "Shadow leader of Akatsuki / Accomplice in the Uchiha Massacre",
@@ -976,7 +962,7 @@
     },
     {
       "id": "fact_mvlqqlwyw1r14z",
-      "subjectEntityId": "entity_mvlqqlwy0vrfu5",
+      "subjectEntityId": "entity_mvlqw10c4o3tbm",
       "type": "event",
       "text": "Intercepted Itachi and Kan at the limestone ridge outside Konoha on the night of the Uchiha massacre, questioning Kan's presence and threatening to kill him as a loose end.",
       "whoKnows": [],

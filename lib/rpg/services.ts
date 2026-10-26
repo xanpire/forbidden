@@ -562,8 +562,16 @@ function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabase {
   const nextMood = entity.mood?.trim() || existing.mood;
   const nextAge = entity.age !== undefined ? entity.age : existing.age;
 
+  const extraAlias =
+    name.toLowerCase() !== existing.name.toLowerCase() &&
+    !existing.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
+      ? [name]
+      : [];
+
   entities[existingIndex] = {
     ...existing,
+    aliases: [...existing.aliases, ...extraAlias].slice(0, 4),
+    lastSeen: db.state.inStoryDate,
     age: nextAge,
     birthYear:
       entity.age !== undefined

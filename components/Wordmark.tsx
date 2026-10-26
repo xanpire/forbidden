@@ -2,12 +2,12 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
 
-const cloudIcon = require('../assets/images/akatsuki-cloud.png');
+const vultureMark = require('../assets/images/vulture-mark.png');
 
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
     <View style={styles.row} accessibilityLabel="Kan">
-      <Image source={cloudIcon} style={[styles.cloud, compact && styles.cloudCompact]} />
+      <Image source={vultureMark} style={[styles.mark, compact && styles.markCompact]} />
       <Text style={[styles.word, compact && styles.wordCompact]}>KAN</Text>
     </View>
   );
@@ -19,11 +19,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  cloud: {
+  mark: {
     width: 26,
     height: 26,
   },
-  cloudCompact: {
+  markCompact: {
     width: 22,
     height: 22,
   },

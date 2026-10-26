@@ -6,146 +6,195 @@ from PIL import Image, ImageDraw, ImageFilter
 ASSETS = 'assets/images'
 PUBLIC = 'public'
 
-BLACK = (8, 8, 10, 255)
+BLACK = (7, 7, 9, 255)
 GLOW = (64, 8, 14, 255)
-RED = (210, 16, 28, 255)
-RED_DEEP = (150, 10, 20, 255)
+RED = (214, 18, 30, 255)
 WHITE = (238, 234, 236, 255)
 
 
-def draw_cloud(draw: ImageDraw.ImageDraw, cx: float, cy: float, s: float,
-               fill: tuple, outline: tuple, ow: float, shadow=None) -> None:
-    def circle(x, y, r, color):
-        draw.ellipse([x - r, y - r, x + r, y + r], fill=color)
+def stroke_polygon(draw, points, fill, stroke_width, cx, cy):
+    offsets = []
+    for angle in range(0, 360, 45):
+        a = math.radians(angle)
+        offsets.append((math.cos(a) * stroke_width, math.sin(a) * stroke_width))
 
-    def poly(points, color):
-        draw.polygon(points, fill=color)
+    for dx, dy in offsets:
+        draw.polygon([(x + dx, y + dy) for x, y in points], fill=fill)
 
-    def arc_tail(px, py, pr, a0, a1, color, width):
-        draw.arc([px - pr, py - pr, px + pr, py + pr], a0, a1, fill=color, width=int(width))
 
-    big = s * 0.30
-    med = s * 0.22
-    small = s * 0.16
+def build_shapes(size):
+    cx = size / 2
+    s = size
 
-    body = [
-        (cx - s * 0.52, cy + s * 0.10, med),
-        (cx - s * 0.26, cy - s * 0.14, big),
-        (cx + s * 0.04, cy - s * 0.26, big),
-        (cx + s * 0.34, cy - s * 0.10, med),
-        (cx + s * 0.54, cy + s * 0.12, med),
-        (cx - s * 0.30, cy + s * 0.24, med),
-        (cx + s * 0.06, cy + s * 0.28, med),
-        (cx + s * 0.38, cy + s * 0.26, med),
+    head_y = s * 0.308
+    head_r = s * 0.0215
+
+    head = (cx, head_y)
+
+    beak = [
+        (cx + head_r * 0.40, head_y - head_r * 0.55),
+        (cx + head_r * 2.90, head_y - head_r * 0.10),
+        (cx + head_r * 2.55, head_y + head_r * 2.10),
+        (cx + head_r * 1.55, head_y + head_r * 0.90),
+        (cx + head_r * 0.50, head_y + head_r * 0.80),
     ]
 
-    if shadow is not None:
-        for x, y, r in body:
-            circle(x + s * 0.02, y + s * 0.04, r, shadow)
+    neck_body = [
+        (cx - s * 0.018, head_y + head_r * 0.9),
+        (cx + s * 0.018, head_y + head_r * 0.9),
+        (cx + s * 0.035, s * 0.415),
+        (cx + s * 0.062, s * 0.475),
+        (cx + s * 0.030, s * 0.585),
+        (cx - s * 0.030, s * 0.585),
+        (cx - s * 0.062, s * 0.475),
+        (cx - s * 0.035, s * 0.415),
+    ]
 
-    for x, y, r in body:
-        circle(x, y, r + ow, outline)
+    tail = [
+        (cx - s * 0.032, s * 0.565),
+        (cx - s * 0.088, s * 0.700),
+        (cx - s * 0.042, s * 0.672),
+        (cx, s * 0.712),
+        (cx + s * 0.042, s * 0.672),
+        (cx + s * 0.088, s * 0.700),
+        (cx + s * 0.032, s * 0.565),
+    ]
 
-    band_top = cy + s * 0.02
-    band_bot = cy + s * 0.34
-    draw.rectangle([cx - s * 0.55 - ow, band_top - ow, cx + s * 0.55 + ow, band_bot + ow], fill=outline)
+    def wing(side):
+        sgn = -1 if side < 0 else 1
+        shoulder_top = (cx + sgn * s * 0.040, s * 0.452)
+        tip1 = (cx + sgn * s * 0.318, s * 0.322)
+        notch1 = (cx + sgn * s * 0.268, s * 0.372)
+        tip2 = (cx + sgn * s * 0.296, s * 0.408)
+        notch2 = (cx + sgn * s * 0.246, s * 0.446)
+        tip3 = (cx + sgn * s * 0.266, s * 0.478)
+        notch3 = (cx + sgn * s * 0.218, s * 0.504)
+        tip4 = (cx + sgn * s * 0.230, s * 0.526)
+        notch4 = (cx + sgn * s * 0.182, s * 0.536)
+        tip5 = (cx + sgn * s * 0.172, s * 0.556)
+        inner = (cx + sgn * s * 0.058, s * 0.470)
+        armpit = (cx + sgn * s * 0.052, s * 0.505)
 
-    for x, y, r in body:
-        circle(x, y, r, fill)
+        return [
+            shoulder_top,
+            tip1,
+            notch1,
+            tip2,
+            notch2,
+            tip3,
+            notch3,
+            tip4,
+            notch4,
+            tip5,
+            inner,
+            armpit,
+        ]
 
-    draw.rectangle([cx - s * 0.55, band_top, cx + s * 0.55, band_bot], fill=fill)
+    return {
+        'head': head,
+        'head_r': head_r,
+        'beak': beak,
+        'neck_body': neck_body,
+        'tail': tail,
+        'wing_l': wing(-1),
+        'wing_r': wing(1),
+        'cx': cx,
+    }
 
-    sw_r = s * 0.10
-    for sx in (cx - s * 0.20, cx + s * 0.22):
-        sy = band_bot + sw_r * 0.6
-        circle(sx, sy, sw_r + ow, outline)
-        circle(sx, sy, sw_r, fill)
-        arc_tail(sx + sw_r * 1.1, sy - sw_r * 0.4, sw_r * 1.15, 200, 340, outline, ow * 1.6)
-        arc_tail(sx + sw_r * 1.1, sy - sw_r * 0.4, sw_r * 1.05, 205, 335, fill, ow * 1.2)
 
-
-def render(size: int, cloud_scale: float, bg_glow: bool, transparent: bool = False) -> Image.Image:
-    img = Image.new('RGBA', (size, size), (0, 0, 0, 0) if transparent else BLACK)
+def vulture_canvas(size):
+    img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
+    shapes = build_shapes(size)
 
-    if bg_glow:
-        glow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-        gdraw = ImageDraw.Draw(glow)
-        gr = size * 0.55
-        gdraw.ellipse([size / 2 - gr, size * 0.72 - gr * 0.7, size / 2 + gr, size * 0.72 + gr * 0.7], fill=GLOW)
-        glow = glow.filter(ImageFilter.GaussianBlur(size * 0.16))
-        img = Image.alpha_composite(img, glow)
-        draw = ImageDraw.Draw(img)
+    stroke = size * 0.011
 
-    cx = size / 2
-    cy = size * 0.46
-    s = size * cloud_scale / 2.2
+    stroke_polygon(draw, shapes['wing_l'], WHITE, stroke, shapes['cx'], size * 0.45)
+    stroke_polygon(draw, shapes['wing_r'], WHITE, stroke, shapes['cx'], size * 0.45)
+    stroke_polygon(draw, shapes['tail'], WHITE, stroke, shapes['cx'], size * 0.45)
+    stroke_polygon(draw, shapes['neck_body'], WHITE, stroke, shapes['cx'], size * 0.45)
+    stroke_polygon(draw, shapes['beak'], WHITE, stroke, shapes['cx'], size * 0.45)
+    draw.ellipse(
+        [
+            shapes['head'][0] - shapes['head_r'] - stroke,
+            shapes['head'][1] - shapes['head_r'] - stroke,
+            shapes['head'][0] + shapes['head_r'] + stroke,
+            shapes['head'][1] + shapes['head_r'] + stroke,
+        ],
+        fill=WHITE,
+    )
 
-    draw_cloud(draw, cx, cy, s, RED, WHITE, s * 0.055)
+    draw.polygon(shapes['wing_l'], fill=RED)
+    draw.polygon(shapes['wing_r'], fill=RED)
+    draw.polygon(shapes['tail'], fill=RED)
+    draw.polygon(shapes['neck_body'], fill=RED)
+    draw.polygon(shapes['beak'], fill=RED)
+    draw.ellipse(
+        [
+            shapes['head'][0] - shapes['head_r'],
+            shapes['head'][1] - shapes['head_r'],
+            shapes['head'][0] + shapes['head_r'],
+            shapes['head'][1] + shapes['head_r'],
+        ],
+        fill=RED,
+    )
+
+    eye_r = shapes['head_r'] * 0.32
+    eye_x = shapes['head'][0] + shapes['head_r'] * 0.42
+    eye_y = shapes['head'][1] - shapes['head_r'] * 0.15
+    draw.ellipse([eye_x - eye_r, eye_y - eye_r, eye_x + eye_r, eye_y + eye_r], fill=BLACK)
 
     return img
 
 
-def radial_dark_bg(size: int) -> Image.Image:
-    img = Image.new('RGBA', (size, size), BLACK)
-    draw = ImageDraw.Draw(img)
-    for radius_step in range(60, 0, -1):
-        t = radius_step / 60
-        r = size * 0.75 * t
-        shade = int(10 + 26 * (1 - t))
-        color = (shade + int(18 * (1 - t)), max(4, int(shade * 0.35)), max(6, int(shade * 0.45)), 255)
-        draw.ellipse([size / 2 - r, size / 2 - r, size / 2 + r, size / 2 + r], fill=color)
-    return img
+def render_icon(size):
+    big = 2048
+
+    bg = Image.new('RGBA', (big, big), BLACK)
+    glow = Image.new('RGBA', (big, big), (0, 0, 0, 0))
+    gdraw = ImageDraw.Draw(glow)
+    gr = big * 0.52
+    gdraw.ellipse(
+        [big / 2 - gr, big * 0.44 - gr * 0.72, big / 2 + gr, big * 0.44 + gr * 0.72],
+        fill=GLOW,
+    )
+    glow = glow.filter(ImageFilter.GaussianBlur(big * 0.14))
+    bg = Image.alpha_composite(bg, glow)
+
+    bird = vulture_canvas(big)
+    return Image.alpha_composite(bg, bird).resize((size, size), Image.LANCZOS)
 
 
-def save_png(img: Image.Image, path: str) -> None:
+def save_png(img, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img.save(path, 'PNG', optimize=True)
     print('wrote', path, img.size)
 
 
-def main() -> None:
-    big = 2048
-
-    icon_bg = radial_dark_bg(big)
-    glow_layer = Image.new('RGBA', icon_bg.size, (0, 0, 0, 0))
-    gdraw = ImageDraw.Draw(glow_layer)
-    gr = big * 0.5
-    gdraw.ellipse([big / 2 - gr, big * 0.78 - gr * 0.62, big / 2 + gr, big * 0.78 + gr * 0.62], fill=GLOW)
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(big * 0.13))
-    icon_bg = Image.alpha_composite(icon_bg, glow_layer)
-
-    cloud = Image.new('RGBA', (big, big), (0, 0, 0, 0))
-    cdraw = ImageDraw.Draw(cloud)
-    draw_cloud(cdraw, big / 2, big * 0.47, big * 0.42, RED, WHITE, big * 0.0090, shadow=RED_DEEP)
-
-    icon_full = Image.alpha_composite(icon_bg, cloud)
-    icon = icon_full.resize((1024, 1024), Image.LANCZOS)
+def main():
+    icon = render_icon(1024)
     save_png(icon, f'{ASSETS}/icon.png')
-
-    foreground = Image.new('RGBA', (big, big), (0, 0, 0, 0))
-    fdraw = ImageDraw.Draw(foreground)
-    draw_cloud(fdraw, big / 2, big * 0.5, big * 0.36, RED, WHITE, big * 0.0080, shadow=RED_DEEP)
-    adaptive = foreground.resize((1024, 1024), Image.LANCZOS)
-    save_png(adaptive, f'{ASSETS}/adaptive-icon.png')
-
     save_png(icon.resize((192, 192), Image.LANCZOS), f'{PUBLIC}/icon-192.png')
     save_png(icon.resize((512, 512), Image.LANCZOS), f'{PUBLIC}/icon-512.png')
-
-    mask_bg = Image.new('RGBA', (big, big), BLACK)
-    mask_cloud = Image.new('RGBA', (big, big), (0, 0, 0, 0))
-    mdraw = ImageDraw.Draw(mask_cloud)
-    draw_cloud(mdraw, big / 2, big * 0.5, big * 0.30, RED, WHITE, big * 0.0068, shadow=RED_DEEP)
-    maskable = Image.alpha_composite(mask_bg, mask_cloud).resize((512, 512), Image.LANCZOS)
-    save_png(maskable, f'{PUBLIC}/icon-maskable-512.png')
-
     save_png(icon.resize((180, 180), Image.LANCZOS), f'{PUBLIC}/apple-touch-icon.png')
     save_png(icon.resize((48, 48), Image.LANCZOS), f'{ASSETS}/favicon.png')
 
-    wordmark = Image.new('RGBA', (512, 512), (0, 0, 0, 0))
-    wdraw = ImageDraw.Draw(wordmark)
-    draw_cloud(wdraw, 256, 252, 130, RED, WHITE, 5.4)
-    save_png(wordmark.resize((96, 96), Image.LANCZOS), f'{ASSETS}/akatsuki-cloud.png')
+    big = 2048
+    bird = vulture_canvas(big)
+    foreground = Image.new('RGBA', (big, big), (0, 0, 0, 0))
+    foreground = Image.alpha_composite(foreground, bird)
+    save_png(foreground.resize((1024, 1024), Image.LANCZOS), f'{ASSETS}/adaptive-icon.png')
+
+    mask_bg = Image.new('RGBA', (big, big), BLACK)
+    scaled = Image.new('RGBA', (big, big), (0, 0, 0, 0))
+    rw = rh = int(big * 0.80)
+    small = bird.resize((rw, rh), Image.LANCZOS)
+    scaled.paste(small, ((big - rw) // 2, (big - rh) // 2), small)
+    maskable = Image.alpha_composite(mask_bg, scaled).resize((512, 512), Image.LANCZOS)
+    save_png(maskable, f'{PUBLIC}/icon-maskable-512.png')
+
+    mark = vulture_canvas(512)
+    save_png(mark.resize((96, 96), Image.LANCZOS), f'{ASSETS}/vulture-mark.png')
 
 
 if __name__ == '__main__':

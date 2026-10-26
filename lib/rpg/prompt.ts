@@ -39,8 +39,14 @@ NEW CHARACTERS
 
 RANDOM ENCOUNTERS
 - Use the d20 encounter hint to choose event scale; do not mention the roll.
-- Not every turn. Quiet in the middle of an emotional scene, more likely when Kan is traveling, on missions, or idle in the village.
-- Encounters should have consequences and can be ignored by the player without breaking the story.
+- Encounters are rare. Most turns are quiet. When the hint says nothing special happens, introduce no new characters and no interruptions.
+- Never stack encounters: at most one new character or event per turn, and never two encounters in a row.
+- Quiet in the middle of an emotional scene. Encounters should have consequences and can be ignored by the player without breaking the story.
+
+CONTINUITY & PACING
+- Never repeat an NPC gesture, action, or line you already used in the recent scene (same adjustment, same stance, same phrase). Each beat must move the story forward.
+- Open threads are binding missions. Never change a destination, objective, or ally mid-mission unless Kan decides to. Follow the stated goal until the player changes it.
+- Compress routine travel: cross days of uneventful travel in one or two paragraphs. Never pad travel with filler encounters or repeated camps.
 
 LITERARY NARRATION & REALISM
 - Write in immersive, gritty second-person perspective. Kan is "you." Show, don't tell: the guttering candlelight, the smell of damp rot, the heavy silence.
@@ -445,7 +451,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`
+        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`
     ),
   ].join('\n');
 }
@@ -488,7 +494,9 @@ function formatEntities(db: AppDatabase) {
         const speech = truncate(entity.speechStyle ?? 'unknown', 50);
         const role = truncate(entity.role ?? '', 40);
 
-        return `- ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}: personality ${personality}; speech ${speech}; mood ${mood}; appearance ${appearance}`;
+        const aliasNote = entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : '';
+
+        return `- ${entity.name}${aliasNote}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}: personality ${personality}; speech ${speech}; mood ${mood}; appearance ${appearance}`;
       }
     ),
   ].join('\n');
@@ -627,14 +635,14 @@ function formatRecentMessages(messages: RawLogEntry[]) {
   ].join('\n');
 }
 
-function formatEncounterHint(d20: number) {
-  let hint = 'nothing special happens';
+export function formatEncounterHint(d20: number) {
+  let hint = 'nothing special happens; keep the turn quiet';
 
   if (d20 >= 20) {
     hint = 'a major canon event or crisis occurs';
   } else if (d20 >= 17) {
     hint = 'a named canon character appears, if plausible for the timeline';
-  } else if (d20 >= 9) {
+  } else if (d20 >= 13) {
     hint = 'a minor NPC or small event appears';
   }
 

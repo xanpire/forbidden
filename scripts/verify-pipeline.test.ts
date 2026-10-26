@@ -19,6 +19,7 @@ import { storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/servic
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
+import { formatEncounterHint } from '../lib/rpg/prompt';
 import {
   appendStoryMessage,
   applyTurnDiff,
@@ -446,5 +447,41 @@ describe('presence tracking and bonds ordering', () => {
     const occurrences = dynamic.split(action).length - 1;
 
     expect(occurrences).toBe(1);
+  });
+});
+
+describe('encounter frequency and image cast', () => {
+  test('most d20 rolls yield a quiet turn', () => {
+    const quiet = [1, 4, 7, 9, 11, 12].every((roll) => formatEncounterHint(roll).includes('quiet'));
+    const minor = formatEncounterHint(14).includes('minor NPC');
+    const named = formatEncounterHint(18).includes('named canon character');
+    const major = formatEncounterHint(20).includes('major canon event');
+
+    expect(quiet).toBe(true);
+    expect(minor).toBe(true);
+    expect(named).toBe(true);
+    expect(major).toBe(true);
+  });
+
+  test('image prompt forbids characters from previous images and lists the cast', () => {
+    let db = loadSave(SAVE_PATHS[1]);
+
+    db = applyTurnDiff(db, {
+      scene: { ended: false, entities: ['Itachi Uchiha'] },
+      state: { advanceDays: 0 },
+    });
+
+    const prompt = buildSceneImagePrompt(db, ['data:image/jpeg;base64,AAA']);
+
+    expect(prompt).toContain('must NOT appear now');
+    expect(prompt).toContain('Itachi Uchiha');
+    expect(prompt).toContain('only the cast listed below may appear');
+  });
+
+  test('saves have no duplicate tobi/madara entities', () => {
+    const db = loadSave(SAVE_PATHS[1]);
+    const matches = db.entities.filter((entity) => /tobi|madara/i.test(entity.name));
+    expect(matches.length).toBeLessThanOrEqual(1);
+    expect(matches[0]?.aliases.map((a) => a.toLowerCase())).toContain('tobi');
   });
 });
