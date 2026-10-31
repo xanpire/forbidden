@@ -54,6 +54,7 @@ export type StreamResult = {
   text: string;
   promptTokens: number;
   completionTokens: number;
+  finishReason?: string;
 };
 
 const RECOMMENDED_MODELS = new Set([
@@ -461,6 +462,7 @@ export async function streamChatCompletion({
   let full = '';
   let promptTokens = 0;
   let completionTokens = 0;
+  let finishReason: string | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -488,9 +490,13 @@ export async function streamChatCompletion({
 
       try {
         const parsed = JSON.parse(data) as {
-          choices?: Array<{ delta?: { content?: string } }>;
+          choices?: Array<{ delta?: { content?: string }; finish_reason?: string }>;
           usage?: { prompt_tokens?: number; completion_tokens?: number };
         };
+
+        if (parsed.choices?.[0]?.finish_reason) {
+          finishReason = parsed.choices[0].finish_reason ?? finishReason;
+        }
 
         const delta = parsed.choices?.[0]?.delta?.content;
 
@@ -514,6 +520,7 @@ export async function streamChatCompletion({
     promptTokens: promptTokens || estimateTokens(messages),
     completionTokens:
       completionTokens || estimateTokens([{ role: 'assistant', content: full }]),
+    finishReason,
   };
 }
 

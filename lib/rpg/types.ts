@@ -61,6 +61,8 @@ export type GameState = {
   canonProgress?: CanonProgress;
   chapter: number;
   scene: string;
+  imageBrief?: string;
+  sceneCast?: string[];
 };
 
 export type RawLogEntry = {
@@ -297,6 +299,8 @@ export type TurnDiff = {
     canonPoint?: string;
     chapter?: number;
     scene?: string;
+    imageBrief?: string;
+    sceneCast?: string[];
   };
   entities?: {
     name: string;

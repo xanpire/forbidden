@@ -34,6 +34,8 @@ import {
   X,
   Diamond,
   Undo2,
+  Sun,
+  Moon,
 } from 'lucide-react-native';
 
 import { AppBackground } from '@/components/AppBackground';
@@ -309,6 +311,12 @@ export default function StoryScreen() {
             </Text>
           </View>
           <View style={styles.statusChip}>
+            {state.inStoryDate.timeOfDay === 'night' ||
+            state.inStoryDate.timeOfDay === 'evening' ? (
+              <Moon color={colors.textMuted} size={12} strokeWidth={2} />
+            ) : (
+              <Sun color={colors.textMuted} size={12} strokeWidth={2} />
+            )}
             <Text numberOfLines={1} style={styles.statusText}>
               {formatStoryDate(
                 state.inStoryDate,

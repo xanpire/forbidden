@@ -7,6 +7,7 @@ import {
   recentCanonEvents,
   recentlyConcludedMilestones,
   upcomingCanonMilestones,
+  upcomingWorldMilestones,
   unheardCanonNews,
   hasHeardNews,
 } from './canon';
@@ -38,6 +39,21 @@ EXECUTIVE RULES
 - Respect the in-story date. Characters are the age, rank, and position they would hold then, and know only what they could know at that point. Never reference future events.
 - Canon power levels are real: no power creep, no convenient nerfing. Characters have their own goals and can refuse, lie, disagree, or leave. Trust and love must be earned.
 - Canon happens on its canon timeline unless Kan plausibly changes it; then follow the consequences and record them as facts. If the provided context (facts, lore) contradicts canon, the context wins.
+
+TIME IS STRICT
+- The TIME block is the only source of the date. Never write a calendar date or day number yourself ("the fifth of October"). Use relative time: "the next day", "two nights later".
+- When a new day begins in your narration, you MUST set days_passed to the number of days that actually elapsed.
+- time_of_day must be the time the scene ENDS in: morning, afternoon, evening, or night. If the scene crosses into night, say night.
+
+CANON TRUTH
+- Never invent a canon event, funeral, death, battle, exam, summit, or date. If it is not in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts, it has not happened yet.
+- If Kan asks about something not yet listed, answer from the NPC's limited knowledge: it has not happened, they do not know, or they deflect. Never invent that it already occurred.
+
+VOICE & STYLE
+- Write clear, natural English for an ordinary reader: common words, short to medium sentences, one idea at a time. Vivid but not ornate — choose the plain word. Avoid rare or literary vocabulary.
+- Use em dashes and semicolons sparingly; prefer periods.
+- Keep imagery concrete and physical, but vary it every turn: different senses, textures, sounds, and metaphors.
+- Never repeat a description, metaphor, or signature phrase you just used. Ban your own crutches.
 
 WORLD & PACING
 - Second person, immersive, gritty realism: gravity, fatigue, injury, weather, terrain, layout. Show moods through behavior and small choices. Quiet moments are allowed.
@@ -81,6 +97,7 @@ STATE OUTPUT (MANDATORY)
   "threads": [{ "description": string, "status": "open" | "resolved" }],
   "new_characters": [{ "name": string, "age": number, "role": string, "personality": string, "speech_style": string, "appearance_block": string }],
   "characters_present": string[],
+  "image_brief": string,
   "canon_engaged": string[],
   "canon_completed": string[],
   "canon_passed": string[],
@@ -90,7 +107,9 @@ STATE OUTPUT (MANDATORY)
 }
 \`\`\`
 - time: days_passed is 0 if the scene continues immediately, 1 for a scene break, more for travel or skips. Sleeping through the night means days_passed 1 and time_of_day "morning".
-- Set state.location whenever Kan moves; always pair it with location_kind (settlement, road, wilderness, structure). characters_present lists every NPC in direct contact this beat (omit when Kan is alone).
+- Set state.location whenever Kan moves; always pair it with location_kind (settlement, road, wilderness, structure).
+- characters_present lists ONLY characters physically in the scene this beat, never people merely mentioned (omit when Kan is alone).
+- image_brief: one short sentence naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Write it only for visually striking beats; keep it to 30 words.
 - mood is Kan's mood in 1-3 words, only when changed. world_description is one sentence, only when changed. scene_ended is true only when the scene clearly concluded.
 - jutsu_used only for named jutsu; chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
 - relationship/attraction/romance_note only when they changed. Bonds only for important characters; minor ones go in facts. image_worthy only for visually striking moments, never pure dialogue.`;
@@ -234,8 +253,10 @@ export function buildNarrationPrompt(
       formatArcSummary(arcSummary),
       formatTimeLine(db),
       formatNewsBlock(db),
+      formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
       formatMemories(memories),
+      formatStyleGuard(db),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       `${formatEncounterConditions(db)}\n${formatGatedEncounterHint(db, d20)}`,
@@ -609,6 +630,93 @@ function formatLore(lore: AppDatabase['loreEntries']) {
     'RELEVANT LORE',
     ...lore.map((entry) => `- ${truncate(entry.text, 150)}`),
   ].join('\n');
+}
+
+function formatUpcomingWorldBlock(db: AppDatabase) {
+  const upcoming = upcomingWorldMilestones(db, 10);
+
+  if (upcoming.length === 0) {
+    return '';
+  }
+
+  const lines = ["RUMORS OF WHAT'S COMING (planned, NOT yet happened)"];
+
+  for (const item of upcoming) {
+    lines.push(
+      `- ${item.milestone.title} — about ${item.daysUntil} day(s) away, in ${item.milestone.era}. The world is preparing for it. NPCs may mention preparations or rumors, but must never say it has already happened.`
+    );
+  }
+
+  return lines.join('\n');
+}
+
+const STYLE_STOP_WORDS = new Set([
+  'about', 'after', 'again', 'against', 'almost', 'along', 'already', 'also', 'although', 'always',
+  'another', 'around', 'because', 'before', 'behind', 'being', 'below', 'between', 'beyond',
+  'could', 'would', 'should', 'there', 'their', 'these', 'those', 'through', 'under', 'until',
+  'where', 'which', 'while', 'within', 'without', 'still', 'every', 'never', 'other', 'something',
+  'someone', 'nothing', 'little', 'moment', 'slowly', 'quietly', 'toward', 'towards', 'across',
+  'first', 'right', 'voice', 'hands', 'eyes', 'face', 'world', 'story', 'scene', 'narrator',
+  'you', 'your', 'yours', 'they', 'them', 'then', 'than', 'that', 'this', 'with', 'from', 'into',
+  'have', 'has', 'had', 'were', 'was', 'are', 'will', 'been', 'over', 'just', 'like', 'make', 'made',
+  'more', 'most', 'some', 'such', 'only', 'even', 'back', 'down', 'away', 'very', 'much', 'many',
+  'chakra', 'sharingan', 'kunai', 'shinobi', 'jutsu', 'anbu', 'akatsuki', 'hokage', 'hidden',
+  'leaf', 'rain', 'sand', 'mist', 'stone', 'cloud', 'sound',
+]);
+
+function formatStyleGuard(db: AppDatabase) {
+  const recent = db.rawLog
+    .filter((entry) => entry.kind === 'story' && entry.role === 'assistant')
+    .slice(-6)
+    .map((entry) => stripNarrationJson(entry.content).toLowerCase());
+
+  if (recent.length < 2) {
+    return '';
+  }
+
+  const nameWords = new Set(
+    db.entities.flatMap((entity) => entity.name.toLowerCase().split(/\s+/))
+  );
+  const wordCounts = new Map<string, number>();
+  const phraseCounts = new Map<string, number>();
+
+  for (const text of recent) {
+    const tokens = (text.match(/[a-z]{4,}/g) ?? []).filter(
+      (word) => !STYLE_STOP_WORDS.has(word) && !nameWords.has(word)
+    );
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      const word = tokens[index];
+      wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
+
+      if (index + 1 < tokens.length) {
+        const phrase = `${word} ${tokens[index + 1]}`;
+        phraseCounts.set(phrase, (phraseCounts.get(phrase) ?? 0) + 1);
+      }
+    }
+  }
+
+  const overusedWords = [...wordCounts.entries()]
+    .filter(([, count]) => count >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([word]) => word);
+
+  const overusedPhrases = [...phraseCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([phrase]) => phrase);
+
+  if (overusedWords.length === 0 && overusedPhrases.length === 0) {
+    return '';
+  }
+
+  const wordText = overusedWords.length > 0 ? `words: ${overusedWords.join(', ')}` : '';
+  const phraseText =
+    overusedPhrases.length > 0 ? `phrases: ${overusedPhrases.map((phrase) => `"${phrase}"`).join('; ')}` : '';
+
+  return `STYLE GUARD — recently overused, avoid this turn: ${[wordText, phraseText].filter(Boolean).join('. ')}. Choose fresh sensory detail.`;
 }
 
 function formatNewsBlock(db: AppDatabase) {

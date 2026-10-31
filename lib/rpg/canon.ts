@@ -1,4 +1,4 @@
-import { daysBetween } from './calendar';
+import { daysBetween, shiftDate } from './calendar';
 import type { AppDatabase, CalendarDate, ThreadType } from './types';
 
 export type CanonProgress = {
@@ -1706,20 +1706,20 @@ export function applyCanonMarks(
       completed.add(id);
     }
 
-    if (milestone.attendanceFact) {
-      const eventId = `event_canon_${id}`;
+    const completedEventId = `event_canon_${id}`;
 
-      progress = {
-        ...progress,
-        heard: {
-          ...(progress.heard ?? {}),
-          [eventId]: {
-            from: 'witnessed',
-            date: next.state.inStoryDate,
-          },
+    progress = {
+      ...progress,
+      heard: {
+        ...(progress.heard ?? {}),
+        [completedEventId]: {
+          from: 'witnessed',
+          date: next.state.inStoryDate,
         },
-      };
+      },
+    };
 
+    if (milestone.attendanceFact) {
       const attendance = milestone.attendanceFact;
 
       if (
@@ -2005,6 +2005,46 @@ export function recentlyConcludedMilestones(db: AppDatabase, limit = 3): CanonMi
   )
     .slice(-limit)
     .reverse();
+}
+
+
+export function upcomingWorldMilestones(
+  db: AppDatabase,
+  days = 10
+): { milestone: CanonMilestone; daysUntil: number }[] {
+  if (!canonEnabled(db)) {
+    return [];
+  }
+
+  const progress = normalizeProgress(db);
+  const completed = new Set(progress.completed);
+  const nowKey = dateWindowKey(db.state.inStoryDate);
+  const horizon = shiftDate(db.state.inStoryDate, days);
+  const horizonKey = dateWindowKey(horizon);
+
+  return CANON_MILESTONES.filter((milestone) => {
+    if (milestone.playerDriven || completed.has(milestone.id)) {
+      return false;
+    }
+
+    const fromKey = windowKey(milestone.from);
+
+    return fromKey > nowKey && fromKey <= horizonKey;
+  })
+    .map((milestone) => ({
+      milestone,
+      daysUntil: Math.max(
+        0,
+        daysBetween(db.state.inStoryDate, {
+          year: milestone.from.year,
+          month: milestone.from.month,
+          day: milestone.from.day ?? 1,
+          timeOfDay: 'morning',
+        })
+      ),
+    }))
+    .sort((a, b) => a.daysUntil - b.daysUntil)
+    .slice(0, 3);
 }
 
 export function recentCanonEvents(db: AppDatabase, limit = 4) {

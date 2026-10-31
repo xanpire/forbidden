@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   retrievalLimit: 4,
   autoSummarizeThreshold: 12,
   temperature: 0.7,
-  maxTokens: 1100,
+  maxTokens: 1300,
   canonProgress: true,
   autoAdvanceTime: true,
 };

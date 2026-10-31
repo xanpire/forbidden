@@ -1,19 +1,30 @@
-import { sameDate } from './calendar';
 import { localizePlaceNames } from './glossary';
 import type { AppDatabase } from './types';
 
 const RECENT_IMAGE_LIMIT = 2;
 
 function sceneCast(db: AppDatabase): string[] {
+  const fromState = (db.state.sceneCast ?? []).filter(
+    (name) => name.toLowerCase() !== 'kan'
+  );
+
+  if (fromState.length > 0) {
+    return fromState.slice(0, 5);
+  }
+
+  const latestAssistant = [...db.rawLog]
+    .reverse()
+    .find((message) => message.kind === 'story' && message.role === 'assistant');
+  const text = `${latestAssistant?.content ?? ''} ${db.state.scene}`.toLowerCase();
+
   return db.entities
     .filter(
       (entity) =>
         entity.type === 'character' &&
         entity.name.toLowerCase() !== 'kan' &&
-        entity.lastSeen &&
-        sameDate(entity.lastSeen, db.state.inStoryDate)
+        [entity.name, ...entity.aliases].some((name) => text.includes(name.toLowerCase()))
     )
-    .slice(0, 4)
+    .slice(0, 5)
     .map((entity) => entity.name);
 }
 
@@ -22,6 +33,14 @@ export function collectRecentSceneImages(db: AppDatabase) {
     .filter((message) => message.kind === 'story' && message.role === 'assistant' && message.image)
     .slice(-RECENT_IMAGE_LIMIT)
     .map((message) => message.image as string);
+}
+
+function tailOf(text: string, maxLength: number) {
+  if (!text || text.length <= maxLength) {
+    return text;
+  }
+
+  return `…${text.slice(-maxLength).trimStart()}`;
 }
 
 export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = []) {
@@ -37,6 +56,9 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
     .replace(/\*/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+
+  const imageBrief = (db.state.imageBrief ?? '').trim();
+  const action = imageBrief || tailOf(visualScene, 700);
 
   const wearsAkatsukiCloak = db.state.inventory.some((item) =>
     /akatsuki cloak/i.test(item)
@@ -83,14 +105,16 @@ export function buildSceneImagePrompt(db: AppDatabase, recentImages: string[] = 
     'The outfit sheets show clothes without a person: combine the face sheet with the correct outfit sheet to depict Kan accurately.',
     `Kan currently wears ${currentOutfit}.`,
     'Do not redesign Kan’s face or hairstyle. Keep his likeness consistent across images.',
+    'The reference images are for Kan\'s face and clothing only. Ignore their poses, background, and any other people in them.',
     `Scene: ${db.state.scene}.`,
     `Location: ${db.state.location}.`,
     `Timeline: ${db.state.canonPoint}.`,
-    'Characters rule: only the cast listed below may appear; no one else.',
+    `ACTION (depict this exactly): ${action}`,
+    'ACTOR RULE: Kan performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict Kan as the victim of his own action. If the ACTION says Kan chokes someone, draw Kan choking the other person, never Kan holding his own throat.',
+    'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',
     cast.length > 0
-      ? `Cast: Kan${cast.map((name) => `, ${name}`).join('')}.`
-      : 'Cast: Kan is alone. No other person may appear in the image.',
-    `Visual subject: ${visualScene.slice(0, 500)}`,
+      ? `Named people in this scene besides Kan: ${cast.join(', ')}.`
+      : 'Named people in this scene besides Kan: none — any other person must come from the ACTION text itself.',
     'Style: Naruto-inspired anime, gritty realism, moody lighting, rain, red accents, high detail.',
     'Final reminder: no text, lettering, captions, or watermarks in the image.',
   );

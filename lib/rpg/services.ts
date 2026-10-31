@@ -90,6 +90,13 @@ export function convertInlineDiff(
     diff.state = { ...diff.state, mood: block.mood.trim().slice(0, 60) };
   }
 
+  if (typeof block.image_brief === 'string' && block.image_brief.trim()) {
+    diff.state = {
+      ...diff.state,
+      imageBrief: block.image_brief.trim().slice(0, 240),
+    };
+  }
+
   if (typeof block.world_description === 'string' && block.world_description.trim()) {
     diff.state = {
       ...diff.state,
@@ -102,6 +109,10 @@ export function convertInlineDiff(
         .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
         .slice(0, 8)
     : [];
+
+  if (charactersPresent.length > 0) {
+    diff.state = { ...diff.state, sceneCast: charactersPresent };
+  }
 
   if (sceneEnded || charactersPresent.length > 0) {
     diff.scene = {
@@ -427,6 +438,16 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   if (Array.isArray(diff.scene?.entities) && diff.scene.entities.length > 0) {
     next = recordPresence(next, diff.scene.entities);
+    next = {
+      ...next,
+      state: {
+        ...next.state,
+        sceneCast:
+          Array.isArray(next.state.sceneCast) && next.state.sceneCast.length > 0
+            ? next.state.sceneCast.slice(0, 6)
+            : diff.scene.entities.slice(0, 6),
+      },
+    };
   }
 
   next = applyClockTick(next, diff);
@@ -888,6 +909,14 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.locationKind = state.locationKind ?? classifyLocation(next.state.location);
   } else if (state.locationKind) {
     next.state.locationKind = state.locationKind;
+  }
+
+  if (typeof state.imageBrief === 'string' && state.imageBrief.trim()) {
+    next.state.imageBrief = state.imageBrief.trim().slice(0, 240);
+  }
+
+  if (Array.isArray(state.sceneCast)) {
+    next.state.sceneCast = state.sceneCast.filter(Boolean).slice(0, 6);
   }
 
   if (state.inStoryDate || (state.advanceDays !== undefined && state.advanceDays > 0)) {

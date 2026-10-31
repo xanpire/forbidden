@@ -23,6 +23,7 @@ import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, CANON_VERSION, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
+import { detectNarrationClock } from '../lib/rpg/timeparse';
 import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
 import {
   appendStoryMessage,
@@ -577,7 +578,7 @@ describe('encounter frequency and image cast', () => {
 
     expect(prompt).toContain('must NOT appear now');
     expect(prompt).toContain('Itachi Uchiha');
-    expect(prompt).toContain('only the cast listed below may appear');
+    expect(prompt).toContain('Only the people named in the ACTION may appear');
   });
 
   test('masked man aliases stay one entity', () => {
@@ -1204,7 +1205,37 @@ describe('world news and couriers', () => {
       },
     };
 
-    db = applyCanonMarks(db, ['gaara-captured'], []);
+    db = {
+      ...db,
+      events: [
+        ...db.events,
+        {
+          id: 'event_canon_gaara-captured',
+          chapter: 1,
+          scene: 'Canon event',
+          inStoryDate: db.state.inStoryDate,
+          summary: 'Gaara captured: the Shukaku is extracted.',
+          importance: 5,
+          tags: ['canon'],
+          pinned: true,
+          sourceLogId: null,
+          createdAt: 1,
+        },
+      ],
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: CANON_VERSION,
+          baselineDate: db.state.inStoryDate,
+          baselineTurn: 0,
+          completed: ['gaara-captured'],
+          active: [],
+          engaged: [],
+          expired: [],
+          heard: {},
+        },
+      },
+    };
     const news = unheardCanonNews(db, 5);
     expect(news.some((n) => n.milestoneId === 'gaara-captured')).toBe(true);
 
@@ -1222,7 +1253,37 @@ describe('world news and couriers', () => {
 
   test('news block appears in prompt with courier channel', () => {
     let db = loadSave();
-    db = applyCanonMarks(db, ['gaara-captured'], []);
+    db = {
+      ...db,
+      events: [
+        ...db.events,
+        {
+          id: 'event_canon_gaara-captured',
+          chapter: 1,
+          scene: 'Canon event',
+          inStoryDate: db.state.inStoryDate,
+          summary: 'Gaara captured: the Shukaku is extracted.',
+          importance: 5,
+          tags: ['canon'],
+          pinned: true,
+          sourceLogId: null,
+          createdAt: 1,
+        },
+      ],
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: CANON_VERSION,
+          baselineDate: db.state.inStoryDate,
+          baselineTurn: 0,
+          completed: ['gaara-captured'],
+          active: [],
+          engaged: [],
+          expired: [],
+          heard: {},
+        },
+      },
+    };
     const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
     const dynamic = prompt.messages[1].content;
 
@@ -1233,8 +1294,100 @@ describe('world news and couriers', () => {
   test('heard news disappears from the prompt queue', () => {
     let db = loadSave();
     db = applyCanonMarks(db, ['gaara-captured'], []);
-    db = markNewsHeard(db, [{ id: 'gaara-captured', from: 'a traveling merchant' }]);
     const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
     expect(prompt.messages[1].content).not.toContain('NEWS & RUMORS');
+  });
+});
+
+describe('narration clock parsing', () => {
+  const current = { year: 13, month: 10, day: 4, timeOfDay: 'night' as const };
+
+  test('detects explicit dates and advances to them', () => {
+    const parsed = detectNarrationClock(
+      'By the time full darkness falls on the fifth of October, the gate is close.',
+      current
+    );
+    expect(parsed.days).toBe(1);
+    expect(parsed.explicitDate?.day).toBe(5);
+    expect(parsed.timeOfDay).toBe('night');
+  });
+
+  test('detects elapsed days', () => {
+    expect(detectNarrationClock('Two days later, they reached the quarry.', current).days).toBe(2);
+    expect(detectNarrationClock('They traveled for three days across the ridge.', current).days).toBe(3);
+    expect(detectNarrationClock('A week passed before the rain stopped.', current).days).toBe(7);
+  });
+
+  test('ignores past, distance and future phrasing', () => {
+    expect(detectNarrationClock('Three nights of flight had hollowed him out.', current).days).toBe(0);
+    expect(detectNarrationClock('The contract was signed four months ago.', current).days).toBe(0);
+    expect(detectNarrationClock('The graves will be watched for a week.', current).days).toBe(0);
+    expect(detectNarrationClock('It was a two-day march to the quarry.', current).days).toBe(0);
+  });
+
+  test('detects the ending time of day without moving the date', () => {
+    const dusk = detectNarrationClock('Dusk settles over the roofs. It is evening now.', current);
+    expect(dusk.timeOfDay).toBe('evening');
+    expect(dusk.days).toBe(0);
+
+    const dawn = detectNarrationClock('By next dawn, they would cross the border.', current);
+    expect(dawn.days).toBeGreaterThanOrEqual(1);
+    expect(dawn.timeOfDay).toBe('morning');
+  });
+});
+
+describe('style guard and image brief', () => {
+  test('style guard flags overused words', () => {
+    let db = loadSave();
+    for (let i = 0; i < 4; i += 1) {
+      db = appendStoryMessage(
+        db,
+        'assistant',
+        'The cedar creaked. The smell of ozone drifted through the cedar shadows, and the ozone bit at his throat.',
+        'm',
+        0,
+        0
+      );
+    }
+
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const dynamic = prompt.messages[1].content;
+    expect(dynamic).toContain('STYLE GUARD');
+    expect(dynamic.toLowerCase()).toContain('cedar');
+    expect(dynamic.toLowerCase()).toContain('ozone');
+  });
+
+  test('image prompt follows the action brief and live cast', () => {
+    let db = loadSave();
+    db = applyTurnDiff(db, {
+      state: {
+        imageBrief:
+          'Kan chokes a Stone ninja from behind at the quarry gate; the ninja\'s face reddens.',
+        sceneCast: ['Itachi Uchiha'],
+      },
+    });
+
+    const prompt = buildSceneImagePrompt(db, []);
+
+    expect(prompt).toContain('ACTION (depict this exactly)');
+    expect(prompt).toContain('chokes a Stone ninja');
+    expect(prompt).toContain('NEVER depict Kan as the victim');
+    expect(prompt).toContain('Named people in this scene besides Kan: Itachi Uchiha');
+    expect(prompt).not.toContain('Kan is alone');
+  });
+
+  test('upcoming world rumors are shown before they happen', () => {
+    let db = loadSave();
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const dynamic = prompt.messages[1].content;
+
+    expect(dynamic).toContain("RUMORS OF WHAT'S COMING");
+    expect(dynamic).toContain("Izumi Uchiha's funeral");
+  });
+
+  test('narrated canon completion is marked witnessed', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['kan-joins-akatsuki'], []);
+    expect(db.state.canonProgress?.heard?.['event_canon_kan-joins-akatsuki']?.from).toBe('witnessed');
   });
 });

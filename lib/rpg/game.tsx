@@ -43,9 +43,11 @@ import {
   rollD20,
   storyMessagesSinceLastSummary,
   summarizeScene,
+  trimToSentence,
   summarizeTimeSkip,
 } from './services';
-import { daysBetween } from './calendar';
+import { daysBetween, shiftDate } from './calendar';
+import { detectNarrationClock } from './timeparse';
 import type {
   AppDatabase,
   BondRecord,
@@ -55,6 +57,16 @@ import type {
   ThreadRecord,
   TurnDiff,
 } from './types';
+
+function endsMidSentence(text: string) {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return false;
+  }
+
+  return !/[.!?…](?:["'”’)]+)?$/.test(trimmed);
+}
 
 type GameContextValue = {
   db: AppDatabase | null;
@@ -192,7 +204,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
               assistantMessage,
             });
 
-        let next = extraction ? applyTurnDiff(currentDb, extraction) : currentDb;
+        const clock = detectNarrationClock(assistantMessage, currentDb.state.inStoryDate);
+        let effectiveDiff = extraction;
+
+        if (clock.days > 0 || clock.timeOfDay || clock.explicitDate) {
+          const reportedDays = extraction?.state?.advanceDays ?? 0;
+          const merged = { ...(extraction ?? {}) };
+          merged.state = {
+            ...(merged.state ?? {}),
+            advanceDays: Math.max(reportedDays, clock.days),
+            timeOfDay: clock.timeOfDay ?? merged.state?.timeOfDay,
+            inStoryDate:
+              clock.explicitDate &&
+              (!merged.state?.inStoryDate ||
+                daysBetween(currentDb.state.inStoryDate, clock.explicitDate) >= 0)
+                ? clock.explicitDate
+                : merged.state?.inStoryDate,
+          };
+          effectiveDiff = merged;
+        }
+
+        let next = effectiveDiff ? applyTurnDiff(currentDb, effectiveDiff) : currentDb;
 
         const relays = extraction?.newsRelayed ?? [];
 
@@ -203,6 +235,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
           extraction?.canonPassed ?? []
         );
         next = markNewsHeard(next, relays);
+
+        if (clock.days > 0 && daysBetween(currentDb.state.inStoryDate, next.state.inStoryDate) < clock.days) {
+          next = {
+            ...next,
+            state: {
+              ...next.state,
+              inStoryDate: {
+                ...shiftDate(currentDb.state.inStoryDate, clock.days),
+                timeOfDay:
+                  clock.timeOfDay ?? next.state.inStoryDate.timeOfDay,
+              },
+            },
+          };
+        }
+
         next = advanceCanon(next);
 
         if (relays.length > 0) {
@@ -414,16 +461,51 @@ export function GameProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        const { narration, inlineDiff } = splitNarrationAndDiff(result.text);
-        const { diff: inlineTurnDiff, imageWorthy } = convertInlineDiff(inlineDiff);
+        let fullText = result.text;
+        let promptTokens = result.promptTokens;
+        let completionTokens = result.completionTokens;
+
+        if (result.finishReason === 'length') {
+          try {
+            const continuation = await streamChatCompletion({
+              apiKey: activeKey,
+              model: withUser.settings.narrationModel,
+              messages: [
+                ...prompt.messages,
+                { role: 'assistant', content: fullText },
+                {
+                  role: 'user',
+                  content:
+                    'Continue from the exact cut-off point. Finish the sentence and the turn, then output the state JSON block as instructed.',
+                },
+              ],
+              temperature: withUser.settings.temperature,
+              maxTokens: 700,
+              signal: controller.signal,
+              onDelta: () => {},
+            });
+
+            fullText = `${fullText}${continuation.text}`;
+            promptTokens += continuation.promptTokens;
+            completionTokens += continuation.completionTokens;
+          } catch {
+            // Keep the original reply if the continuation fails.
+          }
+        }
+
+        const split = splitNarrationAndDiff(fullText);
+        const narration = endsMidSentence(split.narration)
+          ? trimToSentence(split.narration)
+          : split.narration;
+        const { diff: inlineTurnDiff, imageWorthy } = convertInlineDiff(split.inlineDiff);
 
         const withAssistant = appendStoryMessage(
           withUser,
           'assistant',
           narration,
           withUser.settings.narrationModel,
-          result.promptTokens,
-          result.completionTokens
+          promptTokens,
+          completionTokens
         );
 
         const saved =
