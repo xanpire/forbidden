@@ -20,11 +20,11 @@ import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from 
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, CANON_VERSION, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
-import { inferScenePace, resolveElapsedSeconds } from '../lib/rpg/pacing';
+import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
 import {
   appendStoryMessage,
@@ -1497,5 +1497,77 @@ describe('scene pacing and the clock', () => {
     expect(wake.day).toBe(5);
     expect(wake.hour).toBe(7);
     expect(timeOfDayOf(wake)).toBe('morning');
+  });
+});
+
+describe('canon + clock integration', () => {
+  test('milestones open exactly on their real-calendar date', () => {
+    let db = loadSave();
+    db = {
+      ...db,
+      state: {
+        ...db.state,
+        canonProgress: {
+          version: CANON_VERSION,
+          baselineDate: { year: 13, month: 10, day: 1, hour: 22, minute: 0, second: 0 },
+          baselineTurn: 0,
+          completed: [],
+          active: [],
+          engaged: [],
+          expired: [],
+          heard: {},
+        },
+      },
+      rawLog: Array.from({ length: 12 }, (_, i) => ({
+        ...db.rawLog[0],
+        id: `m_${i}`,
+        kind: 'story' as const,
+        role: 'assistant' as const,
+        content: 'x',
+        createdAt: i,
+      })),
+    };
+
+    const before = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 5, hour: 22, minute: 0, second: 0 } } });
+    expect(before.state.canonProgress?.completed).not.toContain('izumi-funeral');
+
+    const onDay = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 6, hour: 22, minute: 0, second: 0 } } });
+    expect(onDay.state.canonProgress?.completed).toContain('izumi-funeral');
+  });
+
+  test('completed encounters are not listed as active, personal ones are', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['kan-joins-akatsuki'], []);
+    expect(activeCanonMilestones(db).some((m) => m.id === 'kan-joins-akatsuki')).toBe(false);
+
+    const engaged = applyCanonMarks(db, [], ['masked-man-audience']);
+    expect(activeCanonMilestones(engaged).some((m) => m.id === 'masked-man-audience')).toBe(true);
+  });
+
+  test('combat blocks date jumps but allows the clock to move forward', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
+
+    const fight = resolveTurnClock({
+      reportedSeconds: 2 * 86400,
+      detected: {
+        elapsedSeconds: 2 * 86400,
+        explicitDate: { year: 13, month: 10, day: 6, hour: 22, minute: 0, second: 0 },
+        clock: { hour: 20, minute: 0 },
+      },
+      pace: 'combat',
+      sceneEnded: false,
+      current,
+    });
+
+    expect(fight.elapsedSeconds).toBe(600);
+    expect(fight.explicitDate).toBeUndefined();
+    expect(fight.clock).toEqual({ hour: 20, minute: 0 });
+  });
+
+  test('scenePace survives an export/import round trip', () => {
+    let db = loadSave();
+    db = applyTurnDiff(db, { state: { scenePace: 'travel' } });
+    const round = normalizeDatabase(JSON.parse(JSON.stringify(db)));
+    expect(round.state.scenePace).toBe('travel');
   });
 });

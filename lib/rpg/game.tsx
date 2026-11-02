@@ -48,7 +48,7 @@ import {
 } from './services';
 import { daysBetween } from './calendar';
 import { detectNarrationTime } from './timeparse';
-import { inferScenePace, resolveElapsedSeconds } from './pacing';
+import { inferScenePace, resolveTurnClock } from './pacing';
 import type {
   AppDatabase,
   BondRecord,
@@ -209,22 +209,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
         const pace = extraction?.state?.scenePace ?? inferScenePace(assistantMessage);
         const sceneEnded = extraction?.scene?.ended ?? false;
-        const elapsedSeconds = resolveElapsedSeconds({
+        const clock = resolveTurnClock({
           reportedSeconds,
-          detectedSeconds: parsedTime.elapsedSeconds,
+          detected: parsedTime,
           pace,
           sceneEnded,
+          current: currentDb.state.inStoryDate,
         });
 
         let effectiveDiff = extraction;
 
-        if (elapsedSeconds > 0 || parsedTime.clock || parsedTime.explicitDate) {
+        if (clock.elapsedSeconds > 0 || clock.clock || clock.explicitDate || pace) {
           const merged = { ...(extraction ?? {}) };
           merged.state = {
             ...(merged.state ?? {}),
-            elapsedSeconds,
-            clockTime: parsedTime.clock ?? merged.state?.clockTime,
-            inStoryDate: parsedTime.explicitDate ?? merged.state?.inStoryDate,
+            elapsedSeconds: clock.elapsedSeconds,
+            scenePace: merged.state?.scenePace ?? pace,
+            clockTime: clock.clock ?? merged.state?.clockTime,
+            inStoryDate: clock.explicitDate ?? merged.state?.inStoryDate,
           };
           effectiveDiff = merged;
         }
@@ -455,7 +457,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
         let promptTokens = result.promptTokens;
         let completionTokens = result.completionTokens;
 
-        if (result.finishReason === 'length') {
+        const firstSplit = splitNarrationAndDiff(fullText);
+        const likelyCut =
+          result.finishReason === 'length' ||
+          (!firstSplit.inlineDiff && endsMidSentence(firstSplit.narration));
+
+        if (likelyCut) {
           try {
             const continuation = await streamChatCompletion({
               apiKey: activeKey,

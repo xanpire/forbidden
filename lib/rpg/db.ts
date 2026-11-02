@@ -563,6 +563,14 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
           },
     chapter: state.chapter ?? seeded.chapter,
     scene: state.scene ?? seeded.scene,
+    scenePace:
+      state.scenePace === 'combat' ||
+      state.scenePace === 'chase' ||
+      state.scenePace === 'conversation' ||
+      state.scenePace === 'travel' ||
+      state.scenePace === 'downtime'
+        ? state.scenePace
+        : undefined,
     imageBrief:
       typeof state.imageBrief === 'string' ? state.imageBrief.slice(0, 240) : undefined,
     sceneCast: Array.isArray(state.sceneCast)

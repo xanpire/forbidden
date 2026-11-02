@@ -1960,8 +1960,9 @@ export function activeCanonMilestones(db: AppDatabase): CanonMilestone[] {
 
   const progress = normalizeProgress(db);
 
-  return CANON_MILESTONES.filter((milestone) =>
-    progress.active.includes(milestone.id)
+  return CANON_MILESTONES.filter(
+    (milestone) =>
+      progress.active.includes(milestone.id) && !progress.completed.includes(milestone.id)
   );
 }
 
