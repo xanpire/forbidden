@@ -14,7 +14,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
-import { advanceSeconds, daysBetween, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
+import { advanceSeconds, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
@@ -1340,9 +1340,10 @@ describe('clock arithmetic', () => {
     expect(plusMinutes.minute).toBe(1);
     expect(plusMinutes.second).toBe(0);
 
+    // October has 31 days: Oct 4 + 27 days = Oct 31.
     const plusDays = advanceSeconds(base, 86400 * 27);
-    expect(plusDays.month).toBe(11);
-    expect(plusDays.day).toBe(1);
+    expect(plusDays.month).toBe(10);
+    expect(plusDays.day).toBe(31);
 
     const plusYear = advanceSeconds(base, 86400 * 365);
     expect(plusYear.year).toBe(14);
@@ -1354,6 +1355,36 @@ describe('clock arithmetic', () => {
     expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 8, minute: 0 })).toBe('morning');
     expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 19, minute: 0 })).toBe('evening');
     expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 2, minute: 0 })).toBe('night');
+  });
+
+  test('months have their real lengths and leap years work', () => {
+    expect(daysInMonth(13, 1)).toBe(31);
+    expect(daysInMonth(13, 6)).toBe(30);
+    expect(daysInMonth(13, 9)).toBe(30);
+    expect(daysInMonth(13, 10)).toBe(31);
+    expect(daysInMonth(13, 12)).toBe(31);
+    expect(daysInMonth(15, 2)).toBe(28);
+    expect(daysInMonth(16, 2)).toBe(29);
+    expect(daysInMonth(100, 2)).toBe(28);
+    expect(daysInMonth(400, 2)).toBe(29);
+
+    const octoberEnd = advanceSeconds({ year: 13, month: 10, day: 31, hour: 23, minute: 59, second: 0 }, 120);
+    expect(octoberEnd.month).toBe(11);
+    expect(octoberEnd.day).toBe(1);
+    expect(octoberEnd.hour).toBe(0);
+    expect(octoberEnd.minute).toBe(1);
+
+    const januaryEnd = advanceSeconds({ year: 13, month: 1, day: 31, hour: 12, minute: 0, second: 0 }, 86400);
+    expect(januaryEnd.month).toBe(2);
+    expect(januaryEnd.day).toBe(1);
+
+    const commonFeb = advanceSeconds({ year: 15, month: 2, day: 28, hour: 12, minute: 0, second: 0 }, 86400);
+    expect(commonFeb.month).toBe(3);
+    expect(commonFeb.day).toBe(1);
+
+    const leapFeb = advanceSeconds({ year: 16, month: 2, day: 28, hour: 12, minute: 0, second: 0 }, 86400);
+    expect(leapFeb.month).toBe(2);
+    expect(leapFeb.day).toBe(29);
   });
 
   test('pacing caps keep fights and travel honest', () => {

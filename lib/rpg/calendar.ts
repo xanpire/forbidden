@@ -10,7 +10,7 @@ export const DEFAULT_DATE: CalendarDate = {
 };
 
 const MONTHS_PER_YEAR = 12;
-const DAYS_PER_MONTH = 30;
+const MONTH_DAYS_COMMON = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
 const SECONDS_PER_DAY = 86400;
@@ -106,29 +106,57 @@ export function dateSortValue(date: CalendarDate) {
   );
 }
 
+export function isLeapYear(year: number) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+export function daysInMonth(year: number, month: number) {
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28;
+  }
+
+  return MONTH_DAYS_COMMON[Math.max(0, Math.min(11, month - 1))];
+}
+
+// Proleptic Gregorian conversion (Howard Hinnant's civil-days algorithm).
+export function daysFromCivil(year: number, month: number, day: number) {
+  const adjustedYear = year - (month <= 2 ? 1 : 0);
+  const era = Math.floor(adjustedYear / 400);
+  const yearOfEra = adjustedYear - era * 400;
+  const dayOfYear = Math.floor((153 * (month + (month > 2 ? -3 : 9)) + 2) / 5) + day - 1;
+  const dayOfEra =
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    dayOfYear;
+
+  return era * 146097 + dayOfEra - 719468;
+}
+
+export function civilFromDays(value: number) {
+  const z = value + 719468;
+  const era = Math.floor(z / 146097);
+  const dayOfEra = z - era * 146097;
+  const yearOfEra = Math.floor(
+    (dayOfEra - Math.floor(dayOfEra / 1460) + Math.floor(dayOfEra / 36524) - Math.floor(dayOfEra / 146096)) /
+      365
+  );
+  const year = yearOfEra + era * 400;
+  const dayOfYear =
+    dayOfEra - (365 * yearOfEra + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100));
+  const mp = Math.floor((5 * dayOfYear + 2) / 153);
+  const day = dayOfYear - Math.floor((153 * mp + 2) / 5) + 1;
+  const month = mp + (mp < 10 ? 3 : -9);
+
+  return { year: year + (month <= 2 ? 1 : 0), month, day };
+}
+
 function dateToDayNumber(date: CalendarDate) {
-  return date.year * MONTHS_PER_YEAR * DAYS_PER_MONTH + date.month * DAYS_PER_MONTH + date.day;
+  return daysFromCivil(date.year, date.month, date.day);
 }
 
 function dayNumberToDate(value: number) {
-  let total = value;
-  let year = Math.floor(total / (MONTHS_PER_YEAR * DAYS_PER_MONTH));
-  let remainder = total % (MONTHS_PER_YEAR * DAYS_PER_MONTH);
-  let month = Math.floor(remainder / DAYS_PER_MONTH);
-  remainder %= DAYS_PER_MONTH;
-  let day = remainder;
-
-  if (day === 0) {
-    day = DAYS_PER_MONTH;
-    month -= 1;
-  }
-
-  if (month === 0) {
-    month = MONTHS_PER_YEAR;
-    year -= 1;
-  }
-
-  return { year, month, day };
+  return civilFromDays(value);
 }
 
 export function shiftDate(date: CalendarDate, days: number): CalendarDate {
@@ -209,9 +237,12 @@ export function normalizeDate(
     night: 22,
   };
 
-  const year = Number.isFinite(value.year) ? Number(value.year) : fallback.year;
-  const month = Number.isFinite(value.month) ? Number(value.month) : fallback.month;
-  const day = Number.isFinite(value.day) ? Number(value.day) : fallback.day;
+  const year = Number.isFinite(value.year) ? Math.round(Number(value.year)) : fallback.year;
+  const month = Number.isFinite(value.month)
+    ? Math.max(1, Math.min(12, Math.round(Number(value.month))))
+    : fallback.month;
+  const rawDay = Number.isFinite(value.day) ? Math.round(Number(value.day)) : fallback.day;
+  const day = Math.max(1, Math.min(daysInMonth(year, month), rawDay));
   const hour = Number.isFinite(value.hour)
     ? clampHour(Number(value.hour))
     : legacyHours[legacy.timeOfDay ?? ''] ?? fallback.hour;

@@ -1,4 +1,4 @@
-import { advanceSeconds, shiftDate } from './calendar';
+import { advanceSeconds, daysInMonth, shiftDate } from './calendar';
 import type { CalendarDate } from './types';
 
 export type ParsedTime = {
@@ -80,8 +80,6 @@ const ORDINAL_WORDS: Record<string, number> = {
   thirtieth: 30,
   'thirty-first': 31,
 };
-
-const MONTH_DAYS = [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30];
 
 const UNIT_SECONDS: Record<string, number> = {
   second: 1,
@@ -194,11 +192,16 @@ function explicitDate(text: string, current: CalendarDate): CalendarDate | undef
     return undefined;
   }
 
-  const maxDay = MONTH_DAYS[month - 1] ?? 30;
-  const safeDay = Math.min(Math.max(1, day), maxDay);
   let year = current.year;
 
-  if (month < current.month || (month === current.month && safeDay < current.day)) {
+  if (month < current.month) {
+    year += 1;
+  }
+
+  const maxDay = daysInMonth(year, month);
+  const safeDay = Math.min(Math.max(1, day), maxDay);
+
+  if (month === current.month && safeDay < current.day) {
     year += 1;
   }
 

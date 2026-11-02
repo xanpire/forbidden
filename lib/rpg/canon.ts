@@ -1,4 +1,4 @@
-import { daysBetween, dateSortValue, shiftDate } from './calendar';
+import { daysBetween, daysFromCivil, dateSortValue, shiftDate } from './calendar';
 import type { AppDatabase, CalendarDate, ThreadType } from './types';
 
 export type CanonProgress = {
@@ -1454,14 +1454,7 @@ const AUTO_MILESTONE_IDS = CANON_MILESTONES.filter(
 ).map((milestone) => milestone.id);
 
 function windowKey(window: { year: number; month: number; day?: number }) {
-  const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  let daysBefore = 0;
-
-  for (let month = 1; month < window.month; month += 1) {
-    daysBefore += days[month - 1] ?? 30;
-  }
-
-  return window.year * 366 + daysBefore + (window.day ?? 1);
+  return daysFromCivil(window.year, window.month, window.day ?? 1);
 }
 
 function dateWindowKey(date: CalendarDate) {
