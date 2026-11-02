@@ -5,6 +5,7 @@ import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
 import { CANON_MILESTONES, CANON_VERSION } from './canon';
 import { normalizeJutsuNature } from './jutsu';
+import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
 import type { AppDatabase, MemoryIndex } from './types';
 
@@ -394,7 +395,6 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
       canonProgress: db.settings?.canonProgress ?? DEFAULT_SETTINGS.canonProgress,
-      autoAdvanceTime: db.settings?.autoAdvanceTime ?? DEFAULT_SETTINGS.autoAdvanceTime,
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>
@@ -524,7 +524,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
       state.locationKind === 'structure'
         ? state.locationKind
         : undefined,
-    inStoryDate: state.inStoryDate ?? seeded.inStoryDate,
+    inStoryDate: normalizeDate(state.inStoryDate, seeded.inStoryDate),
     turnsWithoutTimeChange:
       typeof state.turnsWithoutTimeChange === 'number'
         ? Math.max(0, Math.round(state.turnsWithoutTimeChange))

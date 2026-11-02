@@ -7,7 +7,7 @@ import { AppBackground } from '@/components/AppBackground';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { SurfaceCard } from '@/components/SurfaceCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
-import { formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
+import { dateSortValue, formatShortDate, formatStoryDate } from '@/lib/rpg/calendar';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { useGame } from '@/lib/rpg/game';
 import type { EventRecord, ThreadRecord } from '@/lib/rpg/types';
@@ -81,13 +81,7 @@ export default function JournalScreen() {
             event.inStoryDate.day <=
             nowKey
       )
-      .sort(
-        (a, b) =>
-          b.inStoryDate.year * 10000 +
-          b.inStoryDate.month * 100 +
-          b.inStoryDate.day -
-          (a.inStoryDate.year * 10000 + a.inStoryDate.month * 100 + a.inStoryDate.day)
-      )
+      .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
       .slice(0, 40);
   }, [db]) as EventRecord[];
 

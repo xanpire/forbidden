@@ -46,8 +46,9 @@ import {
   trimToSentence,
   summarizeTimeSkip,
 } from './services';
-import { daysBetween, shiftDate } from './calendar';
-import { detectNarrationClock } from './timeparse';
+import { daysBetween } from './calendar';
+import { detectNarrationTime } from './timeparse';
+import { inferScenePace, resolveElapsedSeconds } from './pacing';
 import type {
   AppDatabase,
   BondRecord,
@@ -204,22 +205,26 @@ export function GameProvider({ children }: { children: ReactNode }) {
               assistantMessage,
             });
 
-        const clock = detectNarrationClock(assistantMessage, currentDb.state.inStoryDate);
+        const parsedTime = detectNarrationTime(assistantMessage, currentDb.state.inStoryDate);
+        const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
+        const pace = extraction?.state?.scenePace ?? inferScenePace(assistantMessage);
+        const sceneEnded = extraction?.scene?.ended ?? false;
+        const elapsedSeconds = resolveElapsedSeconds({
+          reportedSeconds,
+          detectedSeconds: parsedTime.elapsedSeconds,
+          pace,
+          sceneEnded,
+        });
+
         let effectiveDiff = extraction;
 
-        if (clock.days > 0 || clock.timeOfDay || clock.explicitDate) {
-          const reportedDays = extraction?.state?.advanceDays ?? 0;
+        if (elapsedSeconds > 0 || parsedTime.clock || parsedTime.explicitDate) {
           const merged = { ...(extraction ?? {}) };
           merged.state = {
             ...(merged.state ?? {}),
-            advanceDays: Math.max(reportedDays, clock.days),
-            timeOfDay: clock.timeOfDay ?? merged.state?.timeOfDay,
-            inStoryDate:
-              clock.explicitDate &&
-              (!merged.state?.inStoryDate ||
-                daysBetween(currentDb.state.inStoryDate, clock.explicitDate) >= 0)
-                ? clock.explicitDate
-                : merged.state?.inStoryDate,
+            elapsedSeconds,
+            clockTime: parsedTime.clock ?? merged.state?.clockTime,
+            inStoryDate: parsedTime.explicitDate ?? merged.state?.inStoryDate,
           };
           effectiveDiff = merged;
         }
@@ -235,21 +240,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
           extraction?.canonPassed ?? []
         );
         next = markNewsHeard(next, relays);
-
-        if (clock.days > 0 && daysBetween(currentDb.state.inStoryDate, next.state.inStoryDate) < clock.days) {
-          next = {
-            ...next,
-            state: {
-              ...next.state,
-              inStoryDate: {
-                ...shiftDate(currentDb.state.inStoryDate, clock.days),
-                timeOfDay:
-                  clock.timeOfDay ?? next.state.inStoryDate.timeOfDay,
-              },
-            },
-          };
-        }
-
         next = advanceCanon(next);
 
         if (relays.length > 0) {

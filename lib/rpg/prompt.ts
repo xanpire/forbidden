@@ -42,8 +42,9 @@ EXECUTIVE RULES
 
 TIME IS STRICT
 - The TIME block is the only source of the date. Never write a calendar date or day number yourself ("the fifth of October"). Use relative time: "the next day", "two nights later".
-- When a new day begins in your narration, you MUST set days_passed to the number of days that actually elapsed.
-- time_of_day must be the time the scene ENDS in: morning, afternoon, evening, or night. If the scene crosses into night, say night.
+- Report how much time passed with "time": { "elapsed": number, "unit": "seconds" | "minutes" | "hours" | "days" }. If a new day begins, the elapsed time must cover it.
+- Use "clock_time": "HH:MM" only when the story fixes an exact hour. Otherwise the app advances the clock by the elapsed time and you read the new time from the next TIME block.
+- Never state a clock time in prose that contradicts the TIME block.
 
 CANON TRUTH
 - Never invent a canon event, funeral, death, battle, exam, summit, or date. If it is not in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts, it has not happened yet.
@@ -88,7 +89,8 @@ STATE OUTPUT (MANDATORY)
 \`\`\`json
 {
   "state": { "location": string, "location_kind": "settlement"|"road"|"wilderness"|"structure", "canon_point": string, "inventory_and_jutsu_changes": string[] },
-  "time": { "days_passed": number, "time_of_day": "morning" | "afternoon" | "evening" | "night" },
+  "time": { "elapsed": number, "unit": "seconds" | "minutes" | "hours" | "days", "clock_time": "HH:MM" },
+  "scene_pace": "combat" | "chase" | "conversation" | "travel" | "downtime",
   "mood": string,
   "world_description": string,
   "jutsu_used": [{ "name": string, "user": string, "chakra_nature": string, "effect": string, "visual": string }],
@@ -106,7 +108,8 @@ STATE OUTPUT (MANDATORY)
   "image_worthy": boolean
 }
 \`\`\`
-- time: days_passed is 0 if the scene continues immediately, 1 for a scene break, more for travel or skips. Sleeping through the night means days_passed 1 and time_of_day "morning".
+- time: report how much time actually passed with elapsed + unit. One exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. clock_time is optional, only when the story fixes an exact hour.
+- scene_pace: label the turn — combat, chase, conversation, travel, or downtime. In a fight Kan controls every move, so never skip time around him.
 - Set state.location whenever Kan moves; always pair it with location_kind (settlement, road, wilderness, structure).
 - characters_present lists ONLY characters physically in the scene this beat, never people merely mentioned (omit when Kan is alone).
 - image_brief: one short sentence naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Write it only for visually striking beats; keep it to 30 words.
@@ -128,7 +131,7 @@ Allowed top-level fields:
     "inventoryAdded": string[],
     "inventoryRemoved": string[],
     "location": string,
-    "inStoryDate": { "year": number, "month": number, "day": number, "timeOfDay": "morning" | "afternoon" | "evening" | "night" },
+    "elapsedSeconds": number, "clockTime": { "hour": number, "minute": number }, "scenePace": "combat" | "chase" | "conversation" | "travel" | "downtime",
     "canonPoint": string,
     "chapter": number,
     "scene": string
@@ -143,7 +146,7 @@ Allowed top-level fields:
     { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean, "relationship": "stranger" | "friendly" | "close" | "romantic interest" | "partner" | "rejected", "attraction": "none" | "warm" | "strong", "romanceNote": string }
   ],
   "facts": [
-    { "action": "add" | "end", "type": "death" | "injury" | "secret" | "knowledge" | "membership" | "possession" | "event" | "other", "text": string, "subject": string, "whoKnows": string[], "validFrom": { "year": number, "month": number, "day": number, "timeOfDay": "morning" | "afternoon" | "evening" | "night" } }
+    { "action": "add" | "end", "type": "death" | "injury" | "secret" | "knowledge" | "membership" | "possession" | "event" | "other", "text": string, "subject": string, "whoKnows": string[], "validFrom": { "year": number, "month": number, "day": number, "hour": number, "minute": number } }
   ],
   "threads": [
     { "action": "open" | "update" | "resolve", "title": string, "description": string, "type": "promise" | "debt" | "grudge" | "mystery" | "quest" | "goal" | "other", "participants": string[] }

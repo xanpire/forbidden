@@ -1,4 +1,4 @@
-import { daysBetween, shiftDate } from './calendar';
+import { daysBetween, dateSortValue, shiftDate } from './calendar';
 import type { AppDatabase, CalendarDate, ThreadType } from './types';
 
 export type CanonProgress = {
@@ -2039,7 +2039,9 @@ export function upcomingWorldMilestones(
           year: milestone.from.year,
           month: milestone.from.month,
           day: milestone.from.day ?? 1,
-          timeOfDay: 'morning',
+          hour: 8,
+          minute: 0,
+          second: 0,
         })
       ),
     }))
@@ -2050,11 +2052,7 @@ export function upcomingWorldMilestones(
 export function recentCanonEvents(db: AppDatabase, limit = 4) {
   return db.events
     .filter((event) => event.tags.includes('canon'))
-    .sort(
-      (a, b) =>
-        b.inStoryDate.year * 10000 + b.inStoryDate.month * 100 + b.inStoryDate.day -
-        (a.inStoryDate.year * 10000 + a.inStoryDate.month * 100 + a.inStoryDate.day)
-    )
+    .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
     .slice(0, limit);
 }
 

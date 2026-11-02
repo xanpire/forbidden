@@ -14,7 +14,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
-import { daysBetween } from '../lib/rpg/calendar';
+import { advanceSeconds, daysBetween, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
@@ -23,7 +23,8 @@ import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, CANON_VERSION, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
-import { detectNarrationClock } from '../lib/rpg/timeparse';
+import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
+import { inferScenePace, resolveElapsedSeconds } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
 import {
   appendStoryMessage,
@@ -284,7 +285,7 @@ describe('time progression via inline diffs', () => {
     const before = db.state.inStoryDate;
 
     const { diff } = convertInlineDiff({
-      time: { days_passed: 3, time_of_day: 'morning' },
+      time: { elapsed: 3, unit: 'days', clock_time: '08:00' },
       mood: 'Weary but resolute',
     });
 
@@ -293,7 +294,7 @@ describe('time progression via inline diffs', () => {
     db = applyTurnDiff(db, diff);
 
     expect(daysBetween(before, db.state.inStoryDate)).toBe(3);
-    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
+    expect(timeOfDayOf(db.state.inStoryDate)).toBe('morning');
     expect(db.state.mood).toBe('Weary but resolute');
   });
 
@@ -302,11 +303,11 @@ describe('time progression via inline diffs', () => {
     const before = { ...db.state.inStoryDate };
 
     db = applyTurnDiff(db, {
-      state: { timeOfDay: 'evening' },
+      state: { clockTime: { hour: 19, minute: 0 } },
     });
 
-    expect(db.state.inStoryDate.day).toBe(before.day);
-    expect(db.state.inStoryDate.timeOfDay).toBe('evening');
+    expect(db.state.inStoryDate.day).toBe(before.day + 1);
+    expect(timeOfDayOf(db.state.inStoryDate)).toBe('evening');
   });
 
   test('absolute inStoryDate from extraction still works and ages NPCs', () => {
@@ -315,7 +316,7 @@ describe('time progression via inline diffs', () => {
     const agable = db.entities.find((e) => e.type === 'character' && e.birthYear === undefined && e.age !== undefined);
 
     db = applyTurnDiff(db, {
-      state: { inStoryDate: { year: yearBefore + 1, month: 1, day: 1, timeOfDay: 'morning' } },
+      state: { inStoryDate: { year: yearBefore + 1, month: 1, day: 1, hour: 8, minute: 0 } },
     });
 
     expect(db.state.inStoryDate.year).toBe(yearBefore + 1);
@@ -408,7 +409,7 @@ describe('presence tracking and bonds ordering', () => {
 
     const { diff } = convertInlineDiff({
       characters_present: ['Itachi Uchiha'],
-      time: { days_passed: 2, time_of_day: 'morning' },
+      time: { elapsed: 2, unit: 'days', clock_time: '08:00' },
     });
 
     db = applyTurnDiff(db, diff);
@@ -417,7 +418,7 @@ describe('presence tracking and bonds ordering', () => {
 
     expect(itachi?.lastSeen).toBeDefined();
     expect(itachi?.lastSeen?.day).toBe(db.state.inStoryDate.day);
-    expect(itachi?.lastSeen?.timeOfDay).toBe('morning');
+    expect(timeOfDayOf(itachi!.lastSeen!)).toBe('morning');
   });
 
   test('sleeping through the night advances exactly one day to morning', () => {
@@ -425,19 +426,20 @@ describe('presence tracking and bonds ordering', () => {
     const before = db.state.inStoryDate;
 
     const { diff } = convertInlineDiff({
-      time: { days_passed: 1, time_of_day: 'morning' },
+      time: { elapsed: 9, unit: 'hours' },
     });
 
     db = applyTurnDiff(db, diff);
 
     expect(daysBetween(before, db.state.inStoryDate)).toBe(1);
-    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
+    expect(db.state.inStoryDate.hour).toBe(7);
+    expect(timeOfDayOf(db.state.inStoryDate)).toBe('morning');
   });
 
   test('narration schema documents sleep and characters_present', () => {
     expect(NARRATION_SYSTEM).toContain('characters_present');
-    expect(NARRATION_SYSTEM).toContain('Sleeping through the night');
-    expect(NARRATION_SYSTEM).toContain('Sleeping through the night means days_passed 1');
+    expect(NARRATION_SYSTEM).toContain('elapsed');
+    expect(NARRATION_SYSTEM).toContain('scene_pace');
   });
 
   test('narration prompt does not duplicate the current action', () => {
@@ -571,7 +573,6 @@ describe('encounter frequency and image cast', () => {
 
     db = applyTurnDiff(db, {
       scene: { ended: false, entities: ['Itachi Uchiha'] },
-      state: { advanceDays: 0 },
     });
 
     const prompt = buildSceneImagePrompt(db, ['data:image/jpeg;base64,AAA']);
@@ -640,10 +641,10 @@ describe('canon scheduler', () => {
       ...db,
       state: {
         ...db.state,
-        inStoryDate: { year: 16, month: 2, day: 1, timeOfDay: 'morning' },
+        inStoryDate: { year: 16, month: 2, day: 1, hour: 8, minute: 0 },
         canonProgress: {
           version: CANON_VERSION,
-          baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
+          baselineDate: { year: 13, month: 10, day: 1, hour: 22, minute: 0 },
           baselineTurn: 0,
           completed: [],
           active: [],
@@ -698,7 +699,7 @@ describe('canon scheduler', () => {
       ...db,
       state: {
         ...db.state,
-        inStoryDate: { year: 14, month: 2, day: 1, timeOfDay: 'morning' },
+        inStoryDate: { year: 14, month: 2, day: 1, hour: 8, minute: 0 },
         canonProgress: { completed: [], active: [], engaged: [] },
       },
       events: [...db.events, ...db.events, ...db.events],
@@ -737,7 +738,7 @@ describe('canon scheduler', () => {
       ...db,
       state: {
         ...db.state,
-        inStoryDate: { year: 19, month: 9, day: 1, timeOfDay: 'night' },
+        inStoryDate: { year: 19, month: 9, day: 1, hour: 22, minute: 0 },
         canonProgress: { completed: [], active: ['itachi-hunt-naruto'], engaged: [] },
       },
     };
@@ -789,7 +790,7 @@ describe('cross-era memory and romance', () => {
     const factsBefore = db.facts.length;
 
     db = applyTurnDiff(db, {
-      state: { inStoryDate: { year: 22, month: 1, day: 1, timeOfDay: 'morning' } },
+      state: { inStoryDate: { year: 22, month: 1, day: 1, hour: 8, minute: 0 } },
       entities: [{ name: 'Itachi', role: 'Akatsuki' }],
     });
 
@@ -899,7 +900,7 @@ describe('encounter realism', () => {
         ...db.state,
         location: 'deep woods',
         locationKind: 'wilderness',
-        inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'night' },
+        inStoryDate: { ...db.state.inStoryDate, hour: 22, minute: 0 },
       },
     };
 
@@ -913,7 +914,7 @@ describe('encounter realism', () => {
         ...db.state,
         location: 'Konoha market',
         locationKind: 'settlement' as const,
-        inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'afternoon' as const },
+        inStoryDate: { ...db.state.inStoryDate, hour: 14, minute: 0 },
       },
     };
 
@@ -931,43 +932,30 @@ describe('encounter realism', () => {
   });
 });
 
-describe('clock auto-advance', () => {
-  test('advances one period after two silent turns', () => {
+describe('silent turns', () => {
+  test('the clock does not move on its own', () => {
     let db = loadSave();
     db = {
       ...db,
-      settings: { ...db.settings, autoAdvanceTime: true },
-      state: { ...db.state, inStoryDate: { ...db.state.inStoryDate, timeOfDay: 'night' }, turnsWithoutTimeChange: 0 },
-    };
-
-    db = applyTurnDiff(db, {});
-    expect(db.state.inStoryDate.timeOfDay).toBe('night');
-    expect(db.state.turnsWithoutTimeChange).toBe(1);
-
-    db = applyTurnDiff(db, {});
-    expect(db.state.inStoryDate.timeOfDay).toBe('morning');
-    expect(db.state.turnsWithoutTimeChange).toBe(0);
-
-    db = applyTurnDiff(db, { state: { timeOfDay: 'evening' } });
-    expect(db.state.inStoryDate.timeOfDay).toBe('evening');
-    expect(db.state.turnsWithoutTimeChange).toBe(0);
-  });
-
-  test('toggle off stops automatic advancement', () => {
-    let db = loadSave();
-    db = {
-      ...db,
-      settings: { ...db.settings, autoAdvanceTime: false },
       state: { ...db.state, turnsWithoutTimeChange: 0 },
     };
 
-    const before = db.state.inStoryDate.timeOfDay;
+    const before = db.state.inStoryDate;
     db = applyTurnDiff(db, {});
     db = applyTurnDiff(db, {});
     db = applyTurnDiff(db, {});
 
-    expect(db.state.inStoryDate.timeOfDay).toBe(before);
+    expect(db.state.inStoryDate).toEqual(before);
     expect(db.state.turnsWithoutTimeChange).toBe(3);
+  });
+
+  test('reporting time resets the stall counter', () => {
+    let db = loadSave();
+    db = applyTurnDiff(db, {});
+    expect(db.state.turnsWithoutTimeChange).toBe(1);
+
+    db = applyTurnDiff(db, { state: { elapsedSeconds: 60 } });
+    expect(db.state.turnsWithoutTimeChange).toBe(0);
   });
 });
 
@@ -1045,7 +1033,7 @@ describe('canon timing and migration', () => {
         ...db.state,
         canonProgress: {
           version: CANON_VERSION,
-          baselineDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' },
+          baselineDate: { year: 13, month: 10, day: 1, hour: 22, minute: 0 },
           baselineTurn: 0,
           completed: [],
           active: [],
@@ -1063,10 +1051,10 @@ describe('canon timing and migration', () => {
       })),
     };
 
-    const day1 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 1, timeOfDay: 'night' } } });
+    const day1 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 1, hour: 22, minute: 0 } } });
     expect(day1.state.canonProgress?.completed ?? []).not.toContain('izumi-funeral');
 
-    const day6 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 6, timeOfDay: 'morning' } } });
+    const day6 = advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 13, month: 10, day: 6, hour: 8, minute: 0 } } });
     expect(day6.state.canonProgress?.completed).toContain('izumi-funeral');
     expect(day6.state.canonPoint).not.toContain('buried');
   });
@@ -1300,39 +1288,80 @@ describe('world news and couriers', () => {
 });
 
 describe('narration clock parsing', () => {
-  const current = { year: 13, month: 10, day: 4, timeOfDay: 'night' as const };
+  const current = { year: 13, month: 10, day: 4, hour: 22, minute: 0, second: 0 };
 
-  test('detects explicit dates and advances to them', () => {
-    const parsed = detectNarrationClock(
+  test('detects explicit dates', () => {
+    const parsed = detectNarrationTime(
       'By the time full darkness falls on the fifth of October, the gate is close.',
       current
     );
-    expect(parsed.days).toBe(1);
     expect(parsed.explicitDate?.day).toBe(5);
-    expect(parsed.timeOfDay).toBe('night');
+
+    const applied = applyParsedTime(current, parsed);
+    expect(applied.day).toBe(5);
   });
 
-  test('detects elapsed days', () => {
-    expect(detectNarrationClock('Two days later, they reached the quarry.', current).days).toBe(2);
-    expect(detectNarrationClock('They traveled for three days across the ridge.', current).days).toBe(3);
-    expect(detectNarrationClock('A week passed before the rain stopped.', current).days).toBe(7);
+  test('detects elapsed days, hours and seconds', () => {
+    expect(detectNarrationTime('Two days later, they reached the quarry.', current).elapsedSeconds).toBe(2 * 86400);
+    expect(detectNarrationTime('They traveled for three days across the ridge.', current).elapsedSeconds).toBe(3 * 86400);
+    expect(detectNarrationTime('A week passed before the rain stopped.', current).elapsedSeconds).toBe(7 * 86400);
+    expect(detectNarrationTime('A good night\'s sleep left him rested.', current).elapsedSeconds).toBe(30600);
+    expect(detectNarrationTime('A short rest by the fire.', current).elapsedSeconds).toBe(1800);
+    expect(detectNarrationTime('A heartbeat later, the blade was at his throat.', current).elapsedSeconds).toBe(2);
   });
 
   test('ignores past, distance and future phrasing', () => {
-    expect(detectNarrationClock('Three nights of flight had hollowed him out.', current).days).toBe(0);
-    expect(detectNarrationClock('The contract was signed four months ago.', current).days).toBe(0);
-    expect(detectNarrationClock('The graves will be watched for a week.', current).days).toBe(0);
-    expect(detectNarrationClock('It was a two-day march to the quarry.', current).days).toBe(0);
+    expect(detectNarrationTime('Three nights of flight had hollowed him out.', current).elapsedSeconds).toBe(0);
+    expect(detectNarrationTime('The contract was signed four months ago.', current).elapsedSeconds).toBe(0);
+    expect(detectNarrationTime('The graves will be watched for a week.', current).elapsedSeconds).toBe(0);
+    expect(detectNarrationTime('It was a two-day march to the quarry.', current).elapsedSeconds).toBe(0);
   });
 
-  test('detects the ending time of day without moving the date', () => {
-    const dusk = detectNarrationClock('Dusk settles over the roofs. It is evening now.', current);
-    expect(dusk.timeOfDay).toBe('evening');
-    expect(dusk.days).toBe(0);
+  test('detects exact clocks and rolls the day when needed', () => {
+    const evening = detectNarrationTime('It is evening now.', current);
+    expect(evening.clock).toEqual({ hour: 19, minute: 0 });
 
-    const dawn = detectNarrationClock('By next dawn, they would cross the border.', current);
-    expect(dawn.days).toBeGreaterThanOrEqual(1);
-    expect(dawn.timeOfDay).toBe('morning');
+    const applied = applyParsedTime(current, evening);
+    expect(applied.day).toBe(5);
+    expect(applied.hour).toBe(19);
+
+    const explicit = detectNarrationTime('At 3:40 PM she finally answered.', current);
+    expect(explicit.clock).toEqual({ hour: 15, minute: 40 });
+  });
+});
+
+describe('clock arithmetic', () => {
+  test('rolls over minutes, hours, days, months and years', () => {
+    const base = { year: 13, month: 10, day: 4, hour: 23, minute: 58, second: 30 };
+
+    const plusMinutes = advanceSeconds(base, 150);
+    expect(plusMinutes.day).toBe(5);
+    expect(plusMinutes.hour).toBe(0);
+    expect(plusMinutes.minute).toBe(1);
+    expect(plusMinutes.second).toBe(0);
+
+    const plusDays = advanceSeconds(base, 86400 * 27);
+    expect(plusDays.month).toBe(11);
+    expect(plusDays.day).toBe(1);
+
+    const plusYear = advanceSeconds(base, 86400 * 365);
+    expect(plusYear.year).toBe(14);
+  });
+
+  test('formats AM/PM and derives day periods', () => {
+    expect(formatClock({ year: 13, month: 10, day: 4, hour: 22, minute: 5 })).toBe('10:05 PM');
+    expect(formatClock({ year: 13, month: 10, day: 4, hour: 0, minute: 0 })).toBe('12:00 AM');
+    expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 8, minute: 0 })).toBe('morning');
+    expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 19, minute: 0 })).toBe('evening');
+    expect(timeOfDayOf({ year: 13, month: 10, day: 4, hour: 2, minute: 0 })).toBe('night');
+  });
+
+  test('pacing caps keep fights and travel honest', () => {
+    expect(paceCapSeconds('combat', false)).toBe(600);
+    expect(paceCapSeconds('combat', true)).toBe(7200);
+    expect(paceCapSeconds('travel', false)).toBe(3 * 86400);
+    expect(paceCapSeconds('downtime', false)).toBe(7 * 86400);
+    expect(paceCapSeconds('conversation', false)).toBe(3600);
   });
 });
 
@@ -1389,5 +1418,53 @@ describe('style guard and image brief', () => {
     let db = loadSave();
     db = applyCanonMarks(db, ['kan-joins-akatsuki'], []);
     expect(db.state.canonProgress?.heard?.['event_canon_kan-joins-akatsuki']?.from).toBe('witnessed');
+  });
+});
+
+describe('scene pacing and the clock', () => {
+  test('infers pace from narration', () => {
+    expect(inferScenePace('Kan chokes a Stone ninja while the blade whistles past.')).toBe('combat');
+    expect(inferScenePace('They rode for two days along the border road.')).toBe('travel');
+    expect(inferScenePace('Kan sleeps until the coals die down.')).toBe('downtime');
+    expect(inferScenePace('Itachi says nothing and looks away.')).toBe('conversation');
+    expect(inferScenePace('The Root hounds are hunting him through the trees.')).toBe('chase');
+  });
+
+  test('combat caps time even if the narrator overreports', () => {
+    const capped = resolveElapsedSeconds({
+      reportedSeconds: 2 * 86400,
+      detectedSeconds: 0,
+      pace: 'combat',
+      sceneEnded: false,
+    });
+    expect(capped).toBe(600);
+  });
+
+  test('travel respects explicit days but caps at three', () => {
+    expect(
+      resolveElapsedSeconds({ reportedSeconds: 2 * 86400, detectedSeconds: 0, pace: 'travel', sceneEnded: false })
+    ).toBe(2 * 86400);
+    expect(
+      resolveElapsedSeconds({ reportedSeconds: 30 * 86400, detectedSeconds: 0, pace: 'travel', sceneEnded: false })
+    ).toBe(3 * 86400);
+  });
+
+  test('fight seconds accumulate correctly on the clock', () => {
+    const start = { year: 13, month: 10, day: 4, hour: 14, minute: 0, second: 0 };
+    const afterOneStrike = advanceSeconds(start, 8);
+    const afterShortFight = advanceSeconds(start, 8 * 3);
+
+    expect(afterOneStrike.second).toBe(8);
+    expect(afterShortFight.second).toBe(24);
+    expect(afterShortFight.day).toBe(4);
+  });
+
+  test('a ninth-hour sleep crosses into the next morning', () => {
+    const start = { year: 13, month: 10, day: 4, hour: 22, minute: 0, second: 0 };
+    const wake = advanceSeconds(start, 9 * 3600);
+
+    expect(wake.day).toBe(5);
+    expect(wake.hour).toBe(7);
+    expect(timeOfDayOf(wake)).toBe('morning');
   });
 });

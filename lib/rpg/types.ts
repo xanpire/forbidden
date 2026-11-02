@@ -1,8 +1,12 @@
+export type ScenePace = 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime';
+
 export type CalendarDate = {
   year: number;
   month: number;
   day: number;
-  timeOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
+  hour: number;
+  minute: number;
+  second?: number;
 };
 
 export type EntityType = 'character' | 'place' | 'faction' | 'object';
@@ -61,6 +65,7 @@ export type GameState = {
   canonProgress?: CanonProgress;
   chapter: number;
   scene: string;
+  scenePace?: ScenePace;
   imageBrief?: string;
   sceneCast?: string[];
 };
@@ -219,7 +224,6 @@ export type Settings = {
   temperature: number;
   maxTokens: number;
   canonProgress: boolean;
-  autoAdvanceTime: boolean;
 };
 
 export type CanonProgress = {
@@ -294,8 +298,9 @@ export type TurnDiff = {
     location?: string;
     locationKind?: LocationKind;
     inStoryDate?: CalendarDate;
-    advanceDays?: number;
-    timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'night';
+    elapsedSeconds?: number;
+    clockTime?: { hour: number; minute: number };
+    scenePace?: ScenePace;
     canonPoint?: string;
     chapter?: number;
     scene?: string;

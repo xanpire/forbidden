@@ -1,8 +1,9 @@
+import { advanceSeconds, shiftDate } from './calendar';
 import type { CalendarDate } from './types';
 
-export type ParsedClock = {
-  days: number;
-  timeOfDay?: CalendarDate['timeOfDay'];
+export type ParsedTime = {
+  elapsedSeconds: number;
+  clock?: { hour: number; minute: number };
   explicitDate?: CalendarDate;
 };
 
@@ -21,19 +22,14 @@ const NUMBER_WORDS: Record<string, number> = {
   ten: 10,
   eleven: 11,
   twelve: 12,
+  fifteen: 15,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
+  fifty: 50,
   couple: 2,
   few: 3,
   several: 4,
-};
-
-
-const ORDINAL_WORDS: Record<string, number> = {
-  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8,
-  ninth: 9, tenth: 10, eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14,
-  fifteenth: 15, sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19,
-  twentieth: 20, 'twenty-first': 21, 'twenty-second': 22, 'twenty-third': 23,
-  'twenty-fourth': 24, 'twenty-fifth': 25, 'twenty-sixth': 26, 'twenty-seventh': 27,
-  'twenty-eighth': 28, 'twenty-ninth': 29, thirtieth: 30, 'thirty-first': 31,
 };
 
 const MONTHS: Record<string, number> = {
@@ -51,7 +47,56 @@ const MONTHS: Record<string, number> = {
   december: 12,
 };
 
-const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const ORDINAL_WORDS: Record<string, number> = {
+  first: 1,
+  second: 2,
+  third: 3,
+  fourth: 4,
+  fifth: 5,
+  sixth: 6,
+  seventh: 7,
+  eighth: 8,
+  ninth: 9,
+  tenth: 10,
+  eleventh: 11,
+  twelfth: 12,
+  thirteenth: 13,
+  fourteenth: 14,
+  fifteenth: 15,
+  sixteenth: 16,
+  seventeenth: 17,
+  eighteenth: 18,
+  nineteenth: 19,
+  twentieth: 20,
+  'twenty-first': 21,
+  'twenty-second': 22,
+  'twenty-third': 23,
+  'twenty-fourth': 24,
+  'twenty-fifth': 25,
+  'twenty-sixth': 26,
+  'twenty-seventh': 27,
+  'twenty-eighth': 28,
+  'twenty-ninth': 29,
+  thirtieth: 30,
+  'thirty-first': 31,
+};
+
+const MONTH_DAYS = [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30];
+
+const UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  seconds: 1,
+  minute: 60,
+  minutes: 60,
+  hour: 3600,
+  hours: 3600,
+  day: 86400,
+  days: 86400,
+  week: 604800,
+  weeks: 604800,
+  month: 2592000,
+  months: 2592000,
+};
 
 function countValue(raw: string): number {
   const lower = raw.toLowerCase();
@@ -65,52 +110,72 @@ function countValue(raw: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function unitDays(unit: string): number {
-  const lower = unit.toLowerCase();
+const CLOCK_WORDS: Array<[RegExp, number]> = [
+  [/\bmidnight\b/i, 0],
+  [/\bdawn|daybreak|sunrise|first light\b/i, 6],
+  [/\bmorning\b/i, 8],
+  [/\bnoon|midday\b/i, 12],
+  [/\bafternoon\b/i, 14],
+  [/\bdusk|sunset\b/i, 19],
+  [/\bevening\b/i, 19],
+  [/\bnightfall\b/i, 21],
+  [/\bnight\b/i, 22],
+];
 
-  if (lower.startsWith('week')) {
-    return 7;
+function parseClock(text: string): { hour: number; minute: number } | undefined {
+  const explicit = /\b(?:at|by|until|before|around)\s+(\d{1,2}):(\d{2})\s*(am|pm)?\b/i.exec(text);
+
+  if (explicit) {
+    let hour = Number(explicit[1]);
+    const minute = Number(explicit[2]);
+    const suffix = explicit[3]?.toLowerCase();
+
+    if (suffix === 'pm' && hour < 12) hour += 12;
+    if (suffix === 'am' && hour === 12) hour = 0;
+
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return { hour, minute };
+    }
   }
 
-  if (lower.startsWith('month')) {
-    return 30;
+  const twelveHour = /\b(?:at|by|until|before|around)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:\s+o'clock)?\s*(am|pm|in the morning|in the afternoon|in the evening|at night)?\b/i.exec(text);
+
+  if (twelveHour) {
+    let hour = NUMBER_WORDS[twelveHour[1].toLowerCase()] ?? 0;
+    const suffix = (twelveHour[2] ?? '').toLowerCase();
+
+    if (
+      suffix === 'pm' ||
+      suffix.includes('afternoon') ||
+      suffix.includes('evening') ||
+      suffix.includes('night')
+    ) {
+      if (hour < 12) hour += 12;
+    }
+
+    if (suffix === 'am' && hour === 12) hour = 0;
+
+    return { hour: hour % 24, minute: 0 };
   }
 
-  return 1;
-}
+  // Period words only when the prose clearly fixes the time, so "a night's
+  // sleep" is not mistaken for 10 PM.
+  const periodPhrase = /\b(?:at|by|until|before|around|after)\s+(midnight|dawn|daybreak|sunrise|first light|morning|noon|midday|afternoon|dusk|sunset|evening|nightfall|night)\b/i.exec(text);
+  const periodState =
+    /\b(?:it is|it was|now|already)\s+(morning|noon|midday|afternoon|evening|night)\b/i.exec(text) ??
+    /\b(dawn|daybreak|sunrise|dusk|sunset|nightfall)\s+(?:broke|breaks|settles?|settled|falls?|fell|came|comes)\b/i.exec(text) ??
+    /\b(morning|evening|night)\s+(?:came|comes|fell|falls|settled)\b/i.exec(text);
+  const word = (periodPhrase?.[1] ?? periodState?.[1] ?? '').toLowerCase();
 
-function normalizeTimeOfDay(raw: string): CalendarDate['timeOfDay'] | undefined {
-  const lower = raw.toLowerCase();
-
-  if (/dawn|daybreak|sunrise|first light|early light|gray morning|grey morning|morning light/.test(lower)) {
-    return 'morning';
-  }
-
-  if (/noon|midday|mid-day|mid afternoon|mid-afternoon|high sun/.test(lower)) {
-    return 'afternoon';
-  }
-
-  if (/dusk|sunset|evening|twilight|gloaming|bluish hour/.test(lower)) {
-    return 'evening';
-  }
-
-  if (/nightfall|midnight|dead of night|full dark|darkness falls|after dark|night has|settled into night|under the stars/.test(lower)) {
-    return 'night';
+  if (word) {
+    for (const [pattern, hour] of CLOCK_WORDS) {
+      if (pattern.test(word)) {
+        return { hour, minute: 0 };
+      }
+    }
   }
 
   return undefined;
-}
-
-function lastTimeOfDay(text: string): CalendarDate['timeOfDay'] | undefined {
-  const pattern = /dawn|daybreak|sunrise|first light|early light|morning light|noon|midday|mid-day|mid afternoon|mid-afternoon|dusk|sunset|evening|twilight|gloaming|nightfall|midnight|dead of night|full dark|darkness falls|after dark|night has|settled into night/gi;
-  let last: string | null = null;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text)) !== null) {
-    last = match[0];
-  }
-
-  return last ? normalizeTimeOfDay(last) : undefined;
 }
 
 function explicitDate(text: string, current: CalendarDate): CalendarDate | undefined {
@@ -141,113 +206,133 @@ function explicitDate(text: string, current: CalendarDate): CalendarDate | undef
     year,
     month,
     day: safeDay,
-    timeOfDay: current.timeOfDay,
+    hour: current.hour,
+    minute: current.minute,
+    second: current.second ?? 0,
   };
 }
 
-// Reads the narration and returns how much time actually passed in it. Kept
-// deliberately conservative: only clear elapsed-time phrasing counts, so
-// "three nights of flight" (past), "four months ago" (age), or "a week"
-// (future watch) do not move the calendar.
-export function detectNarrationClock(text: string, current: CalendarDate): ParsedClock {
-  const result: ParsedClock = { days: 0 };
-
+// Reads narration into elapsed clock time. Deliberately conservative: only
+// clear elapsed phrasing counts, and explicit clocks/dates always win.
+export function detectNarrationTime(text: string, current: CalendarDate): ParsedTime {
   if (!text) {
-    return result;
+    return { elapsedSeconds: 0 };
+  }
+
+  let elapsedSeconds = 0;
+  let clock: { hour: number; minute: number } | undefined;
+
+  if (
+    /\b(a|one)\s+(good\s+)?night'?s?\s+(sleep|rest)\b|\bslept\s+(through\s+the\s+night|until\s+(dawn|morning|sunrise))\b/i.test(
+      text
+    )
+  ) {
+    elapsedSeconds = Math.max(elapsedSeconds, 8.5 * 3600);
+  }
+
+  if (/\b(a\s+)?(short\s+rest|nap)\b|\bdosed\s+off\b/i.test(text)) {
+    elapsedSeconds = Math.max(elapsedSeconds, 30 * 60);
+  }
+
+  if (
+    /\ba\s+(heartbeat|little\s+longer\s+than\s+a\s+heartbeat)\b|\ban\s+instant\b|\bin\s+the\s+blink\s+of\s+an\s+eye\b/i.test(
+      text
+    )
+  ) {
+    elapsedSeconds = Math.max(elapsedSeconds, 2);
+  }
+
+  if (/\b(a\s+)?few\s+seconds\b|\bseconds?\s+later\b/i.test(text)) {
+    elapsedSeconds = Math.max(elapsedSeconds, 5);
+  }
+
+  if (/\bseconds?\s+of\s+(fighting|clashing|struggle)\b/i.test(text)) {
+    elapsedSeconds = Math.max(elapsedSeconds, 15);
+  }
+
+  const unitPattern = new RegExp(
+    `\\b(${Object.keys(NUMBER_WORDS).join('|')}|\\d+)\\s+(${Object.keys(UNIT_SECONDS).join('|')})\\b`,
+    'gi'
+  );
+
+  let match: RegExpExecArray | null;
+
+  while ((match = unitPattern.exec(text)) !== null) {
+    const amount = countValue(match[1]);
+    const unitSeconds = UNIT_SECONDS[match[2].toLowerCase()] ?? 0;
+    const before = text.slice(Math.max(0, match.index - 30), match.index).toLowerCase();
+    const after = text
+      .slice(match.index + match[0].length, match.index + match[0].length + 24)
+      .toLowerCase();
+
+    const elapsedMarker =
+      /(later|after|passed|of travel|of riding|of marching|on the road|on the trail|of walking|of running)/.test(
+        after
+      ) ||
+      /(spent|travel|travels|traveled|travelled|traveling|travelling|marched|ride|rode|walked|walk|ran|slept|sleep|rested|waited|searched|fought|endured|trained)/.test(
+        before
+      );
+
+    if (elapsedMarker && amount > 0 && unitSeconds > 0) {
+      elapsedSeconds = Math.max(elapsedSeconds, amount * unitSeconds);
+    }
+  }
+
+  const nextDay = /\bthe (?:next|following)\s+(?:day|morning|dawn|evening|night|afternoon)\b/i.test(
+    text
+  );
+
+  if (nextDay) {
+    elapsedSeconds = Math.max(elapsedSeconds, 86400);
+  }
+
+  const parsedClock = parseClock(text);
+
+  if (parsedClock) {
+    clock = parsedClock;
   }
 
   const explicit = explicitDate(text, current);
 
   if (explicit) {
-    result.explicitDate = explicit;
+    return { elapsedSeconds, clock, explicitDate: explicit };
   }
 
-  const explicitDateKey = explicit
-    ? explicit.year * 10000 + explicit.month * 100 + explicit.day
-    : 0;
-  const currentKey = current.year * 10000 + current.month * 100 + current.day;
-
-  if (explicit && explicitDateKey > currentKey) {
-    result.days = Math.max(result.days, daysBetweenKeys(current, explicit));
+  if (nextDay && !clock) {
+    clock = { hour: 7, minute: 0 };
   }
 
-  const elapsedPatterns = [
-    /\b(?:after|over|across)\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple|few|several|\d+)\s+(day|days|night|nights|week|weeks|month|months)\b/gi,
-    /\b(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple|few|several|\d+)\s+(day|days|night|nights|week|weeks|month|months)\s+(?:later|after|passed|of travel|of riding|of marching|on the road|on the trail)\b/gi,
-    /\b(?:traveled|travelled|marched|rode|walked|slept|spent|searched|waited)\s+for\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple|few|several|\d+)\s+(day|days|night|nights|week|weeks|month|months)\b/gi,
-  ];
-
-  for (const pattern of elapsedPatterns) {
-    let match: RegExpExecArray | null;
-
-    while ((match = pattern.exec(text)) !== null) {
-      const amount = countValue(match[1]);
-      const unit = unitDays(match[2]);
-
-      if (amount > 0) {
-        result.days = Math.max(result.days, amount * unit);
-      }
-    }
-  }
-
-  const nextDay = /\bthe (?:next|following)\s+(?:day|morning|dawn|evening|night|afternoon)\b/i.test(text);
-
-  if (nextDay) {
-    const crossesDay = current.timeOfDay === 'evening' || current.timeOfDay === 'night' || /next\s+(?:day|morning|dawn)/i.test(text);
-    result.days = Math.max(result.days, crossesDay ? 1 : 0);
-  }
-
-  const dawnNext = /\b(?:by|at|before|until)\s+(?:the\s+)?next\s+(?:dawn|morning)\b/i.test(text);
-
-  if (dawnNext) {
-    result.days = Math.max(result.days, 1);
-  }
-
-  const parsedTime = lastTimeOfDay(text);
-
-  if (parsedTime) {
-    result.timeOfDay = parsedTime;
-  }
-
-  result.days = Math.min(3650, Math.max(0, Math.round(result.days)));
-
-  if (result.explicitDate) {
-    result.timeOfDay = parsedTime ?? result.explicitDate.timeOfDay;
-    result.explicitDate = { ...result.explicitDate, timeOfDay: result.timeOfDay };
-  } else if (result.days > 0) {
-    const next = shiftPlain(current, result.days);
-    result.timeOfDay =
-      parsedTime ?? (current.timeOfDay === 'night' ? 'morning' : current.timeOfDay);
-    result.explicitDate = { ...next, timeOfDay: result.timeOfDay };
-  }
-
-  return result;
+  return { elapsedSeconds, clock };
 }
 
-function daysBetweenKeys(from: CalendarDate, to: CalendarDate) {
-  return Math.max(0, to.day - from.day) + (to.month - from.month) * 30 + (to.year - from.year) * 365;
-}
-
-function shiftPlain(date: CalendarDate, days: number): CalendarDate {
-  let year = date.year;
-  let month = date.month;
-  let day = date.day + days;
-
-  for (;;) {
-    const maxDay = MONTH_DAYS[month - 1] ?? 30;
-
-    if (day <= maxDay) {
-      break;
-    }
-
-    day -= maxDay;
-    month += 1;
-
-    if (month > 12) {
-      month = 1;
-      year += 1;
-    }
+export function applyParsedTime(current: CalendarDate, parsed: ParsedTime): CalendarDate {
+  if (parsed.explicitDate) {
+    return parsed.clock
+      ? {
+          ...parsed.explicitDate,
+          hour: parsed.clock.hour,
+          minute: parsed.clock.minute,
+          second: 0,
+        }
+      : parsed.explicitDate;
   }
 
-  return { year, month, day, timeOfDay: date.timeOfDay };
+  let next = current;
+
+  if (parsed.elapsedSeconds > 0) {
+    next = advanceSeconds(next, parsed.elapsedSeconds);
+  }
+
+  if (parsed.clock) {
+    const targetSeconds = parsed.clock.hour * 3600 + parsed.clock.minute * 60;
+    const currentSeconds = next.hour * 3600 + next.minute * 60 + (next.second ?? 0);
+
+    if (parsed.elapsedSeconds === 0 && targetSeconds < currentSeconds) {
+      next = shiftDate(next, 1);
+    }
+
+    next = { ...next, hour: parsed.clock.hour, minute: parsed.clock.minute, second: 0 };
+  }
+
+  return next;
 }

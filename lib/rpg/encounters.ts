@@ -1,4 +1,6 @@
-import type { AppDatabase, CalendarDate, LocationKind } from './types';
+import { formatClock, timeOfDayOf } from './calendar';
+import type { DayPeriod } from './calendar';
+import type { AppDatabase, LocationKind } from './types';
 
 export type EncounterRisk = 'none' | 'very-low' | 'low' | 'medium' | 'high';
 
@@ -76,7 +78,7 @@ export function locationKindOf(db: AppDatabase): LocationKind {
   return classifyLocation(`${db.state.location} ${db.state.scene}`);
 }
 
-export function encounterRisk(kind: LocationKind, timeOfDay: CalendarDate['timeOfDay']): EncounterRisk {
+export function encounterRisk(kind: LocationKind, timeOfDay: DayPeriod): EncounterRisk {
   if (kind === 'settlement') {
     if (timeOfDay === 'morning' || timeOfDay === 'afternoon') return 'high';
     if (timeOfDay === 'evening') return 'medium';
@@ -98,7 +100,7 @@ export function encounterRisk(kind: LocationKind, timeOfDay: CalendarDate['timeO
 }
 
 export function currentRisk(db: AppDatabase): EncounterRisk {
-  return encounterRisk(locationKindOf(db), db.state.inStoryDate.timeOfDay);
+  return encounterRisk(locationKindOf(db), timeOfDayOf(db.state.inStoryDate));
 }
 
 const RISK_LABEL: Record<EncounterRisk, string> = {
@@ -111,10 +113,10 @@ const RISK_LABEL: Record<EncounterRisk, string> = {
 
 export function formatEncounterConditions(db: AppDatabase) {
   const kind = locationKindOf(db);
-  const time = db.state.inStoryDate.timeOfDay;
+  const time = timeOfDayOf(db.state.inStoryDate);
   const risk = encounterRisk(kind, time);
 
-  return `ENCOUNTER CONDITIONS: ${kind}, ${time} — ${RISK_LABEL[risk]}.`;
+  return `ENCOUNTER CONDITIONS: ${kind}, ${time} (${formatClock(db.state.inStoryDate)}) — ${RISK_LABEL[risk]}.`;
 }
 
 // The d20 is gated by how plausible meeting someone is right now. A high roll
@@ -160,15 +162,3 @@ export function formatGatedEncounterHint(db: AppDatabase, d20: number) {
     : `ENCOUNTER HINT (d20 ${d20}): nothing special happens; keep the turn quiet`;
 }
 
-// Fallback clock: if the narrator omits time for two turns, the app advances
-// one period so the world never freezes at night forever.
-export function advanceClockOnePeriod(date: CalendarDate): CalendarDate {
-  const order: CalendarDate['timeOfDay'][] = ['morning', 'afternoon', 'evening', 'night'];
-  const index = order.indexOf(date.timeOfDay);
-
-  if (date.timeOfDay === 'night') {
-    return { ...date, day: date.day + 1, timeOfDay: 'morning' };
-  }
-
-  return { ...date, timeOfDay: order[index + 1] ?? 'morning' };
-}

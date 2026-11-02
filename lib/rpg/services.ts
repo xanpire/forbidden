@@ -1,8 +1,8 @@
 import { completeChat } from '../openrouter';
-import { normalizeDate, formatDate, daysBetween, shiftDate } from './calendar';
+import { advanceSeconds, normalizeDate, formatDate, daysBetween, setClock } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { normalizeRelationship, normalizeAttraction } from './romance';
-import { advanceClockOnePeriod, classifyLocation } from './encounters';
+import { classifyLocation } from './encounters';
 import { makeId } from './id';
 import { normalizeJutsuNature } from './jutsu';
 import { buildIndices } from './db';
@@ -67,23 +67,80 @@ export function convertInlineDiff(
   const time = block.time;
 
   if (time && typeof time === 'object' && !Array.isArray(time)) {
-    const rawTime = time as { days_passed?: unknown; time_of_day?: unknown };
+    const rawTime = time as {
+      elapsed?: unknown;
+      unit?: unknown;
+      clock_time?: unknown;
+      days_passed?: unknown;
+      time_of_day?: unknown;
+    };
 
-    if (typeof rawTime.days_passed === 'number' && Number.isFinite(rawTime.days_passed)) {
+    const unitSeconds: Record<string, number> = {
+      second: 1,
+      seconds: 1,
+      minute: 60,
+      minutes: 60,
+      hour: 3600,
+      hours: 3600,
+      day: 86400,
+      days: 86400,
+    };
+
+    if (typeof rawTime.elapsed === 'number' && Number.isFinite(rawTime.elapsed)) {
+      const multiplier =
+        typeof rawTime.unit === 'string' ? unitSeconds[rawTime.unit.toLowerCase()] ?? 60 : 60;
+
       diff.state = {
         ...diff.state,
-        advanceDays: Math.max(0, Math.min(3650, Math.round(rawTime.days_passed))),
+        elapsedSeconds: Math.max(0, Math.min(30 * 86400, Math.round(rawTime.elapsed * multiplier))),
+      };
+    } else if (typeof rawTime.days_passed === 'number' && Number.isFinite(rawTime.days_passed)) {
+      diff.state = {
+        ...diff.state,
+        elapsedSeconds: Math.max(0, Math.min(30 * 86400, Math.round(rawTime.days_passed * 86400))),
       };
     }
 
-    if (
+    if (typeof rawTime.clock_time === 'string') {
+      const match = /^\s*(\d{1,2}):(\d{2})\s*$/.exec(rawTime.clock_time);
+
+      if (match) {
+        diff.state = {
+          ...diff.state,
+          clockTime: {
+            hour: Math.max(0, Math.min(23, Number(match[1]))),
+            minute: Math.max(0, Math.min(59, Number(match[2]))),
+          },
+        };
+      }
+    } else if (
       rawTime.time_of_day === 'morning' ||
       rawTime.time_of_day === 'afternoon' ||
       rawTime.time_of_day === 'evening' ||
       rawTime.time_of_day === 'night'
     ) {
-      diff.state = { ...diff.state, timeOfDay: rawTime.time_of_day };
+      const legacyHours: Record<string, number> = {
+        morning: 8,
+        afternoon: 14,
+        evening: 19,
+        night: 22,
+      };
+
+      diff.state = {
+        ...diff.state,
+        clockTime: { hour: legacyHours[rawTime.time_of_day], minute: 0 },
+      };
     }
+  }
+
+  if (
+    block.scene_pace === 'combat' ||
+    block.scene_pace === 'chase' ||
+    block.scene_pace === 'conversation' ||
+    block.scene_pace === 'travel' ||
+    block.scene_pace === 'downtime'
+  ) {
+    diff.state = { ...diff.state, scenePace: block.scene_pace };
   }
 
   if (typeof block.mood === 'string' && block.mood.trim()) {
@@ -694,40 +751,20 @@ function applyClockTick(db: AppDatabase, diff: TurnDiff): AppDatabase {
   const state = diff.state;
   const hadTimeUpdate = Boolean(
     state?.inStoryDate ||
-    state?.timeOfDay ||
-    (typeof state?.advanceDays === 'number' && state.advanceDays > 0)
+    state?.clockTime ||
+    (typeof state?.elapsedSeconds === 'number' && state.elapsedSeconds > 0)
   );
 
   const turns = db.state.turnsWithoutTimeChange ?? 0;
 
-  if (hadTimeUpdate) {
-    return {
-      ...db,
-      state: { ...db.state, turnsWithoutTimeChange: 0 },
-    };
-  }
-
-  if (!db.settings.autoAdvanceTime) {
-    return {
-      ...db,
-      state: { ...db.state, turnsWithoutTimeChange: Math.min(turns + 1, 9) },
-    };
-  }
-
-  if (turns + 1 >= 2) {
-    return {
-      ...db,
-      state: {
-        ...db.state,
-        inStoryDate: advanceClockOnePeriod(db.state.inStoryDate),
-        turnsWithoutTimeChange: 0,
-      },
-    };
-  }
-
+  // The clock never advances on its own. This counter only drives a prompt
+  // nudge when the story has gone several turns without any time reporting.
   return {
     ...db,
-    state: { ...db.state, turnsWithoutTimeChange: turns + 1 },
+    state: {
+      ...db.state,
+      turnsWithoutTimeChange: hadTimeUpdate ? 0 : Math.min(turns + 1, 9),
+    },
   };
 }
 
@@ -919,16 +956,47 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.sceneCast = state.sceneCast.filter(Boolean).slice(0, 6);
   }
 
-  if (state.inStoryDate || (state.advanceDays !== undefined && state.advanceDays > 0)) {
-    const nextDate = state.inStoryDate
-      ? normalizeDate(state.inStoryDate, next.state.inStoryDate)
-      : shiftDate(next.state.inStoryDate, Math.min(3650, Math.max(0, Math.round(state.advanceDays ?? 0))));
+  if (
+    state.scenePace === 'combat' ||
+    state.scenePace === 'chase' ||
+    state.scenePace === 'conversation' ||
+    state.scenePace === 'travel' ||
+    state.scenePace === 'downtime'
+  ) {
+    next.state.scenePace = state.scenePace;
+  }
 
-    const finalDate: CalendarDate = {
-      ...nextDate,
-      timeOfDay: state.timeOfDay ?? nextDate.timeOfDay,
-    };
+  let updatedDate: CalendarDate | null = null;
 
+  if (state.inStoryDate) {
+    updatedDate = normalizeDate(state.inStoryDate, next.state.inStoryDate);
+  } else {
+    let working = next.state.inStoryDate;
+
+    const hadElapsed = typeof state.elapsedSeconds === 'number' && state.elapsedSeconds > 0;
+
+    if (hadElapsed) {
+      working = advanceSeconds(working, state.elapsedSeconds ?? 0);
+    }
+
+    if (state.clockTime) {
+      working = hadElapsed
+        ? {
+            ...working,
+            hour: state.clockTime.hour,
+            minute: state.clockTime.minute,
+            second: 0,
+          }
+        : setClock(working, state.clockTime.hour, state.clockTime.minute);
+    }
+
+    if (working !== next.state.inStoryDate) {
+      updatedDate = working;
+    }
+  }
+
+  if (updatedDate) {
+    const finalDate = updatedDate;
     const yearDelta = finalDate.year - previousDate.year;
 
     next.state.inStoryDate = finalDate;
@@ -954,8 +1022,6 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
         updatedInStoryDate: finalDate,
       }));
     }
-  } else if (state.timeOfDay) {
-    next.state.inStoryDate = { ...next.state.inStoryDate, timeOfDay: state.timeOfDay };
   }
 
   if (typeof state.canonPoint === 'string' && state.canonPoint.trim()) {

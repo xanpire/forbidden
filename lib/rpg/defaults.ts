@@ -11,7 +11,6 @@ export const DEFAULT_SETTINGS: Settings = {
   temperature: 0.7,
   maxTokens: 1300,
   canonProgress: true,
-  autoAdvanceTime: true,
 };
 
 export function emptyIndex(): MemoryIndex {
