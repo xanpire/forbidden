@@ -103,7 +103,7 @@ function trimDatabase(db: AppDatabase, maxImages: number, maxSnapshots: number):
   for (let index = db.rawLog.length - 1; index >= 0; index -= 1) {
     const entry = db.rawLog[index];
 
-    if (entry.image) {
+    if (entry.image?.startsWith('data:')) {
       imageIndexes.push(index);
     }
   }
@@ -111,7 +111,9 @@ function trimDatabase(db: AppDatabase, maxImages: number, maxSnapshots: number):
   const keepImages = new Set(imageIndexes.slice(0, maxImages));
 
   const rawLog = db.rawLog.map((entry, index) =>
-    entry.image && !keepImages.has(index) ? { ...entry, image: null } : entry
+    entry.image?.startsWith('data:') && !keepImages.has(index)
+      ? { ...entry, image: null }
+      : entry
   );
 
   return {
@@ -451,6 +453,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     state: normalizeState(db.state),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
+    portraits: Array.isArray(db.portraits)
+      ? db.portraits.filter((portrait) => portrait && typeof portrait.image === 'string')
+      : [],
   };
 
   normalized.indices = buildIndices(normalized);

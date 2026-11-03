@@ -37,11 +37,11 @@ Then open the app, go to **Settings → OpenRouter API key**, paste a key from h
 
 | Area | Files |
 |---|---|
-| Screens (Expo Router) | `app/(tabs)/index.tsx` (Story), `characters.tsx` (Bonds), `jutsu.tsx`, `journal.tsx`, `settings.tsx` |
+| Screens (Expo Router) | `app/(tabs)/index.tsx` (Story), `kan.tsx` (portrait + Bonds / Jutsu / Journal), `bond/[id].tsx`, `settings.tsx`; shared list kit in `components/List.tsx`, Kan sections in `components/kan/` |
 | Game engine | `lib/rpg/game.tsx`, `services.ts`, `db.ts`, `prompt.ts`, `retrieval.ts`, `seed.ts` |
 | Simulation systems | `calendar.ts` (clock), `timeparse.ts` (narration time), `pacing.ts` (scene tempo), `canon.ts` (90 canon milestones + news), `encounters.ts` (location/time realism), `romance.ts` (hearts + lore) |
 | AI client | `lib/openrouter.ts` (streaming chat, JSON completion, image generation, model lists) |
-| Images | `lib/rpg/image.ts`, `referenceImages.ts` |
+| Images | `lib/rpg/image.ts`, `referenceImages.ts`, `portrait.ts` (Kan's portraits), `imageStore.ts` (IndexedDB storage) |
 | Shared UI | `components/*`, `constants/theme.ts` |
 | Tests | `scripts/verify-pipeline.test.ts` |
 | Docs | `docs/PROJECT_GUIDE.md` (deep engineering handoff) |

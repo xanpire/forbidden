@@ -159,12 +159,14 @@ export async function generateImage({
   model,
   prompt,
   inputReferences,
+  aspectRatio = '16:9',
   signal,
 }: {
   apiKey: string;
   model: string;
   prompt: string;
   inputReferences?: string[];
+  aspectRatio?: '16:9' | '3:4';
   signal?: AbortSignal;
 }): Promise<ImageGenerationResult> {
   if (!apiKey) {
@@ -176,7 +178,7 @@ export async function generateImage({
     prompt,
     n: 1,
     resolution: '1K',
-    aspect_ratio: '16:9',
+    aspect_ratio: aspectRatio,
     quality: 'high',
     output_format: 'jpeg',
     output_compression: 80,

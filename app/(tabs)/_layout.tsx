@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
-import { BookOpen, Flame, ScrollText, Settings2, Users } from 'lucide-react-native';
-import { Platform, StyleSheet, View } from 'react-native';
+import { BookOpen, Settings2, UserRound } from 'lucide-react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts } from '@/constants/theme';
@@ -13,26 +13,17 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.background },
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textDim,
+        tabBarActiveTintColor: colors.accentText,
+        tabBarInactiveTintColor: colors.textMeta,
         tabBarHideOnKeyboard: true,
         tabBarLabelStyle: styles.label,
         tabBarStyle: [
           styles.tabBar,
           {
-            borderTopColor: colors.accent,
-            height: 58 + Math.max(insets.bottom, Platform.OS === 'web' ? 8 : 4),
-            paddingBottom: Math.max(insets.bottom, 4),
+            height: 60 + Math.max(insets.bottom, Platform.OS === 'web' ? 6 : 4),
+            paddingBottom: Math.max(insets.bottom, 6),
           },
         ],
-        tabBarBackground: () => (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: colors.background },
-            ]}
-          />
-        ),
       }}
     >
       <Tabs.Screen
@@ -45,29 +36,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="characters"
+        name="kan"
         options={{
-          title: 'Bonds',
+          title: 'Kan',
           tabBarIcon: ({ color, focused }) => (
-            <Users color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="jutsu"
-        options={{
-          title: 'Jutsu',
-          tabBarIcon: ({ color, focused }) => (
-            <Flame color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="journal"
-        options={{
-          title: 'Journal',
-          tabBarIcon: ({ color, focused }) => (
-            <ScrollText color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
+            <UserRound color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
           ),
         }}
       />
@@ -80,20 +53,23 @@ export default function TabsLayout() {
           ),
         }}
       />
+      {/* Bond detail lives inside the tabs so the tab bar stays visible; Kan stays highlighted. */}
+      <Tabs.Screen name="bond/[id]" options={{ href: null }} />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
-    borderTopWidth: 2,
-    borderTopColor: colors.accent,
+    borderTopWidth: 1,
+    borderTopColor: colors.hairline,
     backgroundColor: colors.background,
-    paddingTop: 8,
+    paddingTop: 6,
+    elevation: 0,
   },
   label: {
     fontFamily: fonts.semibold,
-    fontSize: 9,
+    fontSize: 11,
     letterSpacing: 0.1,
   },
 });

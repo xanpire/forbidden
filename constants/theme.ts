@@ -11,6 +11,13 @@ export const colors = {
   text: '#F5F5F5',
   textMuted: '#A3A3A3',
   textDim: '#7D7D7D',
+  textSoft: '#E6E6E6',
+  textMeta: '#8C8C8C',
+  divider: '#1C1C1C',
+  hairline: '#161616',
+  accentText: '#FF1F2D',
+  accentTint: '#FF4D57',
+  warning: '#F0A34A',
   accent: '#E50914',
   accentBright: '#FF1F2D',
   accentSoft: 'rgba(229, 9, 20, 0.12)',
@@ -54,7 +61,18 @@ export const radius = {
 };
 
 export const type: Record<
-  'eyebrow' | 'display' | 'title' | 'heading' | 'body' | 'caption',
+  | 'eyebrow'
+  | 'display'
+  | 'title'
+  | 'heading'
+  | 'body'
+  | 'caption'
+  | 'pageTitle'
+  | 'sectionLabel'
+  | 'rowTitle'
+  | 'rowBody'
+  | 'rowMeta'
+  | 'prose',
   TextStyle
 > = {
   eyebrow: {
@@ -90,6 +108,49 @@ export const type: Record<
     fontSize: 15,
     lineHeight: 23,
     color: colors.textMuted,
+  },
+  /** 24px page heading (Kan, Settings). */
+  pageTitle: {
+    fontFamily: fonts.extrabold,
+    fontSize: 24,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    color: colors.text,
+  },
+  /** Small grey caps above a card. */
+  sectionLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  /** The one title size used by every list row. */
+  rowTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.text,
+  },
+  rowBody: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textMuted,
+  },
+  rowMeta: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textMeta,
+  },
+  /** Narrator text on the Story screen. */
+  prose: {
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 26,
+    color: colors.textSoft,
   },
   caption: {
     fontFamily: fonts.regular,

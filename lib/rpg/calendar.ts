@@ -62,6 +62,11 @@ export function formatDay(date: CalendarDate) {
   return `Day ${date.day}, ${monthName(date.month)}`;
 }
 
+/** "1 Oct" — for headers and list meta lines. */
+export function formatDayMonth(date: CalendarDate) {
+  return `${date.day} ${monthName(date.month).slice(0, 3)}`;
+}
+
 export function formatShortDate(date: CalendarDate) {
   return `Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
 }
