@@ -41,3 +41,6 @@ bun-error.*
 .ideavo/project
 
 *.log
+
+# local download artifacts
+public/download/

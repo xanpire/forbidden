@@ -1,0 +1,481 @@
+# Kan — Engineering & AI Handoff Guide
+
+This document is the complete technical map of the app. It is written so a developer **or an AI coding agent** can understand, debug and extend it without prior context.
+
+Read it top to bottom once. Then use the file map and invariants as a checklist when changing anything.
+
+---
+
+## 1. What the app is
+
+- A **client-only** interactive Naruto RPG/PWA. Player = **Kan** (original Uchiha-Uzumaki, ANBU-trained, missing-nin, age 13 at the start, same age as Itachi).
+- An LLM **narrator** writes the story in second person and emits a fenced JSON **state diff** at the end of every turn.
+- A deterministic engine applies that diff, advances the clock, runs canon milestones, delivers news, records memories, updates bonds/jutsu, and persists everything.
+- No server, no database service: `AsyncStorage` (localStorage on web) + OpenRouter API.
+
+Tech: Expo SDK 54, Expo Router, React Native Web, TypeScript, `bun` as package manager.
+
+---
+
+## 2. Persistence
+
+`lib/rpg/db.ts`
+
+| Key | Contents |
+|---|---|
+| `kan.meta.v1` | `StorageMeta`: active slot id, slot list, timestamps |
+| `kan.slot.<slotId>.v1` | One `AppDatabase` JSON per save slot |
+| `kan.apiKey.v1` | OpenRouter API key (never stored in slots or exports) |
+
+Important functions:
+
+- `loadSlot`, `saveSlot`, `createSlot`, `duplicateSlot`, `deleteSlot`, `renameSlot`, `switchSlot`, `listSlots`, `loadActiveSlot`
+- `exportDatabase(db)` → pretty JSON string; `importDatabase(json, name?)` → new slot
+- `normalizeDatabase(db)` → migration + repair + JSON stripping + default fields. **Every load/import passes through it.**
+- `buildIndices(db)` → the `MemoryIndex` used by retrieval
+
+### Storage quota strategy
+
+`saveSlot` tries progressively smaller writes until one succeeds:
+
+1. full database
+2. max 3 assistant images, 1 snapshot (`MAX_STORED_IMAGES`, `MAX_SNAPSHOTS`)
+3. 1 image, 0 snapshots
+4. 0 images, 0 snapshots
+
+Each generated image is ~0.5 MB base64, so images are the main quota risk.
+
+---
+
+## 3. Data model (`lib/rpg/types.ts`)
+
+```ts
+AppDatabase {
+  schemaVersion: number
+  meta: StorageMeta
+  settings: Settings
+  rawLog: RawLogEntry[]          // story messages (user/assistant) with dates, tokens, image
+  entities: EntityRecord[]       // characters/places/organizations + lore + lastSeen
+  jutsuRecords: JutsuRecord[]    // permanent jutsu library
+  events: EventRecord[]          // memories, canon world events, time skips
+  eventEntities: EventEntityRecord[]
+  bonds: BondRecord[]            // affinity, status, relationship, attraction, romanceNote
+  facts: FactRecord[]            // permanent facts with whoKnows + validity
+  threads: ThreadRecord[]        // open/resolved plot threads
+  loreEntries: LoreRecord[]      // keyword-triggered world lore
+  summaries: SummaryRecord[]     // chapter / arc / year summaries
+  state: GameState
+  indices: MemoryIndex
+  snapshots: TurnSnapshot[]
+}
+```
+
+### `CalendarDate` — the clock
+
+```ts
+{ year, month, day, hour, minute, second? }
+```
+
+No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are derived with `timeOfDayOf(date)` (05–11 morning, 12–16 afternoon, 17–20 evening, otherwise night).
+
+### `GameState`
+
+```ts
+{
+  player: PlayerSheet
+  mood: string
+  worldDescription: string
+  jutsu: string[]              // name list shown to the narrator (capped)
+  inventory: string[]          // includes Akatsuki cloak detection
+  location: string
+  locationKind?: 'settlement' | 'road' | 'wilderness' | 'structure'
+  inStoryDate: CalendarDate
+  turnsWithoutTimeChange?: number   // prompt nudge only; never advances the clock
+  canonPoint: string
+  canonProgress?: CanonProgress
+  chapter: number
+  scene: string
+  scenePace?: 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime'
+  imageBrief?: string
+  sceneCast?: string[]
+}
+```
+
+### `CanonProgress`
+
+```ts
+{
+  version: 3
+  baselineDate: CalendarDate
+  baselineTurn: number          // assistant message count when canon was activated
+  completed: string[]           // milestone ids (including expired/silent)
+  active: string[]              // open encounter windows
+  engaged: string[]             // personal beats started but not finished
+  expired: string[]             // windows that closed before they could happen
+  heard: Record<eventId, { from: string; date: CalendarDate }>
+}
+```
+
+### `TurnDiff` (what the narrator returns)
+
+```ts
+{
+  state?: {
+    mood?, worldDescription?, jutsuAdded?, jutsuRemoved?,
+    inventoryAdded?, inventoryRemoved?, location?, locationKind?,
+    inStoryDate?, elapsedSeconds?, clockTime?: {hour,minute},
+    scenePace?, canonPoint?, chapter?, scene?, imageBrief?, sceneCast?
+  },
+  entities?: [{ name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
+  jutsuUsed?: [{ name, user, chakraNature?, effect?, visual? }],
+  bonds?: [{ character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
+  facts?: [{ action, type?, text, subject?, whoKnows?, validFrom?, ... }],
+  threads?: [{ action, title, description?, type?, participants? }],
+  canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
+  newsRelayed?: [{ id, from? }],
+  scene?: { ended, summary?, tags?, entities?, importance? }
+}
+```
+
+Note: inline narrator JSON uses **snake_case** (`affinity_change`, `characters_present`, `scene_ended`, `image_brief`, `news_relayed`, `canon_completed`, …). `convertInlineDiff` translates snake_case → `TurnDiff` camelCase. The extraction-model fallback returns camelCase directly.
+
+---
+
+## 4. Turn lifecycle
+
+Main file: `lib/rpg/game.tsx` (`GameProvider`).
+
+### `sendTurn(input)`
+
+1. Validate API key and action text.
+2. Snapshot the database (undo).
+3. Append the player message to `rawLog`.
+4. `rollD20()` → encounter hint.
+5. `buildNarrationPrompt(db, action, d20)` → messages + estimated tokens.
+6. `streamChatCompletion` (SSE). Visible streaming text is intentionally disabled (no JSON flashing).
+7. If the finish reason is `length` **or** the narration ends mid-sentence with no JSON block → **one** silent continuation request, merged.
+8. `splitNarrationAndDiff(raw)`:
+   - strips fenced/unfenced JSON (including truncated blocks),
+   - returns `{ narration, inlineDiff }`,
+   - cleans stray fences and `State update:` labels.
+9. If narration is still cut mid-sentence, trim to the last complete sentence (`trimToSentence`).
+10. Append the assistant message, commit the slot.
+11. `processBackground(...)` runs asynchronously.
+
+### `processBackground`
+
+1. `extraction = inlineDiff ?? extractTurnDiff(...)` (the fallback is a separate cheap LLM call and only runs when no inline block parsed).
+2. **Narration clock**: `detectNarrationTime(assistantMessage, currentDate)`.
+3. **Pace**: `extraction.state.scenePace ?? inferScenePace(assistantMessage)`.
+4. `resolveTurnClock(...)` → capped elapsed seconds, safe clock time, safe explicit date (combat blocks date jumps).
+5. `applyTurnDiff`:
+   - state/clock, entities, jutsu, bonds (incl. romance), facts, threads,
+   - `mergeDuplicateEntities` (identity groups),
+   - `recordSceneEvent` when `scene.ended`,
+   - `recordPresence` (`lastSeen`, `sceneCast`),
+   - `applyClockTick` (stall counter only — no auto advance),
+   - rebuild indices.
+6. `applyCanonMarks(completed, engaged, passed)` then `markNewsHeard(relays)` then `advanceCanon`.
+7. Optional time-skip summary if `daysBetween(before, after) >= 180`.
+8. Optional scene summary when:
+   - inline diff + `image_worthy`, or
+   - `scene.ended`, or
+   - `storyMessagesSinceLastSummary >= autoSummarizeThreshold`.
+9. Every 3 chapter summaries → arc summary; every 12 → year summary (`rollArcSummary`).
+10. Commit.
+
+### `undoLastTurn` / `regenerate`
+
+- Undo restores the most recent snapshot (taken before the turn).
+- Regenerate re-sends the last user message from the pre-turn state.
+
+---
+
+## 5. Prompt composition (`lib/rpg/prompt.ts`)
+
+`buildNarrationPrompt` returns `{ messages, estimatedTokens, memories, recentMessages, arcSummary }`.
+
+### Stable system blocks (in order)
+
+1. `NARRATION_SYSTEM` (template literal) containing:
+   - **Executive rules** — never control Kan, canon fidelity, date/rank/knowledge discipline.
+   - **Place-name rule** — always English place names (Hidden Leaf, Hidden Rain, …); Hokage/Kage/genin/jōnin/jinchūriki/Sannin/chakra/Akatsuki stay.
+   - **TIME IS STRICT** — `elapsed` + `unit`, optional `clock_time`, never invent dates, clock comes from the TIME block.
+   - **CANON TRUTH** — never invent canon events/funerals/deaths/dates.
+   - **VOICE & STYLE** — clear plain English, varied imagery.
+   - **WORLD & PACING** — 2–4 paragraphs, no repeated beats, binding threads, rare encounters, travel compression.
+   - **NEW CHARACTERS**, **FORMATTING** (Kan’s `"speech"` and `*action*` markers).
+   - **MEMORY & CONTINUITY** + identity rules:
+     - masked man = Tobi = Obito = fake Madara (one entity); real Madara separate; no face reveal before the war mask-break.
+     - Pain = Six Paths = Nagato (one entity); Nagato remembers everything the bodies saw.
+     - Black/White Zetsu = one being.
+   - **ROMANCE & HEARTS** (from `romance.ts`): lore-locked vs winnable, adult gating at 17+, explicit intimacy only 18+, never censor, rejection persists.
+   - **CANON TIMELINE** — world clock, news delivery, `canon_engaged/completed` reporting.
+   - **STATE OUTPUT** — exact JSON schema.
+2. `formatCharacterSheet`, `formatState`, `formatMatchedEntities` (with lore hearts + era notes), `formatJutsu`, `formatBonds` (relationship/attraction), `formatFacts` (≤10), `formatThreads` (recent 8), `formatLore`.
+
+### Dynamic user block (in order)
+
+1. `formatArcSummary` (latest arc/year summary, capped)
+2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a stall nudge if `turnsWithoutTimeChange > 0`
+3. `formatNewsBlock` — up to 3 unheard events, major first, with location, bearers, courier channel, overdue escalation
+4. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
+5. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
+6. `formatMemories` — retrieved events (≤ retrieval limit)
+7. `formatStyleGuard` — overused words/phrases from the last 6 narrations
+8. `formatRecentMessages` — last `contextMessages` (default 8); assistant messages keep their **tail** (newest 2200 chars, older 1000), player input 500
+9. `formatLastBeat` — final 450 chars of the newest narration
+10. `formatEncounterConditions` + `formatGatedEncounterHint(d20)`
+11. `CONTINUITY` line + location kind
+12. `YOU (KAN) DO OR SAY: <action>`
+
+The current action appears **once** (it is excluded from the recent-message block).
+
+### Token budget
+
+`PROMPT_TOKEN_BUDGET = 5600`. After building, the prompt drops the oldest scene messages (never below 4) until `estimateTokens` is under budget. Measured baseline on a fresh save: ~3.6k tokens; flat over long play.
+
+### Extraction prompt
+
+`buildExtractionPrompt` uses `EXTRACTION_SYSTEM` (same continuity rules, camelCase schema) and is only used when the inline JSON block is missing/unparseable.
+
+---
+
+## 6. Memory & retrieval (`lib/rpg/retrieval.ts`)
+
+- `retrieveMemories(db, {recentMessages, userMessage}, limit)` scores events by:
+  - entity presence in recent text,
+  - tag/keyword overlap,
+  - importance,
+  - recency (in-story date),
+  - pinning.
+- `relevantFacts(db, entityIds, text)` returns matched facts (by subject) plus recent ones, capped at **10**.
+- `triggeredLore(db, text)` matches keyword-triggered lore entries, capped at **4**.
+- Events are created by `recordSceneEvent` (on `scene.ended`), time skips, and canon milestones.
+- Summaries: chapter summaries feed the arc summary; arc/year summaries feed the prompt. `storyMessagesSinceLastSummary` is the summarization cadence guard.
+
+### Entity identity resolution (`services.ts`)
+
+- `resolveEntity(db, name)` — exact name/alias → fuzzy word-boundary → identity-group fallback.
+- Identity groups: `masked-man`, `real-madara`, `pain`, `zetsu`.
+  - All masked-man aliases merge; real Madara never merges with the masked man.
+  - Pain/Nagato/six paths merge; Zetsu halves merge.
+- `mergeDuplicateEntities` runs on every turn and remaps bonds/facts/event links.
+- `lastSeen` is stamped only for `characters_present` (physically present, not merely mentioned).
+
+---
+
+## 7. Canon engine (`lib/rpg/canon.ts`)
+
+### Milestone shape
+
+```ts
+{
+  id, era, title, description, canonPoint?,
+  from: {year, month, day?}, to?: {year, month, day?},
+  minScenes, facts: string[],
+  opensThreads?, resolvesThreadTitles?,
+  encounter?: { who, where, context },
+  attendanceFact?, major?, playerDriven?
+}
+```
+
+- **90 milestones** from the Uchiha massacre aftermath to the post-war epilogue.
+- Timeline spine: Kan/Itachi 13 at the massacre; Part 1 at 17–18; Shippuden 20–21; war 22–23.
+- `playerDriven` = **personal beat** (join Akatsuki, missions, Team 3 reunions, war side, Edo Itachi, epilogue…). These **never auto-fire**; they fire when the narrator marks them.
+- World milestones fire on **date window + `minScenes` + prerequisites**, max **4 per turn**, with late catch-up.
+- Windows use the **real calendar** (`daysFromCivil`).
+
+### Scheduling (`advanceCanon`)
+
+- `baselineDate` + `baselineTurn` prevent a backlog dump on load/import.
+- Milestones whose `to` closed before the baseline are marked completed **silently** (no journal entry) and tracked in `expired`.
+- `scene count = assistant turns since baseline` (not scene-end events).
+- Encounter windows go into `active`; the narrator can resolve them.
+- Personal beats appear in the prompt as pending offers with their id.
+
+### Narrator marks (`applyCanonMarks`)
+
+- `canon_completed` → fire if needed, add `attendanceFact`, mark **witnessed**, record facts/threads/canonPoint.
+- `canon_engaged` → record the event, add to `active` + `engaged` (not completed).
+- `canon_passed` → complete without attendance, log a “never crossed paths” fact.
+
+### News & rumors
+
+- Every fired world event is **unheard** until delivered.
+- `unheardCanonNews` returns up to 3, major first, with region/location/bearers/channel.
+- Knowledge classes: `public`, `village`, `akatsuki`, `witnesses`, `secret`.
+- Channels: Akatsuki → Itachi’s crow / Konan’s paper butterfly / Zetsu; Leaf → hawk/courier; Sand → caravan; Mist → sailor; Cloud → runner; Stone → stone-route courier; Iron → samurai rider; public → merchant/crier/bounty board.
+- Major events unheard for 7+ in-story days are marked **OVERDUE** so the narrator delivers them through the courier channel.
+- Secrets (mask identity, Itachi’s illness/truth) only travel via named confidants.
+- `news_relayed: [{id, from}]` records delivery (`heard` map), and the Journal hides unheard events.
+
+### Canon point
+
+`state.canonPoint` is a short world-state line updated only by milestones that define `canonPoint` (the funeral deliberately does not set it).
+
+---
+
+## 8. Calendar, clock & pacing
+
+### `lib/rpg/calendar.ts`
+
+- `CalendarDate` = year/month/day/hour/minute/second.
+- Real month lengths + leap years (`daysInMonth`, `isLeapYear`).
+- `daysFromCivil` / `civilFromDays` (proleptic Gregorian).
+- `advanceSeconds`, `shiftDate`, `setClock` (rolls to next day when the target time is earlier).
+- `daysBetween`, `dateSortValue` (full timestamp sort key), `sameDate`, `isBirthday`.
+- `calculateAge`, `formatClock` (AM/PM), `formatDate`, `formatShortDate`, `formatDay`, `formatStoryDate`, `timeOfDayOf`.
+- `paceCapSeconds(pace, sceneEnded)`:
+  - combat 600 s (7200 if scene ends), chase 1800 s (7200),
+  - conversation 3600 s, travel 3 days, downtime 7 days, default 1 day.
+
+### `lib/rpg/timeparse.ts`
+
+`detectNarrationTime(text, current)` returns `{ elapsedSeconds, clock?, explicitDate? }`:
+
+- Fixed phrases: heartbeat/instant (2 s), few seconds (5 s), short rest/nap (30 min), full night’s sleep (8.5 h), seconds of fighting (15 s).
+- Number + unit only when elapsed markers are present (`later`, `after`, `passed`, `of travel`, past-tense verbs). Ignores “three nights of flight”, “four months ago”, “watched for a week”, “two-day march”.
+- Exact clocks: `at 3:40 PM`, `03:40`, `at dawn/noon/dusk/midnight/nightfall`, “it is evening now”.
+- Explicit dates: “the fifth of October”, “October 5”, with real-month clamping and year rollover.
+- Period words only match in temporal context, so “a night’s sleep” is not 10 PM.
+
+`applyParsedTime(current, parsed)` applies elapsed then clock (rolling days as needed).
+
+### `lib/rpg/pacing.ts`
+
+- `inferScenePace(text)` keyword fallback: combat → chase → downtime → travel → conversation.
+- `resolveElapsedSeconds({reportedSeconds, detectedSeconds, pace, sceneEnded})` = max(reported, detected) capped by pace.
+- `resolveTurnClock({reportedSeconds, detected, pace, sceneEnded, current})` — the single source of truth used by `game.tsx`; **combat/chase with an unfinished scene blocks explicit-date jumps and backward clock moves**.
+
+### Rules
+
+- **No automatic fallback**: if the narration and the narrator report no time, the clock does not move. `turnsWithoutTimeChange` only nudges the prompt.
+- Fights: seconds/minutes, never day skips.
+- Travel: only explicit/stated time (capped 3 days per turn).
+- Sleep/rest: parser advances to next morning / stated hours.
+- Conversation: no movement unless stated.
+
+---
+
+## 9. Encounter realism (`lib/rpg/encounters.ts`)
+
+- `classifyLocation(text)` uses first-mentioned place word → `settlement | road | wilderness | structure`.
+- `state.locationKind` is preferred when set by the diff.
+- Risk matrix:
+  - settlement: high day, medium evening, low night
+  - road: medium day, low evening, very-low night
+  - wilderness: low day, none evening/night
+  - structure: low day, none night
+- `formatGatedEncounterHint(db, d20)` suppresses strangers in isolated places at night; a high roll becomes a threat or canon figure, never a cheerful wanderer.
+- `formatEncounterConditions(db)` adds a one-line crowd/time hint with the clock.
+
+---
+
+## 10. Romance & lore (`lib/rpg/romance.ts`)
+
+- `RelationshipStage`: stranger → friendly → close → romantic interest → partner / rejected.
+- `Attraction`: none | warm | strong.
+- `normalizeRelationship` / `normalizeAttraction` tolerate model wording.
+- `CHARACTER_LORE` holds canon devotions, accessibility (`winnable` / `lore-locked`) and orientation.
+- `ERA_NOTES` gives era-specific personality lines keyed by year (`eraKeyForYear`, `eraNoteFor`).
+- `ROMANCE_RULES` is injected into the narrator system prompt.
+- Bonds store relationship/attraction/romanceNote; rejections persist and are never reset.
+- Adult NPCs deflect while Kan is under 17; explicit intimacy only when both are 18+; the prompt instructs **never to censor** when ages permit.
+
+---
+
+## 11. Image pipeline (`lib/rpg/image.ts`, `referenceImages.ts`)
+
+- Three static references: `kan-face-sheet.jpg`, `kan-outfit-black.jpg`, `kan-outfit-akatsuki.jpg`, plus up to two recent scene images.
+- `referenceImages.ts` loads face + both outfits as data URIs (cached) and orders **face → current outfit → alternate**; the current outfit is chosen from inventory (`Akatsuki cloak`).
+- `collectRecentSceneImages(db)` returns the last **2** assistant images for style continuity.
+- `buildSceneImagePrompt(db, recentImages)`:
+  - previous scene images: style/palette/lighting only, ignore characters;
+  - reference numbering: recent images first, then face sheet, current outfit, alternate outfit;
+  - **ACTION**: `state.imageBrief` (fallback: last 700 chars of narration);
+  - **ACTOR RULE**: Kan performs the action, the other person is the target; never Kan as the victim of his own action;
+  - only people named in ACTION may appear; unnamed extras in the brief are allowed;
+  - cast comes from `state.sceneCast`, never same-day `lastSeen`.
+- `lib/openrouter.ts` `generateImage` posts to `https://openrouter.ai/api/v1/images` with `input_references: [{type:'image_url', image_url:{url}}]`, retrying with fewer references if the provider rejects them.
+- Images are generated **only when the player taps the image button** (`generateSceneImage` in `game.tsx`).
+
+---
+
+## 12. UI
+
+- `app/_layout.tsx` — fonts (Manrope), navigation, GameProvider, toasts, Android nav bar.
+- `app/(tabs)/index.tsx` — story feed, status chips (mood, location, date + sun/moon clock), world-event/news banner, composer with `"` speech and `*` action markers, image/undo/regenerate controls, fullscreen image viewer.
+- `characters.tsx` — Bonds: characters sorted by most recent contact, lore, mood, appearance, role, speech, age, trust, relationship/attraction.
+- `jutsu.tsx` — permanent jutsu grouped by chakra nature with filters.
+- `journal.tsx` — Story (threads), So far (summaries), World (world description, location, canon point, heard canon timeline, lore), Memories (events).
+- `settings.tsx` — API key, four model pickers (narration/summary/extraction/image), canon toggle, save slots (export/import/copy/rename/delete), version and credit.
+
+---
+
+## 13. Invariants (do not break these)
+
+1. **Never control Kan.** The narrator stops when the player must act.
+2. **Every narrator turn ends with one fenced JSON block**; `splitNarrationAndDiff` must strip it from what is stored/displayed. JSON must never appear in the chat.
+3. **Canon truth**: no invented canon event, funeral, death or date; only milestones/news/facts count.
+4. **No automatic time advance.** Clock changes only from narrator reports, the narration parser, or explicit clock/date fields.
+5. **Combat cannot skip days** around the player; the cap is enforced in `resolveTurnClock`.
+6. **Masked man identity** stays hidden until the war mask-break; real Madara is separate.
+7. **Pain/Nagato** are one entity; six paths are one.
+8. **Unheard canon events are invisible in the Journal** until delivered.
+9. **Personal beats are offers**, never assumed; they only complete when narrated.
+10. **Token ceiling**: prompts over 5600 tokens are trimmed; never add unbounded prompt data.
+11. **Images only on user action**, with Kan’s face/outfit references and the action brief.
+12. **Version sync**: `package.json` → `app.json` → SW cache (`scripts/generate-sw.js`) → Settings display.
+
+---
+
+## 14. How to extend safely
+
+### Add a canon milestone
+Add an object to `CANON_MILESTONES` in chronological position (order = prerequisite order), with a real date window, `minScenes`, facts, optional encounter, and `playerDriven` if it depends on Kan. Add a test that it opens on the right day.
+
+### Add a character’s lore/heart
+Add to `CHARACTER_LORE` (devotion, accessibility, orientation) and optionally `ERA_NOTES`.
+
+### Change pacing
+Edit `paceCapSeconds` in `calendar.ts` and `inferScenePace` in `pacing.ts`. Update tests.
+
+### Add a prompt block
+Add a `formatX` function and insert it into the `buildDynamic` array. Keep it short and capped; respect the token guard.
+
+### Add a state field
+`types.ts` → `db.normalizeState` default → `convertInlineDiff` + `applyStateDiff` (if narrator-provided) → tests.
+
+---
+
+## 15. Troubleshooting
+
+| Symptom | Likely cause / fix |
+|---|---|
+| Clock not moving | Narrator omitted `time` and prose has no cues; by design. Check `TIME` block and `detectNarrationTime`. |
+| Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
+| Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need narrator marks. |
+| Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
+| JSON text in chat | `splitNarrationAndDiff` / `stripNarrationJson` / render-time strip. Run tests. |
+| Wrong characters in images | `image_brief` and `characters_present`; cast comes from `sceneCast`. |
+| Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/canon caps. |
+| Save quota error | `saveSlot` trims images/snapshots; clearing old slots helps. |
+| PWA stale | Bump version so `generate-sw.js` changes the cache name; rebuild. |
+
+---
+
+## 16. Test coverage map (`scripts/verify-pipeline.test.ts`)
+
+- Save compatibility & normalization
+- JSON stripping (fenced, truncated, unfenced, labels)
+- Identity resolution (masked man, real Madara, Pain/Nagato, Zetsu)
+- Time parsing and clock arithmetic (seconds/minutes/days, leap years, month lengths)
+- Pacing caps and combat date blocking
+- Canon scheduling (baseline, real dates, personal vs world, passed/completed, news/heard, couriers)
+- Romance persistence and lore era notes
+- Image brief/cast/action rules
+- Prompt composition (blocks, dedupe, style guard, budget)
+- Token stability over 60 turns
+
+Run: `bun test`.
