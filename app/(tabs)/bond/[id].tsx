@@ -42,7 +42,8 @@ export default function BondScreen() {
       .slice(0, 12);
   }, [db, id]);
 
-  const back = () => (router.canGoBack() ? router.back() : router.navigate('/(tabs)/kan'));
+  // Tabs' back() falls through to the first tab (Story), so go to Kan explicitly.
+  const back = () => router.navigate('/(tabs)/kan');
 
   if (!db || !entity) {
     return (

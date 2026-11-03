@@ -1499,8 +1499,9 @@ function withProgress(db: AppDatabase, progress: CanonProgress): AppDatabase {
   };
 }
 
-export function canonEnabled(db: AppDatabase): boolean {
-  return db.settings.canonProgress !== false;
+/** The world always moves on its own; the old toggle is gone. */
+export function canonEnabled(_db: AppDatabase): boolean {
+  return true;
 }
 
 function prerequisitesMet(db: AppDatabase, index: number, completed: Set<string>): boolean {

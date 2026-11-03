@@ -396,7 +396,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
-      canonProgress: db.settings?.canonProgress ?? DEFAULT_SETTINGS.canonProgress,
+      canonProgress: true,
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>

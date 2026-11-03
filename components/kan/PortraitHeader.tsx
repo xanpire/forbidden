@@ -28,24 +28,12 @@ import {
 import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
 import type { PortraitRecord } from '@/lib/rpg/types';
 
-const faceSheet = require('../../assets/images/kan-face-sheet.jpg');
-
-/** The face sheet, cropped to its front view, until a real portrait exists. */
-function FaceSheetCrop({ width, height }: { width: number; height: number }) {
-  const scale = (width * 2.38) / 896;
-
+/** Empty frame until Kan's first portrait is painted. */
+function EmptyPortrait() {
   return (
-    <Image
-      accessibilityIgnoresInvertColors
-      source={faceSheet}
-      style={{
-        position: 'absolute',
-        width: 896 * scale,
-        height: 1174 * scale,
-        left: -width * 0.06,
-        top: -height * 0.09,
-      }}
-    />
+    <View style={styles.empty}>
+      <Text style={styles.emptyText}>No portrait yet</Text>
+    </View>
   );
 }
 
@@ -53,7 +41,7 @@ function PortraitImage({ value, width, height }: { value: string | null; width: 
   const uri = useStoredImage(value);
 
   if (!value) {
-    return <FaceSheetCrop height={height} width={width} />;
+    return <EmptyPortrait />;
   }
 
   if (!uri) {
@@ -254,6 +242,18 @@ export function PortraitHeader() {
 }
 
 const styles = StyleSheet.create({
+  empty: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.sm,
+  },
+  emptyText: {
+    color: colors.textMeta,
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    textAlign: 'center',
+  },
   wrap: {
     gap: 14,
   },

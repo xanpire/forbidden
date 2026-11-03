@@ -40,14 +40,6 @@ type Feedback = {
   message: string;
 };
 
-function Switch({ on }: { on: boolean }) {
-  return (
-    <View style={[styles.track, on && styles.trackOn]}>
-      <View style={styles.knob} />
-    </View>
-  );
-}
-
 export default function SettingsScreen() {
   const {
     apiKey,
@@ -398,19 +390,6 @@ export default function SettingsScreen() {
             ) : null}
           </ListCard>
 
-          <SectionLabel>World</SectionLabel>
-          <ListCard>
-            <ListRow
-              accessibilityRole="switch"
-              accessibilityState={{ checked: db.settings.canonProgress }}
-              body="Canon events happen while Kan is elsewhere."
-              meta={`${db.state.canonProgress?.completed.length ?? 0} milestones passed`}
-              onPress={() => void updateSettings({ canonProgress: !db.settings.canonProgress })}
-              title="World moves on its own"
-              trailing={<Switch on={db.settings.canonProgress} />}
-            />
-          </ListCard>
-
           <SectionLabel>Stories</SectionLabel>
           <ListCard>
             {slots.map((slot) => {
@@ -692,23 +671,6 @@ const styles = StyleSheet.create({
   nestedDivider: {
     height: 1,
     backgroundColor: colors.divider,
-  },
-  track: {
-    width: 46,
-    height: 28,
-    padding: 3,
-    borderRadius: 14,
-    backgroundColor: colors.borderStrong,
-  },
-  trackOn: {
-    alignItems: 'flex-end',
-    backgroundColor: colors.accent,
-  },
-  knob: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.white,
   },
   slotTitle: {
     flexDirection: 'row',

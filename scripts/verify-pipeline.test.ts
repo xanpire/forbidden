@@ -20,7 +20,7 @@ import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from 
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
@@ -751,17 +751,9 @@ describe('canon scheduler', () => {
     ).toBe(true);
   });
 
-  test('disabling canon progression freezes it', () => {
-    let db = loadSave();
-    db = {
-      ...db,
-      settings: { ...db.settings, canonProgress: false },
-      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
-    };
-
-    const next = advanceCanon(db);
-    expect(next.state.canonProgress?.completed).toEqual([]);
-    expect(next.events.length).toBe(db.events.length);
+  test('canon progression stays on even if an old save turned it off', () => {
+    const db = loadSave();
+    expect(canonEnabled({ ...db, settings: { ...db.settings, canonProgress: false } })).toBe(true);
   });
 });
 
