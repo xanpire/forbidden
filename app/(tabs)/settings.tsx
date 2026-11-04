@@ -26,6 +26,7 @@ import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
+import { DebugPanel } from '@/components/settings/DebugPanel';
 import { useToast } from '@/components/Toast';
 import { APP_VERSION } from '@/lib/version';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -466,6 +467,9 @@ export default function SettingsScreen() {
               variant="secondary"
             />
           </View>
+
+          <SectionLabel>Debug</SectionLabel>
+          <DebugPanel />
 
           <View style={styles.about}>
             <Text style={type.rowMeta}>{`KAN · v${APP_VERSION}`}</Text>

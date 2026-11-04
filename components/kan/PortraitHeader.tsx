@@ -14,6 +14,7 @@ import { RefreshCw, X } from 'lucide-react-native';
 import { useToast } from '@/components/Toast';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { generateImage } from '@/lib/openrouter';
+import { recordDebugImage } from '@/lib/rpg/debug';
 import { calculateAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { loadImage, useStoredImage } from '@/lib/rpg/imageStore';
@@ -103,6 +104,7 @@ export function PortraitHeader() {
       const [face, outfit] = await loadKanReferenceImages(wearsAkatsukiCloak(db));
       const previous = latest ? await loadImage(latest.image) : null;
       const references = [face, outfit, previous].filter((value): value is string => Boolean(value));
+      const startedAt = Date.now();
       const result = await generateImage({
         apiKey,
         model: db.settings.imageModel,
@@ -110,6 +112,7 @@ export function PortraitHeader() {
         inputReferences: references,
         aspectRatio: '3:4',
       });
+      recordDebugImage(null, 'portrait', db.settings.imageModel, result.cost, Date.now() - startedAt);
       await addPortrait(result.dataUri, signature);
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'The portrait wouldn’t paint. Try again.', 'error');

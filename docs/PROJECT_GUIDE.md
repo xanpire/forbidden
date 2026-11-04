@@ -412,7 +412,15 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
   - `BondsSection.tsx` — search + compact rows (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people). `titleAndBody` splits a summary into a short title and the rest.
-- `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, version and credit.
+- `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
+- `components/settings/DebugPanel.tsx` — Settings → Debug. For each of the last 30 turns: the exact messages the narrator saw (newest 5 only; copyable), the state step's status, raw reply, applied diff and a field-by-field list of what changed in the save, and every call the turn made (narrator, state, summaries, images) with billed tokens, thinking/cached tokens, time and cost.
+
+### Debug log (`lib/rpg/debug.ts`)
+
+- Lives outside the save, in its own IndexedDB store (`kan-debug`), so it never costs save quota or travels with an export. Memory only where IndexedDB is missing.
+- A turn is opened with a temporary id when the prompt is built and re-keyed to the narrator reply's log id once saved; background steps (state retries, summaries) record against `job.turnLogId`, so their spend lands on the turn that caused it.
+- Costs are never estimated. Every chat request sends `usage: { include: true }`; `CallUsage.cost` comes from the reply, or from `GET /api/v1/generation?id=` when the reply had none. A `+` after a total means a call reported no cost.
+- `describeStateChange(before, after)` diffs the save around `applyStateStep` (skips rawLog, snapshots, indices, meta, settings, memoryJobs).
 
 ---
 
@@ -464,6 +472,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 | Wrong characters in images | `image_brief` and `characters_present` from the state call; cast comes from `sceneCast`. |
 | Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/canon caps. |
 | Save quota error | `saveSlot` trims images/snapshots; clearing old slots helps. |
+| Need to see what really happened | Settings → Debug: prompt, state diff, tokens and cost per turn. |
 | PWA stale | Bump version so `generate-sw.js` changes the cache name; rebuild. |
 
 ---
@@ -480,5 +489,6 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Image brief/cast/action rules
 - Prompt composition (blocks, dedupe, style guard, budget)
 - Token stability over 60 turns
+- Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

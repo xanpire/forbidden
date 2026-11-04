@@ -48,6 +48,7 @@ import { loadImages, useStoredImage } from '@/lib/rpg/imageStore';
 import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
 import { wearsAkatsukiCloak } from '@/lib/rpg/portrait';
 import { generateImage } from '@/lib/openrouter';
+import { recordDebugImage } from '@/lib/rpg/debug';
 
 type StoryMessage = {
   id: string;
@@ -291,12 +292,20 @@ export default function StoryScreen() {
       const prompt = buildSceneImagePrompt(db, recentImages);
       const staticReferences = await loadKanReferenceImages(wearsAkatsukiCloak(db));
       const inputReferences = [...recentImages, ...staticReferences];
+      const startedAt = Date.now();
       const result = await generateImage({
         apiKey,
         model: db.settings.imageModel,
         prompt,
         inputReferences,
       });
+      recordDebugImage(
+        latestAssistant.id,
+        'image',
+        db.settings.imageModel,
+        result.cost,
+        Date.now() - startedAt
+      );
       await attachImage(latestAssistant.id, result.dataUri);
     } catch (caught) {
       const message =

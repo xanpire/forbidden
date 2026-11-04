@@ -1,4 +1,5 @@
-import { completeChat } from '../openrouter';
+import { completeChat, type ChatRequest } from '../openrouter';
+import { recordDebugCall, recordDebugState, type DebugCallKind } from './debug';
 import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
 import { advanceSeconds, normalizeDate, formatDate, daysBetween, setClock } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
@@ -1563,6 +1564,29 @@ function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
   };
 }
 
+/** completeChat, with the call (tokens, cost, errors) recorded against a turn in the debug log. */
+async function tracedChat(kind: DebugCallKind, debugTurnId: string | undefined, request: ChatRequest) {
+  try {
+    const result = await completeChat(request);
+    recordDebugCall(debugTurnId, {
+      kind,
+      model: request.model,
+      usage: result.usage,
+      finishReason: result.finishReason,
+      apiKey: request.apiKey,
+    });
+    return result;
+  } catch (caught) {
+    recordDebugCall(debugTurnId, {
+      kind,
+      model: request.model,
+      usage: null,
+      error: caught instanceof Error ? caught.message : String(caught),
+    });
+    throw caught;
+  }
+}
+
 /**
  * Call 2 of a turn: a cheap model reads the narrator's prose and returns the
  * state change through structured JSON output. Throws if the call fails, so
@@ -1574,11 +1598,14 @@ export async function extractTurnDiff(options: {
   userMessage: string;
   assistantMessage: string;
   signal?: AbortSignal;
+  /** The narrator reply this belongs to, for the debug log. */
+  debugTurnId?: string;
 }): Promise<TurnDiff | null> {
-  const { apiKey, db, userMessage, assistantMessage, signal } = options;
+  const { apiKey, db, userMessage, assistantMessage, signal, debugTurnId } = options;
   const prompt = buildExtractionPrompt(db, userMessage, assistantMessage);
+  recordDebugState(debugTurnId, { status: 'running' });
 
-  const result = await completeChat({
+  const result = await tracedChat('state', debugTurnId, {
     apiKey,
     model: db.settings.extractionModel,
     messages: prompt.messages,
@@ -1589,6 +1616,7 @@ export async function extractTurnDiff(options: {
   });
 
   const parsed = parseJsonObject(result.text);
+  recordDebugState(debugTurnId, { status: 'running', raw: result.text });
 
   // Unreadable reply: fall back to what the app can read from the prose
   // itself (clock, pace) rather than blocking the turn.
@@ -1603,8 +1631,9 @@ export async function summarizeScene(options: {
   apiKey: string;
   db: AppDatabase;
   messages: RawLogEntry[];
+  debugTurnId?: string;
 }): Promise<string | null> {
-  const { apiKey, db, messages } = options;
+  const { apiKey, db, messages, debugTurnId } = options;
 
   if (messages.length === 0) {
     return null;
@@ -1612,7 +1641,7 @@ export async function summarizeScene(options: {
 
   const prompt = buildSceneSummaryPrompt(db, messages);
 
-  const result = await completeChat({
+  const result = await tracedChat('scene', debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,
@@ -1630,8 +1659,9 @@ export async function summarizeTimeSkip(options: {
   db: AppDatabase;
   fromDate: CalendarDate;
   toDate: CalendarDate;
+  debugTurnId?: string;
 }): Promise<string | null> {
-  const { apiKey, db, fromDate, toDate } = options;
+  const { apiKey, db, fromDate, toDate, debugTurnId } = options;
 
   if (Math.abs(daysBetween(fromDate, toDate)) < 180) {
     return null;
@@ -1643,7 +1673,7 @@ export async function summarizeTimeSkip(options: {
     formatDate(toDate)
   );
 
-  const result = await completeChat({
+  const result = await tracedChat('timeSkip', debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,
@@ -1658,8 +1688,10 @@ export async function rollArcSummary(options: {
   apiKey: string;
   db: AppDatabase;
   chapterSummaries: string[];
+  debugTurnId?: string;
+  debugKind?: 'arc' | 'year';
 }): Promise<string | null> {
-  const { apiKey, db, chapterSummaries } = options;
+  const { apiKey, db, chapterSummaries, debugTurnId, debugKind = 'arc' } = options;
 
   if (chapterSummaries.length < 3) {
     return null;
@@ -1667,7 +1699,7 @@ export async function rollArcSummary(options: {
 
   const prompt = buildArcSummaryPrompt(db, chapterSummaries);
 
-  const result = await completeChat({
+  const result = await tracedChat(debugKind, debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,

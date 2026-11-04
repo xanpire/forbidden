@@ -186,6 +186,8 @@ export type StateStepResult = {
   followUpIds: string[];
   /** Short "world news" line to show, if a canon event was relayed. */
   notice: string | null;
+  /** The diff that was applied, after the app settled the clock. */
+  appliedDiff: TurnDiff | null;
 };
 
 /**
@@ -283,7 +285,7 @@ export function applyStateStep(
     }
   }
 
-  return { db: next, followUpIds, notice };
+  return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
 }
 
 /**
@@ -393,6 +395,7 @@ export async function extractStateForJob(apiKey: string, db: AppDatabase, job: M
     db,
     userMessage: job.userMessage ?? '',
     assistantMessage: narration,
+    debugTurnId: job.turnLogId,
   });
 }
 
@@ -421,13 +424,14 @@ export async function runSummaryJob(
         db: base,
         fromDate: job.fromDate as CalendarDate,
         toDate: job.toDate as CalendarDate,
+        debugTurnId: job.turnLogId,
       });
       break;
     case 'scene': {
       const wanted = new Set(job.logIds ?? []);
       const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
       logIds = messages.map((entry) => entry.id);
-      text = await summarizeScene({ apiKey, db: base, messages });
+      text = await summarizeScene({ apiKey, db: base, messages, debugTurnId: job.turnLogId });
       break;
     }
     case 'arc':
@@ -436,7 +440,13 @@ export async function runSummaryJob(
       const texts = wanted
         .map((id) => base.summaries.find((summary) => summary.id === id)?.text)
         .filter((value): value is string => Boolean(value));
-      text = await rollArcSummary({ apiKey, db: base, chapterSummaries: texts });
+      text = await rollArcSummary({
+        apiKey,
+        db: base,
+        chapterSummaries: texts,
+        debugTurnId: job.turnLogId,
+        debugKind: job.kind,
+      });
       break;
     }
     default:

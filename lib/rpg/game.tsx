@@ -30,6 +30,15 @@ import {
 import { makeId } from './id';
 import { externalizeImages, inlineImages, storeImage } from './imageStore';
 import { buildNarrationPrompt, stripNarrationJson } from './prompt';
+import {
+  beginDebugTurn,
+  describeStateChange,
+  failDebugTurn,
+  linkDebugTurn,
+  loadDebugLog,
+  recordDebugCall,
+  recordDebugState,
+} from './debug';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
@@ -167,6 +176,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     dbRef.current = db;
   }, [db]);
+
+  useEffect(() => {
+    void loadDebugLog();
+  }, []);
 
   const refreshSlots = useCallback(async () => {
     const allSlots = await listSlots();
@@ -371,6 +384,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 },
                 activeJobIdsRef.current
               );
+              recordDebugState(job.turnLogId, {
+                status: extraction ? 'applied' : 'fallback',
+                diff: result.appliedDiff,
+                changes: describeStateChange(latest, result.db),
+              });
               followUps.push(...result.followUpIds);
               notice = result.notice;
               return result.db;
@@ -392,6 +410,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
             });
           }
         } catch (caught) {
+          const failed = (await readLatest(slotId).catch(() => null))?.memoryJobs?.find(
+            (entry) => entry.id === jobId
+          );
+
+          if (failed?.kind === 'state') {
+            recordDebugState(failed.turnLogId, {
+              status: 'failed',
+              error: caught instanceof Error ? caught.message : String(caught),
+            });
+          }
+
           try {
             await updateLatest(slotId, (latest) =>
               latest.memoryJobs?.some((entry) => entry.id === jobId)
@@ -462,8 +491,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
             db: base,
             userMessage: turn.userMessage,
             assistantMessage: turn.narration,
+            debugTurnId: turn.turnLogId,
           });
         } catch (caught) {
+          recordDebugState(turn.turnLogId, {
+            status: 'failed',
+            error: caught instanceof Error ? caught.message : String(caught),
+          });
           await updateLatest(slotId, (latest) =>
             latest.rawLog.some((entry) => entry.id === turn.turnLogId)
               ? queueStateRetry(latest, turn, caught)
@@ -481,6 +515,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           }
 
           const result = applyStateStep(latest, extraction, turn, activeJobIdsRef.current);
+          recordDebugState(turn.turnLogId, {
+            status: extraction ? 'applied' : 'fallback',
+            diff: result.appliedDiff,
+            changes: describeStateChange(latest, result.db),
+          });
           followUps = result.followUpIds;
           notice = result.notice;
           return result.db;
@@ -523,6 +562,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setStreamingText('');
       setPendingAction(action);
       setError(null);
+      let debugTurnId: string | null = null;
+      let narratorRecorded = false;
 
       try {
         const snapshotDb = pushSnapshot(current);
@@ -538,6 +579,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const d20 = rollD20();
         const prompt = buildNarrationPrompt(withUser, action, d20);
         setLastPromptTokens(prompt.estimatedTokens);
+        debugTurnId = beginDebugTurn({
+          slotId: current.meta.slotId,
+          action,
+          d20,
+          narratorModel: withUser.settings.narrationModel,
+          prompt: prompt.messages,
+          promptEstimate: prompt.estimatedTokens,
+        });
 
         const controller = new AbortController();
         abortRef.current = controller;
@@ -577,6 +626,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
             clearTimeout(flushTimer);
           }
         }
+
+        recordDebugCall(debugTurnId, {
+          kind: 'narrator',
+          model: withUser.settings.narrationModel,
+          usage: result.usage,
+          finishReason: result.finishReason,
+          apiKey: activeKey,
+        });
+        narratorRecorded = true;
 
         const promptTokens = result.promptTokens;
         const completionTokens = result.completionTokens;
@@ -621,6 +679,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        if (debugTurnId) {
+          linkDebugTurn(debugTurnId, turnLogId);
+        }
+
         // Call 2: read the state change out of the prose, in the background.
         trackBackground(
           runStateStep(activeKey, slotId, {
@@ -633,6 +695,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const message =
           caught instanceof Error ? caught.message : 'The narrator could not respond.';
         setError(message);
+
+        if (debugTurnId) {
+          if (!narratorRecorded) {
+            recordDebugCall(debugTurnId, {
+              kind: 'narrator',
+              model: current.settings.narrationModel,
+              usage: null,
+              error: message,
+            });
+          }
+
+          failDebugTurn(debugTurnId, message);
+        }
       } finally {
         setIsNarrating(false);
         setStreamingText('');

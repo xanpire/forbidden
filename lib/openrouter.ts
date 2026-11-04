@@ -5,6 +5,7 @@ const IMAGE_MODELS_URL = 'https://openrouter.ai/api/v1/images/models';
 const IMAGES_URL = 'https://openrouter.ai/api/v1/images';
 const MODELS_URL = 'https://openrouter.ai/api/v1/models';
 const KEY_URL = 'https://openrouter.ai/api/v1/key';
+const GENERATION_URL = 'https://openrouter.ai/api/v1/generation';
 
 export type OpenRouterModelSummary = {
   id: string;
@@ -61,12 +62,100 @@ export type ChatRequest = {
   reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
 };
 
+/** What OpenRouter reported for one call. Nothing here is estimated unless `estimated` says so. */
+export type CallUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  /** Thinking tokens (billed as completion tokens). */
+  reasoningTokens: number;
+  /** Prompt tokens served from the provider's cache. */
+  cachedTokens: number;
+  /** True when OpenRouter sent no usage and the counts are a length estimate. */
+  estimated: boolean;
+  /** USD, as billed by OpenRouter. Null until known. */
+  cost: number | null;
+  generationId: string | null;
+  /** The model that actually answered (can differ from the one asked for). */
+  servedModel: string | null;
+  provider: string | null;
+  durationMs: number;
+};
+
 export type StreamResult = {
   text: string;
   promptTokens: number;
   completionTokens: number;
   finishReason?: string;
+  usage: CallUsage;
 };
+
+type RawUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  cost?: number;
+  completion_tokens_details?: { reasoning_tokens?: number };
+  prompt_tokens_details?: { cached_tokens?: number };
+};
+
+function readUsage(
+  raw: RawUsage | undefined,
+  meta: { id?: string; model?: string; provider?: string },
+  fallback: { prompt: number; completion: number },
+  startedAt: number
+): CallUsage {
+  const hasCounts = typeof raw?.prompt_tokens === 'number' && raw.prompt_tokens > 0;
+
+  return {
+    promptTokens: hasCounts ? (raw?.prompt_tokens as number) : fallback.prompt,
+    completionTokens:
+      typeof raw?.completion_tokens === 'number' ? raw.completion_tokens : fallback.completion,
+    reasoningTokens: raw?.completion_tokens_details?.reasoning_tokens ?? 0,
+    cachedTokens: raw?.prompt_tokens_details?.cached_tokens ?? 0,
+    estimated: !hasCounts,
+    cost: typeof raw?.cost === 'number' ? raw.cost : null,
+    generationId: meta.id ?? null,
+    servedModel: meta.model ?? null,
+    provider: meta.provider ?? null,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+/**
+ * Looks up the billed cost of a finished call. OpenRouter needs a moment to
+ * settle the stats, so this retries a few times. Returns null if it never
+ * becomes available.
+ */
+export async function fetchGenerationCost(
+  apiKey: string,
+  generationId: string
+): Promise<number | null> {
+  const delays = [1500, 3000, 6000];
+
+  for (const delay of delays) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    try {
+      const response = await fetch(
+        `${GENERATION_URL}?id=${encodeURIComponent(generationId)}`,
+        { headers: { Accept: 'application/json', Authorization: `Bearer ${apiKey}` } }
+      );
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const payload = (await response.json()) as { data?: { total_cost?: number } };
+
+      if (typeof payload.data?.total_cost === 'number') {
+        return payload.data.total_cost;
+      }
+    } catch {
+      // Try again after the next delay.
+    }
+  }
+
+  return null;
+}
 
 const RECOMMENDED_MODELS = new Set([
   'deepseek/deepseek-v4.1-flash-1017',
@@ -380,7 +469,10 @@ export async function completeChat({
     max_tokens: maxTokens,
     stream: false,
     reasoning: { exclude: true },
+    usage: { include: true },
   };
+
+  const startedAt = Date.now();
 
   if (jsonSchema) {
     body.response_format = {
@@ -436,19 +528,30 @@ export async function completeChat({
   }
 
   const payload = (await response.json()) as {
+    id?: string;
+    model?: string;
+    provider?: string;
     choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
-    usage?: { prompt_tokens?: number; completion_tokens?: number };
+    usage?: RawUsage;
   };
 
   const text = payload.choices?.[0]?.message?.content ?? '';
+  const usage = readUsage(
+    payload.usage,
+    payload,
+    {
+      prompt: estimateTokens(messages),
+      completion: estimateTokens([{ role: 'assistant', content: text }]),
+    },
+    startedAt
+  );
 
   return {
     text,
-    promptTokens: payload.usage?.prompt_tokens ?? estimateTokens(messages),
-    completionTokens:
-      payload.usage?.completion_tokens ??
-      estimateTokens([{ role: 'assistant', content: text }]),
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
     finishReason: payload.choices?.[0]?.finish_reason,
+    usage,
   };
 }
 
@@ -472,11 +575,14 @@ export async function streamChatCompletion({
     temperature,
     max_tokens: maxTokens,
     stream: true,
+    usage: { include: true },
   };
 
   if (reasoning) {
     body.reasoning = reasoning;
   }
+
+  const startedAt = Date.now();
 
   const response = await fetch(CHAT_URL, {
     method: 'POST',
@@ -492,11 +598,21 @@ export async function streamChatCompletion({
   if (!response.body) {
     const text = await response.text();
     onDelta(text);
+    const usage = readUsage(
+      undefined,
+      {},
+      {
+        prompt: estimateTokens(messages),
+        completion: estimateTokens([{ role: 'assistant', content: text }]),
+      },
+      startedAt
+    );
 
     return {
       text,
-      promptTokens: estimateTokens(messages),
-      completionTokens: estimateTokens([{ role: 'assistant', content: text }]),
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      usage,
     };
   }
 
@@ -504,8 +620,8 @@ export async function streamChatCompletion({
   const decoder = new TextDecoder();
   let buffer = '';
   let full = '';
-  let promptTokens = 0;
-  let completionTokens = 0;
+  let rawUsage: RawUsage | undefined;
+  const meta: { id?: string; model?: string; provider?: string } = {};
   let finishReason: string | undefined;
 
   while (true) {
@@ -534,9 +650,16 @@ export async function streamChatCompletion({
 
       try {
         const parsed = JSON.parse(data) as {
+          id?: string;
+          model?: string;
+          provider?: string;
           choices?: Array<{ delta?: { content?: string }; finish_reason?: string }>;
-          usage?: { prompt_tokens?: number; completion_tokens?: number };
+          usage?: RawUsage;
         };
+
+        meta.id = parsed.id ?? meta.id;
+        meta.model = parsed.model ?? meta.model;
+        meta.provider = parsed.provider ?? meta.provider;
 
         if (parsed.choices?.[0]?.finish_reason) {
           finishReason = parsed.choices[0].finish_reason ?? finishReason;
@@ -550,8 +673,7 @@ export async function streamChatCompletion({
         }
 
         if (parsed.usage) {
-          promptTokens = parsed.usage.prompt_tokens ?? promptTokens;
-          completionTokens = parsed.usage.completion_tokens ?? completionTokens;
+          rawUsage = parsed.usage;
         }
       } catch {
         // Ignore malformed SSE fragments.
@@ -559,12 +681,22 @@ export async function streamChatCompletion({
     }
   }
 
+  const usage = readUsage(
+    rawUsage,
+    meta,
+    {
+      prompt: estimateTokens(messages),
+      completion: estimateTokens([{ role: 'assistant', content: full }]),
+    },
+    startedAt
+  );
+
   return {
     text: full,
-    promptTokens: promptTokens || estimateTokens(messages),
-    completionTokens:
-      completionTokens || estimateTokens([{ role: 'assistant', content: full }]),
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
     finishReason,
+    usage,
   };
 }
 
