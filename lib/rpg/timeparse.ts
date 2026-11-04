@@ -217,10 +217,23 @@ function explicitDate(text: string, current: CalendarDate): CalendarDate | undef
   };
 }
 
+/**
+ * Removes speech, so a spoken plan ("Walk until nightfall, Kan.") never moves
+ * the clock: only what the narration says happened counts. Handles straight
+ * and curly double quotes; a quote left open runs to the end of its paragraph.
+ */
+export function stripSpeech(text: string): string {
+  return text
+    .replace(/"[^"\n]*(?:"|(?=\n)|$)/g, ' ')
+    .replace(/“[^”\n]*(?:”|(?=\n)|$)/g, ' ');
+}
+
 // Reads narration into elapsed clock time. Deliberately conservative: only
 // clear elapsed phrasing counts, and explicit clocks/dates always win.
-export function detectNarrationTime(text: string, current: CalendarDate): ParsedTime {
-  if (!text) {
+export function detectNarrationTime(rawText: string, current: CalendarDate): ParsedTime {
+  const text = rawText ? stripSpeech(rawText) : '';
+
+  if (!text.trim()) {
     return { elapsedSeconds: 0 };
   }
 
@@ -254,8 +267,13 @@ export function detectNarrationTime(text: string, current: CalendarDate): Parsed
     elapsedSeconds = Math.max(elapsedSeconds, 15);
   }
 
+  // Up to two words may sit between the number and the unit ("two relentless
+  // hours", "three long, cold days"), but never another number or unit, so
+  // "a few more days" reads as a few, not one.
+  const numbers = `${Object.keys(NUMBER_WORDS).join('|')}|\\d+`;
+  const units = Object.keys(UNIT_SECONDS).join('|');
   const unitPattern = new RegExp(
-    `\\b(${Object.keys(NUMBER_WORDS).join('|')}|\\d+)\\s+(${Object.keys(UNIT_SECONDS).join('|')})\\b`,
+    `\\b(${numbers})\\s+(?:(?!(?:${numbers}|${units})\\b)[a-z'-]+,?\\s+){0,2}(${units})\\b`,
     'gi'
   );
 
@@ -273,9 +291,11 @@ export function detectNarrationTime(text: string, current: CalendarDate): Parsed
       /(later|after|passed|of travel|of riding|of marching|on the road|on the trail|of walking|of running)/.test(
         after
       ) ||
-      /(spent|travel|travels|traveled|travelled|traveling|travelling|marched|ride|rode|walked|walk|ran|slept|sleep|rested|waited|searched|fought|endured|trained)/.test(
+      /(spent|travel|travels|traveled|travelled|traveling|travelling|marched|ride|rode|walked|walk|ran|slept|sleep|rested|waited|searched|fought|endured|trained|took)/.test(
         before
-      );
+      ) ||
+      // "After two hours, ..." right before the number.
+      /\bafter\s+$/.test(before);
 
     if (elapsedMarker && amount > 0 && unitSeconds > 0) {
       elapsedSeconds = Math.max(elapsedSeconds, amount * unitSeconds);

@@ -87,6 +87,41 @@ export function resolveElapsedSeconds(options: {
 /** A stated hour this close behind the clock is the narrator restating "now". */
 const RESTATED_CLOCK_SECONDS = 3600;
 
+/** How far a reported clock may sit from the stated duration and still count. */
+function reportedClockTolerance(storySeconds: number) {
+  return Math.max(30 * 60, storySeconds * 0.25);
+}
+
+/**
+ * The state model's clock_time is often a guess. An hour the prose names
+ * (detected.clock) always counts; the reported one only counts when it fits.
+ * With a stated duration, the duration wins: the reported clock is used only
+ * when it lands close to where that duration ends ("two hours" + "14:00"
+ * from 08:00 is ignored). With no duration, it may only move the clock
+ * forward on the same day, never roll it into tomorrow.
+ */
+function trustedReportedClock(options: {
+  reported?: { hour: number; minute: number };
+  current: CalendarDate;
+  target: CalendarDate;
+  storySeconds: number;
+}) {
+  const { reported, current, target, storySeconds } = options;
+
+  if (!reported) {
+    return undefined;
+  }
+
+  if (storySeconds > 0) {
+    const onTargetDay = { ...target, hour: reported.hour, minute: reported.minute, second: 0 };
+    const gap = Math.abs(dateSortValue(onTargetDay) - dateSortValue(target));
+    return gap <= reportedClockTolerance(storySeconds) ? reported : undefined;
+  }
+
+  const onToday = { ...current, hour: reported.hour, minute: reported.minute, second: 0 };
+  return dateSortValue(onToday) >= dateSortValue(current) ? reported : undefined;
+}
+
 /**
  * The single source of truth for how far a turn moves the clock.
  *
@@ -130,7 +165,12 @@ export function resolveTurnClock(options: {
     target = explicit;
     storyTimed = true;
   } else {
-    const clock = options.detected.clock ?? options.reportedClock;
+    const clock = options.detected.clock ?? trustedReportedClock({
+      reported: options.reportedClock,
+      current,
+      target,
+      storySeconds,
+    });
 
     if (clock) {
       const sameDay = { ...target, hour: clock.hour, minute: clock.minute, second: 0 };

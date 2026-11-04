@@ -1388,6 +1388,38 @@ describe('narration clock parsing', () => {
     expect(detectNarrationTime('It was a two-day march to the quarry.', current).elapsedSeconds).toBe(0);
   });
 
+  test('spoken plans never move the clock', () => {
+    const morning = { year: 13, month: 10, day: 4, hour: 10, minute: 0, second: 0 };
+    const spoken = detectNarrationTime(
+      'Itachi does not slow. "Walk until nightfall, Kan. We rest at dawn, and in two days we cross the border." He waits for your answer.',
+      morning
+    );
+    expect(spoken.clock).toBeUndefined();
+    expect(spoken.elapsedSeconds).toBe(0);
+
+    const curly = detectNarrationTime('“We leave the next morning,” he says.', morning);
+    expect(curly.elapsedSeconds).toBe(0);
+    expect(curly.clock).toBeUndefined();
+
+    // Narration outside the quotes still counts.
+    const narrated = detectNarrationTime('"Keep up." You walk until nightfall.', morning);
+    expect(narrated.clock).toEqual({ hour: 21, minute: 0 });
+
+    // A quote left open runs to the end of its paragraph only.
+    const open = detectNarrationTime('"Until nightfall, then\nTwo hours later, you reach the river.', morning);
+    expect(open.clock).toBeUndefined();
+    expect(open.elapsedSeconds).toBe(2 * 3600);
+  });
+
+  test('allows a word or two between the number and the unit', () => {
+    expect(detectNarrationTime('After two relentless hours, the trees thin out.', current).elapsedSeconds).toBe(2 * 3600);
+    expect(detectNarrationTime('Three long, cold days later, the border appears.', current).elapsedSeconds).toBe(3 * 86400);
+    expect(detectNarrationTime('You spent a few more days in the hideout.', current).elapsedSeconds).toBe(3 * 86400);
+    expect(detectNarrationTime('You waited a couple of minutes.', current).elapsedSeconds).toBe(120);
+    // Still no elapsed marker, still nothing.
+    expect(detectNarrationTime('The two silent men watched for hours.', current).elapsedSeconds).toBe(0);
+  });
+
   test('detects exact clocks and rolls the day when needed', () => {
     const evening = detectNarrationTime('It is evening now.', current);
     expect(evening.clock).toEqual({ hour: 19, minute: 0 });
@@ -1693,6 +1725,65 @@ describe('canon + clock integration', () => {
     expect(wake.day).toBe(5);
     expect(wake.hour).toBe(7);
     expect(wake.minute).toBe(0);
+  });
+
+  test('a stated duration beats a guessed clock_time', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 8, minute: 0, second: 0 };
+    // "Two relentless hours" + a guessed 14:00 used to move six hours.
+    const guessed = resolveTurnClock({
+      reportedSeconds: 2 * 3600,
+      reportedClock: { hour: 14, minute: 0 },
+      detected: detectNarrationTime('After two relentless hours, the trees thin out.', current),
+      pace: 'travel',
+      sceneEnded: false,
+      current,
+    });
+    expect(guessed.elapsedSeconds).toBe(2 * 3600);
+
+    // A reported clock that fits the duration still lands.
+    const fits = resolveTurnClock({
+      reportedSeconds: 2 * 3600,
+      reportedClock: { hour: 10, minute: 15 },
+      detected: { elapsedSeconds: 0 },
+      pace: 'travel',
+      sceneEnded: false,
+      current,
+    });
+    expect(fits.elapsedSeconds).toBe(2 * 3600 + 15 * 60);
+
+    // An hour the prose names still wins over the duration.
+    const named = resolveTurnClock({
+      reportedSeconds: 2 * 3600,
+      detected: detectNarrationTime('Two hours later, by dusk, you reach the river.', current),
+      pace: 'travel',
+      sceneEnded: false,
+      current,
+    });
+    expect(named.elapsedSeconds).toBe(11 * 3600);
+
+    // With no duration, a reported clock never rolls into tomorrow.
+    const backwards = resolveTurnClock({
+      reportedSeconds: 0,
+      reportedClock: { hour: 6, minute: 0 },
+      detected: { elapsedSeconds: 0 },
+      pace: 'conversation',
+      sceneEnded: false,
+      current,
+    });
+    expect(backwards.elapsedSeconds).toBe(120);
+  });
+
+  test('an order in dialogue does not jump the clock', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 10, minute: 0, second: 0 };
+    const prose = 'Itachi looks back once. "Walk until nightfall, Kan." The forest is quiet.';
+    const result = resolveTurnClock({
+      reportedSeconds: 0,
+      detected: detectNarrationTime(prose, current),
+      pace: 'conversation',
+      sceneEnded: false,
+      current,
+    });
+    expect(result.elapsedSeconds).toBe(120);
   });
 
   test('a restated current hour does not roll the clock a day', () => {
