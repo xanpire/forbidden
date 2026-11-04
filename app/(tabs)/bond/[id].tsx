@@ -150,7 +150,7 @@ export default function BondScreen() {
 
         <SectionLabel>Shared memories</SectionLabel>
         {shared.length === 0 ? (
-          <EmptyRow title="No shared memories yet" />
+          <EmptyRow title="Nothing shared yet" />
         ) : (
           <ListCard>
             {shared.map((event) => {

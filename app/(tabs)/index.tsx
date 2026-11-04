@@ -272,7 +272,7 @@ export default function StoryScreen() {
       .find((message) => message.kind === 'story' && message.role === 'assistant');
 
     if (!latestAssistant) {
-      showToast('Start the story before generating an image.', 'error');
+      showToast('Start the story first — there’s nothing to paint yet.', 'error');
       return;
     }
 
@@ -292,7 +292,7 @@ export default function StoryScreen() {
       await attachImage(latestAssistant.id, result.dataUri);
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : 'Could not generate the scene image.';
+        caught instanceof Error ? caught.message : 'The scene wouldn’t paint. Try again.';
       showToast(message, 'error');
     } finally {
       setIsGeneratingImage(false);
@@ -367,7 +367,7 @@ export default function StoryScreen() {
         <View style={styles.header}>
           <Wordmark compact />
           <Pressable
-            accessibilityLabel="Show Kan's status"
+            accessibilityLabel="Show your status"
             accessibilityRole="button"
             onPress={() => setStatusOpen(true)}
             style={({ pressed }) => [styles.statusButton, pressed && styles.pressed]}
@@ -392,6 +392,7 @@ export default function StoryScreen() {
           <View style={styles.newsStrip}>
             <View style={styles.newsDot} />
             <Text numberOfLines={2} style={styles.newsText}>
+              <Text style={styles.newsLead}>Word reaches you: </Text>
               {worldEventNotice}
             </Text>
             <Pressable
@@ -420,14 +421,15 @@ export default function StoryScreen() {
             <View style={styles.seed}>
               <Text style={styles.seedTitle}>The rain hasn’t stopped.</Text>
               <Text style={type.prose}>
-                Kan waits in the forest outside Konoha. The Uchiha massacre is finished, and
-                Itachi still hasn’t come. Thunder moves through the trees, and every drop sounds
-                like footsteps.
+                Days ago Itachi told you he would kill the clan. You fought him, you lost, and he
+                sent you here to wait. Now you crouch in the forest outside the Leaf, soaked to the
+                bone, not knowing if he went through with it — or who is still alive. He promised you
+                an answer. Every drop sounds like footsteps.
               </Text>
               <AppButton
                 disabled={!apiKey}
-                label="Kan waits for Itachi"
-                onPress={() => void submit('Kan waits for Itachi in the rain.')}
+                label="Wait for him"
+                onPress={() => void submit('*You wait in the rain for Itachi.*')}
                 style={styles.seedButton}
               />
             </View>
@@ -452,7 +454,7 @@ export default function StoryScreen() {
                       busy={isGeneratingImage}
                       disabled={!apiKey}
                       icon={<ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />}
-                      label="Image"
+                      label="Paint"
                       onPress={() => void generateSceneImage()}
                     />
                     <InlineAction
@@ -485,7 +487,7 @@ export default function StoryScreen() {
               <ListRow
                 body={error}
                 leading={<CircleAlert color={colors.danger} size={18} strokeWidth={2} />}
-                title="The narrator stumbled"
+                title="The story lost its thread"
                 trailing={
                   <AppButton
                     compact
@@ -501,9 +503,9 @@ export default function StoryScreen() {
           {!apiKey ? (
             <ListCard>
               <ListRow
-                body="Add an OpenRouter key in Settings to begin."
+                body="Add your OpenRouter key in Settings to begin."
                 leading={<Sparkles color={colors.accentText} size={18} strokeWidth={2} />}
-                title="Connect your narrator"
+                title="No narrator yet"
                 trailing={
                   <AppButton
                     compact
@@ -546,7 +548,7 @@ export default function StoryScreen() {
               <Text style={styles.markerLabel}>*</Text>
             </Pressable>
             <TextInput
-              accessibilityLabel="What does Kan do?"
+              accessibilityLabel="What do you do?"
               editable={!isNarrating}
               maxLength={1000}
               multiline
@@ -558,7 +560,7 @@ export default function StoryScreen() {
                   end: event.nativeEvent.selection.end,
                 };
               }}
-              placeholder="What does Kan do?"
+              placeholder="What do you do?"
               placeholderTextColor={colors.textDim}
               ref={inputRef}
               style={styles.composerInput}
@@ -777,6 +779,10 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
+  },
+  newsLead: {
+    color: colors.text,
+    fontFamily: fonts.semibold,
   },
   newsClose: {
     width: 36,

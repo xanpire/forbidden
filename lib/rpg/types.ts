@@ -187,6 +187,8 @@ export type LoreRecord = {
   priority: number;
   text: string;
   enabled: boolean;
+  /** Narrator-only guidance; never shown in the Journal. */
+  hidden?: boolean;
 };
 
 export type SummaryRecord = {

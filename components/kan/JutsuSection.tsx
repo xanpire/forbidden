@@ -22,8 +22,8 @@ export function JutsuSection() {
       <View style={styles.section}>
         <SectionLabel>Jutsu</SectionLabel>
         <EmptyRow
-          body="Every technique Kan or anyone else uses is recorded here permanently."
-          title="No jutsu recorded yet"
+          body="Every technique you use or see is kept here for good."
+          title="No jutsu seen yet"
         />
       </View>
     );

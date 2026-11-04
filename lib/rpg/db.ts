@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { CANON_MILESTONES, CANON_VERSION } from './canon';
+import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canon';
 import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
@@ -334,9 +334,10 @@ function migrateCanonV2(db: AppDatabase): AppDatabase {
   const canonThreadIds = new Set(
     (db.threads ?? []).filter((thread) => thread.id.startsWith('thread_canon_')).map((thread) => thread.id)
   );
-  const canonPoints = new Set(
-    CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]
-  );
+  const canonPoints = new Set([
+    ...(CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]),
+    ...LEGACY_CANON_POINTS,
+  ]);
   const canonEventIds = new Set(
     (db.events ?? [])
       .filter(

@@ -112,7 +112,7 @@ export function PortraitHeader() {
       });
       await addPortrait(result.dataUri, signature);
     } catch (caught) {
-      showToast(caught instanceof Error ? caught.message : 'Could not paint the portrait.', 'error');
+      showToast(caught instanceof Error ? caught.message : 'The portrait wouldn’t paint. Try again.', 'error');
     } finally {
       setBusy(false);
     }
@@ -158,8 +158,10 @@ export function PortraitHeader() {
               {busy
                 ? 'Painting a new portrait…'
                 : stale
-                  ? `Outdated · ${staleReason}`
-                  : `Up to date · ${formatDayMonth(latest!.inStoryDate)}`}
+                  ? latest
+                    ? `You’ve changed · ${staleReason}`
+                    : staleReason
+                  : `Painted ${formatDayMonth(latest!.inStoryDate)}`}
             </Text>
           </View>
           <Pressable
@@ -181,7 +183,7 @@ export function PortraitHeader() {
               <RefreshCw color={stale ? colors.onAccent : colors.textSoft} size={15} strokeWidth={2} />
             )}
             <Text style={[styles.refreshLabel, !stale && styles.refreshLabelQuiet]}>
-              {latest ? 'Refresh portrait' : 'Paint portrait'}
+              {latest ? 'Repaint' : 'Paint portrait'}
             </Text>
           </Pressable>
         </View>

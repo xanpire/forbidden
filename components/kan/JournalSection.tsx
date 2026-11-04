@@ -79,14 +79,14 @@ function NowView({ db }: { db: AppDatabase }) {
       </ListCard>
 
       <SectionLabel>Missions</SectionLabel>
-      {missions.length > 0 ? <ThreadRows threads={missions} /> : <EmptyRow title="No open missions" />}
+      {missions.length > 0 ? <ThreadRows threads={missions} /> : <EmptyRow title="No missions. For now." />}
 
       <SectionLabel>Goals</SectionLabel>
-      {goals.length > 0 ? <ThreadRows threads={goals} /> : <EmptyRow title="No open goals" />}
+      {goals.length > 0 ? <ThreadRows threads={goals} /> : <EmptyRow title="Nothing you’ll admit to" />}
 
       {other.length > 0 ? (
         <>
-          <SectionLabel>Open threads</SectionLabel>
+          <SectionLabel>Unanswered</SectionLabel>
           <ThreadRows threads={other} />
         </>
       ) : null}
@@ -140,7 +140,7 @@ function RecapView({ db }: { db: AppDatabase }) {
     return (
       <>
         <SectionLabel>Chapters</SectionLabel>
-        <EmptyRow body="Chapter recaps appear here as the story unfolds." title="Nothing to recap yet" />
+        <EmptyRow body="Each chapter is summed up here once it ends." title="Nothing behind you yet" />
       </>
     );
   }
@@ -183,14 +183,15 @@ function WorldView({ db }: { db: AppDatabase }) {
       .slice(0, 40);
   }, [db]);
   const heard = db.state.canonProgress?.heard ?? {};
+  const visibleLore = db.loreEntries.filter((lore) => !lore.hidden);
 
   return (
     <>
-      <SectionLabel>News Kan has heard</SectionLabel>
+      <SectionLabel>Word on the road</SectionLabel>
       {news.length === 0 ? (
         <EmptyRow
-          body="World events reach Kan through people and couriers as time passes."
-          title="No news yet"
+          body="News reaches you through people and couriers, never all at once."
+          title="No word yet"
         />
       ) : (
         <ListCard>
@@ -211,17 +212,17 @@ function WorldView({ db }: { db: AppDatabase }) {
         </ListCard>
       )}
 
-      <SectionLabel>Where things stand</SectionLabel>
+      <SectionLabel>The world as you know it</SectionLabel>
       <ListCard>
         <ListRow body={localizePlaceNames(db.state.worldDescription)} title="The world" />
         <ListRow body={localizePlaceNames(db.state.canonPoint)} title="Timeline" />
       </ListCard>
 
-      {db.loreEntries.length > 0 ? (
+      {visibleLore.length > 0 ? (
         <>
           <SectionLabel>Lore</SectionLabel>
           <ListCard>
-            {db.loreEntries.map((lore) => (
+            {visibleLore.map((lore) => (
               <ListRow
                 body={lore.text}
                 key={lore.id}
@@ -247,9 +248,9 @@ function MemoriesView({ db }: { db: AppDatabase }) {
 
   return (
     <>
-      <SectionLabel>What Kan remembers</SectionLabel>
+      <SectionLabel>What you remember</SectionLabel>
       {memories.length === 0 ? (
-        <EmptyRow body="Important moments are kept here." title="No memories yet" />
+        <EmptyRow body="The moments that matter stay here." title="Nothing worth keeping yet" />
       ) : (
         <ListCard>
           {memories.map((memory) => {

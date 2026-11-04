@@ -139,8 +139,8 @@ export function BondsSection() {
 
       {entries.length === 0 ? (
         <EmptyRow
-          body={query ? 'Try another name.' : 'People appear here as the story introduces them.'}
-          title={query ? 'No one by that name' : 'No bonds yet'}
+          body={query ? 'Try another name.' : 'People appear here as you meet them.'}
+          title={query ? 'You don’t know anyone by that name' : 'No one yet'}
         />
       ) : (
         <ListCard>

@@ -49,13 +49,37 @@ export type CanonMilestone = {
 // year 22-23 is the Fourth War. Windows use (year, month); day is ignored.
 export const CANON_VERSION = 3;
 
+// Earlier third-person wording of canon points, so saves made before the
+// second-person rewrite are still recognized by the canon migration.
+export const LEGACY_CANON_POINTS: string[] = [
+  "Kan and Itachi have joined the Akatsuki together.",
+  "Kan is settling into life as an Akatsuki operative.",
+  "Kan has blood on his hands from his first Akatsuki assignment.",
+  "Hana Inuzuka's patrol crossed Kan's trail.",
+  "Suzume is quietly investigating what happened to Kan and the Uchiha.",
+  "Kan's bounty mission went wrong.",
+  "Kan keeps a private life hidden even from the Akatsuki.",
+  "Kan faced the people of Hidden Rain during a riot.",
+  "Kan has heard rumors of a masked man present at the massacre.",
+  "Kan has seen Hidden Leaf's new genin from the shadows.",
+  "Kan met Hana and Suzume again after the invasion.",
+  "Kan crossed paths with Sasuke Uchiha on the night of his defection.",
+  "Kan has taken his place in the Akatsuki's beast hunt.",
+  "Sasuke Uchiha has crossed paths with Kan again.",
+  "Kan returned to Izumi's grave.",
+  "Kan has made his choice about his place in the coming war.",
+  "Kan has chosen his side in the Fourth Shinobi World War.",
+  "Kan met Hana and Suzume on the war's battlefield.",
+  "Kan's story is settling into its legacy.",
+];
+
 export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'izumi-funeral',
     era: 'Ashes',
     title: "Izumi Uchiha's funeral",
     description:
-      "Izumi Uchiha is buried with the rest of the clan. Hana and Suzume stand at the grave; Kan is a ghost at the edge of the ceremony.",
+      "Izumi Uchiha is buried with the rest of the clan. Hana and Suzume stand at the grave; you are a ghost at the edge of the ceremony.",
     from: { year: 13, month: 10, day: 6 },
     to: { year: 14, month: 3 },
     minScenes: 2,
@@ -71,23 +95,25 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kan-joins-akatsuki',
     era: 'Ashes',
-    title: 'Kan joins the Akatsuki',
+    title: 'You join the Akatsuki',
     description:
-      'Kan accepts Itachi\'s offer and joins the Akatsuki beside him. Pain and Konan receive the two Uchiha into the rain-soaked organization.',
-    canonPoint: 'Kan and Itachi have joined the Akatsuki together.',
+      'You accept Itachi\'s offer and join the Akatsuki beside him. Pain and Konan receive the two of you into the rain-soaked organization. Itachi stays paired with Jūzō Biwa; Pain pairs you with Kakuzu instead, so you and Itachi only meet between missions.',
+    canonPoint: 'You and Itachi have joined the Akatsuki together.',
     from: { year: 13, month: 10 },
     to: { year: 14, month: 3 },
     minScenes: 2,
     facts: [
       'Kan joined the Akatsuki together with Itachi Uchiha.',
       'Kan wears an Akatsuki cloak with red clouds.',
+      'Kan is not Itachi\'s Akatsuki partner; Itachi is paired with Jūzō Biwa.',
+      'Pain paired Kan with Kakuzu.',
     ],
     resolvesThreadTitles: ['itachi’s offer: join akatsuki', 'itachi\'s offer: join akatsuki'],
     opensThreads: [
       {
         title: 'Prove yourself to the Akatsuki',
         description:
-          'Kan must earn his place among the Akatsuki\'s monsters without giving them a reason to discard him.',
+          'Earn your place among the Akatsuki\'s monsters without giving them a reason to discard you.',
         type: 'goal',
         participants: ['Kan', 'Itachi Uchiha'],
         importance: 4,
@@ -101,7 +127,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Ashes',
     title: 'The masked man\'s audience',
     description:
-      'Itachi is summoned to a secret meeting with a masked man who calls himself Madara Uchiha. Itachi invites Kan to come along; only those present learn that this masked man stands above the Akatsuki.',
+      'Itachi is summoned to a secret meeting with a masked man who calls himself Madara Uchiha. Itachi invites you to come along; only those present learn that this masked man stands above the Akatsuki.',
     canonPoint: 'A masked man calling himself Madara Uchiha secretly stands above the Akatsuki.',
     from: { year: 13, month: 11 },
     to: { year: 15, month: 6 },
@@ -122,8 +148,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Ashes',
     title: 'First missions under the cloak',
     description:
-      'Kan takes his first missions as an Akatsuki member — surveillance, retrieval, and quiet eliminations that teach him the organization\'s rhythm.',
-    canonPoint: 'Kan is settling into life as an Akatsuki operative.',
+      'You take your first missions as an Akatsuki member — surveillance, retrieval, and quiet eliminations that teach you the organization\'s rhythm.',
+    canonPoint: 'You are settling into life as an Akatsuki operative.',
     from: { year: 14, month: 1 },
     minScenes: 6,
     facts: ['Kan completed his first missions for the Akatsuki.'],
@@ -134,8 +160,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Ashes',
     title: "The first execution",
     description:
-      "Pain assigns Kan his first execution for the Akatsuki: a deserter whose mouth has grown too loud.",
-    canonPoint: "Kan has blood on his hands from his first Akatsuki assignment.",
+      "Pain assigns you your first execution for the Akatsuki: a deserter whose mouth has grown too loud.",
+    canonPoint: "You have blood on your hands from your first Akatsuki assignment.",
     from: { year: 14, month: 1 },
     to: { year: 15, month: 6 },
     minScenes: 6,
@@ -175,8 +201,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "Hana's patrol",
     description:
-      "Hana, now a chunin, leads a patrol that picks up Kan's trail. She has to decide whether the missing-nin in the cloak is still her teammate.",
-    canonPoint: "Hana Inuzuka's patrol crossed Kan's trail.",
+      "Hana, now a chunin, leads a patrol that picks up your trail. She has to decide whether the missing-nin in the cloak is still her teammate.",
+    canonPoint: "Hana Inuzuka's patrol crossed your trail.",
     from: { year: 14, month: 6 },
     to: { year: 16, month: 9 },
     minScenes: 8,
@@ -213,8 +239,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "Suzume's inquiry",
     description:
-      "Suzume quietly investigates Kan's disappearance, the massacre, and the things Hidden Leaf will not say aloud.",
-    canonPoint: "Suzume is quietly investigating what happened to Kan and the Uchiha.",
+      "Suzume quietly investigates your disappearance, the massacre, and the things Hidden Leaf will not say aloud.",
+    canonPoint: "Suzume is quietly investigating what happened to you and the Uchiha.",
     from: { year: 15, month: 1 },
     to: { year: 17, month: 6 },
     minScenes: 12,
@@ -253,8 +279,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "The bounty that went wrong",
     description:
-      "A bounty hunt with Itachi and Kisame goes wrong when the target turns out to be someone Kan knows.",
-    canonPoint: "Kan's bounty mission went wrong.",
+      "A bounty hunt with Itachi and Kisame goes wrong when the target turns out to be someone you know.",
+    canonPoint: "Your bounty mission went wrong.",
     from: { year: 15, month: 6 },
     to: { year: 17, month: 6 },
     minScenes: 14,
@@ -304,7 +330,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Ashes',
     title: 'Itachi\'s double life',
     description:
-      'Itachi quietly feeds intelligence to Hidden Leaf while wearing the Akatsuki cloak. Kan may notice the errands his partner takes alone.',
+      'Itachi quietly feeds intelligence to Hidden Leaf while wearing the Akatsuki cloak. You may notice the errands Itachi takes alone.',
     canonPoint: 'Rumors whisper that some Akatsuki members have loyalties besides the cloak.',
     from: { year: 14, month: 4 },
     to: { year: 17, month: 4 },
@@ -314,7 +340,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
       {
         title: 'Who does Itachi really answer to?',
         description:
-          'Itachi disappears on errands he never explains. Kan wonders where his friend\'s true loyalty lies.',
+          'Itachi disappears on errands he never explains. You wonder where his true loyalty lies.',
         type: 'mystery',
         participants: ['Kan', 'Itachi Uchiha'],
         importance: 3,
@@ -346,7 +372,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: 'Hidden Rain becomes the stronghold',
     description:
-      'The Hidden Rain becomes the Akatsuki\'s home base. Kan\'s second home is a city of perpetual rain and worshipful eyes.',
+      'The Hidden Rain becomes the Akatsuki\'s home base. Your second home is a city of perpetual rain and worshipful eyes.',
     canonPoint: 'Hidden Rain serves as the Akatsuki\'s stronghold under Pain.',
     from: { year: 16, month: 2 },
     to: { year: 17, month: 6 },
@@ -368,7 +394,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kan-reputation',
     era: 'The shadow war',
-    title: 'Kan\'s reputation grows',
+    title: 'Your reputation grows',
     description:
       'A stray Uchiha in an Akatsuki cloak starts appearing in bounty ledgers and border reports. Nobody can quite place him.',
     canonPoint: 'Whispers spread of an unidentified Uchiha running with the Akatsuki.',
@@ -383,8 +409,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: 'A life outside the cloak',
     description:
-      'Between missions, Kan builds something of his own — safehouses, contacts, maybe someone close. The player shapes this through the story.',
-    canonPoint: 'Kan keeps a private life hidden even from the Akatsuki.',
+      'Between missions, you build something of your own — safehouses, contacts, maybe someone close. You shape this through the story.',
+    canonPoint: 'You keep a private life hidden even from the Akatsuki.',
     from: { year: 14, month: 6 },
     to: { year: 17, month: 10 },
     minScenes: 10,
@@ -396,8 +422,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: "The rain riot",
     description:
-      "A riot in Hidden Rain forces Kan to choose between the Akatsuki's order and the people under Pain's rain.",
-    canonPoint: "Kan faced the people of Hidden Rain during a riot.",
+      "A riot in Hidden Rain forces you to choose between the Akatsuki's order and the people under Pain's rain.",
+    canonPoint: "You faced the people of Hidden Rain during a riot.",
     from: { year: 16, month: 6 },
     to: { year: 18, month: 6 },
     minScenes: 18,
@@ -415,8 +441,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The shadow war',
     title: 'Rumors of the masked man',
     description:
-      'Whispers reach Kan of the masked man who was there the night of the massacre — the one who helped Itachi.',
-    canonPoint: 'Kan has heard rumors of a masked man present at the massacre.',
+      'Whispers reach you of the masked man who was there the night of the massacre — the one who helped Itachi.',
+    canonPoint: 'You have heard rumors of a masked man present at the massacre.',
     from: { year: 16, month: 6 },
     to: { year: 18, month: 6 },
     minScenes: 18,
@@ -481,8 +507,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'Shadows over Team 7',
     description:
-      'Kan crosses paths with the Hidden Leaf rookies from the outside — a figure in a cloak watching the team his village sent to hunt him.',
-    canonPoint: 'Kan has seen Hidden Leaf\'s new genin from the shadows.',
+      'You cross paths with the Hidden Leaf rookies from the outside — a figure in a cloak watching the team your old village sent to hunt you.',
+    canonPoint: 'You have seen Hidden Leaf\'s new genin from the shadows.',
     from: { year: 17, month: 10 },
     to: { year: 18, month: 10 },
     minScenes: 24,
@@ -563,8 +589,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: "The team that was",
     description:
-      "After the invasion, Hana and Suzume cross Kan's path — the team that was, standing on opposite sides of the same war.",
-    canonPoint: "Kan met Hana and Suzume again after the invasion.",
+      "After the invasion, Hana and Suzume cross your path — the team that was, standing on opposite sides of the same war.",
+    canonPoint: "You met Hana and Suzume again after the invasion.",
     from: { year: 18, month: 3 },
     to: { year: 19, month: 9 },
     minScenes: 34,
@@ -644,8 +670,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Part 1',
     title: 'A fork in the road',
     description:
-      'The night Sasuke flees Hidden Leaf, his path could cross Kan\'s. One conversation could change everything — or nothing.',
-    canonPoint: 'Kan crossed paths with Sasuke Uchiha on the night of his defection.',
+      'The night Sasuke flees Hidden Leaf, his path could cross yours. One conversation could change everything — or nothing.',
+    canonPoint: 'You crossed paths with Sasuke Uchiha on the night of his defection.',
     from: { year: 18, month: 5 },
     to: { year: 19, month: 6 },
     minScenes: 34,
@@ -687,7 +713,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The hidden years',
     title: 'Itachi\'s hidden illness',
     description:
-      'Itachi is dying — a disease he hides behind a calm mask. Whether he ever tells Kan is a matter between them.',
+      'Itachi is dying — a disease he hides behind a calm mask. Whether he ever tells you is a matter between the two of you.',
     canonPoint: 'Itachi hides a terminal illness.',
     from: { year: 19, month: 1 },
     to: { year: 21, month: 3 },
@@ -710,10 +736,10 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kan-hunt-role',
     era: 'The hidden years',
-    title: 'Kan\'s role in the hunt',
+    title: 'Your role in the hunt',
     description:
-      'The hunt assigns Kan a role: capture, surveillance, or quiet sabotage. The player chooses what his conscience allows.',
-    canonPoint: 'Kan has taken his place in the Akatsuki\'s beast hunt.',
+      'The hunt assigns you a role: capture, surveillance, or quiet sabotage. You choose what your conscience allows.',
+    canonPoint: 'You have taken your place in the Akatsuki\'s beast hunt.',
     from: { year: 19, month: 2 },
     to: { year: 21, month: 4 },
     minScenes: 38,
@@ -725,8 +751,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The hidden years',
     title: 'Paths crossing again',
     description:
-      'Sasuke, now stronger and hungrier, crosses Kan\'s path asking about Itachi.',
-    canonPoint: 'Sasuke Uchiha has crossed paths with Kan again.',
+      'Sasuke, now stronger and hungrier, crosses your path asking about Itachi.',
+    canonPoint: 'Sasuke Uchiha has crossed paths with you again.',
     from: { year: 19, month: 1 },
     to: { year: 21, month: 6 },
     minScenes: 36,
@@ -756,8 +782,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Shippuden',
     title: "Izumi's grave",
     description:
-      "Kan returns to Izumi's grave. Hana is there, and neither of them has the words.",
-    canonPoint: "Kan returned to Izumi's grave.",
+      "You return to Izumi's grave. Hana is there, and neither of them has the words.",
+    canonPoint: "You returned to Izumi's grave.",
     from: { year: 20, month: 6 },
     to: { year: 22, month: 12 },
     minScenes: 42,
@@ -906,7 +932,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Shippuden',
     title: 'Half-dead in the road',
     description:
-      'Sasuke collapses after his battle with Deidara. In canon, the masked man retrieves him. Kan could be the one who finds him first.',
+      'Sasuke collapses after his battle with Deidara. In canon, the masked man retrieves him. You could be the one who finds him first.',
     canonPoint: 'Sasuke lay half-dead after Deidara\'s blast — and someone found him.',
     from: { year: 21, month: 8 },
     to: { year: 22, month: 2 },
@@ -1007,7 +1033,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'Shippuden',
     title: 'Itachi\'s posthumous plans',
     description:
-      'Itachi left plans behind — a crow, a Shisui eye, a truth meant for Sasuke\'s eyes only. Whether Kan ever learns of them is a player matter.',
+      'Itachi left plans behind — a crow, a Shisui eye, a truth meant for Sasuke\'s eyes only. Whether you ever learn of them is up to you.',
     canonPoint: 'Whispers circulate of plans Itachi left behind.',
     from: { year: 21, month: 10 },
     to: { year: 23, month: 3 },
@@ -1136,8 +1162,8 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The sky falls',
     title: 'Leaving the cloak',
     description:
-      'War is coming and the Akatsuki is dissolving around Kan. Defect, stay, or play both sides — the player chooses.',
-    canonPoint: 'Kan has made his choice about his place in the coming war.',
+      'War is coming and the Akatsuki is dissolving around you. Defect, stay, or play both sides — you choose.',
+    canonPoint: 'You have made your choice about your place in the coming war.',
     from: { year: 22, month: 7 },
     to: { year: 23, month: 4 },
     minScenes: 56,
@@ -1163,10 +1189,10 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kan-war-side',
     era: 'The Fourth War',
-    title: 'Kan\'s side of the war',
+    title: 'Your side of the war',
     description:
-      'The Alliance, the Akatsuki, or himself alone — Kan picks his place in the world\'s last war.',
-    canonPoint: 'Kan has chosen his side in the Fourth Shinobi World War.',
+      'The Alliance, the Akatsuki, or yourself alone — you pick your place in the world\'s last war.',
+    canonPoint: 'You have chosen your side in the Fourth Shinobi World War.',
     from: { year: 22, month: 9 },
     to: { year: 23, month: 6 },
     minScenes: 58,
@@ -1178,7 +1204,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'The Fourth War',
     title: 'Edo Itachi',
     description:
-      'Kabuto\'s Edo Tensei returns Itachi to the battlefield. Breaking free of the control, he fights beside Naruto and Killer Bee against Nagato — and Kan meets his brother again across the impossible divide.',
+      'Kabuto\'s Edo Tensei returns Itachi to the battlefield. Breaking free of the control, he fights beside Naruto and Killer Bee against Nagato — and you meet your brother again across the impossible divide.',
     canonPoint: 'Edo Tensei Itachi walks the battlefield again.',
     from: { year: 23, month: 1 },
     to: { year: 23, month: 8 },
@@ -1201,7 +1227,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     title: "Team 3 on the battlefield",
     description:
       "Hana Inuzuka and Suzume fight in the Allied Shinobi Forces. On a battlefield full of masked shinobi, the old team finds each other again.",
-    canonPoint: "Kan met Hana and Suzume on the war's battlefield.",
+    canonPoint: "You met Hana and Suzume on the war's battlefield.",
     from: { year: 23, month: 1 },
     to: { year: 23, month: 10 },
     minScenes: 60,
@@ -1401,7 +1427,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     era: 'After',
     title: 'The world after',
     description:
-      'The villages rebuild. Kakashi and then Naruto take the hat in time. Kan\'s place in the new world is his to write.',
+      'The villages rebuild. Kakashi and then Naruto take the hat in time. Your place in the new world is yours to write.',
     canonPoint: 'The war is over and the villages are rebuilding.',
     from: { year: 24, month: 1 },
     to: { year: 25, month: 6 },
@@ -1437,10 +1463,10 @@ export const CANON_MILESTONES: CanonMilestone[] = [
   {
     id: 'kan-legacy',
     era: 'After',
-    title: "Kan's legacy",
+    title: "Your legacy",
     description:
-      "Kan's place in the new world: the people he saved, the ones he lost, and what he leaves behind.",
-    canonPoint: "Kan's story is settling into its legacy.",
+      "Your place in the new world: the people you saved, the ones you lost, and what you leave behind.",
+    canonPoint: "Your story is settling into its legacy.",
     from: { year: 24, month: 1 },
     to: { year: 27, month: 12 },
     minScenes: 70,

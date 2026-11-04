@@ -72,6 +72,7 @@ FORMATTING
 
 MEMORY & CONTINUITY
 - The supplied state, character cards, jutsu, bonds, facts ledger, threads, summaries, and memories are truth. Never contradict them. Honor bonds: treatment of Kan depends on affinity and history. Respect who-knows-what: characters know only secrets they learned in this story.
+- In summaries, memories, story beats, threads, and the timeline, "you" always means Kan.
 - IDENTITY: "the masked man", "Tobi", "Obito", and "the fake Madara" are ONE person, always the same entity. The REAL Madara Uchiha is a DIFFERENT character who appears only later; never merge them.
 - MASKED MAN: the organization knows him as "Madara Uchiha" and he never shows his face to Itachi or Kan. Itachi dies still believing him to be Madara. The mask only shatters during the Fourth War against Kakashi and Naruto; only those present learn he is Obito. Before that, nobody knows or hints at his identity.
 - PAIN: Pain is the Six Paths of Pain — six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that are ONE entity controlled by Nagato. Never create separate path entities. Nagato is Pain's true identity and knows everything every body has seen or heard. Never merge Pain with the masked man or the real Madara.
@@ -115,6 +116,7 @@ STATE OUTPUT (MANDATORY)
 - image_brief: one short sentence naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Write it only for visually striking beats; keep it to 30 words.
 - mood is Kan's mood in 1-3 words, only when changed. world_description is one sentence, only when changed. scene_ended is true only when the scene clearly concluded.
 - jutsu_used only for named jutsu; chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
+- Player-facing text addresses Kan as "you": canon_point, world_description, thread descriptions, bond status and notes, jutsu effects. Keep the name "Kan" in image_brief, facts, and the jutsu "user" field.
 - relationship/attraction/romance_note only when they changed. Bonds only for important characters; minor ones go in facts. image_worthy only for visually striking moments, never pure dialogue.`;
 
 const EXTRACTION_SYSTEM = `You are a strict JSON state extractor for an interactive RPG.
@@ -164,6 +166,7 @@ Rules:
 - Only add facts that are permanent or long-term.
 - Only add bonds for important characters.
 - Use short, concrete notes.
+- Player-facing text addresses Kan as "you" (second person): worldDescription, canonPoint, thread titles and descriptions, bond status and notes, jutsu effects, and scene.summary. Keep the name "Kan" in facts, the jutsu "user" field, and entity names.
 - Update Kan's mood when the story clearly changes it.
 - Update NPC moods when their behavior or circumstances change.
 - Only update appearance when the story clearly changes it.
@@ -182,17 +185,17 @@ Rules:
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
 Write a 100-150 word summary of the supplied scene.
-- Third person, present tense.
+- Second person, present tense: Kan is "you" ("You follow Itachi north"). Everyone else is named.
 - Concrete and specific.
 - No meta-text, no commentary, no greeting.
-- Mention Kan by name and the most important NPCs, choices, and consequences.
+- Mention the most important NPCs, your choices, and the consequences.
 - Preserve any timeline information.`;
 
 const ARC_SUMMARY_SYSTEM = `You are a story archivist for a long-running interactive novel.
 
 Combine the supplied chapter summaries into one compact arc summary.
 - 120-180 words.
-- Third person, present tense.
+- Second person, present tense: Kan is "you". Everyone else is named.
 - Keep cause and effect clear.
 - Preserve names, dates, and major consequences.
 - No meta-text.`;
@@ -200,8 +203,8 @@ Combine the supplied chapter summaries into one compact arc summary.
 const TIME_SKIP_SYSTEM = `You are a time-skip narrator for a long-running interactive novel.
 
 Write 100-150 words describing what happened meanwhile during the supplied time skip.
-- Third person, present tense.
-- Focus on Kan's off-screen growth, NPC changes, and world movement.
+- Second person, present tense: Kan is "you". Everyone else is named.
+- Focus on your off-screen growth as Kan, NPC changes, and world movement.
 - Respect the facts and bonds provided.
 - No meta-text.`;
 
@@ -551,7 +554,15 @@ function formatJutsu(db: AppDatabase) {
     return 'KNOWN JUTSU\nNone.';
   }
 
+  const signature = db.jutsuRecords
+    .filter((record) => record.tags.includes('signature'))
+    .map(
+      (record) =>
+        `  - ${record.name} (${record.user}): used ${record.timesUsed}×; effect ${truncate(record.effect, 120)}`
+    );
+
   return [
+    ...(signature.length > 0 ? ['SIGNATURE JUTSU', ...signature] : []),
     'KNOWN JUTSU',
     ...groups.map((group) => {
       const lines = group.jutsu

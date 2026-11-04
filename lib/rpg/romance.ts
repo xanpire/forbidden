@@ -270,9 +270,9 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     orientation: 'Attracted to women',
   },
   'Izumi Uchiha': {
-    canonDevotion: 'Kan\'s late teammate; gentle and quietly stubborn in memory.',
+    canonDevotion: 'Kan\'s late teammate; her heart belonged to Itachi Uchiha until the night she died.',
     romanceAccessibility: 'lore-locked',
-    orientation: 'Unknown',
+    orientation: 'Attracted to men (devoted to Itachi)',
   },
   'Team 3': {
     canonDevotion: 'Kan, Hana, Izumi, and Suzume were a team before the massacre split them.',
