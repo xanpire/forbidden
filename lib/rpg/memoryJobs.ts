@@ -19,6 +19,7 @@
  */
 import { bingoListings, formatRyo } from './reputation';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
+import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
 import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
@@ -263,6 +264,8 @@ export function applyStateStep(
   );
   next = markNewsHeard(next, relays, allowance);
   next = advanceCanon(next, { inCombat });
+  // Canon-bound hearts whose time has come go to their canon partners.
+  next = applyCanonEndgames(next);
 
   // Letters: what Kan sent sets out, what reached him on the page is read,
   // and his letters that arrived by now move their reader's bond.
@@ -369,7 +372,7 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
     ),
   };
 
-  return delta > 0 ? advanceCanon(next) : next;
+  return delta > 0 ? applyCanonEndgames(advanceCanon(next)) : next;
 }
 
 /**

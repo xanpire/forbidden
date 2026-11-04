@@ -36,6 +36,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `db.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration, new saves, the canon cast |
 | `retrieval.ts` | Memory/fact/lore retrieval |
 | `romance.ts` | Hearts, lore locks, era notes |
+| `canonEndgame.ts` | Canon-bound hearts: winnable, then settled with their canon partner (§10) |
 | `image*.ts`, `reference*.ts`, `portrait.ts` | Image pipeline |
 | `debug.ts` | Debug log (outside the save) |
 
@@ -542,6 +543,7 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 - `CHARACTER_LORE` holds canon devotions, accessibility (`winnable` / `lore-locked`) and orientation.
 - `ERA_NOTES` gives era-specific personality lines keyed by year (`eraKeyForYear`, `eraNoteFor`).
 - `ROMANCE_RULES` is injected into the narrator system prompt.
+- **Canon-bound hearts** (`canonEndgame.ts`): a winnable heart with `canonEndgame: { partner, from }` (Temari→Shikamaru 24/10, Ino→Sai 25/3, Karui→Choji 25/6) can truly be with Kan, but canon wins. Her scene card says so (`endgameNote`); in the last `ENDGAME_LEAD_MONTHS` (18) it tells the narrator to let it end naturally. From the date, `applyCanonEndgames` (after every turn, canon advance and time correction) turns `partner` into `ex` (relationship stage added for this), cools an unbegun `romantic interest` to `close` and `strong` attraction to `warm`, and stamps the romanceNote; the story cannot set her back. If the canon partner is dead, nothing is forced.
 - Bonds store relationship/attraction/romanceNote; a rejection stays until the narrator moves it on (never from affinity alone); a winnable heart that rejected Kan can slowly change its mind over time.
 - Adult NPCs deflect while Kan is under 17; explicit intimacy only when both are 18+; the prompt instructs **never to censor** when ages permit.
 

@@ -4,6 +4,7 @@
 
 import { type ChatRequest, completeChat } from '../openrouter';
 import { applyBondDiff } from './bonds';
+import { applyCanonEndgames } from './canonEndgame';
 import { daysBetween, formatDate } from './calendar';
 import { applyClockChange, applyClockTick } from './clock';
 import { applyCompanionChanges, applySharedScene, castWithCompanions } from './companions';
@@ -131,6 +132,8 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   }
 
   next = applyClockTick(next, diff);
+  // After the clock: a bond the story set this turn cannot outlast canon.
+  next = applyCanonEndgames(next);
 
   next.indices = buildIndices(next);
 

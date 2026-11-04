@@ -393,7 +393,9 @@ export type RelationshipStage =
   | 'close'
   | 'romantic interest'
   | 'partner'
-  | 'rejected';
+  | 'rejected'
+  /** Was with Kan once; it ended. */
+  | 'ex';
 
 export type Attraction = 'none' | 'warm' | 'strong';
 

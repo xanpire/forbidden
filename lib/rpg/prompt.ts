@@ -1,6 +1,7 @@
 import { calculateAge, entityAge, formatDate } from './calendar';
 import { groupJutsuByNature } from './jutsu';
 import { ROMANCE_RULES, eraNoteFor, loreProfileFor } from './romance';
+import { endgameNote } from './canonEndgame';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
 import {
   activeCanonMilestones,
@@ -530,7 +531,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${formatLoreProfile(entity.name, db.state.inStoryDate.year)}`
+        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${formatLoreProfile(db, entity.name)}`
     ),
   ].join('\n');
 }
@@ -876,16 +877,16 @@ function formatLetterTracking(db: AppDatabase) {
   ].join('\n');
 }
 
-function formatLoreProfile(name: string, year: number) {
+function formatLoreProfile(db: AppDatabase, name: string) {
   const profile = loreProfileFor(name);
 
   if (!profile) {
     return '';
   }
 
-  const era = eraNoteFor(name, year);
+  const era = eraNoteFor(name, db.state.inStoryDate.year);
 
-  return `; heart: ${truncate(profile.canonDevotion, 90)} (${profile.romanceAccessibility})${era ? `; now: ${truncate(era, 80)}` : ''}`;
+  return `; heart: ${truncate(profile.canonDevotion, 90)} (${profile.romanceAccessibility})${endgameNote(db, name)}${era ? `; now: ${truncate(era, 80)}` : ''}`;
 }
 
 

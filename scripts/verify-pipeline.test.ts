@@ -28,7 +28,8 @@ import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { CANON_MILESTONES, CANON_VERSION } from '../lib/rpg/canonData';
 import { activeCanonMilestones, upcomingCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
-import { eraNoteFor, loreProfileFor } from '../lib/rpg/romance';
+import { eraNoteFor, loreProfileFor, normalizeRelationship } from '../lib/rpg/romance';
+import { applyCanonEndgames, endgameNote } from '../lib/rpg/canonEndgame';
 import { CANON_CAST } from '../lib/rpg/canonCast';
 import { slug } from '../lib/rpg/id';
 import { PLACE_NAME_RULE, hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
@@ -36,7 +37,7 @@ import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
-import { isDeceased, kanKnowsDeath, markDeathsByName } from '../lib/rpg/deaths';
+import { isDeceased, kanKnowsDeath, markDeathsByName, markDeceased } from '../lib/rpg/deaths';
 import { CATCH_UP_QUIET_DAYS, couldKnow, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
 import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
 import { newsUrgency } from '../lib/rpg/canon';
@@ -3128,5 +3129,73 @@ describe('the wider canon cast', () => {
     expect(mentionsName('the ao of the sky', 'Ao')).toBe(false);
     expect(mentionsName('Fū laughs.', 'Fū')).toBe(true);
     expect(slug('Fū')).toBe('fu');
+  });
+});
+
+describe('canon-bound hearts', () => {
+  function withBond(name: string, relationship: string, year: number, month = 1) {
+    const seeded = loadSave();
+    const entity = seeded.entities.find((item) => item.name === name)!;
+
+    return {
+      ...seeded,
+      state: { ...seeded.state, inStoryDate: { ...seeded.state.inStoryDate, year, month, day: 1 } },
+      bonds: [
+        ...seeded.bonds,
+        {
+          id: `bond_${entity.id}`,
+          entityId: entity.id,
+          characterName: entity.name,
+          affinity: 9,
+          status: 'In love',
+          lastKeyEventId: null,
+          note: '',
+          isMajor: true,
+          relationship: relationship as never,
+          attraction: 'strong' as const,
+          updatedInStoryDate: seeded.state.inStoryDate,
+        },
+      ],
+    } as AppDatabase;
+  }
+
+  const bondOf = (db: AppDatabase, name: string) => db.bonds.find((bond) => bond.characterName === name)!;
+
+  test('Kan can have her until canon says otherwise; then he is her ex', () => {
+    expect(bondOf(applyCanonEndgames(withBond('Temari', 'partner', 22)), 'Temari').relationship).toBe('partner');
+
+    const settled = applyCanonEndgames(withBond('Temari', 'partner', 24, 10));
+    expect(bondOf(settled, 'Temari').relationship).toBe('ex');
+    expect(bondOf(settled, 'Temari').attraction).toBe('warm');
+    expect(bondOf(settled, 'Temari').affinity).toBe(9);
+  });
+
+  test('an open romance that never began cools to closeness', () => {
+    expect(bondOf(applyCanonEndgames(withBond('Ino Yamanaka', 'romantic interest', 25, 3)), 'Ino Yamanaka').relationship).toBe('close');
+  });
+
+  test('the story cannot rekindle it after the canon date', () => {
+    const settled = applyCanonEndgames(withBond('Karui', 'partner', 25, 6));
+    const again = applyTurnDiff(settled, { bonds: [{ character: 'Karui', relationship: 'partner' }] });
+
+    expect(bondOf(again, 'Karui').relationship).toBe('ex');
+  });
+
+  test('if the canon partner is dead, nothing is forced', () => {
+    const db = withBond('Temari', 'partner', 25);
+    const shikamaru = db.entities.find((item) => item.name === 'Shikamaru Nara')!;
+    const widowed = markDeceased(db, shikamaru.id, { known: true });
+
+    expect(bondOf(applyCanonEndgames(widowed), 'Temari').relationship).toBe('partner');
+    expect(endgameNote(widowed, 'Temari')).toBe('');
+  });
+
+  test('the narrator is warned as the time nears', () => {
+    expect(endgameNote(withBond('Temari', 'partner', 20), 'Temari')).toContain('ends up with Shikamaru Nara');
+    expect(endgameNote(withBond('Temari', 'partner', 23, 6), 'Temari')).toContain('let it end naturally');
+    expect(endgameNote(withBond('Temari', 'partner', 25), 'Temari')).toContain('her ex');
+    expect(endgameNote(withBond('Tenten', 'partner', 25), 'Tenten')).toBe('');
+    expect(normalizeRelationship('ex')).toBe('ex');
+    expect(normalizeRelationship('broke up')).toBe('ex');
   });
 });
