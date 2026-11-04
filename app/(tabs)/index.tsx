@@ -55,10 +55,11 @@ import {
   buildSceneImagePrompt,
   collectRecentSceneImages,
   fallbackImageAction,
+  sceneCharacterReferences,
   writeImageAction,
 } from '@/lib/rpg/image';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
-import { loadImages, useStoredImage } from '@/lib/rpg/imageStore';
+import { loadImage, loadImages, useStoredImage } from '@/lib/rpg/imageStore';
 import {
   faceDroppedWarning,
   loadKanReferenceImages,
@@ -364,10 +365,20 @@ export default function StoryScreen() {
       }
 
       const action = written?.action ?? fallbackImageAction(db);
+      // People named in the action who have a face reference or a portrait.
+      const people = await Promise.all(
+        sceneCharacterReferences(db, action).map(async (person) => ({
+          kind: 'character' as const,
+          uri: (await loadImage(person.image)) ?? '',
+          name: person.name,
+          source: person.source,
+        }))
+      );
       const plan = planReferences(
         [
           { kind: 'face', uri: kanRefs.face },
           { kind: 'outfit', uri: kanRefs.outfit },
+          ...people,
           ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
           { kind: 'alternate', uri: kanRefs.alternate },
         ],

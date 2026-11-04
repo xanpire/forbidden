@@ -1,9 +1,10 @@
+import { characterFaceOf, latestCharacterPortrait } from './characterPortrait';
 import { mentionsEntity } from './characterRefs';
 import { localizePlaceNames } from './glossary';
 import { completeChat, type CallUsage } from '../openrouter';
 import { wearsAkatsukiCloak } from './portrait';
 import type { PlannedReference } from './referencePlan';
-import type { AppDatabase } from './types';
+import type { AppDatabase, EntityRecord } from './types';
 
 const RECENT_IMAGE_LIMIT = 2;
 
@@ -30,6 +31,52 @@ function sceneCast(db: AppDatabase): string[] {
     )
     .slice(0, 5)
     .map((entity) => entity.name);
+}
+
+/** Most people sent as references in one scene image. */
+export const SCENE_CHARACTER_LIMIT = 3;
+
+/**
+ * People named in the image's ACTION who have a face reference or a painted
+ * portrait, in the order the ACTION names them. Their face reference wins
+ * over a portrait. Images are still stored references (img:...); load them
+ * before sending.
+ */
+export function sceneCharacterReferences(
+  db: AppDatabase,
+  action: string,
+  limit = SCENE_CHARACTER_LIMIT
+): Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait' }> {
+  const found: Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait'; at: number }> = [];
+
+  for (const entity of db.entities) {
+    if (entity.type !== 'character' || entity.name.toLowerCase() === 'kan' || !mentionsEntity(action, entity)) {
+      continue;
+    }
+
+    const face = characterFaceOf(db, entity.id);
+    const portrait = face ? null : latestCharacterPortrait(db, entity.id);
+    const image = face?.image ?? portrait?.image;
+
+    if (!image) {
+      continue;
+    }
+
+    const lower = action.toLowerCase();
+    const at = Math.min(
+      ...[entity.name, ...entity.aliases]
+        .map((name) => lower.indexOf(name.toLowerCase()))
+        .filter((index) => index >= 0),
+      Number.MAX_SAFE_INTEGER
+    );
+
+    found.push({ entity, name: entity.name, image, source: face ? 'face' : 'portrait', at });
+  }
+
+  return found
+    .sort((a, b) => a.at - b.at)
+    .slice(0, Math.max(0, limit))
+    .map(({ at: _at, ...rest }) => rest);
 }
 
 export function collectRecentSceneImages(db: AppDatabase) {
@@ -190,6 +237,13 @@ export function buildSceneImagePrompt(
       lines.push(
         `Reference image ${n}: the alternate outfit (${alternateOutfit}) — front, side, and back views with NO person. Use only if the story explicitly changes his clothing.`
       );
+    } else if (reference.kind === 'character') {
+      const name = reference.name ?? 'this person';
+      lines.push(
+        reference.source === 'face'
+          ? `Reference image ${n}: ${name}'s face. When ${name} appears, match their face, eyes, hair and colouring exactly, at their current age, in this image's art style. Ignore the reference's pose, clothes, background and art style.`
+          : `Reference image ${n}: a portrait of ${name}. When ${name} appears, match their face, hair, colouring and usual clothing. Ignore the portrait's pose and background.`
+      );
     } else {
       lines.push(
         `Reference image ${n}: a previous scene image. Use it ONLY for art style, color palette, lighting, and rendering continuity. Ignore any characters or figures in it; they belonged to an older scene and must NOT appear now.`
@@ -200,7 +254,9 @@ export function buildSceneImagePrompt(
   if (hasFace) {
     lines.push(
       'Use the face sheet for facial structure, eyes, nose, mouth, hairline, and hairstyle. Do not redesign Kan’s face or hairstyle.',
-      'The reference images are for Kan\'s face and clothing only. Ignore their poses, background, and any other people in them.'
+      references.some((reference) => reference.kind === 'character')
+        ? 'Kan\'s face sheet and outfit images are for Kan only; each other person\'s reference is for that person only. Ignore poses and backgrounds in all references, and never give one person another\'s face.'
+        : 'The reference images are for Kan\'s face and clothing only. Ignore their poses, background, and any other people in them.'
     );
   } else {
     lines.push(KAN_LOOK);

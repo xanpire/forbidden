@@ -1873,6 +1873,42 @@ describe('character portraits', () => {
     expect(mod.characterPortraitsOf(merged, dupe.id).length).toBe(0);
   });
 
+  test('scene images send the faces of people named in the action', async () => {
+    const { mod, db, itachi } = await setup();
+    const { sceneCharacterReferences } = await import('../lib/rpg/image');
+    const hana = db.entities.find((entity) => entity.name.startsWith('Hana'))!;
+    const signature = mod.characterPortraitSignature(db, itachi);
+    let next = mod.addCharacterPortraitToDb(db, itachi.id, 'img:itachi-portrait', signature, false);
+    next = mod.setCharacterFaceInDb(next, hana.id, 'img:hana-face');
+    next = mod.addCharacterPortraitToDb(next, hana.id, 'img:hana-portrait', signature, true);
+
+    const action = `${hana.name.split(' ')[0]} grips Kan's wrist while ${itachi.name.split(' ')[0]} watches from the trees.`;
+    const refs = sceneCharacterReferences(next, action);
+    // Named order, face reference over portrait, nobody who isn't named.
+    expect(refs.map((ref) => [ref.name, ref.image, ref.source])).toEqual([
+      [hana.name, 'img:hana-face', 'face'],
+      [itachi.name, 'img:itachi-portrait', 'portrait'],
+    ]);
+    expect(sceneCharacterReferences(next, 'Kan stands alone in the rain.')).toEqual([]);
+    expect(sceneCharacterReferences(next, action, 1).length).toBe(1);
+
+    const plan = planReferences(
+      [
+        { kind: 'face', uri: 'data:kan' },
+        { kind: 'outfit', uri: 'data:outfit' },
+        { kind: 'previous', uri: 'data:old' },
+        ...refs.map((ref) => ({ kind: 'character' as const, uri: 'data:' + ref.name, name: ref.name, source: ref.source })),
+      ],
+      4
+    );
+    // People outrank older scenes.
+    expect(plan.references.map((r) => r.kind)).toEqual(['face', 'outfit', 'character', 'character']);
+    const prompt = buildSceneImagePrompt(next, plan.references, action);
+    expect(prompt).toContain(`Reference image 3: ${hana.name}'s face.`);
+    expect(prompt).toContain(`Reference image 4: a portrait of ${itachi.name}.`);
+    expect(prompt).toContain('never give one person another');
+  });
+
   test('character portraits and faces survive normalize', async () => {
     const { mod, db, itachi } = await setup();
     const signature = mod.characterPortraitSignature(db, itachi);

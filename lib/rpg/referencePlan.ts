@@ -1,11 +1,18 @@
 /** Which reference images go with an image request. Pure, so it can be tested. */
-export type ReferenceKind = 'face' | 'outfit' | 'alternate' | 'previous';
+export type ReferenceKind = 'face' | 'outfit' | 'character' | 'alternate' | 'previous';
 
-export type PlannedReference = { kind: ReferenceKind; uri: string };
+export type PlannedReference = {
+  kind: ReferenceKind;
+  uri: string;
+  /** For 'character': who it shows, and whether it is their face reference or a painted portrait. */
+  name?: string;
+  source?: 'face' | 'portrait';
+};
 
 /**
  * Picks the references that fit the model's limit, most important first:
- * Kan's face always comes first so it is the last thing to be left out.
+ * Kan's face always comes first so it is the last thing to be left out, then
+ * his outfit, then the people in the scene, then earlier scenes for style.
  * `faceDropped` is true when the face could not be sent, so the caller can
  * warn instead of silently drawing a stranger.
  */
@@ -18,7 +25,8 @@ export function planReferences(
   faceDropped: 'no-references' | 'not-loaded' | null;
   leftOut: ReferenceKind[];
 } {
-  const order: ReferenceKind[] = ['face', 'outfit', 'previous', 'alternate'];
+  // Other people's faces outrank older scenes: drifting faces are worse than drifting style.
+  const order: ReferenceKind[] = ['face', 'outfit', 'character', 'previous', 'alternate'];
   const available = candidates
     .filter((candidate) => Boolean(candidate.uri))
     .map((candidate, index) => ({ candidate, index }))
