@@ -1,10 +1,10 @@
 import type { MemoryIndex, Settings } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
-  narrationModel: 'deepseek/deepseek-v4.1-flash-1017',
-  summaryModel: 'deepseek/deepseek-v4.1-flash-1017',
+  narrationModel: 'google/gemini-3.8-flash',
+  summaryModel: 'google/gemini-3.8-flash',
   extractionModel: 'deepseek/deepseek-v4.1-flash-1017',
-  imageModel: 'google/gemini-3.1-flash-image',
+  imageModel: 'google/gemini-nano-banana-2.1',
   contextMessages: 16,
   retrievalLimit: 4,
   autoSummarizeThreshold: 12,

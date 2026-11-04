@@ -163,6 +163,7 @@ export async function fetchGenerationCost(
 
 const RECOMMENDED_MODELS = new Set([
   'deepseek/deepseek-v4.1-flash-1017',
+  'google/gemini-3.8-flash',
   'anthropic/claude-sonnet-5.5',
   'google/gemini-4-argon',
   'openai/gpt-6.1-sol',
