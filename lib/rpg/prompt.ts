@@ -7,6 +7,7 @@ import {
   recentCanonEvents,
   recentlyConcludedMilestones,
   upcomingCanonMilestones,
+  PERSONAL_OFFERS_PER_TURN,
   upcomingWorldMilestones,
   isCombatPace,
   hasHeardNews,
@@ -766,7 +767,7 @@ function formatLetterBlock(db: AppDatabase) {
 
 function formatCanonBlock(db: AppDatabase) {
   const active = activeCanonMilestones(db).slice(0, 2);
-  const upcoming = upcomingCanonMilestones(db, 1);
+  const upcoming = upcomingCanonMilestones(db, PERSONAL_OFFERS_PER_TURN);
   const concluded = recentlyConcludedMilestones(db, 3);
   const recent = recentCanonEvents(db, 6).filter((event) => hasHeardNews(db, event.id)).slice(0, 3);
   const lines: string[] = ['CANON TIMELINE'];
@@ -834,7 +835,7 @@ function formatCanonTracking(db: AppDatabase) {
     );
   }
 
-  for (const beat of upcomingCanonMilestones(db, 1)) {
+  for (const beat of upcomingCanonMilestones(db, PERSONAL_OFFERS_PER_TURN)) {
     lines.push(
       `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat). canon_engaged / canon_completed only if Kan actually did it in this turn — never because time passed.`
     );

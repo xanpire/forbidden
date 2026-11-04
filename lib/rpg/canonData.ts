@@ -65,6 +65,8 @@ export type CanonMilestone = {
   major?: boolean;
   /** Personal beat: offered to the player, never fired automatically. */
   playerDriven?: boolean;
+  /** Personal beat offered ahead of every other open beat while its window is open. */
+  priority?: boolean;
   facts: string[];
   /**
    * People this milestone kills, by name. When it fires they are marked dead
@@ -850,8 +852,8 @@ const CORE_MILESTONES: CanonMilestone[] = [
   {
     id: 'izumi-grave',
     era: 'Shippuden',
-    title: "Izumi's grave",
-    description: "You return to Izumi's grave. Hana is there, and neither of them has the words.",
+    title: "Izumi's grave, years later",
+    description: "You return to Izumi's grave years after the massacre. Hana is there, and neither of you has the words.",
     canonPoint: "You returned to Izumi's grave.",
     from: { year: 20, month: 6 },
     to: { year: 22, month: 12 },
@@ -2309,11 +2311,438 @@ const WORLD_EXPANSION: CanonMilestone[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Kan's own story: Thousand Souls, the Uzumaki blood, the Mangekyō, Team 3,
+// and the choices only an Uchiha in the Akatsuki would face. All personal:
+// offered, never forced.
+// ---------------------------------------------------------------------------
+
+const PERSONAL_BEATS: CanonMilestone[] = [
+  {
+    id: 'kan-mangekyo',
+    era: 'Ashes',
+    title: "Izumi's grave: the Mangekyō",
+    description:
+      "You stand at Izumi's grave and finally let her be dead. The grief goes all the way down, and your Sharingan changes shape. What your Mangekyō can do is yours to discover — and it costs your eyes a little every time you use it.",
+    canonPoint: "You awakened the Mangekyō Sharingan at Izumi's grave.",
+    from: { year: 13, month: 11 },
+    to: { year: 17, month: 7, day: 31 },
+    region: 'Land of Fire',
+    location: 'the Uchiha cemetery outside the Hidden Leaf',
+    playerDriven: true,
+    priority: true,
+    facts: [
+      "Kan awakened the Mangekyō Sharingan at Izumi Uchiha's grave.",
+      'Every use of the Mangekyō Sharingan wears down the eyes toward blindness.',
+    ],
+    encounter: {
+      who: "Izumi's grave",
+      where: 'the Uchiha cemetery outside Hidden Leaf, usually at night',
+      context:
+        "This only happens when Kan comes to Izumi's grave knowing she is dead and lets the loss land. Alone, or found there by Hana or Itachi. The Mangekyō's design and abilities are new and unnamed; reveal them slowly, never all at once.",
+    },
+  },
+
+  // --- The Kakuzu years and Thousand Souls -----------------------------------
+  {
+    id: 'kakuzu-thousand-souls',
+    era: 'Ashes',
+    title: 'Kakuzu takes an interest',
+    description:
+      "Kakuzu watches you tear a chakra nature out of a dying man and keep it. He steals natures too — five hearts sewn into his back. He has never seen anyone do it without a knife.",
+    canonPoint: 'Kakuzu has seen Thousand Souls.',
+    from: { year: 14, month: 2 },
+    to: { year: 15, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Kakuzu',
+      where: 'a mission with his partner',
+      context:
+        "Kakuzu has killed every partner who annoyed him. Thousand Souls fascinates him, threatens him, and makes him wonder what Kan's hearts would be worth. He may test Kan, bargain, or quietly plan.",
+    },
+    attendanceFact: 'Kakuzu saw Kan use Thousand Souls.',
+  },
+  {
+    id: 'orochimaru-thousand-souls',
+    era: 'Ashes',
+    title: 'The snake hears of Thousand Souls',
+    description:
+      "Orochimaru learns that the Akatsuki's young Uchiha steals chakra natures — permanently — and that nobody taught him how. He wants to see it. He wants to own it.",
+    canonPoint: 'Orochimaru has learned of Thousand Souls.',
+    from: { year: 14, month: 9 },
+    to: { year: 15, month: 6 },
+    region: 'Hidden Rain',
+    location: 'an Akatsuki hideout in the Hidden Rain',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Orochimaru',
+      where: 'an Akatsuki hideout, between missions',
+      context:
+        "Orochimaru is still in the Akatsuki, planning to take Itachi's body. He is charming, patient, and asks questions with a scalpel's precision. Kan's Uchiha eyes and his jutsu both interest him; whatever Kan shows him, Orochimaru will remember after he leaves.",
+    },
+    attendanceFact: 'Orochimaru learned about Thousand Souls from Kan.',
+  },
+  {
+    id: 'nagato-uzumaki',
+    era: 'The shadow war',
+    title: 'Uzumaki blood',
+    description:
+      "Pain's ringed eyes linger on you too long. Somewhere in the rain, the man behind them has felt chakra he knows — Uzumaki chakra, his own clan's — in an Uchiha.",
+    canonPoint: 'Pain knows you carry Uzumaki blood.',
+    from: { year: 14, month: 3 },
+    to: { year: 16, month: 12 },
+    region: 'Hidden Rain',
+    location: 'the tower at the heart of the Hidden Rain',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Pain and Konan',
+      where: 'the Hidden Rain tower',
+      context:
+        "Nagato is an Uzumaki and hides behind Pain's bodies. Konan may ask the questions he will not. A shared clan could make Kan valuable, trusted, or watched more closely than anyone.",
+    },
+    attendanceFact: "Pain and Konan learned of Kan's Uzumaki blood.",
+  },
+  {
+    id: 'hidan-replaces-you',
+    era: 'The shadow war',
+    title: "Kakuzu's new partner",
+    description:
+      'Hidan of the Hidden Hot Water joins, and Pain gives him to Kakuzu: a partner Kakuzu cannot kill. Your years at Kakuzu’s side are over. You survived them, which almost no one has.',
+    canonPoint: 'Hidan is Kakuzu’s partner now; you work alone or wherever Pain sends you.',
+    from: { year: 16, month: 1 },
+    to: { year: 16, month: 5 },
+    region: 'Hidden Rain',
+    location: 'the Hidden Rain Village',
+    playerDriven: true,
+    facts: ["Kan is no longer Kakuzu's partner; Hidan replaced him."],
+    encounter: {
+      who: 'Kakuzu and Hidan',
+      where: 'the Hidden Rain',
+      context:
+        "Hidan is loud, devout, and immortal. Kakuzu is relieved, and will never say whether he respects Kan for lasting this long. Pain makes Kan a flexible member who goes where he is needed.",
+    },
+  },
+
+  // --- Team 3 ----------------------------------------------------------------
+  {
+    id: 'suzume-new-team',
+    era: 'Part 1',
+    title: "Suzume's new genin",
+    description:
+      'Suzume has been given a new team of genin — three children who are not you. Their first mission outside the walls crosses your road.',
+    canonPoint: "You crossed paths with Suzume and her new genin.",
+    from: { year: 17, month: 8 },
+    to: { year: 18, month: 2 },
+    region: 'Land of Fire',
+    location: 'a road in the Land of Fire',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Suzume and her new genin',
+      where: 'a road or village on a low-rank mission',
+      context:
+        'Suzume would put herself between a cloaked missing-nin and her students without hesitating, even if it is Kan. Her genin have heard stories about the student who vanished.',
+    },
+    attendanceFact: 'Kan met Suzume and her new genin.',
+  },
+  {
+    id: 'hana-chunin-exams',
+    era: 'Part 1',
+    title: 'A familiar scent',
+    description:
+      "Kiba is in the Chunin Exams, and Hana is in the stands for her little brother. If you slip into the crowded Leaf, her nose — or her dogs' — may find you before you find her.",
+    canonPoint: 'Hana caught your scent during the Chunin Exams.',
+    from: { year: 18, month: 1 },
+    to: { year: 18, month: 3 },
+    region: 'Hidden Leaf',
+    location: 'the Hidden Leaf Village',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Hana Inuzuka and the Haimaru brothers',
+      where: 'the crowded Leaf during the exams',
+      context:
+        'Hana is a chunin and a vet now. Her three dogs remember Kan. She has to decide in seconds whether to raise the alarm, follow him, or pretend she smelled nothing.',
+    },
+    attendanceFact: 'Kan and Hana met in Hidden Leaf during the Chunin Exams.',
+  },
+  {
+    id: 'hana-ambushed',
+    era: 'The hidden years',
+    title: 'Dogs in the dark',
+    description:
+      "A Leaf squad is ambushed by Sound shinobi near the border. Above the shouting you hear dogs you know — Hana's.",
+    canonPoint: "You came across Hana's squad under attack.",
+    from: { year: 19, month: 4 },
+    to: { year: 20, month: 4 },
+    region: 'Land of Fire',
+    location: 'the border forests of the Land of Fire',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Hana Inuzuka and her squad',
+      where: 'the border forests',
+      context:
+        "Hana is outnumbered and one of her dogs is hurt. Helping means showing his face — and his eyes — to Leaf shinobi. Walking away means living with it.",
+    },
+    attendanceFact: "Kan came across Hana's squad under attack near the border.",
+  },
+  {
+    id: 'suzume-trail',
+    era: 'Shippuden',
+    title: "Suzume's file",
+    description:
+      'Suzume has followed your trail through official channels for years. Now she has a name for a bounty station you use, and she is waiting there.',
+    canonPoint: 'Suzume found you through your bounty trail.',
+    from: { year: 20, month: 6 },
+    to: { year: 21, month: 6 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Suzume',
+      where: 'a bounty station on the Land of Fire border',
+      context:
+        'She came alone and told no one. She wants the truth about the massacre and about Kan, and she has not decided what she will do with it.',
+    },
+    attendanceFact: 'Suzume found Kan at a bounty station.',
+  },
+  {
+    id: 'hana-pursuit',
+    era: 'Shippuden',
+    title: "Hana's nose on the hunt",
+    description:
+      'The Leaf throws its trackers at the Uchiha brothers, and Hana runs with them. On the road to the old Uchiha hideout, it is your trail she finds.',
+    canonPoint: 'Hana found your trail during the hunt for the Uchiha brothers.',
+    from: { year: 21, month: 8, day: 25 },
+    to: { year: 21, month: 9, day: 20 },
+    region: 'Land of Fire',
+    location: 'the roads of the Land of Fire',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Hana Inuzuka',
+      where: 'the rain-soaked roads near the Uchiha hideout',
+      context:
+        "Hana is a jonin tracking alongside Team 8 and her brother Kiba. Kan may be racing toward Itachi's last fight himself. She can slow him, help him, or ask him to come home.",
+    },
+    attendanceFact: 'Kan and Hana met during the hunt for the Uchiha brothers.',
+  },
+  {
+    id: 'hana-after-pain',
+    era: 'The sky falls',
+    title: 'The crater',
+    description:
+      'The Leaf is a crater. Everyone Pain killed is breathing again, but the village is gone. If you come to see whether Hana lived, you find her in a field hospital, stitching dogs and people.',
+    canonPoint: 'You found Hana in the ruins of Hidden Leaf.',
+    from: { year: 22, month: 1, day: 10 },
+    to: { year: 22, month: 4 },
+    region: 'Hidden Leaf',
+    location: 'the crater where Hidden Leaf stood',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Hana Inuzuka (and maybe Suzume)',
+      where: 'a field hospital in the ruined Leaf',
+      context:
+        "Pain wore the same cloak Kan does. Every survivor here has reason to hate it. Hana is exhausted and frightened for him and of him.",
+    },
+    attendanceFact: 'Kan found Hana in the ruins of Hidden Leaf after Pain’s assault.',
+  },
+
+  // --- After Itachi -------------------------------------------------------------
+  {
+    id: 'karin-senses-uzumaki',
+    era: 'Shippuden',
+    title: "Karin's eyes",
+    description:
+      "Hebi's sensor stares at you too long. Karin can feel chakra like a temperature, and yours feels like her own blood: Uzumaki.",
+    canonPoint: 'Karin sensed Uzumaki chakra in you.',
+    from: { year: 21, month: 7, day: 10 },
+    to: { year: 21, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Karin, with Sasuke and Hebi',
+      where: 'wherever Hebi crosses an Akatsuki trail',
+      context:
+        "Karin is sharp, flustered around Sasuke, and an Uzumaki without a clan. She knows what Kan is before he says a word, and may tell Sasuke, or keep it for herself.",
+    },
+    attendanceFact: 'Karin sensed that Kan carries Uzumaki chakra.',
+  },
+  {
+    id: 'masked-man-courts-kan',
+    era: 'Shippuden',
+    title: 'The other Uchiha',
+    description:
+      "With Itachi dead, the masked man comes to you as he came to Sasuke: the truth of the massacre, the Leaf's orders, Danzo's name — and a place at his side.",
+    canonPoint: 'The masked man offered you a place in his plan.',
+    from: { year: 21, month: 9, day: 14 },
+    to: { year: 22, month: 1 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'the masked man',
+      where: 'an Akatsuki hideout, after Itachi’s death',
+      context:
+        "He still calls himself Madara and never shows his face. He wants Kan's eyes on his side and knows exactly how much Kan already knew. Kan can accept, refuse, or pretend.",
+    },
+    attendanceFact: "The masked man made Kan his offer after Itachi's death.",
+  },
+  {
+    id: 'sasuke-taka-offer',
+    era: 'Shippuden',
+    title: 'Join Taka',
+    description:
+      "Sasuke knows the truth now. He comes to the last other Uchiha he has with one question: will you help me destroy the Leaf?",
+    canonPoint: 'Sasuke asked you to join Taka.',
+    from: { year: 21, month: 9, day: 20 },
+    to: { year: 22, month: 3, day: 2 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Sasuke Uchiha and Taka',
+      where: 'a hideout or a crossroads Taka passes',
+      context:
+        "Sasuke is grieving and furious, and he has Itachi's truth. Kan was Itachi's closest friend. Whatever Kan answers, Sasuke will remember it as either loyalty or betrayal.",
+    },
+    attendanceFact: 'Sasuke asked Kan to join Taka.',
+  },
+  {
+    id: 'kan-danzo',
+    era: 'The sky falls',
+    title: 'The man who gave the order',
+    description:
+      "Danzo Shimura wears the Hokage's hat and travels to the Land of Iron with a small Root guard. The man who ordered your clan's death is on an open road.",
+    canonPoint: 'You faced Danzo Shimura.',
+    from: { year: 22, month: 2, day: 15 },
+    to: { year: 22, month: 3, day: 3 },
+    region: 'Land of Iron',
+    location: 'the snow roads to the Land of Iron',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Danzo Shimura and his Root guard',
+      where: 'the snow roads to the Land of Iron, or the summit',
+      context:
+        "Danzo hides Shisui's stolen eye and an arm full of Sharingan beneath his bandages. In canon Sasuke kills him after the summit; Kan can confront him first, help Sasuke, or let Sasuke have him.",
+    },
+    attendanceFact: 'Kan confronted Danzo Shimura.',
+  },
+  {
+    id: 'kabuto-izumi-offer',
+    era: 'The sky falls',
+    title: 'The offer in the coffin',
+    description:
+      "Kabuto has Orochimaru's face growing over his own and a cave full of coffins. He has heard about the girl you lost, and he can bring her back — for a price.",
+    canonPoint: 'Kabuto offered to reanimate Izumi.',
+    from: { year: 22, month: 5, day: 10 },
+    to: { year: 23, month: 1, day: 9 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Kabuto Yakushi',
+      where: 'a hidden cave lair',
+      context:
+        'An Edo Tensei Izumi would be a corpse with her voice, bound to Kabuto. She would remember everything. Kabuto wants Kan in the war, his eyes, or a sample of Thousand Souls.',
+    },
+    attendanceFact: 'Kabuto offered Kan an Edo Tensei Izumi.',
+  },
+
+  // --- The war and after --------------------------------------------------------
+  {
+    id: 'kan-tsukuyomi-dream',
+    era: 'The Fourth War',
+    title: 'Your dream',
+    description:
+      'If the moon catches you, you dream the life you wanted. The narrator shows it to you — and it ends.',
+    canonPoint: 'You dreamed inside the Infinite Tsukuyomi.',
+    from: { year: 23, month: 1, day: 12 },
+    to: { year: 23, month: 1, day: 13 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'the dream',
+      where: 'inside the Infinite Tsukuyomi',
+      context:
+        "Build the dream from what Kan has actually lost and wanted in the story so far — Izumi alive, Itachi without the massacre, Team 3 whole, someone he loves. It feels completely real until it breaks.",
+    },
+    attendanceFact: 'Kan dreamed inside the Infinite Tsukuyomi.',
+  },
+  {
+    id: 'kan-reckoning',
+    era: 'After',
+    title: 'The reckoning',
+    description:
+      "The war is over and you are an Uchiha who wore the Akatsuki's cloak for ten years. Hidden Leaf has to decide what you are: criminal, spy, or one of its own.",
+    canonPoint: 'Hidden Leaf has decided what to do with you.',
+    from: { year: 23, month: 2 },
+    to: { year: 24, month: 6 },
+    region: 'Hidden Leaf',
+    location: 'the Hidden Leaf Village',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Kakashi Hatake, the council, and anyone who speaks for Kan',
+      where: 'Hidden Leaf',
+      context:
+        "What Kan did in the war, who he saved, and who will vouch for him — Hana, Suzume, Naruto, Sasuke — decide whether he is pardoned, imprisoned, or exiled. Itachi's truth may come out here.",
+    },
+    attendanceFact: 'Kan faced Hidden Leaf’s judgment after the war.',
+  },
+  {
+    id: 'uchiha-district',
+    era: 'After',
+    title: 'The empty district',
+    description:
+      'You walk the Uchiha district for the first time since the night it died. The paint on the fan crests is peeling. Somewhere here is the house you grew up in.',
+    canonPoint: 'You returned to the Uchiha district.',
+    from: { year: 23, month: 2 },
+    to: { year: 26, month: 12 },
+    region: 'Hidden Leaf',
+    location: 'the Uchiha district of the Hidden Leaf',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'the empty Uchiha district (perhaps with Sasuke)',
+      where: 'the Uchiha district',
+      context:
+        'Nothing has been touched in ten years. Sasuke may be the only other person who ever comes here. Kan decides what to keep, what to burn, and whether to stay.',
+    },
+    attendanceFact: 'Kan walked the Uchiha district again.',
+  },
+  {
+    id: 'naruto-kin',
+    era: 'After',
+    title: 'Cousins, of a kind',
+    description:
+      "Naruto knows now that his mother was Kushina Uzumaki. Your blood and his share a name, and he has never had family.",
+    canonPoint: 'Naruto knows you are Uzumaki kin.',
+    from: { year: 23, month: 1, day: 14 },
+    to: { year: 25, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Naruto Uzumaki',
+      where: 'wherever Kan and Naruto end up after the war',
+      context:
+        'Naruto has spent his life alone and would grab a relative with both hands. Kan is reserved and was once on the side that hunted him. That makes this harder and better.',
+    },
+    attendanceFact: 'Kan and Naruto talked about their Uzumaki blood.',
+  },
+];
+
 function openingKey(milestone: CanonMilestone): number {
   return (milestone.from.year * 12 + milestone.from.month) * 32 + (milestone.from.day ?? 1);
 }
 
 /** Every milestone, in the order the world reaches them (stable for ties). */
-export const CANON_MILESTONES: CanonMilestone[] = [...CORE_MILESTONES, ...WORLD_EXPANSION].sort(
+export const CANON_MILESTONES: CanonMilestone[] = [
+  ...CORE_MILESTONES,
+  ...WORLD_EXPANSION,
+  ...PERSONAL_BEATS,
+].sort(
   (a, b) => openingKey(a) - openingKey(b)
 );

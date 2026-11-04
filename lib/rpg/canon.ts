@@ -457,10 +457,13 @@ export function activeCanonMilestones(db: AppDatabase): CanonMilestone[] {
   );
 }
 
+/** How many personal beats the narrator is offered per turn. */
+export const PERSONAL_OFFERS_PER_TURN = 2;
+
 /**
- * Personal beats whose window is open and that have not started, the one
- * closing soonest first — so a short mission offer (a beast hunt) is not
- * buried under a beat that stays open for years.
+ * Personal beats whose window is open and that have not started: priority
+ * beats first, then the one closing soonest, so a short mission offer (a
+ * beast hunt) is not buried under a beat that stays open for years.
  */
 export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilestone[] {
   const progress = normalizeProgress(db);
@@ -479,7 +482,10 @@ export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilest
       notClosed
     );
   })
-    .sort((a, b) => (closes(a) === closes(b) ? 0 : closes(a) < closes(b) ? -1 : 1))
+    .sort((a, b) => {
+      if (Boolean(a.priority) !== Boolean(b.priority)) return a.priority ? -1 : 1;
+      return closes(a) === closes(b) ? 0 : closes(a) < closes(b) ? -1 : 1;
+    })
     .slice(0, limit);
 }
 

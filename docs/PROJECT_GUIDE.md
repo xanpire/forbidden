@@ -23,7 +23,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `jutsu.ts` | Chakra natures, grouping, and `applyJutsuDiff` (the permanent jutsu library) |
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
 | `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
-| `canonData.ts` | **Data only**: the 138 milestones (dates, place, who could know), sorted by opening date on export, canon types, courier tables, era order |
+| `canonData.ts` | **Data only**: the 157 milestones (dates, place, who could know), sorted by opening date on export, canon types, courier tables, era order |
 | `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), the unheard-news queue and its escalation (`unheardCanonNews`, `newsUrgency`), world clock |
 | `newsDelivery.ts` | How news reaches Kan this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
 | `reputation.ts` | Bingo books and Akatsuki standing (`state.reputation`): `applyReputationChanges`, `ensureLeafListing`, `bingoListings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
@@ -389,7 +389,7 @@ Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the e
 
 Everything about one event — when, where, who could know — sits in its one record. The courier tables (`BEARERS_BY_KNOWLEDGE`, `CHANNEL_BY_KNOWLEDGE`, `REGION_CHANNEL`) are also in `canonData.ts`.
 
-- **138 milestones** from the Uchiha massacre aftermath to Naruto's years as Hokage: the core spine plus a living-world layer (village news, the Mist's civil war, every beast hunt with an offer for Kan to join, the four-day Fourth War, and the births and weddings after).
+- **157 milestones** from the Uchiha massacre aftermath to Naruto's years as Hokage: the core spine plus Kan’s own beats (Thousand Souls, the Uzumaki blood, the Mangekyō at Izumi’s grave, Team 3 in every era) and a living-world layer (village news, the Mist's civil war, every beast hunt with an offer for Kan to join, the four-day Fourth War, and the births and weddings after).
 - Timeline spine: Kan/Itachi 13 at the massacre; Part 1 at 17–18; Shippuden 20–21; war 22–23.
 - `playerDriven` = **personal beat** (join Akatsuki, missions, Team 3 reunions, war side, Edo Itachi, epilogue…). These **never auto-fire**; they fire when the narrator marks them.
 - World milestones fire on the **in-story date + prerequisites only** — never on turn counts. There is no per-turn cap: a long time skip fires everything that came due, each stamped with the day it happened (clamped to the save's baseline), not the day the clock caught up.

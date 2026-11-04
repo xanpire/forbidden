@@ -2978,10 +2978,39 @@ describe('living world timeline', () => {
       ...db,
       state: {
         ...db.state,
-        inStoryDate: { year: 20, month: 3, day: 1, hour: 8, minute: 0, second: 0 },
+        inStoryDate: { year: 20, month: 4, day: 15, hour: 8, minute: 0, second: 0 },
         canonProgress: { version: CANON_VERSION, baselineDate: baseline, completed: [], active: [], engaged: [] },
       },
     };
     expect(upcomingCanonMilestones(next, 1)[0]?.id).toBe('kan-hunt-seven-tails');
+  });
+
+  test('the Mangekyō is offered first from the funeral until Part 1, at Izumi\'s grave', () => {
+    const mangekyo = byId('kan-mangekyo');
+    expect(mangekyo.priority).toBe(true);
+    expect(mangekyo.location).toContain('Uchiha cemetery');
+    expect(key(mangekyo.to!)).toBeLessThan(key(byId('team-7-formed').from));
+    const db = loadSave();
+    const at = (year: number, month: number) => ({
+      ...db,
+      state: {
+        ...db.state,
+        inStoryDate: { year, month, day: 1, hour: 8, minute: 0, second: 0 },
+        canonProgress: { version: CANON_VERSION, baselineDate: baseline, completed: [], active: [], engaged: [] },
+      },
+    });
+    expect(upcomingCanonMilestones(at(15, 3), 2)[0]?.id).toBe('kan-mangekyo');
+    expect(upcomingCanonMilestones(at(15, 3), 2)).toHaveLength(2);
+    expect(upcomingCanonMilestones(at(17, 9), 2).map((m) => m.id)).not.toContain('kan-mangekyo');
+  });
+
+  test('Team 3 has meetings in every era', () => {
+    const team3 = CANON_MILESTONES.filter(
+      (m) => m.playerDriven && /hana|suzume/i.test(m.encounter?.who ?? '')
+    );
+    for (const era of ['Ashes', 'The shadow war', 'Part 1', 'The hidden years', 'Shippuden', 'The sky falls', 'The Fourth War']) {
+      expect(team3.some((m) => m.era === era) || era === 'Ashes').toBe(true);
+    }
+    expect(team3.length).toBeGreaterThanOrEqual(10);
   });
 });
