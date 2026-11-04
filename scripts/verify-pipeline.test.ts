@@ -35,7 +35,7 @@ import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
 import { isDeceased, kanKnowsDeath, markDeathsByName } from '../lib/rpg/deaths';
-import { CATCH_UP_QUIET_DAYS, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
+import { CATCH_UP_QUIET_DAYS, couldKnow, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
 import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
 import { newsUrgency } from '../lib/rpg/canon';
 import { shiftDate } from '../lib/rpg/calendar';
@@ -2657,6 +2657,32 @@ describe('news delivery: bearers, styles, escalation, catch-up', () => {
     const dead = { ...db, entities: db.entities.map((entity) => (entity.id === kisame.id ? { ...entity, deceased: { known: true } } : entity)) };
     expect(livingBearers(db, item)).toContain('Kisame Hoshigaki');
     expect(livingBearers(dead, item)).not.toContain('Kisame Hoshigaki');
+  });
+
+  test('Hidan, Kisame and Deidara carry Akatsuki news only while they are members', () => {
+    const db = fired(lateDate, lateDate);
+    const item = akatsukiNews(db)!;
+    const withCompleted = (completed: string[]): AppDatabase => ({
+      ...db,
+      state: { ...db.state, canonProgress: { ...db.state.canonProgress!, completed } },
+    });
+
+    const early = livingBearers(withCompleted([]), item);
+    expect(early).not.toContain('Hidan');
+    expect(early).not.toContain('Kisame Hoshigaki');
+    expect(early).not.toContain('Deidara');
+    expect(early).toContain('Kakuzu');
+
+    const hidan = db.entities.find((entity) => entity.name === 'Hidan')!;
+    expect(couldKnow(withCompleted([]), hidan, item)).toBe(false);
+
+    const joined = withCompleted(['kisame-joins', 'deidara-recruited', 'roster-completes']);
+    expect(livingBearers(joined, item)).toEqual(expect.arrayContaining(['Hidan', 'Kisame Hoshigaki', 'Deidara']));
+    expect(couldKnow(joined, hidan, item)).toBe(true);
+
+    // Buried alive by Shikamaru: not dead, but no longer carrying news.
+    const buried = withCompleted(['kisame-joins', 'deidara-recruited', 'roster-completes', 'hidan-kakuzu']);
+    expect(livingBearers(buried, item)).not.toContain('Hidan');
   });
 
   test('someone in the scene who could know is offered first', () => {

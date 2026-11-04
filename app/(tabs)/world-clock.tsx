@@ -9,7 +9,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { formatClock, formatDayMonth } from '@/lib/rpg/calendar';
 import { newsUrgency, worldClock } from '@/lib/rpg/canon';
 import { lettersInTransit } from '@/lib/rpg/letters';
-import { newsOffer } from '@/lib/rpg/newsDelivery';
+import { livingBearers, newsOffer } from '@/lib/rpg/newsDelivery';
 import { useGame } from '@/lib/rpg/game';
 import type { CalendarDate } from '@/lib/rpg/types';
 
@@ -111,7 +111,7 @@ export default function WorldClockScreen() {
             {clock.unheard.map((item, index) => (
               <ListRow
                 body={`${item.location}, ${item.region}. Can reach you via ${item.channel}${
-                  item.bearers.length > 0 ? ` or ${item.bearers.slice(0, 3).join(', ')}` : ''
+                  livingBearers(db, item).length > 0 ? ` or ${livingBearers(db, item).slice(0, 3).join(', ')}` : ''
                 }.`}
                 key={item.eventId}
                 meta={[

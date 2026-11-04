@@ -24,7 +24,7 @@ import {
   unheardCanonNews,
   type UnheardNews,
 } from './canon';
-import { BEARERS_BY_KNOWLEDGE } from './canonData';
+import { BEARER_TENURE } from './canonData';
 import { daysBetween } from './calendar';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
@@ -100,6 +100,8 @@ export function couldKnow(db: AppDatabase, entity: EntityRecord, item: UnheardNe
     case 'witnesses':
       return sameEntity(db, entity, named);
     case 'akatsuki':
+      // Canon members know the organization's business only while they are in it.
+      if (!inTenure(db, entity.name)) return false;
       return entity.tags.includes('akatsuki') || /akatsuki/.test(profileText(entity)) || sameEntity(db, entity, named);
     case 'village':
       return entity.tags.includes('leaf') || /\bleaf\b/.test(profileText(entity)) || sameEntity(db, entity, named);
@@ -133,12 +135,36 @@ function sceneBearersFor(db: AppDatabase, item: UnheardNews, present: EntityReco
   return local ? [...labels, local] : labels;
 }
 
-/** The fixed list for an event, with the dead and anyone already in the scene removed. */
+/** True while a fixed bearer belongs to the organization (see BEARER_TENURE). */
+export function inTenure(db: AppDatabase, name: string): boolean {
+  const tenure = BEARER_TENURE[name];
+
+  if (!tenure) {
+    return true;
+  }
+
+  const completed = new Set(db.state.canonProgress?.completed ?? []);
+
+  if (tenure.joins && !completed.has(tenure.joins)) {
+    return false;
+  }
+
+  return !(tenure.leaves && completed.has(tenure.leaves));
+}
+
+/**
+ * The fixed list for an event, minus the dead, anyone not (or no longer) in
+ * the organization at this point in the story, and anyone already in the scene.
+ */
 export function livingBearers(db: AppDatabase, item: UnheardNews, present: EntityRecord[] = []): string[] {
   const presentIds = new Set(present.map((entity) => entity.id));
 
   return uniqueList(
     item.bearers.filter((name) => {
+      if (!inTenure(db, name)) {
+        return false;
+      }
+
       const entity = resolveEntity(db, name);
 
       return !entity || (!isDeceased(entity) && !presentIds.has(entity.id));

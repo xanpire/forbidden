@@ -111,6 +111,18 @@ export const BEARERS_BY_KNOWLEDGE: Record<CanonKnowledge, string[]> = {
   secret: [],
 };
 
+/**
+ * Fixed bearers who are not in the organization for the whole story: they can
+ * carry its news only after the milestone they join with has fired, and not
+ * after the one they leave with (someone buried alive is not dead, but carries
+ * no news). Deaths are handled separately by each person's death record.
+ */
+export const BEARER_TENURE: Record<string, { joins?: string; leaves?: string }> = {
+  'Kisame Hoshigaki': { joins: 'kisame-joins' },
+  Deidara: { joins: 'deidara-recruited' },
+  Hidan: { joins: 'roster-completes', leaves: 'hidan-kakuzu' },
+};
+
 export const CHANNEL_BY_KNOWLEDGE: Record<CanonKnowledge, string> = {
   akatsuki: "Itachi's crow, Konan's paper butterfly, or Zetsu",
   village: 'a Leaf messenger hawk or a Hidden Leaf courier',
