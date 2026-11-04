@@ -53,11 +53,13 @@ function escapeRegExp(text: string) {
 export function mentionsName(text: string, name: string) {
   const trimmed = name.trim();
 
-  if (trimmed.length < 3 || !text) {
+  if (trimmed.length < 2 || !text) {
     return false;
   }
 
-  const flags = COMMON_WORD_NAMES.has(trimmed.toLowerCase()) ? 'u' : 'iu';
+  // Two-letter names (Ao, Fū) only count when written as a name, capitalized.
+  const caseSensitive = trimmed.length < 3 || COMMON_WORD_NAMES.has(trimmed.toLowerCase());
+  const flags = caseSensitive ? 'u' : 'iu';
 
   return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(trimmed)}(?=$|[^\\p{L}\\p{N}])`, flags).test(text);
 }

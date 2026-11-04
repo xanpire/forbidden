@@ -514,7 +514,41 @@ function nameCandidates(rawName: string) {
   );
 }
 
-export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | null {
+// Words that describe or address someone rather than name them: "Lady
+// Tsunade", "Kisame of the Mist", "old man Teuchi".
+const DESCRIPTOR_WORDS = new Set([
+  'the', 'of', 'from', 'a', 'an', 'lady', 'lord', 'sir', 'old', 'young', 'little',
+  'big', 'great', 'granny', 'grandpa', 'master', 'sensei', 'sama', 'san', 'kun',
+  'chan', 'captain', 'general', 'elder', 'brother', 'sister', 'uncle', 'aunt',
+  'mister', 'miss', 'man', 'woman', 'boy', 'girl', 'kid',
+]);
+
+/**
+ * "Hayate Moriya" is someone else's full name, not a way of saying "Hayate":
+ * a one-word name only counts inside a longer one when the extra words
+ * describe the person instead of naming them.
+ */
+function isOtherFullName(candidate: string, name: string) {
+  if (countWords(name) !== 1) {
+    return false;
+  }
+
+  const words = candidate.toLowerCase().split(/\s+/).filter(Boolean);
+
+  return words.length >= 2 && words.every((word) => !DESCRIPTOR_WORDS.has(word.replace(/[^\p{L}]/gu, '')));
+}
+
+/**
+ * Finds the person a name refers to: exact names and aliases first, then
+ * looser whole-word matches ("Tsunade" for "Tsunade Senju"). `exactOnly`
+ * skips the loose pass, for someone the state tracker says is new: only a
+ * name they already go by makes them a known person.
+ */
+export function resolveEntity(
+  db: AppDatabase,
+  rawName: string,
+  options: { exactOnly?: boolean } = {}
+): EntityRecord | null {
   if (!rawName || typeof rawName !== 'string') {
     return null;
   }
@@ -547,6 +581,10 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
     }
   }
 
+  if (options.exactOnly) {
+    return null;
+  }
+
   for (const entity of db.entities) {
     if (entity.type !== 'character') {
       continue;
@@ -562,7 +600,11 @@ export function resolveEntity(db: AppDatabase, rawName: string): EntityRecord | 
 
     if (
       candidates.some((candidate) =>
-        names.some((name) => containsWord(name, candidate) || containsWord(candidate, name))
+        names.some(
+          (name) =>
+            containsWord(name, candidate) ||
+            (containsWord(candidate, name) && !isOtherFullName(candidate, name))
+        )
       )
     ) {
       return entity;
@@ -605,7 +647,9 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   const byId = entity.entityId
     ? (db.entities.find((item) => item.id === entity.entityId) ?? null)
     : null;
-  let existing = byId ?? resolveEntity(db, name);
+  // Someone flagged as new is only a known person under a name they already
+  // go by: "Haku the Fisherman" is not Haku, "Hayate Moriya" is not Hayate.
+  let existing = byId ?? resolveEntity(db, name, { exactOnly: entity.isNew === true });
 
   // The real Madara must never be merged into the masked man entity.
   // (An exact ID from the state tracker is trusted as-is.)

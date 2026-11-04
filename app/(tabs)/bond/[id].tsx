@@ -9,7 +9,7 @@ import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
 import { titleAndBody } from '@/components/kan/JournalSection';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
-import { calculateAge, dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
+import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
@@ -60,10 +60,7 @@ export default function BondScreen() {
     );
   }
 
-  const age =
-    entity.birthYear !== undefined && entity.birthday
-      ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
-      : entity.age;
+  const age = entityAge(db.state.inStoryDate, entity);
   // Only once the story has told you: a death still on its way is not spoiled here.
   const dead = kanKnowsDeath(db, entity);
   const death = entity.deceased;

@@ -6,6 +6,9 @@ export function makeId(prefix = 'id') {
 
 export function slug(value: string) {
   return value
+    // "Fū" becomes "fu", not "f": accents go, the letters stay.
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');

@@ -1,4 +1,4 @@
-import { calculateAge, daysBetween } from './calendar';
+import { daysBetween, entityAge } from './calendar';
 import { isCombatPace } from './canon';
 import { CANON_CAST } from './canonCast';
 import { mentionsEntity } from './characterRefs';
@@ -111,7 +111,11 @@ export function isOriginalCharacter(entity: EntityRecord) {
   if (entity.name.toLowerCase() === 'kan' || entity.tags.includes('player')) return false;
   if (entity.tags.includes('canon')) return false;
 
-  return ![entity.name, ...entity.aliases].some((name) => CANON_NAMES.has(name.toLowerCase()));
+  // A one-word alias ("Mei" for Mei Tsukada) is a shared given name, not proof
+  // this is the canon person; their own name or a full alias is.
+  return ![entity.name, ...entity.aliases.filter((alias) => alias.trim().includes(' '))].some((name) =>
+    CANON_NAMES.has(name.toLowerCase())
+  );
 }
 
 function fitFor(
@@ -236,10 +240,7 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
   }
 
   const { entity, bond, daysAway, reason } = offer;
-  const age =
-    entity.birthYear !== undefined && entity.birthday
-      ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
-      : entity.age;
+  const age = entityAge(db.state.inStoryDate, entity);
   const who = [entity.name, age !== undefined ? `age ${age}` : '', clip(entity.role, 50)]
     .filter(Boolean)
     .join(', ');

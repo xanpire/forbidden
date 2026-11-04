@@ -289,10 +289,378 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     romanceAccessibility: 'winnable',
     orientation: 'Attracted to men',
   },
+  'Hiruzen Sarutobi': {
+    canonDevotion: 'A widower still faithful to his late wife Biwako.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Biwako, past)',
+  },
+  'Asuma Sarutobi': {
+    canonDevotion: 'In love with Kurenai Yuhi; their child is born after he dies.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Kurenai)',
+  },
+  'Shisui Uchiha': {
+    canonDevotion: 'Gave everything, his eyes and his life, to peace and to Itachi.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Zetsu': {
+    canonDevotion: 'A spy with no heart of its own to give.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not applicable',
+  },
+  'Might Guy': {
+    canonDevotion: 'Burns for youth and his rivalry with Kakashi; romance would floor him.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Yamato': {
+    canonDevotion: 'Dutiful and private; has never let himself want much.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Jūzō Biwa': {
+    canonDevotion: 'A swordsman who lives for the blade and the job.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  // ── Added with the wider canon cast ───────────────────────────────────────
+  'Choji Akimichi': {
+    canonDevotion: 'Loyal to his friends above all; shy and sweet about romance.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women (eventually Karui)',
+  },
+  'Shino Aburame': {
+    canonDevotion: 'Reserved and logical; feelings come out slowly and sincerely.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Sai': {
+    canonDevotion: 'Trained to feel nothing; learns love the way he learns words, from books.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women (eventually Ino)',
+  },
+  'Iruka Umino': {
+    canonDevotion: 'Devoted to his students; lonely and hopeful about love.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Konohamaru Sarutobi': {
+    canonDevotion: 'A child who sees Kan as a grown-up to impress, never more.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not applicable (a child)',
+  },
+  'Hanabi Hyuga': {
+    canonDevotion: 'A child ten years Kan’s junior; at most a little-sister figure.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not applicable (a child)',
+  },
+  'Hiashi Hyuga': {
+    canonDevotion: 'A widower who gives his heart only to his clan and daughters.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Shikaku Nara': {
+    canonDevotion: 'Married to Yoshino; complains about her and adores her.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Yoshino)',
+  },
+  'Inoichi Yamanaka': {
+    canonDevotion: 'A married family man devoted to his wife and Ino.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (his wife)',
+  },
+  'Choza Akimichi': {
+    canonDevotion: 'A married family man devoted to his wife and Choji.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (his wife)',
+  },
+  'Tsume Inuzuka': {
+    canonDevotion: 'Raises her pack alone; has no patience for soft talk.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Ibiki Morino': {
+    canonDevotion: 'Married to his work; reads affection as a tactic.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Genma Shiranui': {
+    canonDevotion: 'Easygoing flirt who never lets anything get serious.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Gekko Hayate': {
+    canonDevotion: 'In love with Yūgao of ANBU; his heart is spoken for.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Yūgao)',
+  },
+  'Kotetsu Hagane': {
+    canonDevotion: 'Laid-back and single; romance happens to him, if at all.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Izumo Kamizuki': {
+    canonDevotion: 'Steady and private about matters of the heart.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Homura Mitokado': {
+    canonDevotion: 'An old councillor whose only devotion is the village.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Koharu Utatane': {
+    canonDevotion: 'An old councillor whose only devotion is the village.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Teuchi': {
+    canonDevotion: 'A widowed father devoted to his daughter and his broth.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ayame': {
+    canonDevotion: 'Kind to every customer; her heart opens only slowly.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Minato Namikaze': {
+    canonDevotion: 'Loved Kushina Uzumaki and died beside her.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Kushina)',
+  },
+  'Kushina Uzumaki': {
+    canonDevotion: 'Loved Minato Namikaze and died beside him.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Minato)',
+  },
+  'Fugaku Uchiha': {
+    canonDevotion: 'Married to Mikoto; his heart was his clan.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Mikoto)',
+  },
+  'Mikoto Uchiha': {
+    canonDevotion: 'Married to Fugaku; devoted to her sons to the end.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Fugaku)',
+  },
+  'Rin Nohara': {
+    canonDevotion: 'Loved Kakashi Hatake, and was loved by Obito.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Kakashi)',
+  },
+  'Hashirama Senju': {
+    canonDevotion: 'Married to Mito Uzumaki; his other love was the village.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Mito)',
+  },
+  'Tobirama Senju': {
+    canonDevotion: 'Lived for the village and its institutions; romance never figured.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Dan Katō': {
+    canonDevotion: 'Loved Tsunade and died in her hands.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Tsunade)',
+  },
+  'Kankuro': {
+    canonDevotion: 'Puppets and family first; brash about women, awkward with feelings.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Chiyo': {
+    canonDevotion: 'An old woman living with her guilt; romance is long behind her.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Rasa': {
+    canonDevotion: 'His wife Karura died for Gaara; what love he had died with her.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Karura, past)',
+  },
+  'Baki': {
+    canonDevotion: 'A soldier of the Sand; duty leaves no room for love.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Zabuza Momochi': {
+    canonDevotion: 'Calls himself a demon; Haku is the only one he cannot push away.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Haku': {
+    canonDevotion: 'Lives and would die for Zabuza; no one else reaches him.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Devoted to Zabuza',
+  },
+  'Yagura': {
+    canonDevotion: 'A puppet under genjutsu; there is no one home to love.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ao': {
+    canonDevotion: 'An old soldier of the Mist; loyalty to the Mizukage is all.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Chojuro': {
+    canonDevotion: 'Shy and earnest; would never dare speak first.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Utakata': {
+    canonDevotion: 'Keeps everyone at a distance after his master’s betrayal.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'A': {
+    canonDevotion: 'His village and his brother are everything; love is beside the point.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Darui': {
+    canonDevotion: 'Too relaxed to chase anyone; loyal once he cares.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Yugito Nii': {
+    canonDevotion: 'Proud and private; trusts few and loves fewer.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Omoi': {
+    canonDevotion: 'Overthinks every feeling into a disaster before it starts.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to women',
+  },
+  'Karui': {
+    canonDevotion: 'Tough and blunt; falls for kindness she pretends to scorn.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men (eventually Choji)',
+  },
+  'Samui': {
+    canonDevotion: 'Cool and unimpressed; warms only to steady competence.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Onoki': {
+    canonDevotion: 'An old Kage whose love is his village and granddaughter.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kurotsuchi': {
+    canonDevotion: 'Teasing and bold; no one has caught her interest yet.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Roshi': {
+    canonDevotion: 'A wandering hermit who left people behind.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Han': {
+    canonDevotion: 'A silent wanderer carrying his beast; keeps to himself.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Fū': {
+    canonDevotion: 'Starved for friendship; friendship comes long before anything more.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Hanzō': {
+    canonDevotion: 'A paranoid tyrant; trusts no one, loves no one.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Yahiko': {
+    canonDevotion: 'Gave his heart to Konan and his dream of peace.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Konan)',
+  },
+  'Chiriku': {
+    canonDevotion: 'A monk who gave his life to the temple and its vows.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Mifune': {
+    canonDevotion: 'An old samurai bound by honor and duty.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Fukasaku': {
+    canonDevotion: 'An ancient toad, happily married to Shima.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not applicable (a toad)',
+  },
+  'Kimimaro': {
+    canonDevotion: 'Lives only to be useful to Orochimaru.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Jugo': {
+    canonDevotion: 'Gentle and afraid of himself; clings to the few who calm him.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Unclear; still learning connection',
+  },
+  'Tayuya': {
+    canonDevotion: 'Snarls at everyone; softness is something she’d kill to hide.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Sakon': {
+    canonDevotion: 'Loyal to Orochimaru and his twin; others are toys.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ukon': {
+    canonDevotion: 'Lives inside his brother; there is room for no one else.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Jirobo': {
+    canonDevotion: 'Resentful and hungry for respect, not love.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kidomaru': {
+    canonDevotion: 'Treats people as pieces in his game.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
 };
 
 function loreKey(name: string) {
-  return name.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Loose lookup for names the story shortens or extends ("Ino" for "Ino
+ * Yamanaka", "the masked man" for "Masked man"): one name must appear in the
+ * other as whole words, so "Han" never picks up Hana Inuzuka's heart.
+ */
+function sameNameLoosely(a: string, b: string) {
+  if (!a || !b) {
+    return false;
+  }
+
+  const shorter = a.length <= b.length ? a : b;
+  const longer = shorter === a ? b : a;
+
+  // Very short names ("A", "Ao", "Fū") only ever match exactly.
+  if (shorter.length < 3) {
+    return false;
+  }
+
+  return ` ${longer} `.includes(` ${shorter} `);
 }
 
 const LORE_BY_KEY = new Map<string, CharacterLoreProfile>(
@@ -309,7 +677,7 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
   }
 
   for (const [entryKey, profile] of LORE_BY_KEY) {
-    if (entryKey.includes(key) || key.includes(entryKey)) {
+    if (sameNameLoosely(entryKey, key)) {
       return profile;
     }
   }
@@ -321,8 +689,8 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 // protect the token budget.
 export const ROMANCE_RULES = `ROMANCE
 - Romance is slow, earned over many scenes, and can fail. NPCs have loves of their own. Bonds show a stage, an attraction, and a lore heart.
-- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai→Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late). Friendship can still grow.
-- Winnable hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, originals) open only through long, consistent effort, never one kind act.
+- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai↔Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late), Minato↔Kushina, Haku→Zabuza, Hayate→Yūgao; married elders stay married. Friendship can still grow.
+- Winnable hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, Sai, Choji, Shino, Kankuro, Darui, Yugito, Fū, Kurotsuchi, Samui, Karui, originals) open only through long, consistent effort, never one kind act.
 - Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
 - A rejection holds by default: the refusal stands, and Kan pushing again only hardens it. It is not forever. Over a long stretch of in-story time and many scenes, someone who turned Kan down can change their mind as they truly come to know him: his real self behind the reserve, what he has done for them or others, or the power he keeps hidden. The change comes from their side, never soon after the refusal, never from repeated asking, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest). Lore-locked hearts and the age rules above still hold.`;
 export type EraKey = 'pre' | 'part1' | 'shippuden' | 'war' | 'after';
@@ -442,8 +810,7 @@ export function eraNoteFor(name: string, year: number): string | null {
   }
 
   for (const [entryName, notes] of Object.entries(ERA_NOTES)) {
-    const entryKey = loreKey(entryName);
-    if (entryKey.includes(key) || key.includes(entryKey)) {
+    if (sameNameLoosely(loreKey(entryName), key)) {
       return notes[eraKeyForYear(year)] ?? null;
     }
   }

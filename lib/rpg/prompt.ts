@@ -1,4 +1,4 @@
-import { calculateAge, formatDate } from './calendar';
+import { calculateAge, entityAge, formatDate } from './calendar';
 import { groupJutsuByNature } from './jutsu';
 import { ROMANCE_RULES, eraNoteFor, loreProfileFor } from './romance';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
@@ -586,10 +586,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
   return [
     'CHARACTERS IN THIS TURN',
     ...characters.map((entity) => {
-      const age =
-        entity.birthYear !== undefined && entity.birthday
-          ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
-          : entity.age;
+      const age = entityAge(db.state.inStoryDate, entity);
       const role = truncate(entity.role ?? '', 40);
 
       if (isDeceased(entity)) {
