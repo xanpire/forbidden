@@ -48,6 +48,12 @@ export type ChatRequest = {
   maxTokens?: number;
   signal?: AbortSignal;
   responseFormatJson?: boolean;
+  /**
+   * Ask for OpenRouter structured output against this JSON schema. Falls
+   * back to plain JSON mode, then to an ordinary reply, if the model (or
+   * every provider for it) can't do structured output.
+   */
+  jsonSchema?: { name: string; schema: Record<string, unknown> };
 };
 
 export type StreamResult = {
@@ -356,6 +362,7 @@ export async function completeChat({
   maxTokens = 900,
   signal,
   responseFormatJson = false,
+  jsonSchema,
 }: ChatRequest): Promise<StreamResult> {
   if (!apiKey) {
     throw new Error('Add your OpenRouter API key in Settings first.');
@@ -370,21 +377,45 @@ export async function completeChat({
     reasoning: { exclude: true },
   };
 
-  if (responseFormatJson) {
+  if (jsonSchema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: { name: jsonSchema.name, strict: true, schema: jsonSchema.schema },
+    };
+    // Only route to providers that actually enforce the schema.
+    body.provider = { require_parameters: true };
+  } else if (responseFormatJson) {
     body.response_format = { type: 'json_object' };
   }
 
+  const wantsJson = Boolean(jsonSchema) || responseFormatJson;
+
   const response = await fetch(CHAT_URL, {
     method: 'POST',
-    headers: buildHeaders(apiKey, responseFormatJson),
+    headers: buildHeaders(apiKey, wantsJson),
     body: JSON.stringify(body),
     signal,
   });
 
   if (!response.ok) {
     const message = await readErrorMessage(response);
+    // 400/422: parameter rejected. 404: no provider supports it.
+    const unsupported =
+      response.status === 400 || response.status === 404 || response.status === 422;
 
-    if (responseFormatJson && response.status === 400) {
+    if (jsonSchema && unsupported) {
+      return completeChat({
+        apiKey,
+        model,
+        messages,
+        temperature,
+        maxTokens,
+        signal,
+        responseFormatJson: true,
+      });
+    }
+
+    if (responseFormatJson && unsupported) {
       return completeChat({
         apiKey,
         model,
@@ -400,7 +431,7 @@ export async function completeChat({
   }
 
   const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
 
@@ -412,6 +443,7 @@ export async function completeChat({
     completionTokens:
       payload.usage?.completion_tokens ??
       estimateTokens([{ role: 'assistant', content: text }]),
+    finishReason: payload.choices?.[0]?.finish_reason,
   };
 }
 

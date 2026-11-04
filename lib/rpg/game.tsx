@@ -29,12 +29,11 @@ import {
 } from './db';
 import { makeId } from './id';
 import { externalizeImages, inlineImages, storeImage } from './imageStore';
-import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
+import { buildNarrationPrompt, stripNarrationJson } from './prompt';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
   cloneDatabase,
-  convertInlineDiff,
   extractTurnDiff,
   getLastExchange,
   pushSnapshot,
@@ -107,6 +106,7 @@ type GameContextValue = {
   pendingMemoryCount: number;
   retryPendingMemory: () => Promise<void>;
   streamingText: string;
+  pendingAction: string | null;
   lastPromptTokens: number;
   worldEventNotice: string | null;
   dismissWorldEventNotice: () => void;
@@ -147,6 +147,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [stateStepRunning, setStateStepRunning] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [streamingText, setStreamingText] = useState('');
+  /** Kan's line for the turn being narrated, shown until the turn is saved. */
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [lastPromptTokens, setLastPromptTokens] = useState(0);
   const [worldEventNotice, setWorldEventNotice] = useState<string | null>(null);
 
@@ -366,8 +368,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   turnLogId: job.turnLogId,
                   userMessage: job.userMessage ?? '',
                   narration,
-                  hadInlineDiff: false,
-                  inlineImageWorthy: false,
                 },
                 activeJobIdsRef.current
               );
@@ -442,34 +442,34 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * summaries it calls for are queued and run afterwards on their own.
    */
   const runStateStep = useCallback(
-    async (activeKey: string, slotId: string, turn: TurnInfo, inlineDiff: TurnDiff | null) => {
+    async (activeKey: string, slotId: string, turn: TurnInfo) => {
       setStateStepRunning(true);
 
       try {
-        let extraction = inlineDiff;
+        let extraction: TurnDiff | null;
 
-        if (!extraction) {
-          try {
-            const base = await readLatest(slotId);
+        try {
+          // Context for the state call is the save *before* this turn's
+          // changes; the turn's own prose is passed separately.
+          const base = await readLatest(slotId);
 
-            if (!base) {
-              return;
-            }
-
-            extraction = await extractTurnDiff({
-              apiKey: activeKey,
-              db: base,
-              userMessage: turn.userMessage,
-              assistantMessage: turn.narration,
-            });
-          } catch (caught) {
-            await updateLatest(slotId, (latest) =>
-              latest.rawLog.some((entry) => entry.id === turn.turnLogId)
-                ? queueStateRetry(latest, turn, caught)
-                : null
-            );
+          if (!base) {
             return;
           }
+
+          extraction = await extractTurnDiff({
+            apiKey: activeKey,
+            db: base,
+            userMessage: turn.userMessage,
+            assistantMessage: turn.narration,
+          });
+        } catch (caught) {
+          await updateLatest(slotId, (latest) =>
+            latest.rawLog.some((entry) => entry.id === turn.turnLogId)
+              ? queueStateRetry(latest, turn, caught)
+              : null
+          );
+          return;
         }
 
         let followUps: string[] = [];
@@ -521,6 +521,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       setIsNarrating(true);
       setStreamingText('');
+      setPendingAction(action);
       setError(null);
 
       try {
@@ -541,60 +542,52 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const controller = new AbortController();
         abortRef.current = controller;
 
-        const result = await streamChatCompletion({
-          apiKey: activeKey,
-          model: withUser.settings.narrationModel,
-          messages: prompt.messages,
-          temperature: withUser.settings.temperature,
-          maxTokens: withUser.settings.maxTokens,
-          signal: controller.signal,
-          onDelta: () => {
-            // Text is hidden until complete to avoid layout shifts from JSON blocks.
-          },
-        });
+        // Call 1: the narrator writes prose only and streams it straight to
+        // the screen. State is extracted afterwards by a second call.
+        let streamed = '';
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flush = () => {
+          flushTimer = null;
+          setStreamingText(streamed);
+        };
 
-        let fullText = result.text;
-        let promptTokens = result.promptTokens;
-        let completionTokens = result.completionTokens;
+        let result;
 
-        const firstSplit = splitNarrationAndDiff(fullText);
-        const likelyCut =
-          result.finishReason === 'length' ||
-          (!firstSplit.inlineDiff && endsMidSentence(firstSplit.narration));
+        try {
+          result = await streamChatCompletion({
+            apiKey: activeKey,
+            model: withUser.settings.narrationModel,
+            messages: prompt.messages,
+            temperature: withUser.settings.temperature,
+            maxTokens: withUser.settings.maxTokens,
+            signal: controller.signal,
+            onDelta: (delta) => {
+              streamed += delta;
 
-        if (likelyCut) {
-          try {
-            const continuation = await streamChatCompletion({
-              apiKey: activeKey,
-              model: withUser.settings.narrationModel,
-              messages: [
-                ...prompt.messages,
-                { role: 'assistant', content: fullText },
-                {
-                  role: 'user',
-                  content:
-                    'Continue from the exact cut-off point. Finish the sentence and the turn, then output the state JSON block as instructed.',
-                },
-              ],
-              temperature: withUser.settings.temperature,
-              maxTokens: 700,
-              signal: controller.signal,
-              onDelta: () => {},
-            });
-
-            fullText = `${fullText}${continuation.text}`;
-            promptTokens += continuation.promptTokens;
-            completionTokens += continuation.completionTokens;
-          } catch {
-            // Keep the original reply if the continuation fails.
+              if (!flushTimer) {
+                flushTimer = setTimeout(flush, 60);
+              }
+            },
+          });
+        } finally {
+          if (flushTimer) {
+            clearTimeout(flushTimer);
           }
         }
 
-        const split = splitNarrationAndDiff(fullText);
-        const narration = endsMidSentence(split.narration)
-          ? trimToSentence(split.narration)
-          : split.narration;
-        const { diff: inlineTurnDiff, imageWorthy } = convertInlineDiff(split.inlineDiff);
+        const promptTokens = result.promptTokens;
+        const completionTokens = result.completionTokens;
+        // Safety net only: the narrator is no longer asked for JSON, but a
+        // model that adds some anyway must never get it into the story.
+        const prose = stripNarrationJson(result.text);
+        const narration =
+          result.finishReason === 'length' || endsMidSentence(prose)
+            ? trimToSentence(prose)
+            : prose;
+
+        if (!narration.trim()) {
+          throw new Error('The narrator returned an empty reply. Try again.');
+        }
 
         // Save onto the latest copy, not the one the prompt was built from,
         // so summaries that finished during narration are kept.
@@ -614,28 +607,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
             completionTokens
           );
           turnLogId = withReply.rawLog[withReply.rawLog.length - 1].id;
+          // Clear the live text in the same tick the saved reply appears, so
+          // the turn never shows twice.
+          setStreamingText('');
+          setPendingAction(null);
           return withReply;
         });
-
-        setStreamingText('');
 
         if (!saved || !turnLogId) {
           return;
         }
 
+        // Call 2: read the state change out of the prose, in the background.
         trackBackground(
-          runStateStep(
-            activeKey,
-            slotId,
-            {
-              turnLogId,
-              userMessage: action,
-              narration,
-              hadInlineDiff: inlineTurnDiff !== null,
-              inlineImageWorthy: imageWorthy,
-            },
-            inlineTurnDiff
-          )
+          runStateStep(activeKey, slotId, {
+            turnLogId,
+            userMessage: action,
+            narration,
+          })
         );
       } catch (caught) {
         const message =
@@ -643,6 +632,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setError(message);
       } finally {
         setIsNarrating(false);
+        setStreamingText('');
+        setPendingAction(null);
         abortRef.current = null;
       }
     },
@@ -1051,6 +1042,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       pendingMemoryCount,
       retryPendingMemory,
       streamingText,
+      pendingAction,
       lastPromptTokens,
       worldEventNotice,
       dismissWorldEventNotice,
@@ -1100,6 +1092,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setApiKey,
       slots,
       streamingText,
+      pendingAction,
       worldEventNotice,
       dismissWorldEventNotice,
       switchSlotById,

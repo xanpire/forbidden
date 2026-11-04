@@ -39,7 +39,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { formatClock, formatDayMonth, formatStoryDate, timeOfDayOf } from '@/lib/rpg/calendar';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
-import { stripNarrationJson } from '@/lib/rpg/prompt';
+import { streamingPreview, stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
@@ -150,6 +150,7 @@ export default function StoryScreen() {
     pendingMemoryCount,
     retryPendingMemory,
     streamingText,
+    pendingAction,
     worldEventNotice,
     dismissWorldEventNotice,
     sendTurn,
@@ -192,6 +193,11 @@ export default function StoryScreen() {
         image: message.image ?? null,
       }));
   }, [db]);
+
+  const liveParagraphs = useMemo(
+    () => (isNarrating ? paragraphsOf(streamingPreview(streamingText)) : []),
+    [isNarrating, streamingText]
+  );
 
   useEffect(() => {
     if (messages.length === 0 && streamingText.length === 0) {
@@ -475,12 +481,25 @@ export default function StoryScreen() {
             )
           )}
 
+          {isNarrating && pendingAction ? (
+            <View style={styles.playerBlock}>
+              <PlayerText text={pendingAction} />
+            </View>
+          ) : null}
+
           {isNarrating ? (
             <View style={styles.narration}>
-              <View style={styles.typingRow}>
-                <ActivityIndicator color={colors.accent} size="small" />
-                <Text style={type.rowMeta}>The world is moving…</Text>
-              </View>
+              {liveParagraphs.map((paragraph, index) => (
+                <Text key={index} style={type.prose}>
+                  {paragraph}
+                </Text>
+              ))}
+              {liveParagraphs.length === 0 ? (
+                <View style={styles.typingRow}>
+                  <ActivityIndicator color={colors.accent} size="small" />
+                  <Text style={type.rowMeta}>The world is moving…</Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
 

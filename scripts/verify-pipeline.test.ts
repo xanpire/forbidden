@@ -16,7 +16,8 @@ import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { advanceSeconds, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
-import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from '../lib/rpg/prompt';
+import { buildExtractionPrompt, buildNarrationPrompt, splitNarrationAndDiff, streamingPreview, stripNarrationJson } from '../lib/rpg/prompt';
+import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
@@ -30,7 +31,7 @@ import {
   appendStoryMessage,
   applyTurnDiff,
   cloneDatabase,
-  convertInlineDiff,
+  convertStateBlock,
 } from '../lib/rpg/services';
 import { rollD20 } from '../lib/rpg/services';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
@@ -76,7 +77,7 @@ describe('seed save compatibility', () => {
 describe('inline diff wiring', () => {
   test('jutsu_used creates jutsu records', () => {
     const db = loadSave();
-    const { diff } = convertInlineDiff({
+    const { diff } = convertStateBlock({
       state: { location: 'Training field' },
       jutsu_used: [
         {
@@ -174,7 +175,7 @@ describe('prompt token stability', () => {
       const { narration: clean, inlineDiff } = splitNarrationAndDiff(narration);
       db = appendStoryMessage(db, 'assistant', clean, 'm', 3000, 400);
 
-      const { diff } = convertInlineDiff(inlineDiff);
+      const { diff } = convertStateBlock(inlineDiff);
       const fallback: TurnDiff = diff ?? {
         facts: [{ action: 'add', type: 'event', text: `Quiet turn ${turn}: nothing of note.`, subject: 'Kan' }],
       };
@@ -284,7 +285,7 @@ describe('time progression via inline diffs', () => {
     let db = loadSave();
     const before = db.state.inStoryDate;
 
-    const { diff } = convertInlineDiff({
+    const { diff } = convertStateBlock({
       time: { elapsed: 3, unit: 'days', clock_time: '08:00' },
       mood: 'Weary but resolute',
     });
@@ -333,7 +334,7 @@ describe('time progression via inline diffs', () => {
     db = appendStoryMessage(db, 'assistant', 'Rain falls over the empty road.', 'm', 0, 0);
     const eventsBefore = db.events.length;
 
-    const { diff } = convertInlineDiff({ scene_ended: true });
+    const { diff } = convertStateBlock({ scene_ended: true });
 
     expect(diff?.scene?.ended).toBe(true);
 
@@ -407,7 +408,7 @@ describe('presence tracking and bonds ordering', () => {
   test('characters_present marks entities as seen', () => {
     let db = loadSave();
 
-    const { diff } = convertInlineDiff({
+    const { diff } = convertStateBlock({
       characters_present: ['Itachi Uchiha'],
       time: { elapsed: 2, unit: 'days', clock_time: '08:00' },
     });
@@ -425,7 +426,7 @@ describe('presence tracking and bonds ordering', () => {
     let db = loadSave();
     const before = db.state.inStoryDate;
 
-    const { diff } = convertInlineDiff({
+    const { diff } = convertStateBlock({
       time: { elapsed: 9, unit: 'hours' },
     });
 
@@ -436,10 +437,23 @@ describe('presence tracking and bonds ordering', () => {
     expect(timeOfDayOf(db.state.inStoryDate)).toBe('morning');
   });
 
-  test('narration schema documents sleep and characters_present', () => {
-    expect(NARRATION_SYSTEM).toContain('characters_present');
-    expect(NARRATION_SYSTEM).toContain('elapsed');
-    expect(NARRATION_SYSTEM).toContain('scene_pace');
+  test('narrator prompt asks for prose only and carries no JSON schema', () => {
+    expect(NARRATION_SYSTEM).not.toContain('```');
+    expect(NARRATION_SYSTEM).not.toContain('characters_present');
+    expect(NARRATION_SYSTEM).not.toContain('scene_pace');
+    expect(NARRATION_SYSTEM).not.toContain('"time"');
+    expect(NARRATION_SYSTEM).toContain('Write only the story prose');
+    expect(NARRATION_SYSTEM).toContain('full night\'s sleep is 8-9 hours');
+  });
+
+  test('full narration prompt never asks the narrator for JSON fields', () => {
+    const db = loadSave();
+    const prompt = buildNarrationPrompt(db, '*Kan looks around.*', 20);
+    const all = prompt.messages.map((message) => message.content).join('\n');
+
+    for (const key of ['news_relayed', 'canon_engaged', 'canon_completed', 'canon_passed', 'image_worthy', '```json']) {
+      expect(all).not.toContain(key);
+    }
   });
 
   test('narration prompt does not duplicate the current action', () => {
@@ -1610,5 +1624,117 @@ describe('portraits', () => {
     const normalized = normalizeDatabase(withPortrait);
     expect(normalized.portraits?.length).toBe(1);
     expect(normalized.portraits?.[0].image).toBe('img:abc');
+  });
+});
+
+describe('two-call turn: prose narrator + structured state call', () => {
+  function collectObjects(node: unknown, out: Record<string, unknown>[] = []) {
+    if (node && typeof node === 'object') {
+      const record = node as Record<string, unknown>;
+
+      if (record.type === 'object' || (Array.isArray(record.type) && record.type.includes('object'))) {
+        out.push(record);
+      }
+
+      for (const value of Object.values(record)) {
+        collectObjects(value, out);
+      }
+    }
+
+    return out;
+  }
+
+  test('state schema is valid for strict structured output', () => {
+    const objects = collectObjects(TURN_STATE_SCHEMA);
+    expect(objects.length).toBeGreaterThan(5);
+
+    for (const object of objects) {
+      const properties = Object.keys(object.properties as Record<string, unknown>);
+      expect(object.additionalProperties).toBe(false);
+      expect([...(object.required as string[])].sort()).toEqual([...properties].sort());
+    }
+  });
+
+  test('converts a full structured reply with nulls and empty lists', () => {
+    const { diff, imageWorthy } = convertStateBlock({
+      time: { elapsed: 2, unit: 'hours', clock_time: null },
+      scene_pace: 'travel',
+      location: 'Road north of the Hidden Leaf',
+      location_kind: 'road',
+      mood: null,
+      world_description: null,
+      canon_point: null,
+      inventory_added: ['Rice balls'],
+      inventory_removed: [],
+      jutsu_used: [],
+      bonds: [{ character: 'Itachi Uchiha', affinity_change: 1, status: null, note: null, relationship: null, attraction: null, romance_note: null }],
+      facts: [{ entity: 'Kan', fact: 'Kan knows the massacre happened.', type: 'knowledge', who_knows: ['Kan', 'Itachi Uchiha'] }],
+      threads: [{ title: 'Reach the Hidden Rain', description: 'You and Itachi head for the Hidden Rain.', status: 'open' }],
+      new_characters: [],
+      character_updates: [{ name: 'Itachi Uchiha', mood: 'withdrawn', appearance: null }],
+      characters_present: ['Itachi Uchiha'],
+      image_brief: null,
+      image_worthy: true,
+      scene_ended: false,
+      canon_engaged: [],
+      canon_completed: [],
+      canon_passed: [],
+      news_relayed: [],
+    });
+
+    expect(imageWorthy).toBe(true);
+    expect(diff?.imageWorthy).toBe(true);
+    expect(diff?.state?.elapsedSeconds).toBe(7200);
+    expect(diff?.state?.scenePace).toBe('travel');
+    expect(diff?.state?.location).toBe('Road north of the Hidden Leaf');
+    expect(diff?.state?.locationKind).toBe('road');
+    expect(diff?.state?.inventoryAdded).toEqual(['Rice balls']);
+    expect(diff?.state?.mood).toBeUndefined();
+    expect(diff?.bonds?.[0].affinityDelta).toBe(1);
+    expect(diff?.facts?.[0].type).toBe('knowledge');
+    expect(diff?.facts?.[0].whoKnows).toEqual(['Kan', 'Itachi Uchiha']);
+    expect(diff?.threads?.[0]).toMatchObject({ action: 'open', title: 'Reach the Hidden Rain' });
+    expect(diff?.entities?.[0]).toMatchObject({ name: 'Itachi Uchiha', mood: 'withdrawn' });
+    expect(diff?.canonCompleted).toEqual([]);
+  });
+
+  test('an all-unchanged structured reply is no diff', () => {
+    const { diff } = convertStateBlock({
+      time: { elapsed: null, unit: null, clock_time: null },
+      scene_pace: null, location: null, location_kind: null, mood: null,
+      world_description: null, canon_point: null, inventory_added: [], inventory_removed: [],
+      jutsu_used: [], bonds: [], facts: [], threads: [], new_characters: [], character_updates: [],
+      characters_present: [], image_brief: null, image_worthy: false, scene_ended: false,
+      canon_engaged: [], canon_completed: [], canon_passed: [], news_relayed: [],
+    });
+
+    expect(diff).toBeNull();
+  });
+
+  test('state prompt carries the turn prose and canon ids', () => {
+    const db = loadSave();
+    const prompt = buildExtractionPrompt(db, '*Kan follows.*', 'You walk for an hour behind Itachi.');
+    const user = prompt.messages[1].content;
+
+    expect(prompt.messages[0].content).toContain('state tracker');
+    expect(user).toContain('THIS TURN');
+    expect(user).toContain('You walk for an hour behind Itachi.');
+    expect(user).toContain('TIME BEFORE THIS TURN');
+
+    const tracked = [
+      ...activeCanonMilestones(db).slice(0, 2).map((milestone) => milestone.id),
+      ...unheardCanonNews(db, 3).map((item) => item.milestoneId),
+    ];
+
+    for (const id of tracked) {
+      expect(user).toContain(id);
+    }
+  });
+
+  test('streaming preview hides any code block or JSON a model adds anyway', () => {
+    expect(streamingPreview('Rain falls.\n\nItachi waits.')).toBe('Rain falls.\n\nItachi waits.');
+    expect(streamingPreview('Rain falls.\n\n```json\n{"mood"')).toBe('Rain falls.');
+    expect(streamingPreview('Rain falls.\n{"state":')).toBe('Rain falls.');
+    expect(streamingPreview('Rain falls. "Move," he says.')).toBe('Rain falls. "Move," he says.');
   });
 });

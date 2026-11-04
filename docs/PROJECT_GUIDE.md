@@ -116,7 +116,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
-### `TurnDiff` (what the narrator returns)
+### `TurnDiff` (what the state call produces)
 
 ```ts
 {
@@ -126,6 +126,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
     inStoryDate?, elapsedSeconds?, clockTime?: {hour,minute},
     scenePace?, canonPoint?, chapter?, scene?, imageBrief?, sceneCast?
   },
+  imageWorthy?: boolean,
   entities?: [{ name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
   jutsuUsed?: [{ name, user, chakraNature?, effect?, visual? }],
   bonds?: [{ character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
@@ -137,7 +138,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
-Note: inline narrator JSON uses **snake_case** (`affinity_change`, `characters_present`, `scene_ended`, `image_brief`, `news_relayed`, `canon_completed`, …). `convertInlineDiff` translates snake_case → `TurnDiff` camelCase. The extraction-model fallback returns camelCase directly.
+Note: the state model returns **snake_case** JSON matching `TURN_STATE_SCHEMA` (`lib/rpg/stateSchema.ts`): flat `location`, `time.elapsed`, `affinity_change`, `characters_present`, `character_updates`, `scene_ended`, `image_brief`, `image_worthy`, `news_relayed`, `canon_completed`, … Strict mode means every field is always present, with `null` / `[]` for “unchanged”. `convertStateBlock` (services.ts) ignores those and translates the rest → `TurnDiff` camelCase. It still accepts the older nested `state: { location, … }` shape.
 
 ---
 
@@ -151,28 +152,23 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 2. Snapshot the database (undo).
 3. Append the player message to `rawLog`.
 4. `rollD20()` → encounter hint.
-5. `buildNarrationPrompt(db, action, d20)` → messages + estimated tokens.
-6. `streamChatCompletion` (SSE). Visible streaming text is intentionally disabled (no JSON flashing).
-7. If the finish reason is `length` **or** the narration ends mid-sentence with no JSON block → **one** silent continuation request, merged.
-8. `splitNarrationAndDiff(raw)`:
-   - strips fenced/unfenced JSON (including truncated blocks),
-   - returns `{ narration, inlineDiff }`,
-   - cleans stray fences and `State update:` labels.
-9. If narration is still cut mid-sentence, trim to the last complete sentence (`trimToSentence`).
-10. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
-11. `runStateStep(...)` starts; the next turn, undo and regenerate wait for it.
+5. `buildNarrationPrompt(db, action, d20)` → messages + estimated tokens. The narrator prompt contains **no JSON instructions and no canon ids**; it only asks for prose and for time, place, people and outcomes to be legible in it.
+6. **Call 1 — narrator.** `streamChatCompletion` (SSE) with the story model. Text streams to the screen live (`streamingText`, throttled to ~60 ms; `streamingPreview` hides anything from a stray ``` or `{"` onwards). Kan's line is shown meanwhile via `pendingAction`.
+7. `stripNarrationJson` runs once on the final text as a safety net only. If the finish reason is `length` or the prose ends mid-sentence, it is trimmed to the last complete sentence (`trimToSentence`). There is no continuation request.
+8. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
+9. **Call 2 — state.** `runStateStep(...)` starts in the background; the next turn, undo and regenerate wait for it.
 
 ### Saving a turn: two phases (`lib/rpg/memoryJobs.ts`)
 
 **Phase 1 — state step (`runStateStep` → `applyStateStep`)**, saved immediately:
 
-1. `extraction = inlineDiff ?? extractTurnDiff(...)` (the fallback is a separate cheap LLM call and only runs when no inline block parsed). If that call fails, a `state` job is stored as pending and nothing else changes.
+1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` (capped elapsed seconds, safe clock time, combat blocks date jumps).
 3. `applyTurnDiff` (state/clock, entities, jutsu, bonds incl. romance, facts, threads, duplicate merge, scene events, presence, stall counter).
 4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
-   - `scene` when inline diff + `image_worthy`, `scene.ended`, or `storyMessagesSinceLastSummary >= autoSummarizeThreshold`. A pending scene job is widened (up to 12 messages) instead of stacking a new one.
+   - `scene` when `imageWorthy`, `scene.ended`, or `storyMessagesSinceLastSummary >= autoSummarizeThreshold`. A pending scene job is widened (up to 12 messages) instead of stacking a new one.
 6. Commit. The clock, bonds, facts and canon are now saved.
 
 **Phase 2 — summary jobs (`drainJobs`)**, one at a time, never blocking the next turn:
@@ -237,9 +233,9 @@ The current action appears **once** (it is excluded from the recent-message bloc
 
 `PROMPT_TOKEN_BUDGET = 5600`. After building, the prompt drops the oldest scene messages (never below 4) until `estimateTokens` is under budget. Measured baseline on a fresh save: ~3.6k tokens; flat over long play.
 
-### Extraction prompt
+### State prompt (call 2)
 
-`buildExtractionPrompt` uses `EXTRACTION_SYSTEM` (same continuity rules, camelCase schema) and is only used when the inline JSON block is missing/unparseable.
+`buildExtractionPrompt` uses `STATE_SYSTEM` (field-by-field rules: time, place, people, jutsu, memory, canon, image) and runs after **every** turn against `TURN_STATE_SCHEMA`. The canon ids the narrator no longer sees are given here in `formatCanonTracking`, each with the rule for marking it. News and canon blocks in the narrator prompt describe events in plain words only.
 
 ---
 
@@ -423,7 +419,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 ## 13. Invariants (do not break these)
 
 1. **Never control Kan.** The narrator stops when the player must act.
-2. **Every narrator turn ends with one fenced JSON block**; `splitNarrationAndDiff` must strip it from what is stored/displayed. JSON must never appear in the chat.
+2. **The narrator writes prose only.** Never add JSON, field names or canon ids to the narrator prompt; state comes from the separate structured state call. `stripNarrationJson` / `streamingPreview` remain as safety nets. JSON must never appear in the chat.
 3. **Canon truth**: no invented canon event, funeral, death or date; only milestones/news/facts count.
 4. **No automatic time advance.** Clock changes only from narrator reports, the narration parser, or explicit clock/date fields.
 5. **Combat cannot skip days** around the player; the cap is enforced in `resolveTurnClock`.
@@ -452,7 +448,7 @@ Edit `paceCapSeconds` in `calendar.ts` and `inferScenePace` in `pacing.ts`. Upda
 Add a `formatX` function and insert it into the `buildDynamic` array. Keep it short and capped; respect the token guard.
 
 ### Add a state field
-`types.ts` → `db.normalizeState` default → `convertInlineDiff` + `applyStateDiff` (if narrator-provided) → tests.
+`types.ts` → `db.normalizeState` default → `TURN_STATE_SCHEMA` (stateSchema.ts; add the key to `properties`, it is auto-required) + a rule line in `STATE_SYSTEM` → `convertStateBlock` → `applyTurnDiff` → tests.
 
 ---
 
@@ -460,12 +456,12 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 
 | Symptom | Likely cause / fix |
 |---|---|
-| Clock not moving | Narrator omitted `time` and prose has no cues; by design. Check `TIME` block and `detectNarrationTime`. |
+| Clock not moving | The prose gave no time cue and the state model reported none. Check the narrator's TIME rules, `time` in the state reply, and `detectNarrationTime`. |
 | Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
-| Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need narrator marks. |
+| Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
 | Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
-| JSON text in chat | `splitNarrationAndDiff` / `stripNarrationJson` / render-time strip. Run tests. |
-| Wrong characters in images | `image_brief` and `characters_present`; cast comes from `sceneCast`. |
+| JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
+| Wrong characters in images | `image_brief` and `characters_present` from the state call; cast comes from `sceneCast`. |
 | Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/canon caps. |
 | Save quota error | `saveSlot` trims images/snapshots; clearing old slots helps. |
 | PWA stale | Bump version so `generate-sw.js` changes the cache name; rebuild. |

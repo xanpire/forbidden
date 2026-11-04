@@ -381,7 +381,7 @@ export default function SettingsScreen() {
                 />
                 <View style={styles.nestedDivider} />
                 <ModelSelect
-                  hint="Extracts state, bonds, facts, and threads."
+                  hint="Reads each turn and records time, place, bonds, facts, and threads. A cheap model with structured output works best."
                   label="Memory"
                   onChange={(value) => void updateSettings({ extractionModel: value })}
                   value={db.settings.extractionModel}

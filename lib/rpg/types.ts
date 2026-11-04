@@ -366,6 +366,8 @@ export type TurnDiff = {
     imageBrief?: string;
     sceneCast?: string[];
   };
+  /** The state model judged this beat visually striking (queues a scene summary). */
+  imageWorthy?: boolean;
   entities?: {
     name: string;
     age?: number;

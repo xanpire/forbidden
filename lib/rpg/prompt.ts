@@ -42,9 +42,9 @@ EXECUTIVE RULES
 
 TIME IS STRICT
 - The TIME block is the only source of the date. Never write a calendar date or day number yourself ("the fifth of October"). Use relative time: "the next day", "two nights later".
-- Report how much time passed with "time": { "elapsed": number, "unit": "seconds" | "minutes" | "hours" | "days" }. If a new day begins, the elapsed time must cover it.
-- Use "clock_time": "HH:MM" only when the story fixes an exact hour. Otherwise the app advances the clock by the elapsed time and you read the new time from the next TIME block.
-- Never state a clock time in prose that contradicts the TIME block.
+- Whenever time moves, make it plain in the prose: "a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road". The app reads the clock from your words, so vague drift ("time passes") is not enough.
+- Honest durations: one exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. In a fight Kan controls every move, so never skip time around him.
+- Name an exact hour only when the story fixes one. Never state a clock time that contradicts the TIME block.
 
 CANON TRUTH
 - Never invent a canon event, funeral, death, battle, exam, summit, or date. If it is not in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts, it has not happened yet.
@@ -82,105 +82,53 @@ ${ROMANCE_RULES}
 
 CANON TIMELINE
 - The world advances even when Kan is elsewhere. Events in the CANON TIMELINE are world truth; never re-narrate a completed event.
-- Kan learns world events through witnesses, reports, gossip, briefings, couriers, or changed behavior. Never narrate omnisciently. The NEWS & RUMORS block lists events Kan has not learned; deliver them through a plausible bearer or channel and mark "news_relayed" with the speaker.
-- If an ACTIVE STORY BEAT is listed and Kan's scene reaches it, play it out. If the beat fully happens, include "canon_engaged": ["<beat-id>"]. When a canon moment is fully dramatized, include "canon_completed": ["<id>"].
+- Kan learns world events through witnesses, reports, gossip, briefings, couriers, or changed behavior. Never narrate omnisciently. The NEWS & RUMORS block lists events Kan has not learned; deliver them through a plausible bearer or channel, and make clear who told him.
+- If an ACTIVE STORY BEAT is listed and Kan's scene reaches it, play it out fully on the page.
 
-STATE OUTPUT (MANDATORY)
-- After the narration, output exactly one fenced JSON block with changes only. If nothing changed, output \`\`\`json {} \`\`\`.
-\`\`\`json
-{
-  "state": { "location": string, "location_kind": "settlement"|"road"|"wilderness"|"structure", "canon_point": string, "inventory_and_jutsu_changes": string[] },
-  "time": { "elapsed": number, "unit": "seconds" | "minutes" | "hours" | "days", "clock_time": "HH:MM" },
-  "scene_pace": "combat" | "chase" | "conversation" | "travel" | "downtime",
-  "mood": string,
-  "world_description": string,
-  "jutsu_used": [{ "name": string, "user": string, "chakra_nature": string, "effect": string, "visual": string }],
-  "bonds": [{ "character": string, "affinity_change": number (-10..10, cumulative), "status": string, "note": string, "relationship": "stranger"|"friendly"|"close"|"romantic interest"|"partner"|"rejected", "attraction": "none"|"warm"|"strong", "romance_note": string }],
-  "facts": [{ "entity": string, "fact": string }],
-  "threads": [{ "description": string, "status": "open" | "resolved" }],
-  "new_characters": [{ "name": string, "age": number, "role": string, "personality": string, "speech_style": string, "appearance_block": string }],
-  "characters_present": string[],
-  "image_brief": string,
-  "canon_engaged": string[],
-  "canon_completed": string[],
-  "canon_passed": string[],
-  "news_relayed": [{ "id": string, "from": string }],
-  "scene_ended": boolean,
-  "image_worthy": boolean
-}
-\`\`\`
-- time: report how much time actually passed with elapsed + unit. One exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. clock_time is optional, only when the story fixes an exact hour.
-- scene_pace: label the turn — combat, chase, conversation, travel, or downtime. In a fight Kan controls every move, so never skip time around him.
-- Set state.location whenever Kan moves; always pair it with location_kind (settlement, road, wilderness, structure).
-- characters_present lists ONLY characters physically in the scene this beat, never people merely mentioned (omit when Kan is alone).
-- image_brief: one short sentence naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Write it only for visually striking beats; keep it to 30 words.
-- mood is Kan's mood in 1-3 words, only when changed. world_description is one sentence, only when changed. scene_ended is true only when the scene clearly concluded.
-- jutsu_used only for named jutsu; chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
-- Player-facing text addresses Kan as "you": canon_point, world_description, thread descriptions, bond status and notes, jutsu effects. Keep the name "Kan" in image_brief, facts, and the jutsu "user" field.
-- relationship/attraction/romance_note only when they changed. Bonds only for important characters; minor ones go in facts. image_worthy only for visually striking moments, never pure dialogue.`;
 
-const EXTRACTION_SYSTEM = `You are a strict JSON state extractor for an interactive RPG.
+OUTPUT
+- Write only the story prose the player reads. No JSON, code blocks, lists, headings, labels, state notes, or bookkeeping of any kind. The app tracks state separately from your prose.
+- Make changes legible in the prose itself: where Kan goes, who is present, which jutsu are used and how they look, what someone learns or promises, and when a scene ends.`;
 
-Return only one JSON object and nothing else. No markdown, no code fences, no commentary.
+const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel. The player is Kan. You read the narrator's latest turn and report what changed, as one JSON object that matches the provided schema. You never write story text.
 
-Allowed top-level fields:
-{
-  "state": {
-    "mood": string,
-    "worldDescription": string,
-    "jutsuAdded": string[],
-    "jutsuRemoved": string[],
-    "inventoryAdded": string[],
-    "inventoryRemoved": string[],
-    "location": string,
-    "elapsedSeconds": number, "clockTime": { "hour": number, "minute": number }, "scenePace": "combat" | "chase" | "conversation" | "travel" | "downtime",
-    "canonPoint": string,
-    "chapter": number,
-    "scene": string
-  },
-  "entities": [
-    { "name": string, "age": number, "role": string, "personality": string, "speechStyle": string, "mood": string, "appearance": string }
-  ],
-  "jutsuUsed": [
-    { "name": string, "user": string, "chakraNature": string, "effect": string, "visual": string, "description": string }
-  ],
-  "bonds": [
-    { "character": string, "affinityDelta": number, "status": string, "note": string, "isMajor": boolean, "relationship": "stranger" | "friendly" | "close" | "romantic interest" | "partner" | "rejected", "attraction": "none" | "warm" | "strong", "romanceNote": string }
-  ],
-  "facts": [
-    { "action": "add" | "end", "type": "death" | "injury" | "secret" | "knowledge" | "membership" | "possession" | "event" | "other", "text": string, "subject": string, "whoKnows": string[], "validFrom": { "year": number, "month": number, "day": number, "hour": number, "minute": number } }
-  ],
-  "threads": [
-    { "action": "open" | "update" | "resolve", "title": string, "description": string, "type": "promise" | "debt" | "grudge" | "mystery" | "quest" | "goal" | "other", "participants": string[] }
-  ],
-  "canonCompleted": string[],
-  "canonEngaged": string[],
-  "canonPassed": string[],
-  "newsRelayed": [{ "id": string, "from": string }],
-  "scene": { "ended": boolean, "summary": string, "tags": string[], "entities": string[], "importance": 1 | 2 | 3 | 4 | 5 }
-}
+GENERAL
+- Report only what THIS turn changed. Use null for anything unchanged and [] for empty lists.
+- Report only what the turn actually shows. Never invent events, and never contradict the CURRENT STATE, characters, bonds, facts, or threads below.
+- Player-facing text addresses Kan as "you": world_description, canon_point, thread titles and descriptions, bond status and notes, jutsu effects. Keep the name "Kan" in image_brief, facts, and the jutsu "user" field.
 
-Rules:
-- Return only changes. If nothing changed, return {}.
-- Never contradict the provided state, bonds, facts, or threads.
-- Only add facts that are permanent or long-term.
-- Only add bonds for important characters.
-- Use short, concrete notes.
-- Player-facing text addresses Kan as "you" (second person): worldDescription, canonPoint, thread titles and descriptions, bond status and notes, jutsu effects, and scene.summary. Keep the name "Kan" in facts, the jutsu "user" field, and entity names.
-- Update Kan's mood when the story clearly changes it.
-- Update NPC moods when their behavior or circumstances change.
-- Only update appearance when the story clearly changes it.
-- Give every new recurring original character an entities entry with age, role, personality, speechStyle, mood, and appearance.
-- Record any jutsu used by Kan or an NPC in jutsuUsed.
-- For each jutsu, include chakraNature, effect, and visual. Keep them short, concrete, and consistent with earlier uses.
-- chakraNature must use one canonical category: Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown.
-- If a technique blends natures, choose its primary nature and describe the blend in effect or visual.
-- Keep worldDescription to one or two concise sentences about the current state of the world.
-- If a scene clearly ended, set scene.ended to true and provide a one-sentence scene.summary.
-- bonds.relationship: only set when the relationship stage visibly changed this scene; use one of stranger, friendly, close, romantic interest, partner, rejected.
-- bonds.attraction: only set when attraction visibly changed; one of none, warm, strong.
-- bonds.romanceNote: one short line about a romance development, only when one happened.
-- canonCompleted / canonEngaged: copy the ids from the ACTIVE or PENDING story beats shown in the CANON TIMELINE if they fully played out in this scene.`;
+TIME
+- time.elapsed + time.unit: how much in-story time this turn covered, read from the prose. One exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. If a new day begins, the elapsed time must cover it.
+- time.clock_time: "HH:MM" only when the prose fixes an exact hour; otherwise null.
+- scene_pace: combat, chase, conversation, travel, or downtime.
+
+PLACE & MOOD
+- location: set whenever Kan moves to a new place; always pair it with location_kind.
+- mood: Kan's mood in 1-3 words, only when it changed.
+- world_description: one sentence, only when the wider situation changed.
+- canon_point: one short line, only when Kan's place in the story clearly moved on.
+- inventory_added / inventory_removed: items Kan gained or lost.
+
+PEOPLE
+- characters_present: ONLY characters physically in the scene at the end of this turn, never people merely mentioned. [] when Kan is alone.
+- new_characters: every new named character introduced this turn who is not already listed under CHARACTERS. Give age, role, personality, speech style, and appearance from the prose.
+- character_updates: existing characters whose mood or appearance visibly changed.
+- bonds: only important characters whose feelings toward Kan shifted. affinity_change is -10..10. relationship, attraction, and romance_note only when they visibly changed; minor people go in facts instead.
+
+JUTSU
+- jutsu_used: every named jutsu used by Kan or anyone else. chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown. For a blend, pick the primary nature and describe the blend in effect or visual. Keep effect and visual short and consistent with earlier uses.
+
+MEMORY
+- facts: permanent or long-term truths only (a death, an injury, a secret learned, a membership, an important possession or event). who_knows lists who learned it.
+- threads: promises, debts, grudges, mysteries, quests, or goals. status "open" for a new one, "update" to change one already listed, "resolved" when one is settled. Reuse the existing title when updating or resolving.
+- scene_ended: true only when the scene clearly concluded.
+
+CANON
+- canon_engaged / canon_completed / canon_passed / news_relayed: copy ids exactly as listed in the CANON TRACKING section, and only when the rule next to that id is met. Otherwise [].
+
+IMAGE
+- image_brief: for visually striking beats only, one sentence of up to 30 words naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Otherwise null.
+- image_worthy: true only for visually striking moments, never pure dialogue.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -304,14 +252,21 @@ export function buildNarrationPrompt(
   };
 }
 
+/**
+ * Call 2 of a turn: a cheap model reads the narrator's prose and returns the
+ * state change as structured JSON (see stateSchema.ts).
+ */
 export function buildExtractionPrompt(
   db: AppDatabase,
   userMessage: string,
   assistantMessage: string
 ) {
-  const recentMessages = getRecentMessages(db, 4);
+  const previousBeat = [...getRecentMessages(db, 6)]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.content !== assistantMessage);
+
   const stable = [
-    EXTRACTION_SYSTEM,
+    STATE_SYSTEM,
     formatState(db),
     formatEntities(db),
     formatJutsu(db),
@@ -321,11 +276,18 @@ export function buildExtractionPrompt(
   ].join('\n\n');
 
   const dynamic = [
-    'LAST TURN',
+    formatTimeLine(db, 'state'),
+    formatCanonTracking(db),
+    previousBeat
+      ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
+      : '',
+    'THIS TURN',
     `You (Kan): ${userMessage}`,
     `Narrator: ${assistantMessage}`,
-    'Return the JSON diff now.',
-  ].join('\n\n');
+    'Report the state change for THIS TURN now.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
 
   const messages: OpenRouterMessage[] = [
     { role: 'system', content: stable },
@@ -335,7 +297,6 @@ export function buildExtractionPrompt(
   return {
     messages,
     estimatedTokens: estimateTokens(messages),
-    recentMessages,
   };
 }
 
@@ -761,7 +722,7 @@ function formatNewsBlock(db: AppDatabase) {
       `- ${item.title} (${item.location}, ${item.region}). ${bearerText} Channel: ${item.channel}.${urgency}`
     );
     lines.push(
-      `  If a bearer is present or Kan is somewhere news reaches, let it surface naturally in dialogue or a report. Never narrate it omnisciently. When told, set "news_relayed": [{ "id": "${item.milestoneId}", "from": "<speaker>" }].`
+      '  If a bearer is present or Kan is somewhere news reaches, let it surface naturally in dialogue or a report, and make clear who tells him. Never narrate it omnisciently.'
     );
   }
 
@@ -792,7 +753,7 @@ function formatCanonBlock(db: AppDatabase) {
 
   for (const beat of upcoming) {
     lines.push(
-      `PERSONAL STORY BEAT — do not assume it happened (${beat.id}, era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
+      `PERSONAL STORY BEAT — do not assume it happened (era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
     );
     lines.push(
       '  This only occurs if Kan actually does it in the scene. Never state it has happened because time passed.'
@@ -802,7 +763,7 @@ function formatCanonBlock(db: AppDatabase) {
   if (active.length > 0) {
     for (const milestone of active) {
       lines.push(
-        `ACTIVE STORY BEAT (${milestone.id}): ${truncate(milestone.title, 70)}`
+        `ACTIVE STORY BEAT: ${truncate(milestone.title, 70)}`
       );
 
       if (milestone.encounter) {
@@ -812,7 +773,7 @@ function formatCanonBlock(db: AppDatabase) {
       }
 
       lines.push(
-        '  If this beat plays out in your scene, set "canon_engaged": [id]. If fully dramatized, set "canon_completed": [id]. If the opportunity clearly passed (Kan left, time moved on), set "canon_passed": [id].'
+        '  If Kan\'s scene reaches this beat, play it out fully on the page.'
       );
     }
   }
@@ -827,6 +788,42 @@ function formatCanonBlock(db: AppDatabase) {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Canon ids for the state call. The narrator never sees ids; the state model
+ * decides from the prose whether a beat played out or news was delivered.
+ */
+function formatCanonTracking(db: AppDatabase) {
+  if (!canonEnabled(db)) {
+    return '';
+  }
+
+  const lines: string[] = [];
+
+  for (const milestone of activeCanonMilestones(db).slice(0, 2)) {
+    lines.push(
+      `- ${milestone.id}: ${truncate(milestone.title, 70)} (active story beat). canon_engaged if Kan's scene took part in it this turn; canon_completed if it fully played out on the page; canon_passed if the chance clearly slipped by (Kan left, time moved on).`
+    );
+  }
+
+  for (const beat of upcomingCanonMilestones(db, 1)) {
+    lines.push(
+      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat). canon_engaged / canon_completed only if Kan actually did it in this turn — never because time passed.`
+    );
+  }
+
+  for (const item of unheardCanonNews(db, 3)) {
+    lines.push(
+      `- ${item.milestoneId}: ${truncate(item.title, 70)} (news Kan has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told Kan this turn.`
+    );
+  }
+
+  if (lines.length === 0) {
+    return '';
+  }
+
+  return ['CANON TRACKING', ...lines].join('\n');
 }
 
 function formatLoreProfile(name: string, year: number) {
@@ -910,14 +907,16 @@ function formatLastBeat(messages: RawLogEntry[]) {
   return `LAST NARRATED BEAT (continue directly from here)\n${tail(clean, 450)}`;
 }
 
-function formatTimeLine(db: AppDatabase) {
+function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narrator') {
   const stalled = db.state.turnsWithoutTimeChange ?? 0;
   const nudge =
-    stalled >= 1
+    audience === 'narrator' && stalled >= 1
       ? ' — several beats have passed without the clock moving; let time advance naturally.'
       : '';
 
-  return `TIME\n${formatDate(db.state.inStoryDate)}${nudge}`;
+  const label = audience === 'state' ? 'TIME BEFORE THIS TURN' : 'TIME';
+
+  return `${label}\n${formatDate(db.state.inStoryDate)}${nudge}`;
 }
 
 export function formatEncounterHint(d20: number) {
@@ -932,6 +931,28 @@ export function formatEncounterHint(d20: number) {
   }
 
   return `ENCOUNTER HINT (d20 ${d20}): ${hint}`;
+}
+
+/**
+ * What to show while the narrator is still streaming. The narrator writes
+ * prose only, but if a model starts a code block or JSON object anyway, hide
+ * everything from that point so it never flashes on screen.
+ */
+export function streamingPreview(partial: string): string {
+  let cut = partial.length;
+  const fence = partial.indexOf('```');
+
+  if (fence !== -1) {
+    cut = Math.min(cut, fence);
+  }
+
+  const json = /(?:^|\n)\s*\{\s*(?:"|$)/.exec(partial);
+
+  if (json) {
+    cut = Math.min(cut, json.index);
+  }
+
+  return partial.slice(0, cut).trimEnd();
 }
 
 export function stripNarrationJson(raw: string): string {

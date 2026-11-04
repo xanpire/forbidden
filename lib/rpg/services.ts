@@ -1,4 +1,5 @@
 import { completeChat } from '../openrouter';
+import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
 import { advanceSeconds, normalizeDate, formatDate, daysBetween, setClock } from './calendar';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { normalizeRelationship, normalizeAttraction } from './romance';
@@ -12,6 +13,8 @@ import type {
   CalendarDate,
   EntityRecord,
   EventRecord,
+  FactType,
+  LocationKind,
   RawLogEntry,
   TurnDiff,
   TurnSnapshot,
@@ -21,7 +24,12 @@ export function rollD20() {
   return 1 + Math.floor(Math.random() * 20);
 }
 
-export function convertInlineDiff(
+/**
+ * Turns the state model's snake_case JSON (see stateSchema.ts) into a
+ * `TurnDiff`. Lenient: nulls, empty lists and unknown values are ignored, and
+ * the older nested `state: { location, ... }` shape is still accepted.
+ */
+export function convertStateBlock(
   block: Record<string, unknown> | null
 ): { diff: TurnDiff | null; imageWorthy: boolean } {
   if (!block || typeof block !== 'object') {
@@ -178,6 +186,23 @@ export function convertInlineDiff(
     };
   }
 
+  const flatLocation = cleanString(block.location);
+  const flatLocationKind = asLocationKind(block.location_kind);
+  const flatCanonPoint = cleanString(block.canon_point);
+  const inventoryAdded = stringItems(block.inventory_added);
+  const inventoryRemoved = stringItems(block.inventory_removed);
+
+  if (flatLocation || flatLocationKind || flatCanonPoint || inventoryAdded.length || inventoryRemoved.length) {
+    diff.state = {
+      ...diff.state,
+      ...(flatLocation ? { location: flatLocation } : {}),
+      ...(flatLocationKind ? { locationKind: flatLocationKind } : {}),
+      ...(flatCanonPoint ? { canonPoint: flatCanonPoint } : {}),
+      ...(inventoryAdded.length ? { inventoryAdded } : {}),
+      ...(inventoryRemoved.length ? { inventoryRemoved } : {}),
+    };
+  }
+
   const state = block.state;
 
   if (state && typeof state === 'object' && !Array.isArray(state)) {
@@ -197,6 +222,7 @@ export function convertInlineDiff(
         : [];
 
     diff.state = {
+      ...diff.state,
       location:
         typeof rawState.location === 'string' && rawState.location.trim()
           ? rawState.location.trim()
@@ -279,13 +305,15 @@ export function convertInlineDiff(
     diff.facts = block.facts
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
-        const fact = item as { entity?: unknown; fact?: unknown };
+        const fact = item as { entity?: unknown; fact?: unknown; type?: unknown; who_knows?: unknown };
+        const whoKnows = stringItems(fact.who_knows);
 
         return {
           action: 'add' as const,
-          type: 'event' as const,
+          type: asFactType(fact.type),
           text: typeof fact.fact === 'string' ? fact.fact : '',
-          subject: typeof fact.entity === 'string' ? fact.entity : undefined,
+          subject: cleanString(fact.entity),
+          ...(whoKnows.length > 0 ? { whoKnows } : {}),
         };
       })
       .filter((item) => item.text.trim().length > 0);
@@ -295,17 +323,20 @@ export function convertInlineDiff(
     diff.threads = block.threads
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
-        const thread = item as { description?: unknown; status?: unknown };
-        const status = thread.status === 'resolved' ? 'resolve' : 'update';
+        const thread = item as { title?: unknown; description?: unknown; status?: unknown };
+        const action: 'open' | 'update' | 'resolve' =
+          thread.status === 'resolved' || thread.status === 'resolve'
+            ? 'resolve'
+            : thread.status === 'open'
+              ? 'open'
+              : 'update';
+        const description = cleanString(thread.description);
+        const title = cleanString(thread.title) ?? description ?? '';
 
         return {
-          action: status as 'update' | 'resolve',
-          title:
-            typeof thread.description === 'string'
-              ? thread.description.trim().slice(0, 80)
-              : '',
-          description:
-            typeof thread.description === 'string' ? thread.description : undefined,
+          action,
+          title: title.slice(0, 80),
+          description,
           type: 'other' as const,
         };
       })
@@ -322,6 +353,7 @@ export function convertInlineDiff(
           role?: unknown;
           personality?: unknown;
           speech_style?: unknown;
+          appearance?: unknown;
           appearance_block?: unknown;
         };
 
@@ -334,12 +366,33 @@ export function convertInlineDiff(
           speechStyle:
             typeof character.speech_style === 'string' ? character.speech_style : undefined,
           appearance:
-            typeof character.appearance_block === 'string'
-              ? character.appearance_block
-              : undefined,
+            typeof character.appearance === 'string'
+              ? character.appearance
+              : typeof character.appearance_block === 'string'
+                ? character.appearance_block
+                : undefined,
         };
       })
       .filter((item) => item.name.trim().length > 0);
+  }
+
+  if (Array.isArray(block.character_updates)) {
+    const updates = block.character_updates
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        name: cleanString(item.name) ?? '',
+        mood: cleanString(item.mood),
+        appearance: cleanString(item.appearance),
+      }))
+      .filter((item) => item.name.length > 0 && (item.mood || item.appearance));
+
+    if (updates.length > 0) {
+      diff.entities = [...(diff.entities ?? []), ...updates];
+    }
+  }
+
+  if (imageWorthy) {
+    diff.imageWorthy = true;
   }
 
   const hasChanges =
@@ -349,6 +402,34 @@ export function convertInlineDiff(
     );
 
   return { diff: hasChanges ? diff : null, imageWorthy };
+}
+
+function cleanString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function stringItems(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map((item) => item.trim())
+    : [];
+}
+
+function asLocationKind(value: unknown): LocationKind | undefined {
+  return value === 'settlement' || value === 'road' || value === 'wilderness' || value === 'structure'
+    ? value
+    : undefined;
+}
+
+const FACT_TYPE_VALUES: FactType[] = [
+  'death', 'injury', 'secret', 'knowledge', 'membership', 'possession', 'event', 'other',
+];
+
+function asFactType(value: unknown): FactType {
+  return typeof value === 'string' && (FACT_TYPE_VALUES as string[]).includes(value)
+    ? (value as FactType)
+    : 'event';
 }
 
 export function cloneDatabase(db: AppDatabase): AppDatabase {
@@ -1482,13 +1563,19 @@ function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
   };
 }
 
+/**
+ * Call 2 of a turn: a cheap model reads the narrator's prose and returns the
+ * state change through structured JSON output. Throws if the call fails, so
+ * the caller can queue a retry.
+ */
 export async function extractTurnDiff(options: {
   apiKey: string;
   db: AppDatabase;
   userMessage: string;
   assistantMessage: string;
+  signal?: AbortSignal;
 }): Promise<TurnDiff | null> {
-  const { apiKey, db, userMessage, assistantMessage } = options;
+  const { apiKey, db, userMessage, assistantMessage, signal } = options;
   const prompt = buildExtractionPrompt(db, userMessage, assistantMessage);
 
   const result = await completeChat({
@@ -1496,17 +1583,20 @@ export async function extractTurnDiff(options: {
     model: db.settings.extractionModel,
     messages: prompt.messages,
     temperature: 0,
-    maxTokens: 700,
-    responseFormatJson: true,
+    maxTokens: 1200,
+    signal,
+    jsonSchema: { name: TURN_STATE_SCHEMA_NAME, schema: TURN_STATE_SCHEMA },
   });
 
   const parsed = parseJsonObject(result.text);
 
-  if (!parsed || typeof parsed !== 'object') {
+  // Unreadable reply: fall back to what the app can read from the prose
+  // itself (clock, pace) rather than blocking the turn.
+  if (!parsed) {
     return null;
   }
 
-  return parsed as TurnDiff;
+  return convertStateBlock(parsed).diff;
 }
 
 export async function summarizeScene(options: {

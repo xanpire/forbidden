@@ -1,10 +1,13 @@
 /**
  * Background memory pipeline.
  *
- * A turn is saved in two phases:
- *  1. The state step (clock, bonds, facts, canon) is applied and saved as soon
- *     as the narrator's reply is in. It never waits on a summary.
- *  2. Summaries (time skip, scene, arc, year) run afterwards as separate jobs.
+ * A turn is two model calls, then background summaries:
+ *  1. The narrator streams prose only (no JSON). The prose is saved as soon as
+ *     it finishes.
+ *  2. The state step: a cheap model reads that prose and returns the state
+ *     change (clock, bonds, facts, canon) as structured JSON, which is applied
+ *     and saved straight away. It never waits on a summary.
+ *  3. Summaries (time skip, scene, arc, year) run afterwards as separate jobs.
  *     Each job reads the latest copy of the save, calls the model, and then
  *     applies its result to whatever the save looks like *now* — never to the
  *     copy it started from — so edits, undo and new turns made in the
@@ -175,9 +178,6 @@ export type TurnInfo = {
   turnLogId: string;
   userMessage: string;
   narration: string;
-  /** True when the narrator supplied its own state block. */
-  hadInlineDiff: boolean;
-  inlineImageWorthy: boolean;
 };
 
 export type StateStepResult = {
@@ -270,7 +270,7 @@ export function applyStateStep(
   }
 
   const shouldSummarize =
-    (turn.hadInlineDiff && turn.inlineImageWorthy) ||
+    extraction?.imageWorthy === true ||
     sceneEnded ||
     storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
 
@@ -384,7 +384,7 @@ export function queueStateRetry(
   return withJobs(db, [...others, job]);
 }
 
-/** Runs the extraction call for a state job (only used when the narrator left no state block). */
+/** Re-runs the state call for a turn whose first attempt failed. */
 export async function extractStateForJob(apiKey: string, db: AppDatabase, job: MemoryJob) {
   const narration = db.rawLog.find((entry) => entry.id === job.turnLogId)?.content ?? '';
 
