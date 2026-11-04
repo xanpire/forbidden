@@ -27,6 +27,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
 | `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
+| `returning.ts` | Characters who come back: the occasional optional `A FAMILIAR FACE` offer |
 | `db.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration, new saves, the canon cast |
 | `retrieval.ts` | Memory/fact/lore retrieval |
 | `romance.ts` | Hearts, lore locks, era notes |
@@ -250,8 +251,9 @@ Each block is sent as a text part with `cache_control` for models that need expl
 8. `formatRecentMessages` — last `contextMessages` (default 16). The newest narration keeps its last 2200 chars; older narrations keep their **start and end** (`headAndTail`, 1400 chars: ~40% opening, ~60% ending); player input 500 the same way
 9. `formatLastBeat` — final 450 chars of the newest narration
 10. `formatEncounterConditions` — place kind, hour and how crowded it is
-11. `CONTINUITY` line + location kind
-12. `YOU (KAN) DO OR SAY: <action>`
+11. `formatReturningCharacter` — occasionally, “A FAMILIAR FACE (optional)”: one original character Kan has not seen in a while who fits the current place (see §9)
+12. `CONTINUITY` line + location kind
+13. `YOU (KAN) DO OR SAY: <action>`
 
 There is no dice roll and no repeated-word list. Encounter frequency comes from the STYLE rule (rare, must fit the conditions, never two in a row) plus `ENCOUNTER CONDITIONS`; freshness comes from the STYLE rule against reusing descriptions and the `CONTINUITY` line. (Both blocks were removed: the roll added random events that fought canon pacing, and listing overused words put those words back in front of the model.)
 
@@ -448,6 +450,14 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
   - structure: low day, none night
 - `formatEncounterConditions(db)` adds a one-line crowd/time line with the clock (`ENCOUNTER CONDITIONS: wilderness, night (10:00 PM) — isolated …`). The narrator decides from that and the STYLE rule; there is no roll.
 
+### Characters who come back (`lib/rpg/returning.ts`)
+
+- Every character records `lastSeen` **and** `lastSeenAt` (the `state.location` at the time) when they are present or updated (`recordPresence`, `applyEntityDiff`; merges keep the place that goes with the newer date).
+- Candidates: original characters only (no `canon` tag, not a `CANON_CAST` name, not Kan), met, alive, not in the scene cast, not named in the recent scene, and unseen for at least `RETURN_MIN_DAYS_AWAY` (14) in-story days.
+- Fit to the current place, strongest first: last seen here (a distinctive place word in `lastSeenAt` matches the current location, after English place names) → role/notes tie them to this place → a travelling role (merchant, courier, mercenary, wanderer…) while Kan is on a road or in a town. No fit, no offer. A bond adds weight, a major bond more.
+- Cadence: one offer turn per `RETURN_WINDOW_TURNS` (8) player turns, picked by a hash of slot + window, never before turn 6, never in combat/chase, never where `encounterRisk` is `none`. The pick rotates among the top three. Everything is deterministic, so a regenerated turn gets the same offer; once someone resurfaces, their `lastSeen` resets and they leave the pool.
+- The block is optional for the narrator: use them only if it fits; if used, they are the turn's encounter.
+
 ---
 
 ## 10. Romance & lore (`lib/rpg/romance.ts`)
@@ -548,6 +558,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 | Clock only moving by minutes | The story gave no time cue, so only the pace minimum applied. Check the narrator's TIME rules, `time` in the state reply, `scene_pace`, and `detectNarrationTime`; the player can fix a turn from its time chip. |
 | Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
 | Too many / too few strangers | Check the STYLE encounter rule in `NARRATION_SYSTEM` and `formatEncounterConditions` / `classifyLocation`. |
+| Old acquaintances never come back | `returning.ts`: they need `lastSeenAt` (older saves only have role/notes and the traveller rule), 14+ days away, and a place fit; offers come once per 8 turns. |
 | Canon events not appearing | Check `canonProgress.completed` and the hidden World clock screen. World milestones need their date plus every earlier world milestone, and nothing fires mid-fight. Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
 | Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
 | JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
@@ -572,6 +583,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Romance persistence and lore era notes
 - Image brief/cast/action rules
 - Prompt composition (blocks, dedupe, no dice roll / style guard, encounter conditions, budget)
+- Characters who come back (original-only pool, place fit, travellers, cadence, no offers in fights or empty places, `lastSeenAt` recording)
 - Token stability over 60 turns
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 

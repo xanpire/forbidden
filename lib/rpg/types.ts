@@ -106,6 +106,8 @@ export type EntityRecord = {
   mood?: string;
   appearance?: string;
   lastSeen?: CalendarDate;
+  /** Where Kan last saw this person (state.location at the time). */
+  lastSeenAt?: string;
   /**
    * Set once this person has died in the story (see deaths.ts). `known` is
    * whether Kan has seen it or been told; a canon death also becomes known

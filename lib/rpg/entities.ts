@@ -343,6 +343,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     mood: known(keep.mood) ?? drop.mood,
     appearance: known(keep.appearance) ?? drop.appearance,
     lastSeen,
+    lastSeenAt: lastSeen && lastSeen === drop.lastSeen ? (drop.lastSeenAt ?? keep.lastSeenAt) : (keep.lastSeenAt ?? drop.lastSeenAt),
     met: keep.met === false && drop.met === false ? false : undefined,
     tags: uniqueList([...keep.tags, ...drop.tags]),
   };
@@ -436,7 +437,7 @@ export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
     ...db,
     entities: db.entities.map((entity) =>
       entity.type === 'character' && matched.has(entity.id) && !entity.deceased && entity.status !== 'Deceased'
-        ? { ...entity, lastSeen: db.state.inStoryDate, met: true }
+        ? { ...entity, lastSeen: db.state.inStoryDate, lastSeenAt: db.state.location || entity.lastSeenAt, met: true }
         : entity
     ),
   };
@@ -635,6 +636,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     // The dead are not "seen": a memory, a dream or a body must not push them
     // to the top of the bonds list.
     lastSeen: existing.deceased || existing.status === 'Deceased' ? existing.lastSeen : db.state.inStoryDate,
+    lastSeenAt: existing.deceased || existing.status === 'Deceased' ? existing.lastSeenAt : db.state.location || existing.lastSeenAt,
     age: nextAge,
     birthYear:
       entity.age !== undefined

@@ -2311,3 +2311,123 @@ describe('deaths', () => {
     }
   });
 });
+
+describe('characters who come back', () => {
+  const { returningCandidates, pickReturningCharacter, isReturnTurn, formatReturningCharacter, RETURN_WINDOW_TURNS } =
+    require('../lib/rpg/returning') as typeof import('../lib/rpg/returning');
+
+  function withOriginal(overrides: Partial<AppDatabase['entities'][number]> = {}) {
+    const db = loadSave();
+    const lastSeen = { ...db.state.inStoryDate, year: db.state.inStoryDate.year - 1 };
+
+    return {
+      ...db,
+      state: {
+        ...db.state,
+        location: 'Tanzaku Town gambling district',
+        locationKind: 'settlement' as const,
+        scenePace: 'downtime' as const,
+        sceneCast: [],
+        inStoryDate: { ...db.state.inStoryDate, hour: 14, minute: 0 },
+      },
+      entities: [
+        ...db.entities,
+        {
+          id: 'entity_mei',
+          name: 'Mei Tsukada',
+          type: 'character' as const,
+          aliases: ['Mei'],
+          role: 'Teahouse owner',
+          personality: 'Sharp-tongued, kind underneath.',
+          lastSeen,
+          lastSeenAt: 'a teahouse in Tanzaku Town',
+          tags: [],
+          ...overrides,
+        },
+      ],
+    };
+  }
+
+  function atReturnTurn(db: AppDatabase): AppDatabase {
+    for (let turn = 6; turn < 6 + RETURN_WINDOW_TURNS * 3; turn += 1) {
+      const log = Array.from({ length: turn }, (_, index) => ({
+        id: `log_${index}`,
+        turn: index,
+        kind: 'story' as const,
+        role: 'user' as const,
+        content: 'I look around.',
+        model: null,
+        promptTokens: 0,
+        completionTokens: 0,
+        chapter: 1,
+        scene: 'test',
+        inStoryDate: db.state.inStoryDate,
+        createdAt: 0,
+      }));
+      const candidate = { ...db, rawLog: log };
+
+      if (isReturnTurn(candidate)) {
+        return candidate;
+      }
+    }
+
+    throw new Error('no return turn found');
+  }
+
+  test('an original last seen here long ago is a candidate', () => {
+    const db = withOriginal();
+    const candidates = returningCandidates(db);
+
+    expect(candidates.map((offer) => offer.entity.name)).toContain('Mei Tsukada');
+    expect(candidates[0].reason).toBe('last-seen-here');
+  });
+
+  test('canon cast, the recently seen, the dead and people elsewhere are never offered', () => {
+    const db = withOriginal();
+
+    for (const offer of returningCandidates(db)) {
+      expect(offer.entity.tags).not.toContain('canon');
+      expect(offer.entity.name).not.toBe('Kan');
+    }
+
+    expect(returningCandidates(withOriginal({ lastSeen: db.state.inStoryDate }))).toHaveLength(0);
+    expect(returningCandidates(withOriginal({ status: 'Deceased' }))).toHaveLength(0);
+    expect(returningCandidates(withOriginal({ lastSeenAt: 'the Hidden Mist Village', role: 'Fisherman' }))).toHaveLength(0);
+    expect(returningCandidates(withOriginal(), 'Mei waved at you yesterday.')).toHaveLength(0);
+  });
+
+  test('travellers can turn up on roads and in towns', () => {
+    const db = withOriginal({ lastSeenAt: 'the Hidden Mist Village', role: 'Wandering merchant' });
+
+    expect(returningCandidates(db)[0]?.reason).toBe('traveller');
+  });
+
+  test('offers are occasional, deterministic and skipped in fights or empty places', () => {
+    const db = atReturnTurn(withOriginal());
+
+    expect(pickReturningCharacter(db)?.entity.name).toBe('Mei Tsukada');
+    expect(pickReturningCharacter(db)?.entity.id).toBe(pickReturningCharacter(db)?.entity.id);
+    expect(formatReturningCharacter(db)).toContain('A FAMILIAR FACE');
+    expect(formatReturningCharacter(db)).toContain('Mei Tsukada');
+
+    const fight = { ...db, state: { ...db.state, scenePace: 'combat' as const } };
+    expect(pickReturningCharacter(fight)).toBeNull();
+
+    const empty = { ...db, state: { ...db.state, locationKind: 'wilderness' as const, inStoryDate: { ...db.state.inStoryDate, hour: 23 } } };
+    expect(pickReturningCharacter(empty)).toBeNull();
+
+    // At most one offer turn per window.
+    let offers = 0;
+    for (let turn = 0; turn < RETURN_WINDOW_TURNS; turn += 1) {
+      if (isReturnTurn(db, RETURN_WINDOW_TURNS * 5 + turn)) offers += 1;
+    }
+    expect(offers).toBe(1);
+  });
+
+  test('presence records where Kan saw someone', () => {
+    let db = withOriginal({ lastSeenAt: undefined });
+    db = applyTurnDiff(db, { state: { location: 'the Hidden Rain Village' }, scene: { entities: ['Mei Tsukada'] } } as TurnDiff);
+
+    expect(db.entities.find((entity) => entity.id === 'entity_mei')?.lastSeenAt).toBe('the Hidden Rain Village');
+  });
+});

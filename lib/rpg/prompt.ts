@@ -17,6 +17,7 @@ import {
   formatEncounterConditions,
   locationKindOf,
 } from './encounters';
+import { formatReturningCharacter } from './returning';
 import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
@@ -180,6 +181,7 @@ export function buildNarrationPrompt(
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       formatEncounterConditions(db),
+      formatReturningCharacter(db, entityText),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
     ]
