@@ -5,7 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, Flame, Footprints, GitMerge, HeartPulse, Skull, UserMinus } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
-import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
+import { formatAffinity } from '@/components/kan/BondsSection';
+import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
 import { titleAndBody } from '@/components/kan/JournalSection';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -128,17 +129,13 @@ export default function BondScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.identity}>
-          <Avatar name={entity.name} size={56} />
-          <View style={styles.identityText}>
-            <Text style={type.pageTitle}>{entity.name}</Text>
-            <Text style={type.rowBody}>
-              {[deathLabel, !dead && age !== undefined ? `Age ${age}` : null, entity.role ?? entity.status]
-                .filter(Boolean)
-                .join(' · ')}
-            </Text>
-          </View>
-        </View>
+        <CharacterPortraitCard
+          dead={dead}
+          entity={entity}
+          subtitle={[deathLabel, !dead && age !== undefined ? `Age ${age}` : null, entity.role ?? entity.status]
+            .filter(Boolean)
+            .join(' · ')}
+        />
 
         {bond ? (
           <ListCard>
@@ -353,17 +350,6 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xxxl,
     gap: spacing.md,
-  },
-  identity: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginBottom: spacing.xs,
-  },
-  identityText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
   },
   bondCard: {
     gap: 10,

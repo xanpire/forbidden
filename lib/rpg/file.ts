@@ -90,3 +90,73 @@ export function pickJsonFile(): Promise<string> {
     input.click();
   });
 }
+
+/**
+ * Lets you choose an image (photo library, files, a screenshot) and returns it
+ * as a JPEG data URI, scaled down so its longest side is at most `maxSide`.
+ * Resolves null when nothing was chosen.
+ */
+export function pickImageFile(maxSide = 768): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined') {
+      reject(new Error('Choosing an image is only available in the web app.'));
+      return;
+    }
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+
+    const cleanup = () => {
+      if (input.parentNode) {
+        input.parentNode.removeChild(input);
+      }
+    };
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+      cleanup();
+
+      if (!file) {
+        resolve(null);
+        return;
+      }
+
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(new Error('Could not read that image.'));
+      reader.onload = () => {
+        const source = String(reader.result ?? '');
+        const image = new window.Image();
+
+        image.onerror = () => reject(new Error('That file isn’t an image this browser can open.'));
+        image.onload = () => {
+          const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+          const width = Math.max(1, Math.round(image.width * scale));
+          const height = Math.max(1, Math.round(image.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext('2d');
+
+          if (!context) {
+            resolve(source);
+            return;
+          }
+
+          context.drawImage(image, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.88));
+        };
+        image.src = source;
+      };
+
+      reader.readAsDataURL(file);
+    };
+
+    // Cancelling the picker fires no change event on most browsers; the
+    // promise then simply never settles, which the caller treats as "nothing".
+    document.body.appendChild(input);
+    input.click();
+  });
+}

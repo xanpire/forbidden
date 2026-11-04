@@ -481,6 +481,16 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     portraits: Array.isArray(db.portraits)
       ? db.portraits.filter((portrait) => portrait && typeof portrait.image === 'string')
       : [],
+    characterPortraits: Array.isArray(db.characterPortraits)
+      ? db.characterPortraits.filter(
+          (portrait) => portrait && typeof portrait.image === 'string' && typeof portrait.entityId === 'string'
+        )
+      : [],
+    characterFaces: Array.isArray(db.characterFaces)
+      ? db.characterFaces.filter(
+          (face) => face && typeof face.image === 'string' && typeof face.entityId === 'string'
+        )
+      : [],
     memoryJobs: Array.isArray(db.memoryJobs)
       ? db.memoryJobs.filter((job) => job && typeof job.turnLogId === 'string')
       : [],

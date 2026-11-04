@@ -1796,6 +1796,97 @@ describe('portraits', () => {
   });
 });
 
+describe('character portraits', () => {
+  async function setup() {
+    const mod = await import('../lib/rpg/characterPortrait');
+    const db = seedDatabase('slot_cportrait', 'Character portraits');
+    const itachi = db.entities.find((entity) => entity.name.startsWith('Itachi'))!;
+    return { mod, db, itachi };
+  }
+
+  test('a character portrait goes stale on age, look, expression or a new face reference', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    const withPortrait = mod.addCharacterPortraitToDb(db, itachi.id, 'img:a', signature, false);
+    const latest = mod.latestCharacterPortrait(withPortrait, itachi.id)!;
+
+    expect(mod.characterPortraitStaleReason(null, signature)).toBe('No portrait yet');
+    expect(mod.characterPortraitStaleReason(latest, signature)).toBeNull();
+    expect(mod.characterPortraitStaleReason(latest, signature, { hasFace: true })).toBe('Face reference added');
+
+    const older = { ...db, state: { ...db.state, inStoryDate: { ...db.state.inStoryDate, year: db.state.inStoryDate.year + 1 } } };
+    const olderSig = mod.characterPortraitSignature(older, itachi);
+    if (signature.age !== null) {
+      expect(mod.characterPortraitStaleReason(latest, olderSig)).toBe(`Turned ${signature.age + 1}`);
+    }
+    // The dead stop ageing and changing.
+    expect(mod.characterPortraitStaleReason(latest, olderSig, { dead: true })).toBeNull();
+
+    const restyled = mod.characterPortraitSignature(db, { ...itachi, appearance: 'Long black hair, Akatsuki cloak.' });
+    expect(mod.characterPortraitStaleReason(latest, restyled)).toBe('Their look has changed');
+
+    const angry = mod.characterPortraitSignature(db, { ...itachi, mood: 'Furious' });
+    expect(mod.characterPortraitStaleReason(latest, angry)).toBe('Looks angry now');
+  });
+
+  test('only the newest few portraits are kept per person', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    let next = db;
+    for (let i = 0; i < mod.PORTRAITS_PER_CHARACTER + 3; i += 1) {
+      next = mod.addCharacterPortraitToDb(next, itachi.id, `img:${i}`, signature, false);
+    }
+    next = mod.addCharacterPortraitToDb(next, 'someone-else', 'img:other', signature, false);
+    expect(mod.characterPortraitsOf(next, itachi.id).length).toBe(mod.PORTRAITS_PER_CHARACTER);
+    expect(mod.latestCharacterPortrait(next, itachi.id)?.image).toBe(`img:${mod.PORTRAITS_PER_CHARACTER + 2}`);
+    expect(mod.latestCharacterPortraitMap(next).get('someone-else')).toBe('img:other');
+  });
+
+  test('the prompt uses the face reference when sent, canon design otherwise', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    const withFace = mod.buildCharacterPortraitPrompt(db, itachi, signature, [{ kind: 'face', uri: 'data:x' }]);
+    expect(withFace).toContain(`Reference image 1: this is ${itachi.name}.`);
+    expect(withFace).not.toContain('canon design');
+    const bare = mod.buildCharacterPortraitPrompt(db, itachi, signature, []);
+    expect(bare).toContain('canon design');
+    expect(bare).toContain('no other people');
+  });
+
+  test('face references are set, replaced and removed; merges carry images over', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    let next = mod.setCharacterFaceInDb(db, itachi.id, 'img:face1');
+    next = mod.setCharacterFaceInDb(next, itachi.id, 'img:face2');
+    expect(next.characterFaces?.length).toBe(1);
+    expect(mod.characterFaceOf(next, itachi.id)?.image).toBe('img:face2');
+    expect(mod.characterFaceOf(mod.setCharacterFaceInDb(next, itachi.id, null), itachi.id)).toBeNull();
+
+    // A duplicate "Itachi" with a portrait and a face folds into the real one.
+    const dupe = { ...itachi, id: 'dupe-itachi', name: 'The Uchiha prodigy', aliases: [] };
+    let split = { ...db, entities: [...db.entities, dupe] };
+    split = mod.addCharacterPortraitToDb(split, dupe.id, 'img:dupe', signature, true);
+    split = mod.setCharacterFaceInDb(split, dupe.id, 'img:dupeface');
+    const merged = mergeEntityPair(split, itachi.id, dupe.id);
+    expect(mod.latestCharacterPortrait(merged, itachi.id)?.image).toBe('img:dupe');
+    expect(mod.characterFaceOf(merged, itachi.id)?.image).toBe('img:dupeface');
+    expect(mod.characterPortraitsOf(merged, dupe.id).length).toBe(0);
+  });
+
+  test('character portraits and faces survive normalize', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    const saved = mod.setCharacterFaceInDb(
+      mod.addCharacterPortraitToDb(db, itachi.id, 'img:p', signature, true),
+      itachi.id,
+      'img:f'
+    );
+    const normalized = normalizeDatabase({ ...saved, characterFaces: [...(saved.characterFaces ?? []), { bad: true } as never] });
+    expect(normalized.characterPortraits?.[0].image).toBe('img:p');
+    expect(normalized.characterFaces?.length).toBe(1);
+  });
+});
+
 describe('two-call turn: prose narrator + structured state call', () => {
   function collectObjects(node: unknown, out: Record<string, unknown>[] = []) {
     if (node && typeof node === 'object') {

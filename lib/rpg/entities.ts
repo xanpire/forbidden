@@ -2,6 +2,7 @@
 // IDs, entity updates, presence, and duplicate merging.
 
 import { dateSortValue } from './calendar';
+import { moveCharacterImages } from './characterPortrait';
 import { characterRefs } from './characterRefs';
 import { makeId } from './id';
 import { uniqueList } from './util';
@@ -442,7 +443,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     link.entityId === drop.id ? { ...link, entityId: keep.id } : link
   );
 
-  return {
+  return moveCharacterImages({
     ...db,
     entities,
     bonds,
@@ -466,7 +467,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
       ...db.state,
       sceneCast: Array.isArray(db.state.sceneCast) ? renameAll(db.state.sceneCast) : db.state.sceneCast,
     },
-  };
+  }, keep.id, drop.id);
 }
 
 export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {

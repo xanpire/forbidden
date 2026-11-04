@@ -45,6 +45,7 @@ import { appendStoryMessage, cloneDatabase, getLastExchange, pushSnapshot, resto
 import { markAlive, markDeceased } from './deaths';
 import { endCompanion, setCompanion } from './companions';
 import { mergeEntityPair } from './entities';
+import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortrait';
 import { trimToSentence } from './util';
 import {
   applyStateStep,
@@ -67,6 +68,7 @@ import type {
   BondRecord,
   EventRecord,
   PortraitSignature,
+  CharacterPortraitSignature,
   Settings,
   ThreadRecord,
   TurnDiff,
@@ -146,6 +148,15 @@ type GameContextValue = {
   /** Sets how many in-story seconds a reply took; the clock shifts to match. */
   correctTurnTime: (logId: string, seconds: number) => Promise<void>;
   addPortrait: (image: string, signature: PortraitSignature) => Promise<void>;
+  /** Saves a painted portrait of someone in your bonds. */
+  addCharacterPortrait: (
+    entityId: string,
+    image: string,
+    signature: CharacterPortraitSignature,
+    usedFace: boolean
+  ) => Promise<void>;
+  /** Sets (or, with null, removes) someone's face reference. */
+  setCharacterFace: (entityId: string, image: string | null) => Promise<void>;
 };
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -1134,6 +1145,34 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const addCharacterPortrait = useCallback(
+    async (entityId: string, image: string, signature: CharacterPortraitSignature, usedFace: boolean) => {
+      const stored = await storeImage(image);
+      const latest = dbRef.current;
+
+      if (!latest) {
+        return;
+      }
+
+      await commitDb(addCharacterPortraitToDb(latest, entityId, stored, signature, usedFace));
+    },
+    [commitDb]
+  );
+
+  const setCharacterFace = useCallback(
+    async (entityId: string, image: string | null) => {
+      const stored = image ? await storeImage(image) : null;
+      const latest = dbRef.current;
+
+      if (!latest) {
+        return;
+      }
+
+      await commitDb(setCharacterFaceInDb(latest, entityId, stored));
+    },
+    [commitDb]
+  );
+
   const retryPendingMemory = useCallback(async () => {
     const current = dbRef.current;
 
@@ -1227,6 +1266,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       attachImage,
       correctTurnTime,
       addPortrait,
+      addCharacterPortrait,
+      setCharacterFace,
     }),
     [
       apiKey,
@@ -1235,6 +1276,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       deleteMemory,
       attachImage,
       addPortrait,
+      addCharacterPortrait,
+      setCharacterFace,
       correctTurnTime,
       deleteSlotById,
       duplicateSlotById,

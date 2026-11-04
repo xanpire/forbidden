@@ -422,6 +422,10 @@ export type AppDatabase = {
   indices: MemoryIndex;
   snapshots: TurnSnapshot[];
   portraits?: PortraitRecord[];
+  /** Portraits of the people in your bonds (see characterPortrait.ts). */
+  characterPortraits?: CharacterPortraitRecord[];
+  /** Face references you chose for people, kept only on this device. */
+  characterFaces?: CharacterFaceRecord[];
   memoryJobs?: MemoryJob[];
 };
 
@@ -436,6 +440,32 @@ export type PortraitSignature = {
   outfit: PortraitOutfit;
   expression: PortraitExpression;
   setting: PortraitSetting;
+};
+
+export type CharacterPortraitSignature = {
+  /** null when their age is unknown. */
+  age: number | null;
+  expression: PortraitExpression;
+  appearance: string;
+};
+
+export type CharacterPortraitRecord = {
+  id: string;
+  entityId: string;
+  /** Image reference (img:...) or a data URI on platforms without IndexedDB. */
+  image: string;
+  signature: CharacterPortraitSignature;
+  /** Whether their face reference was sent with this painting. */
+  usedFace: boolean;
+  inStoryDate: CalendarDate;
+  createdAt: number;
+};
+
+export type CharacterFaceRecord = {
+  entityId: string;
+  /** Image reference (img:...) or a data URI. */
+  image: string;
+  addedAt: number;
 };
 
 export type PortraitRecord = {

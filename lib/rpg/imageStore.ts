@@ -158,8 +158,18 @@ export function useStoredImage(value: string | null | undefined): string | null 
 function hasInlineImages(db: AppDatabase) {
   return (
     db.rawLog.some((entry) => isDataUri(entry.image)) ||
-    (db.portraits ?? []).some((portrait) => isDataUri(portrait.image))
+    (db.portraits ?? []).some((portrait) => isDataUri(portrait.image)) ||
+    (db.characterPortraits ?? []).some((portrait) => isDataUri(portrait.image)) ||
+    (db.characterFaces ?? []).some((face) => isDataUri(face.image))
   );
+}
+
+async function externalizeOne<T extends { image: string }>(item: T): Promise<T> {
+  return isDataUri(item.image) ? { ...item, image: await storeImage(item.image) } : item;
+}
+
+async function inlineOne<T extends { image: string }>(item: T): Promise<T> {
+  return { ...item, image: (await loadImage(item.image)) ?? '' };
 }
 
 /** Moves inline data URIs out of the save into IndexedDB. Returns null if nothing changed. */
@@ -182,8 +192,14 @@ export async function externalizeImages(db: AppDatabase): Promise<AppDatabase | 
         )
       )
     : db.portraits;
+  const characterPortraits = db.characterPortraits
+    ? await Promise.all(db.characterPortraits.map(externalizeOne))
+    : db.characterPortraits;
+  const characterFaces = db.characterFaces
+    ? await Promise.all(db.characterFaces.map(externalizeOne))
+    : db.characterFaces;
 
-  return { ...db, rawLog, portraits, snapshots: [] };
+  return { ...db, rawLog, portraits, characterPortraits, characterFaces, snapshots: [] };
 }
 
 /** Inlines referenced images back into data URIs, for export files. */
@@ -203,6 +219,12 @@ export async function inlineImages(db: AppDatabase): Promise<AppDatabase> {
         )
       ).filter((portrait) => portrait.image)
     : db.portraits;
+  const characterPortraits = db.characterPortraits
+    ? (await Promise.all(db.characterPortraits.map(inlineOne))).filter((item) => item.image)
+    : db.characterPortraits;
+  const characterFaces = db.characterFaces
+    ? (await Promise.all(db.characterFaces.map(inlineOne))).filter((item) => item.image)
+    : db.characterFaces;
 
-  return { ...db, rawLog, portraits };
+  return { ...db, rawLog, portraits, characterPortraits, characterFaces };
 }

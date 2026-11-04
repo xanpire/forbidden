@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Search } from 'lucide-react-native';
 
@@ -10,6 +10,8 @@ import { formatDayMonth } from '@/lib/rpg/calendar';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
+import { latestCharacterPortraitMap } from '@/lib/rpg/characterPortrait';
+import { useStoredImage } from '@/lib/rpg/imageStore';
 import type { BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 
 type BondEntry = {
@@ -56,11 +58,35 @@ export function Avatar({
   name,
   size = 40,
   dimmed = false,
+  image = null,
 }: {
   name: string;
   size?: number;
   dimmed?: boolean;
+  /** Their latest portrait (img: reference or data URI), when one is painted. */
+  image?: string | null;
 }) {
+  const uri = useStoredImage(image);
+
+  if (uri) {
+    return (
+      <View
+        style={[
+          styles.avatar,
+          { width: size, height: size, borderRadius: size / 2, overflow: 'hidden' },
+          dimmed && styles.avatarDimmed,
+        ]}
+      >
+        <Image
+          accessibilityIgnoresInvertColors
+          resizeMode="cover"
+          source={{ uri }}
+          style={styles.avatarImage}
+        />
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -144,6 +170,11 @@ export function BondsSection() {
       });
   }, [db, query]);
 
+  const portraits = useMemo(
+    () => (db ? latestCharacterPortraitMap(db) : new Map<string, string>()),
+    [db]
+  );
+
   // People travelling with you lead the list; everyone else by last contact.
   const travelling = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
   const living = entries.filter((entry) => !entry.dead && !travelling.includes(entry));
@@ -158,7 +189,13 @@ export function BondsSection() {
       accessibilityLabel={`Open ${entry.entity.name}`}
       chevron
       key={entry.entity.id}
-      leading={<Avatar dimmed={entry.dead} name={entry.entity.name} />}
+      leading={
+        <Avatar
+          dimmed={entry.dead}
+          image={portraits.get(entry.entity.id) ?? null}
+          name={entry.entity.name}
+        />
+      }
       meta={bondSubtitle(entry, db.state.inStoryDate)}
       onPress={() => router.push({ pathname: '/bond/[id]', params: { id: entry.entity.id } })}
     >
@@ -268,6 +305,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceRaised,
+  },
+  // Portraits are 3:4 head-and-shoulders; pin the top so the face fills the circle.
+  avatarImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '133%',
   },
   avatarDimmed: {
     opacity: 0.45,
