@@ -35,6 +35,10 @@ import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
 import { isDeceased, kanKnowsDeath, markDeathsByName } from '../lib/rpg/deaths';
+import { CATCH_UP_QUIET_DAYS, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
+import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
+import { newsUrgency } from '../lib/rpg/canon';
+import { shiftDate } from '../lib/rpg/calendar';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
 
 function loadSave(_path?: string): AppDatabase {
@@ -2172,7 +2176,15 @@ describe('canon timing: dates only, combat holds, one news per turn', () => {
   });
 
   test('narrator is offered at most one piece of news, and none mid-fight', () => {
-    const db = advanceCanon(withProgress(loadSave()));
+    const fired = advanceCanon(withProgress(loadSave()));
+    // Kan heard something today, so nothing has piled up: one item, not a catch-up.
+    const db = {
+      ...fired,
+      state: {
+        ...fired.state,
+        canonProgress: { ...fired.state.canonProgress!, heard: { event_canon_none: { from: 'Kisame', date: lateDate } } },
+      },
+    };
     const calm = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'conversation' } }, '*Kan listens.*')
       .messages.map((m) => m.content).join('\n');
     const block = calm.split('NEWS & RUMORS (')[1]?.split('\n\n')[0] ?? '';
@@ -2612,5 +2624,233 @@ describe('companions', () => {
     const dupId = duplicate.entities.find((entity) => entity.name === 'Hayate Moriya')!.id;
     const merged = mergeEntityPair(duplicate, dupId, id);
     expect(companionsOf(merged).map((entity) => entity.id)).toEqual([dupId]);
+  });
+});
+
+describe('news delivery: bearers, styles, escalation, catch-up', () => {
+  const baseline = { year: 13, month: 10, day: 1, hour: 22, minute: 0 };
+  const lateDate = { year: 16, month: 2, day: 1, hour: 8, minute: 0 };
+  const fired = (date = lateDate, heardOn?: typeof lateDate): AppDatabase => {
+    const seed = loadSave();
+    const db = advanceCanon({
+      ...seed,
+      rawLog: [],
+      state: {
+        ...seed.state,
+        inStoryDate: date,
+        canonProgress: { version: CANON_VERSION, baselineDate: baseline, baselineTurn: 0, completed: [], active: [], engaged: [] },
+      },
+    });
+
+    return heardOn
+      ? { ...db, state: { ...db.state, canonProgress: { ...db.state.canonProgress!, heard: { event_canon_none: { from: 'x', date: heardOn } } } } }
+      : db;
+  };
+  const akatsukiNews = (db: AppDatabase) => unheardCanonNews(db, 99).find((item) => item.knowledge === 'akatsuki');
+
+  test('Kakuzu, Hidan and the masked man can carry Akatsuki news; the dead cannot', () => {
+    const db = fired(lateDate, lateDate);
+    const item = akatsukiNews(db)!;
+    expect(item.bearers).toEqual(expect.arrayContaining(['Kakuzu', 'Hidan', 'Masked man']));
+
+    const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki')!;
+    const dead = { ...db, entities: db.entities.map((entity) => (entity.id === kisame.id ? { ...entity, deceased: { known: true } } : entity)) };
+    expect(livingBearers(db, item)).toContain('Kisame Hoshigaki');
+    expect(livingBearers(dead, item)).not.toContain('Kisame Hoshigaki');
+  });
+
+  test('someone in the scene who could know is offered first', () => {
+    const base = fired(lateDate, lateDate);
+    const item = akatsukiNews(base)!;
+    // Make the Akatsuki item the one on offer by hearing everything else.
+    const heard = Object.fromEntries(
+      unheardCanonNews(base, 99).filter((news) => news.eventId !== item.eventId).map((news) => [news.eventId, { from: 'x', date: lateDate }])
+    );
+    const db: AppDatabase = {
+      ...base,
+      state: {
+        ...base.state,
+        sceneCast: ['Kakuzu', 'Hana Inuzuka'],
+        scenePace: 'conversation',
+        canonProgress: { ...base.state.canonProgress!, heard: { ...base.state.canonProgress!.heard, ...heard } },
+      },
+    };
+    const offer = newsOffer(db)!;
+    expect(offer.mode).toBe('single');
+    expect(offer.items[0].sceneBearers.some((label) => label.startsWith('Kakuzu'))).toBe(true);
+    // Hana is a Leaf shinobi: she could not know Akatsuki business.
+    expect(offer.items[0].sceneBearers.some((label) => label.startsWith('Hana'))).toBe(false);
+    expect(offer.items[0].otherBearers).not.toContain('Kakuzu');
+
+    const prompt = buildNarrationPrompt(db, '*Kan listens.*').messages.map((m) => m.content).join('\n');
+    expect(prompt).toContain('In the scene: Kakuzu');
+    expect(prompt).toContain('Delivery this time:');
+  });
+
+  test('public news in a town can come from a local', () => {
+    const base = fired(lateDate, lateDate);
+    const pub = unheardCanonNews(base, 99).find((item) => item.knowledge === 'public')!;
+    const heard = Object.fromEntries(
+      unheardCanonNews(base, 99).filter((news) => news.eventId !== pub.eventId).map((news) => [news.eventId, { from: 'x', date: lateDate }])
+    );
+    const db: AppDatabase = {
+      ...base,
+      state: {
+        ...base.state,
+        location: 'A teahouse in Tanzaku Town',
+        locationKind: 'settlement',
+        sceneCast: [],
+        scenePace: 'downtime',
+        canonProgress: { ...base.state.canonProgress!, heard: { ...base.state.canonProgress!.heard, ...heard } },
+      },
+    };
+    const offer = newsOffer(db)!;
+    expect(offer.items[0].sceneBearers.join(' ')).toContain('innkeeper');
+  });
+
+  test('the delivery style varies from turn to turn and holds on a regenerate', () => {
+    const db = fired(lateDate, lateDate);
+    const withTurns = (n: number): AppDatabase => ({
+      ...db,
+      state: { ...db.state, scenePace: 'conversation', locationKind: 'settlement', location: 'Market street' },
+      rawLog: Array.from({ length: n }, (_, index) => ({ ...db.rawLog[0], id: `u${index}`, kind: 'story' as const, role: 'user' as const })),
+    });
+    const styles = new Set(Array.from({ length: 12 }, (_, n) => newsOffer(withTurns(n))!.style));
+    expect(styles.size).toBeGreaterThan(2);
+    expect(newsOffer(withTurns(5))!.style).toBe(newsOffer(withTurns(5))!.style);
+  });
+
+  test('minor news escalates too, just slower', () => {
+    expect(newsUrgency({ major: true, daysOld: 1 })).toBe('fresh');
+    expect(newsUrgency({ major: true, daysOld: 3 })).toBe('due');
+    expect(newsUrgency({ major: true, daysOld: 7 })).toBe('overdue');
+    expect(newsUrgency({ major: false, daysOld: 7 })).toBe('fresh');
+    expect(newsUrgency({ major: false, daysOld: 14 })).toBe('due');
+    expect(newsUrgency({ major: false, daysOld: 28 })).toBe('overdue');
+  });
+
+  test('old minor news is not starved behind fresh major news', () => {
+    const db = fired(lateDate, lateDate);
+    const unheard = unheardCanonNews(db, 99);
+    const minor = unheard.find((item) => !item.major && item.daysOld >= 30);
+    const freshMajor = unheard.find((item) => item.major && item.daysOld <= 3);
+
+    if (minor && freshMajor) {
+      expect(unheard.indexOf(minor)).toBeLessThan(unheard.indexOf(freshMajor));
+    }
+
+    expect(unheard.length).toBeGreaterThan(1);
+  });
+
+  test('after a long quiet stretch, piled-up news comes as one catch-up report', () => {
+    const db = { ...fired(), state: { ...fired().state, scenePace: 'downtime' as const } };
+    const offer = newsOffer(db)!;
+    expect(offer.mode).toBe('catch-up');
+    expect(offer.quietDays).toBeGreaterThanOrEqual(CATCH_UP_QUIET_DAYS);
+    expect(offer.items.length).toBeGreaterThan(1);
+    expect(offer.items.every((item) => item.knowledge !== 'secret')).toBe(true);
+
+    const prompt = buildNarrationPrompt(db, '*Kan rests.*').messages.map((m) => m.content).join('\n');
+    expect(prompt).toContain('CATCH-UP');
+
+    const allowance = newsAllowance(db);
+    expect(allowance).toBe(offer.items.length);
+    const relayed = markNewsHeard(db, offer.items.map((item) => ({ id: item.milestoneId, from: 'Itachi Uchiha' })), allowance);
+    const left = unheardCanonNews(relayed, 99).map((item) => item.eventId);
+    expect(offer.items.every((item) => !left.includes(item.eventId))).toBe(true);
+
+    // Once news has reached Kan today, it is back to one item at a time.
+    expect(newsOffer(relayed)?.mode ?? 'single').toBe('single');
+
+    const tracking = buildExtractionPrompt(db, '*Kan rests.*', 'Itachi tells you everything.').messages[1].content;
+    for (const item of offer.items) expect(tracking).toContain(item.milestoneId);
+  });
+});
+
+describe('personal letters', () => {
+  const hanaOf = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Hana Inuzuka')!;
+  const later = (db: AppDatabase, days: number): AppDatabase => ({
+    ...db,
+    state: { ...db.state, inStoryDate: shiftDate(db.state.inStoryDate, days), scenePace: 'downtime' },
+  });
+  const affinity = (db: AppDatabase, id: string) => db.bonds.find((bond) => bond.entityId === id)?.affinity ?? 0;
+
+  test('Kan writes to Hana: it travels, arrives, moves the bond, and she writes back', () => {
+    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
+    const hana = hanaOf(db);
+    const before = affinity(db, hana.id);
+
+    db = sendLetters(db, [{ entityId: hana.id, name: hana.name, gist: 'you are alive and sorry you left' }]);
+    expect(db.state.post!.letters).toHaveLength(1);
+    expect(db.state.post!.letters[0]).toMatchObject({ direction: 'from-kan', status: 'travelling' });
+
+    // Not there yet after a day.
+    db = deliverLetters(later(db, 1));
+    expect(affinity(db, hana.id)).toBe(before);
+
+    db = deliverLetters(later(db, LETTER_MAX_DAYS));
+    expect(affinity(db, hana.id)).toBe(Math.min(10, before + LETTER_BOND_GAIN));
+    expect(db.facts.some((fact) => fact.text.includes('Hana Inuzuka received a letter from Kan'))).toBe(true);
+
+    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-kan')!;
+    expect(reply.status).toBe('travelling');
+
+    db = later(db, LETTER_MAX_DAYS + 1);
+    const offer = letterOffer(db)!;
+    expect(offer.kind).toBe('reply');
+    expect(offer.entity.id).toBe(hana.id);
+
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*').messages.map((m) => m.content).join('\n');
+    expect(prompt).toContain('A LETTER FOR YOU');
+    expect(prompt).toContain('answering the letter you sent (you are alive and sorry you left)');
+    expect(buildExtractionPrompt(db, '*Kan reads.*', 'A ninken finds you.').messages[1].content).toContain('letters_received');
+
+    db = receiveLetters(db, [{ entityId: hana.id, name: hana.name }]);
+    expect(db.state.post!.letters.find((letter) => letter.id === reply.id)!.status).toBe('delivered');
+    expect(db.state.post!.lastLetterIn).toEqual(db.state.inStoryDate);
+    // The post goes quiet for a while after a letter.
+    expect(letterOffer(later(db, 2))).toBeNull();
+  });
+
+  test('someone close writes unprompted after a while apart, never mid-fight', () => {
+    const seed = loadSave();
+    const db = later({ ...seed, state: { ...seed.state, sceneCast: [] } }, 40);
+    const offer = letterOffer(db);
+    expect(offer?.kind).toBe('unprompted');
+    expect(['Hana Inuzuka', 'Suzume', 'Itachi Uchiha']).toContain(offer!.entity.name);
+
+    expect(letterOffer({ ...db, state: { ...db.state, scenePace: 'combat' } })).toBeNull();
+    // Too soon after the story starts: nothing yet.
+    expect(letterOffer(later({ ...seed, state: { ...seed.state, sceneCast: [] } }, 3))).toBeNull();
+  });
+
+  test('a letter to someone who died is lost, with no reply', () => {
+    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
+    const hana = hanaOf(db);
+    db = sendLetters(db, [{ entityId: hana.id, name: hana.name }]);
+    db = { ...db, entities: db.entities.map((entity) => (entity.id === hana.id ? { ...entity, deceased: { known: false } } : entity)) };
+    db = deliverLetters(later(db, LETTER_MAX_DAYS + 1));
+    expect(db.state.post!.letters[0].status).toBe('lost');
+    expect(db.state.post!.letters.some((letter) => letter.direction === 'to-kan')).toBe(false);
+  });
+
+  test('the state block carries letters, resolved to known people', () => {
+    const db = loadSave();
+    const { diff } = convertStateBlock({
+      letters_sent: [{ to: 'hana-inuzuka', gist: 'meet me at the old bridge' }],
+      letters_received: ['suzume'],
+    });
+    const resolved = resolveCharacterRefs(db, diff!);
+    expect(resolved.lettersSent?.[0]).toMatchObject({ name: 'Hana Inuzuka', gist: 'meet me at the old bridge' });
+    expect(resolved.lettersReceived?.[0].name).toBe('Suzume');
+    expect(TURN_STATE_SCHEMA.required).toEqual(expect.arrayContaining(['letters_sent', 'letters_received']));
+  });
+
+  test('saves keep their post through a reload', () => {
+    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
+    const hana = hanaOf(db);
+    db = sendLetters(db, [{ entityId: hana.id, name: hana.name }]);
+    const reloaded = normalizeDatabase(JSON.parse(JSON.stringify(db)));
+    expect(reloaded.state.post?.letters).toHaveLength(1);
   });
 });

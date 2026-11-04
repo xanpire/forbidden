@@ -568,7 +568,55 @@ export type UnheardNews = {
   daysOld: number;
 };
 
-/** Fired events Kan has not heard about, major first, then oldest first. */
+/** Major news counts this many times over while it waits. */
+export const MAJOR_NEWS_WEIGHT = 4;
+
+/** Waiting this long (weighted) makes news overdue: a week for major news, four for minor. */
+export const NEWS_OVERDUE_WEIGHTED_DAYS = 28;
+
+/** Waiting this long (weighted) makes news due: it should come in when any bearer fits. */
+export const NEWS_DUE_WEIGHTED_DAYS = 12;
+
+/**
+ * How pressing a piece of news is. Major news escalates fast; minor news
+ * escalates too, just four times slower, so it never starves behind the big
+ * stories.
+ */
+export function newsUrgency(item: Pick<UnheardNews, 'major' | 'daysOld'>): 'fresh' | 'due' | 'overdue' {
+  const weighted = item.daysOld * (item.major ? MAJOR_NEWS_WEIGHT : 1);
+
+  if (weighted >= NEWS_OVERDUE_WEIGHTED_DAYS) return 'overdue';
+  if (weighted >= NEWS_DUE_WEIGHTED_DAYS) return 'due';
+  return 'fresh';
+}
+
+/** Queue order: (days waiting + 1) × weight, so fresh major news leads but old minor news catches up. */
+function newsPriority(item: Pick<UnheardNews, 'major' | 'daysOld'>) {
+  return (item.daysOld + 1) * (item.major ? MAJOR_NEWS_WEIGHT : 1);
+}
+
+/** The last time any news reached Kan (not counting beats he witnessed), or the story's start. */
+export function lastNewsHeardDate(db: AppDatabase): CalendarDate {
+  const progress = normalizeProgress(db);
+  let latest: CalendarDate | null = null;
+
+  for (const record of Object.values(progress.heard ?? {})) {
+    if (record.from === 'witnessed' || !record.date) {
+      continue;
+    }
+
+    if (!latest || dateSortValue(record.date) > dateSortValue(latest)) {
+      latest = record.date;
+    }
+  }
+
+  return latest ?? progress.baselineDate ?? db.state.inStoryDate;
+}
+
+/**
+ * Fired events Kan has not heard about, most pressing first: by weighted
+ * waiting time, then major first, then oldest first.
+ */
 export function unheardCanonNews(db: AppDatabase, limit = 3): UnheardNews[] {
   const heard = normalizeProgress(db).heard ?? {};
   const news: UnheardNews[] = [];
@@ -602,16 +650,22 @@ export function unheardCanonNews(db: AppDatabase, limit = 3): UnheardNews[] {
   }
 
   return news
-    .sort((a, b) =>
-      a.major !== b.major ? (a.major ? -1 : 1) : dayKey(a.date) - dayKey(b.date)
+    .sort(
+      (a, b) =>
+        newsPriority(b) - newsPriority(a) ||
+        (a.major !== b.major ? (a.major ? -1 : 1) : dayKey(a.date) - dayKey(b.date))
     )
     .slice(0, limit);
 }
 
-/** Records who told Kan. Accepts at most NEWS_PER_TURN relays per call. */
+/**
+ * Records who told Kan. Accepts at most `limit` relays per call: one piece
+ * of news per turn, or the size of a catch-up report (see newsDelivery.ts).
+ */
 export function markNewsHeard(
   db: AppDatabase,
-  relays: { id: string; from?: string }[]
+  relays: { id: string; from?: string }[],
+  limit = NEWS_PER_TURN
 ): AppDatabase {
   if (relays.length === 0) {
     return db;
@@ -622,7 +676,7 @@ export function markNewsHeard(
   let delivered = 0;
 
   for (const relay of relays) {
-    if (delivered >= NEWS_PER_TURN) {
+    if (delivered >= limit) {
       break;
     }
 

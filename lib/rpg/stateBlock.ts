@@ -50,6 +50,32 @@ export function convertStateBlock(
       .filter((item) => item.id.trim().length > 0);
   }
 
+  if (Array.isArray(block.letters_sent)) {
+    const sent = block.letters_sent
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        name: typeof item.to === 'string' ? item.to.trim() : '',
+        gist: typeof item.gist === 'string' && item.gist.trim() ? item.gist.trim().slice(0, 160) : undefined,
+      }))
+      .filter((item) => item.name.length > 0)
+      .slice(0, 3);
+
+    if (sent.length > 0) {
+      diff.lettersSent = sent;
+    }
+  }
+
+  if (Array.isArray(block.letters_received)) {
+    const received = block.letters_received
+      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      .slice(0, 3)
+      .map((name) => ({ name: name.trim() }));
+
+    if (received.length > 0) {
+      diff.lettersReceived = received;
+    }
+  }
+
   const time = block.time;
 
   if (time && typeof time === 'object' && !Array.isArray(time)) {

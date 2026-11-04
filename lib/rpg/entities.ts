@@ -145,6 +145,23 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     next.newsRelayed = diff.newsRelayed.map((news) => ({ ...news, from: nameOf(news.from) }));
   }
 
+  // Letters only go to and come from people the save knows.
+  if (diff.lettersSent) {
+    next.lettersSent = diff.lettersSent.flatMap((letter) => {
+      const ref = resolve(letter.entityId ?? letter.name);
+
+      return ref?.entityId ? [{ ...letter, name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
+  if (diff.lettersReceived) {
+    next.lettersReceived = diff.lettersReceived.flatMap((letter) => {
+      const ref = resolve(letter.entityId ?? letter.name);
+
+      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
   return next;
 }
 

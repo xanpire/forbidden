@@ -91,7 +91,20 @@ export const CANON_ERA_ORDER = [
 // ---------------------------------------------------------------------------
 
 export const BEARERS_BY_KNOWLEDGE: Record<CanonKnowledge, string[]> = {
-  akatsuki: ['Itachi Uchiha', 'Kisame Hoshigaki', 'Konan', 'Pain', 'Sasori', 'Deidara', 'Zetsu'],
+  // The fixed fallbacks. Anyone in the scene who could know comes first, and
+  // the dead are dropped when the list is used (see newsDelivery.ts).
+  akatsuki: [
+    'Itachi Uchiha',
+    'Kisame Hoshigaki',
+    'Kakuzu',
+    'Hidan',
+    'Konan',
+    'Pain',
+    'Sasori',
+    'Deidara',
+    'Zetsu',
+    'Masked man',
+  ],
   village: ['Hana Inuzuka', 'Suzume', 'Itachi Uchiha'],
   public: ['Itachi Uchiha', 'Hana Inuzuka', 'Suzume', 'a traveling merchant', 'a bounty-station keeper'],
   witnesses: [],

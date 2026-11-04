@@ -7,7 +7,9 @@ import { ChevronLeft } from 'lucide-react-native';
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { formatClock, formatDayMonth } from '@/lib/rpg/calendar';
-import { worldClock } from '@/lib/rpg/canon';
+import { newsUrgency, worldClock } from '@/lib/rpg/canon';
+import { lettersInTransit } from '@/lib/rpg/letters';
+import { newsOffer } from '@/lib/rpg/newsDelivery';
 import { useGame } from '@/lib/rpg/game';
 import type { CalendarDate } from '@/lib/rpg/types';
 
@@ -37,6 +39,8 @@ export default function WorldClockScreen() {
   const { db } = useGame();
   const [showAllQueued, setShowAllQueued] = useState(false);
   const clock = useMemo(() => (db ? worldClock(db) : null), [db]);
+  const offer = useMemo(() => (db ? newsOffer(db, { ignoreCombat: true }) : null), [db]);
+  const letters = useMemo(() => (db ? lettersInTransit(db) : []), [db]);
 
   const back = () => router.navigate('/(tabs)');
 
@@ -94,7 +98,7 @@ export default function WorldClockScreen() {
               <Tag label={`${clock.queued.length} queued`} />
             </View>
             <Text style={type.rowBody}>
-              Events follow the in-story date only. Nothing fires during a fight, and at most one piece of news reaches you each turn.
+              Events follow the in-story date only. Nothing fires during a fight, and at most one piece of news reaches you each turn, unless it piled up while you heard nothing: then it comes as one catch-up report.
             </Text>
           </View>
         </ListCard>
@@ -113,8 +117,13 @@ export default function WorldClockScreen() {
                 meta={[
                   dateLabel(item.date),
                   item.daysOld > 0 ? `${item.daysOld} day${item.daysOld === 1 ? '' : 's'} ago` : 'today',
-                  index === 0 && !holding ? 'next in line' : null,
+                  offer?.items.some((offered) => offered.eventId === item.eventId) && !holding
+                    ? offer.mode === 'catch-up'
+                      ? 'in the catch-up'
+                      : 'next in line'
+                    : null,
                   item.major ? 'major' : null,
+                  newsUrgency(item) === 'fresh' ? null : newsUrgency(item),
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -174,6 +183,22 @@ export default function WorldClockScreen() {
                   key={milestone.id}
                   meta={`${milestone.era}${milestone.to ? ` · until ${formatDayMonth({ ...milestone.to, day: milestone.to.day ?? 28, hour: 0, minute: 0 })}, year ${milestone.to.year}` : ''}`}
                   title={milestone.title}
+                />
+              ))}
+            </ListCard>
+          </>
+        ) : null}
+
+        {letters.length > 0 ? (
+          <>
+            <SectionLabel>Letters on the road</SectionLabel>
+            <ListCard>
+              {letters.map((letter) => (
+                <ListRow
+                  body={letter.gist}
+                  key={letter.id}
+                  meta={`sent ${dateLabel(letter.sentOn)} · arrives ${dateLabel(letter.arrivesOn)}`}
+                  title={letter.direction === 'from-kan' ? `Your letter to ${letter.name}` : `${letter.name}'s reply to you`}
                 />
               ))}
             </ListCard>

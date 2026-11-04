@@ -36,3 +36,20 @@ export function clamp(value: number, min: number, max: number) {
 export function uniqueList(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
+
+/** Small stable string hash (FNV-1a) for deterministic per-turn choices. */
+export function hashText(text: string): number {
+  let value = 2166136261;
+
+  for (let index = 0; index < text.length; index += 1) {
+    value ^= text.charCodeAt(index);
+    value = Math.imul(value, 16777619);
+  }
+
+  return value >>> 0;
+}
+
+/** Player turns so far: the seed for choices that must survive a regenerate. */
+export function playerTurnCount(db: { rawLog: { kind: string; role: string }[] }): number {
+  return db.rawLog.filter((entry) => entry.kind === 'story' && entry.role === 'user').length;
+}

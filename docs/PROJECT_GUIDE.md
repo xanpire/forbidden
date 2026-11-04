@@ -24,7 +24,9 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
 | `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
 | `canonData.ts` | **Data only**: the 90 milestones (dates, place, who could know), canon types, courier tables, era order |
-| `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), news routing, world clock |
+| `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), the unheard-news queue and its escalation (`unheardCanonNews`, `newsUrgency`), world clock |
+| `newsDelivery.ts` | How news reaches Kan this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
+| `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
 | `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
@@ -151,6 +153,19 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
+### `state.post` (personal letters, `letters.ts`)
+
+```ts
+{
+  letters: [{
+    id, direction: 'to-kan' | 'from-kan', entityId, name,
+    sentOn, arrivesOn, gist?, status: 'travelling' | 'delivered' | 'lost',
+    replyTo?, deliveredOn?
+  }],                            // everything travelling + the last 40 done
+  lastLetterIn?: CalendarDate    // when a letter last reached Kan
+}
+```
+
 ### `TurnDiff` (what the state call produces)
 
 ```ts
@@ -169,6 +184,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   threads?: [{ action, title, description?, type?, participants? }],
   canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
   newsRelayed?: [{ id, from? }],
+  lettersSent?: [{ entityId?, name, gist? }], lettersReceived?: [{ entityId?, name }],
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -197,10 +213,10 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 **Phase 1 — state step (`runStateStep` → `applyStateStep`)**, saved immediately:
 
-1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
+1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and the offered news ids with the rule for each), `LETTERS` (the letters_sent rule, and the offered letter's sender id), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
 3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), revivals and deaths (`deaths.ts`), jutsu (`jutsu.ts`), companion joins/partings (`companions.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event (with companions) + shared-scene bond step, duplicate merge, presence (companions always included), stall counter.
-4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
+4. `applyCanonMarks` → `markNewsHeard` (up to `newsAllowance(latest)`: 1, or the size of the catch-up report the prompt offered) → `advanceCanon` → letters: `receiveLetters` → `sendLetters` → `deliverLetters`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
    - `scene` when `imageWorthy`, `scene.ended`, or `storyMessagesSinceLastSummary >= autoSummarizeThreshold`. A pending scene job is widened (up to 12 messages) instead of stacking a new one.
@@ -249,7 +265,8 @@ Each block is sent as a text part with `cache_control` for models that need expl
 1a. `formatCompanions` — `TRAVELLING WITH KAN`: each companion, how long together, why/where they joined, shared scenes, how they feel (only when someone travels with Kan). Their character cards are always in `CHARACTERS IN SCENE`, companions first.
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
-4. `formatNewsBlock` — the single next unheard event (none in combat), major first, with location, bearers, courier channel, overdue escalation
+4. `formatNewsBlock` — `newsOffer`: the next unheard event (or one catch-up report), with location, bearers in the scene first, the living fallbacks, this turn's delivery style and urgency (none in combat)
+4a. `formatLetterBlock` — `A LETTER FOR YOU`: a reply that has arrived, or an unprompted letter (none in combat or during a catch-up report)
 5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
 6. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
 7. `formatMemories` — retrieved events (≤ retrieval limit, 400 chars each), skipping any that repeat a summary already in STORY SO FAR
@@ -375,13 +392,24 @@ Everything about one event — when, where, who could know — sits in its one r
 ### News & rumors
 
 - Every fired world event is **unheard** until delivered.
-- `unheardCanonNews` returns unheard events, major first, with region/location/bearers/channel.
+- `unheardCanonNews` returns unheard events, most pressing first: priority = (days waiting + 1) × 4 for major news, × 1 for minor, so fresh major news leads but old minor news is never starved.
 - **One piece of news per turn** (`NEWS_PER_TURN`): the narrator and the state tracker are shown only the next unheard item, and `markNewsHeard` accepts only one relay per turn. During combat no news (and no "rumors of what's coming") is offered at all.
+- **Catch-up reports** (`newsDelivery.ts`): when Kan has heard no news for `CATCH_UP_QUIET_DAYS` (14) in-story days (`lastNewsHeardDate`, ignoring beats he witnessed) and 2+ events piled up, the offer becomes one report of up to `CATCH_UP_MAX` (4) events — a bundle of letters at an inn, a companion catching him up over a fire, a stuffed dead drop. Secret and eyewitness news never travels in a bundle. `newsAllowance` lets `markNewsHeard` record that many relays for the turn.
+- **Bearers**: anyone in the scene (`sceneCast` + companions, alive) who could plausibly know comes first — anyone for public news, Leaf people for village news, Akatsuki members for Akatsuki news, named confidants for secrets — plus a local in a town or a traveler on a road for public news. Then the fixed `BEARERS_BY_KNOWLEDGE` list (now with Kakuzu, Hidan and the masked man), with the dead and anyone already present removed (`livingBearers`).
+- **Delivery style**: one per turn, picked deterministically (slot + player turn + event) from the place (teahouse gossip, a bounty poster, a merchant grumbling about a closed border, a wounded messenger, a dead drop, a summoned animal…) and the kind of news (Itachi's crow, Zetsu, a ring summons, a Leaf hawk…). Secrets are always face to face; overdue news comes looking for Kan.
 - Knowledge classes: `public`, `village`, `akatsuki`, `witnesses`, `secret`.
 - Channels: Akatsuki → Itachi’s crow / Konan’s paper butterfly / Zetsu; Leaf → hawk/courier; Sand → caravan; Mist → sailor; Cloud → runner; Stone → stone-route courier; Iron → samurai rider; public → merchant/crier/bounty board.
-- Major events unheard for 7+ in-story days are marked **OVERDUE** so the narrator delivers them through the courier channel.
+- **Escalation** (`newsUrgency`, weighted days = days × 4 for major): `due` at 12 weighted days (3 for major, 12 for minor) — bring it in if anything fits; `overdue` at 28 (7 for major, 28 for minor) — deliver it this turn, through the courier channel if nobody present could know. Fresh minor news is offered only if it comes up naturally.
 - Secrets (mask identity, Itachi’s illness/truth) only travel via named confidants.
 - `news_relayed: [{id, from}]` records delivery (`heard` map), and the Journal hides unheard events.
+
+### Personal letters (`letters.ts`)
+
+- Not canon news: people Kan is close to write about their own lives. Everything is delivered on the page, never as an app notification.
+- **Unprompted**: once `LETTER_GAP_DAYS` (21) have passed since the last letter reached Kan (or the story began), the warmest `correspondents` candidate writes: a met, living person with affinity ≥ 5 (or a close/romantic/partner stage), not travelling with Kan, not in the scene, not seen for 10+ days, who has not written in 45 days and has no letter on the road.
+- **Kan writes**: `letters_sent: [{to, gist}]` (someone not in the scene) sets out with `travelDays` of 3–9 days. When it arrives (`deliverLetters`, every turn): +2 affinity (+1 if they are cold toward him), a fact that they received it, and — unless affinity is below −3 — a reply sets out that arrives 3–9 days later. A letter to someone who died is `lost`.
+- **Delivery**: `letterOffer` offers an arrived reply first (it waits while the writer is in the scene), else an unprompted letter; never in combat or during a catch-up report. The carrier fits the writer (Itachi's crow, Hana's ninken, Suzume's Team 3 cipher, Konan's paper butterfly, a Leaf hawk, an Akatsuki dead drop, or a generic courier/bird/dead drop). After 5 days waiting, the offer is pressed. `letters_received: [id]` marks it read and sets `lastLetterIn`.
+- The hidden world-clock screen lists letters on the road.
 
 ### Canon point
 

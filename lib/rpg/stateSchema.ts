@@ -145,6 +145,13 @@ export const TURN_STATE_SCHEMA = object({
     id: { type: 'string' },
     from: nullableString,
   }),
+  // A letter or message Kan writes and sends to someone not in the scene.
+  letters_sent: list({
+    to: { type: 'string' },
+    gist: nullableString,
+  }),
+  // People whose letter actually reached Kan on the page this turn.
+  letters_received: stringList,
 });
 
 export const TURN_STATE_SCHEMA_NAME = 'kan_turn_state';

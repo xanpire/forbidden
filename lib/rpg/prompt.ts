@@ -8,11 +8,11 @@ import {
   recentlyConcludedMilestones,
   upcomingCanonMilestones,
   upcomingWorldMilestones,
-  unheardCanonNews,
   isCombatPace,
-  NEWS_PER_TURN,
   hasHeardNews,
 } from './canon';
+import { formatNewsOffer, newsOffer, newsTrackingLines } from './newsDelivery';
+import { formatLetterOffer, letterOffer, letterTrackingLines } from './letters';
 import {
   formatEncounterConditions,
   locationKindOf,
@@ -52,7 +52,8 @@ TIME
 
 CANON
 - Canon happens on schedule unless Kan plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
-- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer and make clear who told him: at most one piece of news per turn, and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told him: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+- Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When Kan writes to someone far away, show him send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene.
 - The masked man, Tobi, Obito, and "the fake Madara" are one person. The Akatsuki know him as Madara; he never unmasks before Itachi or Kan, and Itachi dies believing it. Only those present when his mask breaks in the Fourth War, against Kakashi and Naruto, learn he is Obito. The real Madara is a separate character who appears later.
 - Pain is one entity, Nagato, acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
 
@@ -79,7 +80,7 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 
 PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
-PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, and news_relayed.from. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, and letters_received. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
 
 COMPANIONS: people marked [travelling with Kan] are with him in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with Kan this turn (agrees to come along, is assigned as his partner, leaves with him), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to Kan: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
@@ -89,7 +90,9 @@ JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Wat
 
 MEMORY: facts are lasting truths (a death, injury, secret, membership, key item or event) with who_knows. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded.
 
-CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise [].
+CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
+
+LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.`;
 
@@ -182,6 +185,7 @@ export function buildNarrationPrompt(
       formatFacts(facts),
       formatLore(lore),
       formatNewsBlock(db),
+      formatLetterBlock(db),
       formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
       formatMemories(freshMemories),
@@ -261,6 +265,7 @@ export function buildExtractionPrompt(
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
     formatTimeLine(db, 'state'),
     formatCanonTracking(db),
+    formatLetterTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
@@ -736,38 +741,17 @@ function formatUpcomingWorldBlock(db: AppDatabase) {
 }
 
 function formatNewsBlock(db: AppDatabase) {
-  // No news mid-fight, and only one piece per turn.
-  if (isCombatPace(db.state.scenePace)) {
-    return '';
-  }
+  // No news mid-fight; one piece per turn, or one catch-up report.
+  return formatNewsOffer(newsOffer(db));
+}
 
-  const news = unheardCanonNews(db, NEWS_PER_TURN);
+/** A catch-up report fills the turn; a letter waits for the next one. */
+function turnLetterOffer(db: AppDatabase) {
+  return newsOffer(db)?.mode === 'catch-up' ? null : letterOffer(db);
+}
 
-  if (news.length === 0) {
-    return '';
-  }
-
-  const lines = [
-    'NEWS & RUMORS (an event Kan has NOT learned yet; deliver at most this one this turn). When a bearer is present or Kan is where news travels, let it surface in dialogue or a report, and make clear who tells him. Never deliver any other world news.',
-  ];
-
-  for (const item of news) {
-    const urgency =
-      item.major && item.daysOld >= 7
-        ? ' OVERDUE: deliver this through the courier channel now — a crow, hawk, paper butterfly, or rider arriving with word.'
-        : '';
-
-    const bearerText =
-      item.bearers.length > 0
-        ? `Could be known by ${item.bearers.slice(0, 4).join(', ')}.`
-        : 'Only someone present could know.';
-
-    lines.push(
-      `- ${item.title} (${item.location}, ${item.region}). ${bearerText} Channel: ${item.channel}.${urgency}`
-    );
-  }
-
-  return lines.join('\n');
+function formatLetterBlock(db: AppDatabase) {
+  return formatLetterOffer(turnLetterOffer(db));
 }
 
 function formatCanonBlock(db: AppDatabase) {
@@ -846,19 +830,22 @@ function formatCanonTracking(db: AppDatabase) {
     );
   }
 
-  const newsOffered = isCombatPace(db.state.scenePace) ? [] : unheardCanonNews(db, NEWS_PER_TURN);
-
-  for (const item of newsOffered) {
-    lines.push(
-      `- ${item.milestoneId}: ${truncate(item.title, 70)} (news Kan has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told Kan this turn.`
-    );
-  }
+  lines.push(...newsTrackingLines(newsOffer(db)));
 
   if (lines.length === 0) {
     return '';
   }
 
   return ['CANON TRACKING', ...lines].join('\n');
+}
+
+function formatLetterTracking(db: AppDatabase) {
+  const refByEntity = refByEntityId(db);
+
+  return [
+    'LETTERS',
+    ...letterTrackingLines(turnLetterOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name),
+  ].join('\n');
 }
 
 function formatLoreProfile(name: string, year: number) {

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizePost } from './letters';
 import { normalizeDeaths } from './deaths';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
@@ -606,6 +607,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     sceneCast: Array.isArray(state.sceneCast)
       ? state.sceneCast.filter(Boolean).slice(0, 6)
       : [],
+    post: normalizePost(state.post),
   };
 }
 

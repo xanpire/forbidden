@@ -68,6 +68,35 @@ export type GameState = {
   scene: string;
   scenePace?: ScenePace;
   sceneCast?: string[];
+  /** Personal letters to and from Kan (see letters.ts). */
+  post?: PostState;
+};
+
+/**
+ * One personal letter. `to-kan` letters come from someone Kan is close to
+ * (a reply to his own letter, or unprompted); `from-kan` letters are the ones
+ * he sends, which take days to arrive and move the recipient's bond.
+ */
+export type Letter = {
+  id: string;
+  direction: 'to-kan' | 'from-kan';
+  entityId: string;
+  name: string;
+  sentOn: CalendarDate;
+  arrivesOn: CalendarDate;
+  /** What the letter says, in a few words (Kan's own letters). */
+  gist?: string;
+  /** travelling: on its way; delivered: it reached its reader; lost: the reader was dead. */
+  status: 'travelling' | 'delivered' | 'lost';
+  /** A to-kan letter answering one of Kan's. */
+  replyTo?: string;
+  deliveredOn?: CalendarDate;
+};
+
+export type PostState = {
+  letters: Letter[];
+  /** When a letter last reached Kan. */
+  lastLetterIn?: CalendarDate;
 };
 
 export type RawLogEntry = {
@@ -475,6 +504,10 @@ export type TurnDiff = {
   canonEngaged?: string[];
   canonPassed?: string[];
   newsRelayed?: { id: string; from?: string }[];
+  /** Letters or messages Kan sent this turn to someone far away. */
+  lettersSent?: { entityId?: string; name: string; gist?: string }[];
+  /** People whose letter reached Kan on the page this turn. */
+  lettersReceived?: { entityId?: string; name: string }[];
   scene?: SceneInfo;
 };
 

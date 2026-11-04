@@ -17,7 +17,9 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
-import { NEWS_PER_TURN, advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
+import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
+import { deliverLetters, receiveLetters, sendLetters } from './letters';
+import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
@@ -245,8 +247,11 @@ export function applyStateStep(
       turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
     },
   };
-  // At most one piece of news per turn; nothing in the world fires mid-fight.
-  const relays = (extraction?.newsRelayed ?? []).slice(0, NEWS_PER_TURN);
+  // One piece of news per turn (or one catch-up report); nothing in the
+  // world fires mid-fight. The allowance comes from the state the turn's
+  // prompt was built on.
+  const allowance = newsAllowance(latest);
+  const relays = (extraction?.newsRelayed ?? []).slice(0, allowance);
   const inCombat = isCombatPace(pace) && !sceneEnded;
 
   next = applyCanonMarks(
@@ -255,8 +260,14 @@ export function applyStateStep(
     extraction?.canonEngaged ?? [],
     extraction?.canonPassed ?? []
   );
-  next = markNewsHeard(next, relays);
+  next = markNewsHeard(next, relays, allowance);
   next = advanceCanon(next, { inCombat });
+
+  // Letters: what Kan sent sets out, what reached him on the page is read,
+  // and his letters that arrived by now move their reader's bond.
+  next = receiveLetters(next, extraction?.lettersReceived);
+  next = sendLetters(next, extraction?.lettersSent);
+  next = deliverLetters(next);
 
   let notice: string | null = null;
 
@@ -270,7 +281,15 @@ export function applyStateStep(
       const title = delivered.summary.split(':')[0].trim();
       const from = relays[0].from?.trim() || 'a rumor';
       notice = `${title} — from ${from}`.slice(0, 110);
+
+      if (relays.length > 1) {
+        notice = `${notice} (+${relays.length - 1} more)`.slice(0, 120);
+      }
     }
+  }
+
+  if (!notice && extraction?.lettersReceived?.length) {
+    notice = `A letter from ${extraction.lettersReceived[0].name}`;
   }
 
   // The state step is done; any earlier state job for this turn is settled.
