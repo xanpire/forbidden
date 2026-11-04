@@ -3014,3 +3014,40 @@ describe('living world timeline', () => {
     expect(team3.length).toBeGreaterThanOrEqual(10);
   });
 });
+
+describe('the Mangekyō and gated beats', () => {
+  const baseline = { year: 13, month: 10, day: 1, hour: 22, minute: 0, second: 0 };
+  const at = (db: AppDatabase, year: number, month: number): AppDatabase => ({
+    ...db,
+    state: {
+      ...db.state,
+      inStoryDate: { year, month, day: 1, hour: 8, minute: 0, second: 0 },
+      canonProgress: db.state.canonProgress ?? { version: CANON_VERSION, baselineDate: baseline, completed: [], active: [], engaged: [] },
+    },
+  });
+
+  test('awakening the Mangekyō records your own ability and Susanoo', () => {
+    let db = at(loadSave(), 15, 3);
+    db = applyCanonMarks(db, ['kan-mangekyo'], []);
+    const mine = db.jutsuRecords.filter((r) => r.user === 'Kan');
+    for (const name of ['Mangekyō Sharingan', 'Susanoo']) {
+      const record = mine.find((r) => r.name === name);
+      expect(record?.tags).toContain('signature');
+      expect(db.state.jutsu).toContain(name);
+    }
+    db = applyCanonMarks(db, ['kan-mangekyo'], []);
+    expect(db.jutsuRecords.filter((r) => r.name === 'Susanoo').length).toBe(1);
+  });
+
+  test('beats that follow the Mangekyō wait for it', () => {
+    const before = at(loadSave(), 15, 3);
+    expect(upcomingCanonMilestones(before, 99).map((m) => m.id)).not.toContain('itachi-sees-mangekyo');
+    const after = applyCanonMarks(before, ['kan-mangekyo'], []);
+    expect(upcomingCanonMilestones(after, 99).map((m) => m.id)).toContain('itachi-sees-mangekyo');
+  });
+
+  test('a gated beat that never opened does not leave a "missed" fact', () => {
+    const db = advanceCanon(at(loadSave(), 22, 6), { inCombat: false });
+    expect(db.facts.some((f) => f.id === 'fact_missed_root-hunter-free')).toBe(false);
+  });
+});

@@ -16,12 +16,14 @@ import {
   CANON_VERSION,
   CHANNEL_BY_KNOWLEDGE,
   REGION_CHANNEL,
+  type CanonJutsuGrant,
   type CanonKnowledge,
   type CanonMilestone,
   type CanonProgress,
   type CanonWindow,
 } from './canonData';
 import { markDeathsByName } from './deaths';
+import { makeId } from './id';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
@@ -231,11 +233,53 @@ function fireMilestone(
     };
   }
 
+  for (const grant of milestone.grantsJutsu ?? []) {
+    next = grantJutsu(next, grant, happenedAt);
+  }
+
   if (milestone.canonPoint) {
     next = { ...next, state: { ...next.state, canonPoint: milestone.canonPoint.slice(0, 220) } };
   }
 
   return next;
+}
+
+/** Records a jutsu Kan gained from a story beat, once. */
+function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate): AppDatabase {
+  const lower = grant.name.toLowerCase();
+  const hasRecord = db.jutsuRecords.some(
+    (record) => record.name.toLowerCase() === lower && record.user.toLowerCase() === 'kan'
+  );
+  const jutsuRecords = hasRecord
+    ? db.jutsuRecords
+    : [
+        ...db.jutsuRecords,
+        {
+          id: makeId('jutsu'),
+          name: grant.name,
+          user: 'Kan',
+          chakraNature: grant.chakraNature,
+          effect: grant.effect,
+          visual: grant.visual,
+          firstSeen: when,
+          lastSeen: when,
+          timesUsed: 0,
+          description: grant.description,
+          tags: [...new Set(['signature', 'kan', ...(grant.tags ?? [])])],
+        },
+      ];
+  const known = db.state.jutsu.some((name) => name.toLowerCase() === lower);
+
+  return {
+    ...db,
+    jutsuRecords,
+    state: known ? db.state : { ...db.state, jutsu: [...db.state.jutsu, grant.name] },
+  };
+}
+
+/** A gated beat is open only once the beat it follows has actually happened. */
+function gateOpen(db: AppDatabase, milestone: CanonMilestone): boolean {
+  return !milestone.after || hasFired(db, milestone.after);
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +438,9 @@ export function advanceCanon(db: AppDatabase, options: { inCombat?: boolean } = 
       } else if (!notClosed) {
         complete(id);
         progress = { ...progress, active: dropId(progress.active, id) };
-        next = addMissedFact(next, milestone);
+        if (gateOpen(next, milestone)) {
+          next = addMissedFact(next, milestone);
+        }
       }
 
       continue;
@@ -479,7 +525,8 @@ export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilest
       !progress.completed.includes(milestone.id) &&
       !progress.engaged.includes(milestone.id) &&
       started &&
-      notClosed
+      notClosed &&
+      gateOpen(db, milestone)
     );
   })
     .sort((a, b) => {

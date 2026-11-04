@@ -46,6 +46,15 @@ export type CanonKnowledge = 'public' | 'village' | 'akatsuki' | 'witnesses' | '
 
 export type CanonWindow = { year: number; month: number; day?: number };
 
+export type CanonJutsuGrant = {
+  name: string;
+  chakraNature: string;
+  effect: string;
+  visual: string;
+  description: string;
+  tags?: string[];
+};
+
 export type CanonMilestone = {
   id: string;
   era: string;
@@ -67,6 +76,10 @@ export type CanonMilestone = {
   playerDriven?: boolean;
   /** Personal beat offered ahead of every other open beat while its window is open. */
   priority?: boolean;
+  /** Personal beat offered only once this milestone has actually happened. */
+  after?: string;
+  /** Jutsu Kan gains when this beat happens (recorded as signature jutsu). */
+  grantsJutsu?: CanonJutsuGrant[];
   facts: string[];
   /**
    * People this milestone kills, by name. When it fires they are marked dead
@@ -2323,8 +2336,8 @@ const PERSONAL_BEATS: CanonMilestone[] = [
     era: 'Ashes',
     title: "Izumi's grave: the Mangekyō",
     description:
-      "You stand at Izumi's grave and finally let her be dead. The grief goes all the way down, and your Sharingan changes shape. What your Mangekyō can do is yours to discover — and it costs your eyes a little every time you use it.",
-    canonPoint: "You awakened the Mangekyō Sharingan at Izumi's grave.",
+      "You stand at Izumi's grave and finally let her be dead. The grief goes all the way down, and your Sharingan changes shape. It brings an ability that belongs to no other Uchiha, and a Susanoo of your own — and both cost your eyes a little every time.",
+    canonPoint: "You awakened the Mangekyō Sharingan at Izumi's grave, with your own ability and a Susanoo.",
     from: { year: 13, month: 11 },
     to: { year: 17, month: 7, day: 31 },
     region: 'Land of Fire',
@@ -2333,14 +2346,78 @@ const PERSONAL_BEATS: CanonMilestone[] = [
     priority: true,
     facts: [
       "Kan awakened the Mangekyō Sharingan at Izumi Uchiha's grave.",
-      'Every use of the Mangekyō Sharingan wears down the eyes toward blindness.',
+      'Kan has his own Mangekyō ability, unique to him, and can manifest Susanoo.',
+      'Every use of the Mangekyō or Susanoo wears down the eyes toward blindness.',
+    ],
+    grantsJutsu: [
+      {
+        name: 'Mangekyō Sharingan',
+        chakraNature: 'Yin',
+        effect:
+          "Your own Mangekyō ability, born from Izumi's death. It belongs to no other Uchiha. If you say what it does, that is what it does; otherwise the story shapes it from your grief the first time you call on it, and once named it never changes. Each use strains your eyes toward blindness.",
+        visual:
+          "Your pattern is your own and never seen before. The eye bleeds a little when the ability is pushed.",
+        description: "Your Mangekyō Sharingan and its unique ability, awakened at Izumi's grave.",
+        tags: ['mangekyo', 'uchiha', 'dojutsu'],
+      },
+      {
+        name: 'Susanoo',
+        chakraNature: 'Yin',
+        effect:
+          'A giant chakra warrior rises around you, in a color that is yours. It grows in stages with practice and strain: ribs and an arm first, then a skeletal torso, then a muscled warrior, then full armor. Manifesting it strains your whole body and your eyes.',
+        visual:
+          'Chakra bones knit themselves around you in your color, then flesh, then armor, flickering at the edges like flame.',
+        description: "The Susanoo of your Mangekyō Sharingan. It starts as ribs and grows with use.",
+        tags: ['mangekyo', 'uchiha', 'susanoo'],
+      },
     ],
     encounter: {
       who: "Izumi's grave",
       where: 'the Uchiha cemetery outside Hidden Leaf, usually at night',
       context:
-        "This only happens when Kan comes to Izumi's grave knowing she is dead and lets the loss land. Alone, or found there by Hana or Itachi. The Mangekyō's design and abilities are new and unnamed; reveal them slowly, never all at once.",
+        "This only happens when Kan comes to Izumi's grave knowing she is dead and lets the loss land. Alone, or found there by Hana or Itachi. The Mangekyō's pattern and ability are new; if the player names the ability, use it exactly. Susanoo starts as ribs and an arm.",
     },
+  },
+
+  // --- Itachi -----------------------------------------------------------------
+  {
+    id: 'itachi-sees-mangekyo',
+    era: 'Ashes',
+    title: 'Two Mangekyō',
+    description:
+      'Itachi sees your new eyes before you can hide them. He has carried the same pattern of grief since Shisui died. He tells you what it costs, how fast the dark comes, and that there is one way past it no one should take.',
+    canonPoint: 'Itachi knows about your Mangekyō and has warned you of its cost.',
+    from: { year: 13, month: 11 },
+    to: { year: 18, month: 6 },
+    playerDriven: true,
+    after: 'kan-mangekyo',
+    facts: [],
+    encounter: {
+      who: 'Itachi Uchiha',
+      where: 'anywhere the two of them are alone',
+      context:
+        "Itachi's own Mangekyō came from Shisui's death. He knows about the blindness, and that taking a sibling's or close kin's eyes gives an Eternal Mangekyō. He would never want Kan to go that way, and will not say why it matters so much to him.",
+    },
+    attendanceFact: "Itachi saw Kan's Mangekyō and warned him of its cost.",
+  },
+  {
+    id: 'itachi-last-night',
+    era: 'Shippuden',
+    title: 'The last night',
+    description:
+      'Itachi finds you the night before he goes to meet Sasuke. He does not say goodbye. He says something close to it.',
+    canonPoint: 'Itachi came to you the night before his last battle.',
+    from: { year: 21, month: 9, day: 1 },
+    to: { year: 21, month: 9, day: 11 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Itachi Uchiha',
+      where: 'wherever Kan is, the night before the Uchiha hideout',
+      context:
+        "Itachi is dying and nearly blind, and he means to die at Sasuke's hand. He may ask Kan to stay away, to look after Sasuke, or simply sit with him. He will not be talked out of it.",
+    },
+    attendanceFact: 'Itachi spent his last free night with Kan.',
   },
 
   // --- The Kakuzu years and Thousand Souls -----------------------------------
@@ -2731,6 +2808,267 @@ const PERSONAL_BEATS: CanonMilestone[] = [
         'Naruto has spent his life alone and would grab a relative with both hands. Kan is reserved and was once on the side that hunted him. That makes this harder and better.',
     },
     attendanceFact: 'Kan and Naruto talked about their Uzumaki blood.',
+  },
+
+  // --- The cost of the Mangekyō ---------------------------------------------
+  {
+    id: 'kan-sight-fades',
+    era: 'The hidden years',
+    title: 'The edges go dark',
+    description:
+      "Your Mangekyō has been working for years. Now the world blurs at the edges after you use it, and the blur takes longer each time to clear.",
+    canonPoint: 'Your sight is failing from the Mangekyō.',
+    from: { year: 19, month: 6 },
+    to: { year: 21, month: 6 },
+    playerDriven: true,
+    after: 'kan-mangekyo',
+    facts: ["Kan's eyesight is failing from Mangekyō use."],
+    encounter: {
+      who: 'your own eyes',
+      where: 'after a hard fight',
+      context:
+        "Kan's sight is failing from Mangekyō and Susanoo use. It gets worse with use and never heals on its own. Kan decides whether to tell anyone — Itachi would understand best.",
+    },
+  },
+  {
+    id: 'hashirama-cells-offer',
+    era: 'Shippuden',
+    title: "The First Hokage's cells",
+    description:
+      "Word of your eyes reaches the snakes. Orochimaru — and after him, Kabuto — has cells grown from the First Hokage, and claims they can hold back the dark. Everything they offer has a price.",
+    canonPoint: "You were offered the First Hokage's cells for your eyes.",
+    from: { year: 20, month: 1 },
+    to: { year: 22, month: 12 },
+    playerDriven: true,
+    after: 'kan-sight-fades',
+    facts: [],
+    encounter: {
+      who: 'Orochimaru, or Kabuto Yakushi after Orochimaru falls',
+      where: 'a Sound hideout or a cave lair',
+      context:
+        "Hashirama's cells are real and dangerous; most of Orochimaru's test subjects died of them. Whoever offers wants Kan's eyes studied, Thousand Souls, or a debt.",
+    },
+    attendanceFact: "Kan was offered the First Hokage's cells for his failing eyes.",
+  },
+  {
+    id: 'masked-man-eyes',
+    era: 'Shippuden',
+    title: 'The vault of eyes',
+    description:
+      "The masked man shows you what he took from the Uchiha district: rows of eyes in jars. Some belonged to people you knew. He offers you a pair, and light that will never go out.",
+    canonPoint: "The masked man offered you Uchiha eyes from the massacre.",
+    from: { year: 21, month: 9, day: 14 },
+    to: { year: 23, month: 1, day: 9 },
+    playerDriven: true,
+    after: 'kan-sight-fades',
+    facts: [],
+    encounter: {
+      who: 'the masked man',
+      where: "the masked man's hidden lair",
+      context:
+        "Implanting eyes from a close relative would give Kan an Eternal Mangekyō; eyes from anyone else give only another Sharingan. Whether any of these were Kan's family is something the masked man may lie about. Taking them binds Kan to him.",
+    },
+    attendanceFact: "The masked man showed Kan the massacre's stolen eyes.",
+  },
+
+  // --- The Root hunter -------------------------------------------------------
+  {
+    id: 'root-hunter',
+    era: 'The shadow war',
+    title: 'The mask with no face',
+    description:
+      "Someone has been on your trail for weeks. A Root agent in a blank mask who calls himself Nagi, sent by Danzo to finish what the massacre missed: the Uchiha who got away.",
+    canonPoint: 'A Root agent named Nagi is hunting you for Danzo.',
+    from: { year: 14, month: 4 },
+    to: { year: 15, month: 10 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Nagi, a Root agent',
+      where: 'a border town or a forest road',
+      context:
+        "Nagi is Kan's age, raised in Root, emotionless by training, and very good. A curse seal on his tongue stops him from ever speaking of Danzo. He wants Kan's eyes or Kan's body. He may escape to try again.",
+    },
+    attendanceFact: 'Kan fought Nagi, the Root agent hunting him.',
+  },
+  {
+    id: 'root-hunter-returns',
+    era: 'Part 1',
+    title: 'Nagi again',
+    description:
+      'Nagi is back, older and with a squad, and this time he has learned how you fight.',
+    canonPoint: 'Nagi of Root came after you again.',
+    from: { year: 17, month: 3 },
+    to: { year: 19, month: 12 },
+    playerDriven: true,
+    after: 'root-hunter',
+    facts: [],
+    encounter: {
+      who: 'Nagi and a Root squad',
+      where: 'wherever Kan is careless',
+      context:
+        'If Nagi died in their first fight, this is someone wearing his mask and his orders. He has studied Kan: his jutsu, his eyes, the people he still cares about in the Leaf.',
+    },
+    attendanceFact: 'Nagi and his Root squad came for Kan again.',
+  },
+  {
+    id: 'root-hunter-free',
+    era: 'The sky falls',
+    title: "Danzo's dog off the leash",
+    description:
+      "Danzo is dead and the curse seal on Nagi's tongue has gone with him. For the first time in his life he can say who sent him — and choose what he does next.",
+    canonPoint: 'With Danzo dead, Nagi is free of Root.',
+    from: { year: 22, month: 3, day: 4 },
+    to: { year: 22, month: 12 },
+    playerDriven: true,
+    after: 'root-hunter-returns',
+    facts: [],
+    encounter: {
+      who: 'Nagi, free of Root',
+      where: 'wherever he finds Kan',
+      context:
+        "Nagi has never had a choice before. He may want a last fight, an apology, a purpose, or to be told what he was. How Kan treated him before decides how this ends.",
+    },
+    attendanceFact: 'Kan settled things with Nagi after Danzo died.',
+  },
+
+  // --- Akatsuki bonds --------------------------------------------------------
+  {
+    id: 'kisame-on-itachi',
+    era: 'The shadow war',
+    title: "Kisame's question",
+    description:
+      'On a long night watch, Kisame asks what you are to Itachi. Then he tells you what Itachi is to him.',
+    canonPoint: 'Kisame told you what Itachi means to him.',
+    from: { year: 15, month: 6 },
+    to: { year: 21, month: 8 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Kisame Hoshigaki',
+      where: 'a camp or inn on a shared mission',
+      context:
+        "Kisame has spent his life betraying comrades for his village and despises liars. He respects Itachi completely and suspects there is more to him. He is testing whether Kan is a friend or a weakness.",
+    },
+    attendanceFact: 'Kisame and Kan talked about Itachi.',
+  },
+  {
+    id: 'deidara-art',
+    era: 'The shadow war',
+    title: 'Art is an explosion',
+    description:
+      "Deidara has decided you are an audience. He wants you to say his art is real — and your Sharingan to look at it and not see through it.",
+    canonPoint: 'Deidara made you watch his art.',
+    from: { year: 15, month: 9 },
+    to: { year: 21, month: 7 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Deidara (and maybe Sasori)',
+      where: 'a cliff, a hideout, or the edge of a mission',
+      context:
+        "Deidara hates Itachi's Sharingan for seeing through his art, and Kan has the same eyes. He is loud, proud, and lonely under it. Sasori thinks art should last forever and will argue.",
+    },
+    attendanceFact: 'Deidara showed Kan his art.',
+  },
+  {
+    id: 'konan-flower',
+    era: 'The sky falls',
+    title: 'A paper flower',
+    description:
+      "Nagato is dead and Konan has brought his body home. She finds you in the rain and puts a paper flower in your hand.",
+    canonPoint: 'Konan gave you a paper flower after Nagato died.',
+    from: { year: 22, month: 1, day: 10 },
+    to: { year: 22, month: 5, day: 31 },
+    region: 'Hidden Rain',
+    location: 'the Hidden Rain Village',
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Konan',
+      where: 'the Hidden Rain, in the rain',
+      context:
+        "Konan has left the Akatsuki and put her hope in Naruto. She knows the masked man will come for Nagato's eyes. She may warn Kan, ask him to choose, or simply want someone who knew Nagato to see her grieve.",
+    },
+    attendanceFact: 'Konan gave Kan a paper flower after Nagato died.',
+  },
+
+  // --- Endings -----------------------------------------------------------------
+  {
+    id: 'hana-after-war',
+    era: 'After',
+    title: 'You and Hana',
+    description:
+      'The war is over and Hana is alive. So are you. For the first time since you were thirteen, nothing stands between you but what you choose to say.',
+    canonPoint: 'You and Hana have decided what you are to each other.',
+    from: { year: 23, month: 2 },
+    to: { year: 26, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Hana Inuzuka',
+      where: 'the Inuzuka kennels, a hospital, or the village gate',
+      context:
+        "Whatever happened between them over ten years shapes this — her anger, her loyalty, her bond with Kan. It can be love, friendship, or a goodbye. She will not pretend.",
+    },
+    attendanceFact: 'Kan and Hana decided what they are to each other after the war.',
+  },
+  {
+    id: 'suzume-after-war',
+    era: 'After',
+    title: 'The student who came back',
+    description:
+      'Suzume never stopped looking for you. Now there is nothing left to find — you are standing in front of her.',
+    canonPoint: 'You and Suzume have made your peace, or not.',
+    from: { year: 23, month: 2 },
+    to: { year: 25, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Suzume',
+      where: 'the old Team 3 training ground',
+      context:
+        "Suzume blamed herself for losing two of her three students. She wants the whole truth now. Whatever she was to Kan — sensei, family, something more — this decides it.",
+    },
+    attendanceFact: 'Kan and Suzume met at the old Team 3 training ground after the war.',
+  },
+  {
+    id: 'last-uchiha',
+    era: 'After',
+    title: 'The last two',
+    description:
+      "Sasuke has been pardoned. There are two grown Uchiha left in the world, and you are both standing in what is left of the clan.",
+    canonPoint: 'You and Sasuke have spoken as the last of the Uchiha.',
+    from: { year: 23, month: 5 },
+    to: { year: 26, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Sasuke Uchiha',
+      where: 'the Uchiha district, or the road before Sasuke leaves',
+      context:
+        "Sasuke has one arm, a Rinnegan, and Itachi's truth. Kan was Itachi's closest friend. Together they decide what the clan is now — and whether it ends with them.",
+    },
+    attendanceFact: 'Kan and Sasuke spoke as the last of the Uchiha.',
+  },
+  {
+    id: 'holding-sarada',
+    era: 'After',
+    title: 'The first new Uchiha',
+    description:
+      "Sasuke and Sakura's daughter is a few weeks old. Someone puts her in your arms. She is the first Uchiha born since the massacre.",
+    canonPoint: 'You held Sarada Uchiha.',
+    from: { year: 27, month: 4 },
+    to: { year: 28, month: 12 },
+    playerDriven: true,
+    facts: [],
+    encounter: {
+      who: 'Sakura Haruno and the infant Sarada Uchiha',
+      where: 'wherever Sakura and Sarada are',
+      context:
+        'Sasuke is often away. Kan may be the only other Uchiha Sarada will know growing up. What he becomes to her starts here.',
+    },
+    attendanceFact: 'Kan held Sarada Uchiha as a baby.',
   },
 ];
 
