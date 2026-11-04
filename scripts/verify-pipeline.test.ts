@@ -15,7 +15,10 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
-import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
+import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity } from '../lib/rpg/entities';
+import { appendStoryMessage, cloneDatabase, storyMessagesSinceLastSummary } from '../lib/rpg/log';
+import { trimToSentence } from '../lib/rpg/util';
+import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { buildExtractionPrompt, buildNarrationPrompt, splitNarrationAndDiff, streamingPreview, stripNarrationJson } from '../lib/rpg/prompt';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { mentionsName } from '../lib/rpg/characterRefs';
@@ -23,20 +26,14 @@ import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
-import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION } from '../lib/rpg/canonData';
+import { activeCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { PLACE_NAME_RULE, hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
-import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
-import {
-  appendStoryMessage,
-  applyTurnDiff,
-  cloneDatabase,
-  convertStateBlock,
-} from '../lib/rpg/services';
-import { rollD20 } from '../lib/rpg/services';
+import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
+import { applyTurnDiff } from '../lib/rpg/services';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
 
 function loadSave(_path?: string): AppDatabase {
@@ -204,7 +201,7 @@ describe('prompt token stability', () => {
       db = applyTurnDiff(db, fallback);
 
       if (turn % 10 === 0 || turn === totalTurns - 1) {
-        const prompt = buildNarrationPrompt(db, userText, rollD20());
+        const prompt = buildNarrationPrompt(db, userText);
         tokensAt.push([turn, prompt.estimatedTokens]);
       }
     }
@@ -462,7 +459,7 @@ describe('presence tracking and bonds ordering', () => {
 
   test('full narration prompt never asks the narrator for JSON fields', () => {
     const db = loadSave();
-    const prompt = buildNarrationPrompt(db, '*Kan looks around.*', 20);
+    const prompt = buildNarrationPrompt(db, '*Kan looks around.*');
     const all = prompt.messages.map((message) => message.content).join('\n');
 
     for (const key of ['news_relayed', 'canon_engaged', 'canon_completed', 'canon_passed', 'image_worthy', '```json']) {
@@ -474,7 +471,7 @@ describe('presence tracking and bonds ordering', () => {
     const db = loadSave();
     const action = '"We move at dawn." *Kan checks his pack.*';
 
-    const prompt = buildNarrationPrompt(db, action, 10);
+    const prompt = buildNarrationPrompt(db, action);
     const dynamic = prompt.messages[1].content;
 
     const occurrences = dynamic.split(action).length - 1;
@@ -586,16 +583,16 @@ describe('masked man identity resolution', () => {
 });
 
 describe('encounter frequency and image cast', () => {
-  test('most d20 rolls yield a quiet turn', () => {
-    const quiet = [1, 4, 7, 9, 11, 12].every((roll) => formatEncounterHint(roll).includes('quiet'));
-    const minor = formatEncounterHint(14).includes('minor NPC');
-    const named = formatEncounterHint(18).includes('named canon character');
-    const major = formatEncounterHint(20).includes('major canon event');
+  test('the narrator gets no dice roll and no style guard', () => {
+    const db = loadSave();
+    const prompt = buildNarrationPrompt(db, '*You wait.*');
+    const text = prompt.messages.map((m) => m.content).join('\n');
 
-    expect(quiet).toBe(true);
-    expect(minor).toBe(true);
-    expect(named).toBe(true);
-    expect(major).toBe(true);
+    expect(text).not.toContain('ENCOUNTER HINT');
+    expect(text).not.toContain('d20');
+    expect(text).not.toContain('STYLE GUARD');
+    expect(text).toContain('ENCOUNTER CONDITIONS');
+    expect(NARRATION_SYSTEM).toContain('never reuse a description');
   });
 
   test('image prompt forbids characters from previous images and lists the cast', () => {
@@ -629,7 +626,8 @@ describe('canon timeline dataset', () => {
     expect(new Set(ids).size).toBe(ids.length);
 
     for (const m of CANON_MILESTONES) {
-      expect(m.minScenes).toBeGreaterThan(0);
+      if (m.knowledge === 'secret') expect(m.bearers?.length ?? 0).toBeGreaterThan(0);
+      if (m.bearers) expect(m.knowledge).toBe('secret');
       expect(m.from.year).toBeGreaterThanOrEqual(13);
       expect(m.facts.length + (m.opensThreads?.length ?? 0)).toBeGreaterThanOrEqual(0);
       if (m.to) {
@@ -782,8 +780,16 @@ describe('canon scheduler', () => {
   });
 
   test('canon progression stays on even if an old save turned it off', () => {
-    const db = loadSave();
-    expect(canonEnabled({ ...db, settings: { ...db.settings, canonProgress: false } })).toBe(true);
+    const base = loadSave();
+    const db = { ...base, settings: { ...base.settings, canonProgress: false } } as typeof base;
+    const started = advanceCanon(db, { inCombat: false });
+    const later = advanceCanon(
+      { ...started, state: { ...started.state, inStoryDate: { ...started.state.inStoryDate, year: started.state.inStoryDate.year + 2 } } },
+      { inCombat: false }
+    );
+    expect(later.events.filter((e) => e.tags.includes('canon')).length).toBeGreaterThan(
+      started.events.filter((e) => e.tags.includes('canon')).length
+    );
   });
 });
 
@@ -852,7 +858,7 @@ describe('cross-era memory and romance', () => {
       scene: { ended: false, entities: ['Itachi Uchiha'] },
     });
 
-    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*');
     const system = prompt.messages[0].content;
     const dynamic = prompt.messages[1].content;
 
@@ -895,7 +901,7 @@ describe('expanded lore and team 3', () => {
 
   test('character cards include the era note', () => {
     const db = loadSave();
-    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*');
     // Era notes ride on the character cards in the scene message.
     expect(prompt.messages.map((m) => m.content).join('\n')).toContain('now: Gentle older brother');
   });
@@ -915,7 +921,7 @@ describe('encounter realism', () => {
     expect(encounterRisk('structure', 'night')).toBe('none');
   });
 
-  test('d20 hints are gated by place and time', () => {
+  test('encounter conditions follow place and time', () => {
     let db = loadSave();
     db = {
       ...db,
@@ -927,9 +933,7 @@ describe('encounter realism', () => {
       },
     };
 
-    expect(formatGatedEncounterHint(db, 12)).toContain('no new people');
-    expect(formatGatedEncounterHint(db, 17)).toContain('no new people');
-    expect(formatGatedEncounterHint(db, 18)).toContain('dangerous');
+    expect(formatEncounterConditions(db)).toContain('isolated');
 
     const village = {
       ...db,
@@ -941,8 +945,8 @@ describe('encounter realism', () => {
       },
     };
 
-    expect(formatGatedEncounterHint(village, 10)).toContain('minor NPC');
     expect(formatEncounterConditions(village)).toContain('settlement');
+    expect(formatEncounterConditions(village)).toContain('crowded');
   });
 
   test('location_kind flows through the diff and fallback classifier', () => {
@@ -1001,7 +1005,7 @@ describe('canon endings and prompt memory', () => {
     const longNarration = `${'The rain falls. '.repeat(150)}FINAL BEAT: the masked man turns away and vanishes.`;
 
     db = appendStoryMessage(db, 'assistant', longNarration, 'm', 0, 0);
-    const prompt = buildNarrationPrompt(db, '*Kan watches.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan watches.*');
     const dynamic = prompt.messages[1].content;
 
     expect(dynamic).toContain('FINAL BEAT');
@@ -1015,7 +1019,7 @@ describe('canon endings and prompt memory', () => {
       db = appendStoryMessage(db, 'assistant', 'Long narration. '.repeat(400), 'm', 0, 0);
     }
 
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*');
     expect(prompt.estimatedTokens).toBeLessThanOrEqual(db.settings.promptTokenBudget);
     expect(prompt.recentMessages.length).toBeGreaterThanOrEqual(4);
   });
@@ -1030,7 +1034,7 @@ describe('canon endings and prompt memory', () => {
       },
     };
 
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*');
     expect(prompt.messages[1].content).toContain('RECENTLY CONCLUDED');
     expect(prompt.messages[1].content).toContain('itachi-vs-sasuke');
   });
@@ -1169,7 +1173,7 @@ describe('english place names', () => {
 
   test('prompt uses English place names', () => {
     const db = loadSave();
-    const prompt = buildNarrationPrompt(db, '*Kan walks.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan walks.*');
     expect(prompt.messages[0].content).toContain('Hidden Leaf');
     expect(hasJapanesePlaceName(prompt.messages[1].content)).toBe(false);
     expect(prompt.messages[0].content).toContain('Use English place names only');
@@ -1295,7 +1299,7 @@ describe('world news and couriers', () => {
         },
       },
     };
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*');
     const dynamic = prompt.messages[1].content;
 
     expect(dynamic).toContain('NEWS & RUMORS');
@@ -1305,7 +1309,7 @@ describe('world news and couriers', () => {
   test('heard news disappears from the prompt queue', () => {
     let db = loadSave();
     db = applyCanonMarks(db, ['gaara-captured'], []);
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*');
     expect(prompt.messages[1].content).not.toContain('NEWS & RUMORS');
   });
 });
@@ -1313,7 +1317,7 @@ describe('world news and couriers', () => {
 describe('place names', () => {
   test('the narrator still sees which Japanese names to avoid', () => {
     const db = loadSave();
-    const system = buildNarrationPrompt(db, '*Kan waits.*', 10).messages[0].content;
+    const system = buildNarrationPrompt(db, '*Kan waits.*').messages[0].content;
     expect(system).toContain('Hidden Leaf (never Konoha)');
     expect(system).toContain('Hidden Rain (never Amegakure)');
     expect(system).not.toContain('(never Hidden');
@@ -1435,27 +1439,7 @@ describe('clock arithmetic', () => {
   });
 });
 
-describe('style guard and image brief', () => {
-  test('style guard flags overused words', () => {
-    let db = loadSave();
-    for (let i = 0; i < 4; i += 1) {
-      db = appendStoryMessage(
-        db,
-        'assistant',
-        'The cedar creaked. The smell of ozone drifted through the cedar shadows, and the ozone bit at his throat.',
-        'm',
-        0,
-        0
-      );
-    }
-
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
-    const dynamic = prompt.messages[1].content;
-    expect(dynamic).toContain('STYLE GUARD');
-    expect(dynamic.toLowerCase()).toContain('cedar');
-    expect(dynamic.toLowerCase()).toContain('ozone');
-  });
-
+describe('image brief', () => {
   test('image prompt follows the action brief and live cast', () => {
     let db = loadSave();
     db = applyTurnDiff(db, {
@@ -1485,7 +1469,7 @@ describe('style guard and image brief', () => {
 
   test('upcoming world rumors are shown before they happen', () => {
     let db = loadSave();
-    const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
+    const prompt = buildNarrationPrompt(db, '*Kan waits.*');
     const dynamic = prompt.messages[1].content;
 
     expect(dynamic).toContain("RUMORS OF WHAT'S COMING");
@@ -2168,12 +2152,12 @@ describe('canon timing: dates only, combat holds, one news per turn', () => {
 
   test('narrator is offered at most one piece of news, and none mid-fight', () => {
     const db = advanceCanon(withProgress(loadSave()));
-    const calm = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'conversation' } }, '*Kan listens.*', 10)
+    const calm = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'conversation' } }, '*Kan listens.*')
       .messages.map((m) => m.content).join('\n');
     const block = calm.split('NEWS & RUMORS (')[1]?.split('\n\n')[0] ?? '';
     expect(block.split('\n').filter((line) => line.startsWith('- ')).length).toBe(1);
 
-    const fight = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'combat' } }, '*Kan strikes.*', 10)
+    const fight = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'combat' } }, '*Kan strikes.*')
       .messages.map((m) => m.content).join('\n');
     expect(fight).not.toContain('NEWS & RUMORS (');
     expect(fight).not.toContain("RUMORS OF WHAT'S COMING (");

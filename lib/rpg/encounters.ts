@@ -99,10 +99,6 @@ export function encounterRisk(kind: LocationKind, timeOfDay: DayPeriod): Encount
   return 'none';
 }
 
-export function currentRisk(db: AppDatabase): EncounterRisk {
-  return encounterRisk(locationKindOf(db), timeOfDayOf(db.state.inStoryDate));
-}
-
 const RISK_LABEL: Record<EncounterRisk, string> = {
   none: 'isolated — almost nobody would be here',
   'very-low': 'remote — people are rare',
@@ -118,47 +114,3 @@ export function formatEncounterConditions(db: AppDatabase) {
 
   return `ENCOUNTER CONDITIONS: ${kind}, ${time} (${formatClock(db.state.inStoryDate)}) — ${RISK_LABEL[risk]}.`;
 }
-
-// The d20 is gated by how plausible meeting someone is right now. A high roll
-// can always bring a threat or named canon figure; a low roll in isolation
-// must not invent a wandering stranger.
-export function formatGatedEncounterHint(db: AppDatabase, d20: number) {
-  const risk = currentRisk(db);
-
-  if (d20 >= 20) {
-    return `ENCOUNTER HINT (d20 ${d20}): a major canon event stirs — check the CANON TIMELINE and pull the nearest pending beat or world event into the scene if plausible`;
-  }
-
-  if (d20 >= 18) {
-    return risk === 'none' || risk === 'very-low'
-      ? `ENCOUNTER HINT (d20 ${d20}): something dangerous is out here — a threat, a predator, a shinobi on the same trail. NOT a cheerful wanderer.`
-      : `ENCOUNTER HINT (d20 ${d20}): a named canon character appears, if plausible for the timeline and location`;
-  }
-
-  if (risk === 'none') {
-    return `ENCOUNTER HINT (d20 ${d20}): no new people. Use animals, weather, sounds, tracks, or distant lights.`;
-  }
-
-  if (risk === 'very-low') {
-    return d20 >= 16
-      ? `ENCOUNTER HINT (d20 ${d20}): a single wary traveler or patrol far off — cautious, not friendly, and easy to avoid`
-      : `ENCOUNTER HINT (d20 ${d20}): no new people. Use animals, weather, sounds, tracks, or distant lights.`;
-  }
-
-  if (risk === 'low') {
-    return d20 >= 15
-      ? `ENCOUNTER HINT (d20 ${d20}): one local or traveler appears, with their own business`
-      : `ENCOUNTER HINT (d20 ${d20}): nothing special happens; keep the turn quiet`;
-  }
-
-  if (risk === 'medium') {
-    return d20 >= 13
-      ? `ENCOUNTER HINT (d20 ${d20}): a minor NPC or small event appears`
-      : `ENCOUNTER HINT (d20 ${d20}): nothing special happens; keep the turn quiet`;
-  }
-
-  return d20 >= 10
-    ? `ENCOUNTER HINT (d20 ${d20}): a minor NPC or small event appears — crowds make this natural`
-    : `ENCOUNTER HINT (d20 ${d20}): nothing special happens; keep the turn quiet`;
-}
-

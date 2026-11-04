@@ -1,4 +1,6 @@
-import type { JutsuRecord } from './types';
+import { resolveEntity } from './entities';
+import { makeId } from './id';
+import type { AppDatabase, JutsuRecord, TurnDiff } from './types';
 
 export const JUTSU_NATURES = [
   'Fire',
@@ -106,4 +108,69 @@ export function countJutsuByNature(records: JutsuRecord[]) {
   }
 
   return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Recording jutsu from a turn
+// ---------------------------------------------------------------------------
+
+type JutsuDiff = NonNullable<TurnDiff['jutsuUsed']>[number];
+
+export function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
+  if (!jutsu?.name || typeof jutsu.name !== 'string' || !jutsu.user) {
+    return db;
+  }
+
+  const name = jutsu.name.trim();
+  const user = jutsu.user.trim();
+
+  if (!name || !user) {
+    return db;
+  }
+
+  const existingIndex = db.jutsuRecords.findIndex(
+    (item) =>
+      item.name.toLowerCase() === name.toLowerCase() &&
+      (item.user.toLowerCase() === user.toLowerCase() ||
+        resolveEntity(db, user)?.id === resolveEntity(db, item.user)?.id)
+  );
+
+  if (existingIndex === -1) {
+    const record = {
+      id: makeId('jutsu'),
+      name,
+      user,
+      chakraNature: normalizeJutsuNature(jutsu.chakraNature),
+      effect: jutsu.effect?.trim() || jutsu.description?.trim() || '',
+      visual: jutsu.visual?.trim() || '',
+      firstSeen: db.state.inStoryDate,
+      lastSeen: db.state.inStoryDate,
+      timesUsed: 1,
+      description: jutsu.description?.trim() || '',
+      tags: [],
+    };
+
+    return {
+      ...db,
+      jutsuRecords: [...db.jutsuRecords, record],
+    };
+  }
+
+  const jutsuRecords = [...db.jutsuRecords];
+  const existing = jutsuRecords[existingIndex];
+
+  jutsuRecords[existingIndex] = {
+    ...existing,
+    chakraNature: normalizeJutsuNature(jutsu.chakraNature ?? existing.chakraNature),
+    effect: jutsu.effect?.trim() || existing.effect,
+    visual: jutsu.visual?.trim() || existing.visual,
+    lastSeen: db.state.inStoryDate,
+    timesUsed: existing.timesUsed + 1,
+    description: jutsu.description?.trim() || existing.description,
+  };
+
+  return {
+    ...db,
+    jutsuRecords,
+  };
 }

@@ -6,6 +6,36 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 
 ---
 
+## 0. File map (`lib/rpg/`)
+
+| File | What lives there |
+|---|---|
+| `game.tsx` | `GameProvider`: the turn loop, undo/regenerate, slot switching |
+| `memoryJobs.ts` | `applyStateStep` (phase 1) and the summary job queue (phase 2) |
+| `services.ts` | `applyTurnDiff` (applies one `TurnDiff` by calling the modules below) and the model calls: `extractTurnDiff`, `summarizeScene`, `summarizeTimeSkip`, `rollArcSummary` |
+| `stateBlock.ts` | Reading the state model's reply: `parseJsonObject`, `convertStateBlock` (snake_case → `TurnDiff`) |
+| `entities.ts` | People/places: `resolveEntity`, identity groups, `resolveCharacterRefs`, `applyEntityDiff`, presence, `mergeDuplicateEntities`, `mergeEntityPair` |
+| `bonds.ts` | `applyBondDiff`: affinity, status, relationship stage, attraction |
+| `facts.ts` | `applyFactDiff`, `applyThreadDiff`, `recordSceneEvent` |
+| `clock.ts` | `applyClockChange` (date/elapsed/clock from the diff, ageing across years), `applyClockTick` (stall counter) |
+| `jutsu.ts` | Chakra natures, grouping, and `applyJutsuDiff` (the permanent jutsu library) |
+| `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
+| `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
+| `canonData.ts` | **Data only**: the 90 milestones (dates, place, who could know), canon types, courier tables, era order |
+| `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), news routing, world clock |
+| `prompt.ts` | Narrator and state prompts |
+| `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
+| `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
+| `db.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration, new saves, the canon cast |
+| `retrieval.ts` | Memory/fact/lore retrieval |
+| `romance.ts` | Hearts, lore locks, era notes |
+| `image*.ts`, `reference*.ts`, `portrait.ts` | Image pipeline |
+| `debug.ts` | Debug log (outside the save) |
+
+Dependency direction: `services.ts` → `entities/bonds/facts/clock/jutsu/log/stateBlock` → `util/calendar/characterRefs/id`. `canon.ts` → `canonData.ts`. The leaf modules never import `services.ts`.
+
+---
+
 ## 1. What the app is
 
 - A **client-only** interactive Naruto RPG/PWA. Player = **Kan** (original Uchiha-Uzumaki, ANBU-trained, missing-nin, age 13 at the start, same age as Itachi).
@@ -138,7 +168,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
-Note: the state model returns **snake_case** JSON matching `TURN_STATE_SCHEMA` (`lib/rpg/stateSchema.ts`): flat `location`, `time.elapsed`, `affinity_change`, `characters_present`, `character_updates`, `scene_ended`, `image_worthy`, `news_relayed`, `canon_completed`, … Strict mode means every field is always present, with `null` / `[]` for “unchanged”. `convertStateBlock` (services.ts) ignores those and translates the rest → `TurnDiff` camelCase. It still accepts the older nested `state: { location, … }` shape.
+Note: the state model returns **snake_case** JSON matching `TURN_STATE_SCHEMA` (`lib/rpg/stateSchema.ts`): flat `location`, `time.elapsed`, `affinity_change`, `characters_present`, `character_updates`, `scene_ended`, `image_worthy`, `news_relayed`, `canon_completed`, … Strict mode means every field is always present, with `null` / `[]` for “unchanged”. `convertStateBlock` (`stateBlock.ts`) ignores those and translates the rest → `TurnDiff` camelCase. It still accepts the older nested `state: { location, … }` shape.
 
 ---
 
@@ -151,12 +181,11 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 1. Validate API key and action text.
 2. Snapshot the database (undo).
 3. Append the player message to `rawLog`.
-4. `rollD20()` → encounter hint.
-5. `buildNarrationPrompt(db, action, d20)` → messages + estimated tokens. The narrator prompt contains **no JSON instructions and no canon ids**; it only asks for prose and for time, place, people and outcomes to be legible in it.
-6. **Call 1 — narrator.** `streamChatCompletion` (SSE) with the story model. Text streams to the screen live (`streamingText`, throttled to ~60 ms; `streamingPreview` hides anything from a stray ``` or `{"` onwards). Kan's line is shown meanwhile via `pendingAction`.
-7. `stripNarrationJson` runs once on the final text as a safety net only. If the finish reason is `length` or the prose ends mid-sentence, it is trimmed to the last complete sentence (`trimToSentence`). There is no continuation request.
-8. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
-9. **Call 2 — state.** `runStateStep(...)` starts in the background; the next turn, undo and regenerate wait for it.
+4. `buildNarrationPrompt(db, action)` → messages + estimated tokens. The narrator prompt contains **no JSON instructions and no canon ids**; it only asks for prose and for time, place, people and outcomes to be legible in it.
+5. **Call 1 — narrator.** `streamChatCompletion` (SSE) with the story model. Text streams to the screen live (`streamingText`, throttled to ~60 ms; `streamingPreview` hides anything from a stray ``` or `{"` onwards). Kan's line is shown meanwhile via `pendingAction`.
+6. `stripNarrationJson` runs once on the final text as a safety net only. If the finish reason is `length` or the prose ends mid-sentence, it is trimmed to the last complete sentence (`trimToSentence`). There is no continuation request.
+7. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
+8. **Call 2 — state.** `runStateStep(...)` starts in the background; the next turn, undo and regenerate wait for it.
 
 ### Saving a turn: two phases (`lib/rpg/memoryJobs.ts`)
 
@@ -164,7 +193,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
-3. `applyTurnDiff` (state/clock, entities, jutsu, bonds incl. romance, facts, threads, duplicate merge, scene events, presence, stall counter).
+3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), jutsu (`jutsu.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event, duplicate merge, presence, stall counter.
 4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
@@ -217,12 +246,13 @@ Each block is sent as a text part with `cache_control` for models that need expl
 5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
 6. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
 7. `formatMemories` — retrieved events (≤ retrieval limit, 400 chars each), skipping any that repeat a summary already in STORY SO FAR
-8. `formatStyleGuard` — overused words/phrases from the last 6 narrations
-9. `formatRecentMessages` — last `contextMessages` (default 16). The newest narration keeps its last 2200 chars; older narrations keep their **start and end** (`headAndTail`, 1400 chars: ~40% opening, ~60% ending); player input 500 the same way
-10. `formatLastBeat` — final 450 chars of the newest narration
-11. `formatEncounterConditions` + `formatGatedEncounterHint(d20)`
-12. `CONTINUITY` line + location kind
-13. `YOU (KAN) DO OR SAY: <action>`
+8. `formatRecentMessages` — last `contextMessages` (default 16). The newest narration keeps its last 2200 chars; older narrations keep their **start and end** (`headAndTail`, 1400 chars: ~40% opening, ~60% ending); player input 500 the same way
+9. `formatLastBeat` — final 450 chars of the newest narration
+10. `formatEncounterConditions` — place kind, hour and how crowded it is
+11. `CONTINUITY` line + location kind
+12. `YOU (KAN) DO OR SAY: <action>`
+
+There is no dice roll and no repeated-word list. Encounter frequency comes from the STYLE rule (rare, must fit the conditions, never two in a row) plus `ENCOUNTER CONDITIONS`; freshness comes from the STYLE rule against reusing descriptions and the `CONTINUITY` line. (Both blocks were removed: the roll added random events that fought canon pacing, and listing overused words put those words back in front of the model.)
 
 The current action appears **once** (it is excluded from the recent-message block).
 
@@ -249,7 +279,7 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - Events (memories) are created by `recordSceneEvent` (on `scene.ended`), by **every chapter summary** (`saveSummaryMemory` in `memoryJobs.ts`: tagged `summary`, linked to the characters it names, folding in the short scene-end events from the same stretch), time skips, and canon milestones.
 - Summaries: chapter summaries feed the arc summary; the latest arc plus the newest chapters feed the prompt. `storyMessagesSinceLastSummary` is the summarization cadence guard.
 
-### Entity identity resolution (`services.ts`)
+### Entity identity resolution (`entities.ts`)
 
 - `resolveEntity(db, name)` — exact name/alias → fuzzy word-boundary → identity-group fallback.
 - Identity groups: `masked-man`, `real-madara`, `pain`, `zetsu`.
@@ -268,20 +298,27 @@ The current action appears **once** (it is excluded from the recent-message bloc
 
 ---
 
-## 7. Canon engine (`lib/rpg/canon.ts`)
+## 7. Canon (`canonData.ts` + `canon.ts`)
 
-### Milestone shape
+Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the engine and never hard-codes an event.
+
+### Milestone shape (`canonData.ts`)
 
 ```ts
 {
   id, era, title, description, canonPoint?,
   from: {year, month, day?}, to?: {year, month, day?},
-  minScenes /* legacy, ignored */, facts: string[],
-  opensThreads?, resolvesThreadTitles?,
+  region?, location?,              // where it happens (defaults: "the shinobi world")
+  knowledge?,                      // public (default) | village | akatsuki | witnesses | secret
+  bearers?,                        // named confidants, only for secret events
+  major?, playerDriven?,
+  facts: string[],
   encounter?: { who, where, context },
-  attendanceFact?, major?, playerDriven?
+  attendanceFact?, opensThreads?, resolvesThreadTitles?
 }
 ```
+
+Everything about one event — when, where, who could know — sits in its one record. The courier tables (`BEARERS_BY_KNOWLEDGE`, `CHANNEL_BY_KNOWLEDGE`, `REGION_CHANNEL`) are also in `canonData.ts`.
 
 - **90 milestones** from the Uchiha massacre aftermath to the post-war epilogue.
 - Timeline spine: Kan/Itachi 13 at the massacre; Part 1 at 17–18; Shippuden 20–21; war 22–23.
@@ -290,7 +327,7 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - **Nothing fires during combat.** `advanceCanon(db, { inCombat })` (default: `state.scenePace` is `combat`/`chase`) does nothing but set `heldForCombat`; `applyStateStep` passes `inCombat = combat/chase pace && !scene_ended`. Everything due fires on the first turn after the fight.
 - Windows use the **real calendar** (`daysFromCivil`).
 
-### Scheduling (`advanceCanon`)
+### Scheduling (`advanceCanon` in `canon.ts`)
 
 - `baselineDate` prevents a backlog dump on load/import.
 - Milestones whose `to` closed before the baseline are marked completed **silently** (no journal entry) and tracked in `expired`.
@@ -321,6 +358,11 @@ The current action appears **once** (it is excluded from the recent-message bloc
 ---
 
 ## 8. Calendar, clock & pacing
+
+### `lib/rpg/clock.ts`
+
+- `applyClockChange(db, state)` applies the turn's `inStoryDate` / `elapsedSeconds` / `clockTime` (the step `resolveTurnClock` already chose) and ages characters without a birth year when the year changes.
+- `applyClockTick(db, diff)` keeps `turnsWithoutTimeChange` (prompt nudge only).
 
 ### `lib/rpg/calendar.ts`
 
@@ -389,8 +431,7 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
   - road: medium day, low evening, very-low night
   - wilderness: low day, none evening/night
   - structure: low day, none night
-- `formatGatedEncounterHint(db, d20)` suppresses strangers in isolated places at night; a high roll becomes a threat or canon figure, never a cheerful wanderer.
-- `formatEncounterConditions(db)` adds a one-line crowd/time hint with the clock.
+- `formatEncounterConditions(db)` adds a one-line crowd/time line with the clock (`ENCOUNTER CONDITIONS: wilderness, night (10:00 PM) — isolated …`). The narrator decides from that and the STYLE rule; there is no roll.
 
 ---
 
@@ -466,7 +507,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 ## 14. How to extend safely
 
 ### Add a canon milestone
-Add an object to `CANON_MILESTONES` in chronological position (order = prerequisite order), with a real date window, `minScenes`, facts, optional encounter, and `playerDriven` if it depends on Kan. Add a test that it opens on the right day.
+Add an object to `CANON_MILESTONES` in `canonData.ts` in chronological position (order = prerequisite order), with a real date window, `region`/`location`, `knowledge` (+ `bearers` if secret), facts, optional encounter, and `playerDriven` if it depends on Kan. No engine change is needed. Add a test that it opens on the right day.
 
 ### Add a canon cast member
 Add an entry to `CANON_CAST` in `canonCast.ts` (name, aliases without common words, birthday/birthYear counted from Kan's birth, role at year 13). Existing saves pick them up on next load.
@@ -481,7 +522,7 @@ Edit `paceCapSeconds` in `calendar.ts` and `inferScenePace` in `pacing.ts`. Upda
 Add a `formatX` function and insert it into the `buildDynamic` array. Keep it short and capped; respect the token guard.
 
 ### Add a state field
-`types.ts` → `db.normalizeState` default → `TURN_STATE_SCHEMA` (stateSchema.ts; add the key to `properties`, it is auto-required) + a rule line in `STATE_SYSTEM` → `convertStateBlock` → `applyTurnDiff` → tests.
+`types.ts` → `db.normalizeState` default → `TURN_STATE_SCHEMA` (stateSchema.ts; add the key to `properties`, it is auto-required) + a rule line in `STATE_SYSTEM` → `convertStateBlock` (`stateBlock.ts`) → the matching apply function (`services.ts` `applyStateDiff`, or `entities/bonds/facts/clock.ts`) → tests.
 
 ---
 
@@ -491,7 +532,8 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 |---|---|
 | Clock only moving by minutes | The story gave no time cue, so only the pace minimum applied. Check the narrator's TIME rules, `time` in the state reply, `scene_pace`, and `detectNarrationTime`; the player can fix a turn from its time chip. |
 | Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
-| Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
+| Too many / too few strangers | Check the STYLE encounter rule in `NARRATION_SYSTEM` and `formatEncounterConditions` / `classifyLocation`. |
+| Canon events not appearing | Check `canonProgress.completed` and the hidden World clock screen. World milestones need their date plus every earlier world milestone, and nothing fires mid-fight. Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
 | Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
 | JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
 | Wrong characters in images | The ACTION line is written fresh on tap by `writeImageAction` (memory model); cast comes from `sceneCast`. Check Settings → Debug → Image description. |
@@ -510,10 +552,11 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Duplicate characters (canon cast seeding and migration, ID roster in the state prompt, `is_new` gate, ID resolution, manual merge, whole-word name mentions)
 - Time parsing and clock arithmetic (seconds/minutes/days, leap years, month lengths)
 - Pacing caps and combat date blocking
+- Canon dataset (unique ids, ordered windows, secret events have bearers)
 - Canon scheduling (baseline, real dates, personal vs world, passed/completed, news/heard, couriers)
 - Romance persistence and lore era notes
 - Image brief/cast/action rules
-- Prompt composition (blocks, dedupe, style guard, budget)
+- Prompt composition (blocks, dedupe, no dice roll / style guard, encounter conditions, budget)
 - Token stability over 60 turns
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 

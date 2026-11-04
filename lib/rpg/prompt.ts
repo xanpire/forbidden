@@ -4,7 +4,6 @@ import { ROMANCE_RULES, eraNoteFor, loreProfileFor } from './romance';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
 import {
   activeCanonMilestones,
-  canonEnabled,
   recentCanonEvents,
   recentlyConcludedMilestones,
   upcomingCanonMilestones,
@@ -16,7 +15,6 @@ import {
 } from './canon';
 import {
   formatEncounterConditions,
-  formatGatedEncounterHint,
   locationKindOf,
 } from './encounters';
 import { estimateTokens } from '../openrouter';
@@ -25,13 +23,11 @@ import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
   AppDatabase,
-  BondRecord,
   EntityRecord,
   EventRecord,
   FactRecord,
   OpenRouterMessage,
   RawLogEntry,
-  ThreadRecord,
 } from './types';
 
 const MIN_SCENE_MESSAGES = 4;
@@ -59,7 +55,7 @@ STYLE
 - Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
 - 2-4 paragraphs of plain English: common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
 - Play out conversations, fights, and travel unless Kan asks to skip; compress uneventful travel into a paragraph or two.
-- Encounters are rare and follow the ENCOUNTER HINT and CONDITIONS; never mention the roll. When told no new people, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
+- Encounters are rare and must fit the ENCOUNTER CONDITIONS (place, hour, how crowded). Most turns bring no new people; when a place is isolated, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
 - New characters get a distinct name, age, role, personality, voice, look, and goals, within canon power levels.
 - In Kan's input, "quoted text" is spoken and *asterisks* are actions.
 
@@ -116,8 +112,7 @@ Write 100-150 words describing what happened meanwhile during the supplied time 
 
 export function buildNarrationPrompt(
   db: AppDatabase,
-  userMessage: string,
-  d20: number
+  userMessage: string
 ) {
   const withCurrent = getRecentMessages(db, db.settings.contextMessages + 1);
   const currentIsLast =
@@ -177,10 +172,9 @@ export function buildNarrationPrompt(
       formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
       formatMemories(freshMemories),
-      formatStyleGuard(db),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
-      `${formatEncounterConditions(db)}\n${formatGatedEncounterHint(db, d20)}`,
+      formatEncounterConditions(db),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
     ]
@@ -646,78 +640,9 @@ function formatUpcomingWorldBlock(db: AppDatabase) {
   return lines.join('\n');
 }
 
-const STYLE_STOP_WORDS = new Set([
-  'about', 'after', 'again', 'against', 'almost', 'along', 'already', 'also', 'although', 'always',
-  'another', 'around', 'because', 'before', 'behind', 'being', 'below', 'between', 'beyond',
-  'could', 'would', 'should', 'there', 'their', 'these', 'those', 'through', 'under', 'until',
-  'where', 'which', 'while', 'within', 'without', 'still', 'every', 'never', 'other', 'something',
-  'someone', 'nothing', 'little', 'moment', 'slowly', 'quietly', 'toward', 'towards', 'across',
-  'first', 'right', 'voice', 'hands', 'eyes', 'face', 'world', 'story', 'scene', 'narrator',
-  'you', 'your', 'yours', 'they', 'them', 'then', 'than', 'that', 'this', 'with', 'from', 'into',
-  'have', 'has', 'had', 'were', 'was', 'are', 'will', 'been', 'over', 'just', 'like', 'make', 'made',
-  'more', 'most', 'some', 'such', 'only', 'even', 'back', 'down', 'away', 'very', 'much', 'many',
-  'chakra', 'sharingan', 'kunai', 'shinobi', 'jutsu', 'anbu', 'akatsuki', 'hokage', 'hidden',
-  'leaf', 'rain', 'sand', 'mist', 'stone', 'cloud', 'sound',
-]);
-
-function formatStyleGuard(db: AppDatabase) {
-  const recent = db.rawLog
-    .filter((entry) => entry.kind === 'story' && entry.role === 'assistant')
-    .slice(-6)
-    .map((entry) => stripNarrationJson(entry.content).toLowerCase());
-
-  if (recent.length < 2) {
-    return '';
-  }
-
-  const nameWords = new Set(
-    db.entities.flatMap((entity) => entity.name.toLowerCase().split(/\s+/))
-  );
-  const wordCounts = new Map<string, number>();
-  const phraseCounts = new Map<string, number>();
-
-  for (const text of recent) {
-    const tokens = (text.match(/[a-z]{4,}/g) ?? []).filter(
-      (word) => !STYLE_STOP_WORDS.has(word) && !nameWords.has(word)
-    );
-
-    for (let index = 0; index < tokens.length; index += 1) {
-      const word = tokens[index];
-      wordCounts.set(word, (wordCounts.get(word) ?? 0) + 1);
-
-      if (index + 1 < tokens.length) {
-        const phrase = `${word} ${tokens[index + 1]}`;
-        phraseCounts.set(phrase, (phraseCounts.get(phrase) ?? 0) + 1);
-      }
-    }
-  }
-
-  const overusedWords = [...wordCounts.entries()]
-    .filter(([, count]) => count >= 3)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([word]) => word);
-
-  const overusedPhrases = [...phraseCounts.entries()]
-    .filter(([, count]) => count >= 2)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([phrase]) => phrase);
-
-  if (overusedWords.length === 0 && overusedPhrases.length === 0) {
-    return '';
-  }
-
-  const wordText = overusedWords.length > 0 ? `words: ${overusedWords.join(', ')}` : '';
-  const phraseText =
-    overusedPhrases.length > 0 ? `phrases: ${overusedPhrases.map((phrase) => `"${phrase}"`).join('; ')}` : '';
-
-  return `STYLE GUARD — recently overused, avoid this turn: ${[wordText, phraseText].filter(Boolean).join('. ')}. Choose fresh sensory detail.`;
-}
-
 function formatNewsBlock(db: AppDatabase) {
   // No news mid-fight, and only one piece per turn.
-  if (!canonEnabled(db) || isCombatPace(db.state.scenePace)) {
+  if (isCombatPace(db.state.scenePace)) {
     return '';
   }
 
@@ -751,10 +676,6 @@ function formatNewsBlock(db: AppDatabase) {
 }
 
 function formatCanonBlock(db: AppDatabase) {
-  if (!canonEnabled(db)) {
-    return '';
-  }
-
   const active = activeCanonMilestones(db).slice(0, 2);
   const upcoming = upcomingCanonMilestones(db, 1);
   const concluded = recentlyConcludedMilestones(db, 3);
@@ -816,10 +737,6 @@ function formatCanonBlock(db: AppDatabase) {
  * decides from the prose whether a beat played out or news was delivered.
  */
 function formatCanonTracking(db: AppDatabase) {
-  if (!canonEnabled(db)) {
-    return '';
-  }
-
   const lines: string[] = [];
 
   for (const milestone of activeCanonMilestones(db).slice(0, 2)) {
@@ -967,20 +884,6 @@ function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narra
   const label = audience === 'state' ? 'TIME BEFORE THIS TURN' : 'TIME';
 
   return `${label}\n${formatDate(db.state.inStoryDate)}${nudge}`;
-}
-
-export function formatEncounterHint(d20: number) {
-  let hint = 'nothing special happens; keep the turn quiet';
-
-  if (d20 >= 20) {
-    hint = 'a major canon event stirs — check the CANON TIMELINE and pull the nearest pending beat or world event into the scene if plausible';
-  } else if (d20 >= 17) {
-    hint = 'a named canon character appears, if plausible for the timeline';
-  } else if (d20 >= 13) {
-    hint = 'a minor NPC or small event appears';
-  }
-
-  return `ENCOUNTER HINT (d20 ${d20}): ${hint}`;
 }
 
 /**

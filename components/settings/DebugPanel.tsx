@@ -220,7 +220,7 @@ function TurnStepper({
             {index === 0 ? 'Latest turn' : `${index} turn${index === 1 ? '' : 's'} back`}
           </Text>
           <Text style={type.rowMeta}>
-            {`${formatTime(turn.startedAt)} · d20 ${turn.d20} · ${shortModel(turn.narratorModel)}`}
+            {`${formatTime(turn.startedAt)} · ${shortModel(turn.narratorModel)}`}
           </Text>
         </View>
         <Pressable

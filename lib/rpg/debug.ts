@@ -60,7 +60,6 @@ export type DebugTurn = {
   slotId: string;
   action: string;
   startedAt: number;
-  d20: number;
   narratorModel: string;
   prompt: OpenRouterMessage[] | null;
   promptEstimate: number;
@@ -232,7 +231,6 @@ export function clearDebugLog() {
 export function beginDebugTurn(input: {
   slotId: string;
   action: string;
-  d20: number;
   narratorModel: string;
   prompt: OpenRouterMessage[];
   promptEstimate: number;
@@ -243,7 +241,6 @@ export function beginDebugTurn(input: {
     slotId: input.slotId,
     action: input.action,
     startedAt: Date.now(),
-    d20: input.d20,
     narratorModel: input.narratorModel,
     // Keep the plain text only; the cache split is rebuilt every turn.
     prompt: input.prompt.map(({ role, content }) => ({ role, content })),

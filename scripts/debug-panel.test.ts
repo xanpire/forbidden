@@ -66,7 +66,7 @@ describe('debug log', () => {
   test('turn cost adds every call and flags missing costs', () => {
     clearDebugLog();
     const id = beginDebugTurn({
-      slotId: 's', action: 'a', d20: 10, narratorModel: 'm', prompt: [], promptEstimate: 1,
+      slotId: 's', action: 'a', narratorModel: 'm', prompt: [], promptEstimate: 1,
     });
     recordDebugCall(id, { kind: 'narrator', model: 'm', usage: usage(0.01) });
     linkDebugTurn(id, 'log_1');

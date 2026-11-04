@@ -27,10 +27,10 @@ import {
   applyTurnDiff,
   extractTurnDiff,
   rollArcSummary,
-  storyMessagesSinceLastSummary,
   summarizeScene,
   summarizeTimeSkip,
 } from './services';
+import { storyMessagesSinceLastSummary } from './log';
 import { detectNarrationTime } from './timeparse';
 import type {
   AppDatabase,

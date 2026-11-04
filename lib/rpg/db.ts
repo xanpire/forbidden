@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canon';
+import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canonData';
 import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';

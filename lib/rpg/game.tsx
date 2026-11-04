@@ -40,17 +40,10 @@ import {
   recordDebugState,
 } from './debug';
 import { streamChatCompletion } from '../openrouter';
-import {
-  appendStoryMessage,
-  cloneDatabase,
-  extractTurnDiff,
-  getLastExchange,
-  pushSnapshot,
-  restoreLastSnapshot,
-  rollD20,
-  trimToSentence,
-  mergeEntityPair,
-} from './services';
+import { extractTurnDiff } from './services';
+import { appendStoryMessage, cloneDatabase, getLastExchange, pushSnapshot, restoreLastSnapshot } from './log';
+import { mergeEntityPair } from './entities';
+import { trimToSentence } from './util';
 import {
   applyStateStep,
   applySummaryJob,
@@ -582,13 +575,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           0
         );
 
-        const d20 = rollD20();
-        const prompt = buildNarrationPrompt(withUser, action, d20);
+        const prompt = buildNarrationPrompt(withUser, action);
         setLastPromptTokens(prompt.estimatedTokens);
         debugTurnId = beginDebugTurn({
           slotId: current.meta.slotId,
           action,
-          d20,
           narratorModel: withUser.settings.narrationModel,
           prompt: prompt.messages,
           promptEstimate: prompt.estimatedTokens,
