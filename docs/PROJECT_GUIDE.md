@@ -232,7 +232,7 @@ The prompt is ordered from never-changing to changing-every-turn, so its front i
    - **TIME** — TIME block is the only date, relative time only, durations made explicit and honest.
    - **CANON** — never invent canon; news only through bearers; identity rules (masked man = Tobi = Obito = fake Madara, real Madara separate, mask breaks only in the war; Pain = Nagato's six bodies; Zetsu = one being).
    - **STYLE** — plain English, 2–4 paragraphs, no repeats, rare encounters, new characters, Kan's `"speech"` / `*action*` markers.
-   - **ROMANCE** (from `romance.ts`): lore-locked vs winnable, adults deflect under 17, explicit intimacy only 18+, rejection persists.
+   - **ROMANCE** (from `romance.ts`): lore-locked vs winnable, adults deflect under 17, explicit intimacy only 18+, rejections hold by default but can slowly thaw when the story earns it.
    - **OUTPUT** — prose only, changes legible in the prose.
 2. **Slow context** — `formatCharacterSheet`, `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatJutsu`, `formatThreads`, `formatBonds`, `formatTheDead` (everyone dead, flagged when Kan does not know yet). Changes only when a summary lands, a jutsu is used, a thread or bond moves.
 
@@ -458,7 +458,7 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 - `CHARACTER_LORE` holds canon devotions, accessibility (`winnable` / `lore-locked`) and orientation.
 - `ERA_NOTES` gives era-specific personality lines keyed by year (`eraKeyForYear`, `eraNoteFor`).
 - `ROMANCE_RULES` is injected into the narrator system prompt.
-- Bonds store relationship/attraction/romanceNote; rejections persist and are never reset.
+- Bonds store relationship/attraction/romanceNote; a rejection stays until the narrator moves it on (never from affinity alone); a winnable heart that rejected Kan can slowly change its mind over time.
 - Adult NPCs deflect while Kan is under 17; explicit intimacy only when both are 18+; the prompt instructs **never to censor** when ages permit.
 
 ---

@@ -324,7 +324,7 @@ export const ROMANCE_RULES = `ROMANCE
 - Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai→Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late). Friendship can still grow.
 - Winnable hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, originals) open only through long, consistent effort, never one kind act.
 - Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
-- Rejection is permanent: never reset, re-offer, or loop it.`;
+- A rejection holds by default: the refusal stands, and Kan pushing again only hardens it. It is not forever. Over a long stretch of in-story time and many scenes, someone who turned Kan down can change their mind as they truly come to know him: his real self behind the reserve, what he has done for them or others, or the power he keeps hidden. The change comes from their side, never soon after the refusal, never from repeated asking, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest). Lore-locked hearts and the age rules above still hold.`;
 export type EraKey = 'pre' | 'part1' | 'shippuden' | 'war' | 'after';
 
 export function eraKeyForYear(year: number): EraKey {

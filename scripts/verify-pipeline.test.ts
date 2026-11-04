@@ -853,6 +853,26 @@ describe('cross-era memory and romance', () => {
     );
   });
 
+  test('a rejection can slowly thaw when the story earns it', () => {
+    let db = loadSave();
+    db = applyTurnDiff(db, {
+      bonds: [{ character: 'Hana Inuzuka', relationship: 'rejected', attraction: 'none' }],
+    });
+    db = applyTurnDiff(db, {
+      bonds: [
+        {
+          character: 'Hana Inuzuka',
+          relationship: 'close',
+          attraction: 'warm',
+          romanceNote: 'Years on, she sees who he really is.',
+        },
+      ],
+    });
+    const bond = db.bonds.find((b) => b.characterName === 'Hana Inuzuka');
+    expect(bond?.relationship).toBe('close');
+    expect(bond?.attraction).toBe('warm');
+  });
+
   test('narration prompt carries canon, romance, and lore hearts', () => {
     let db = loadSave();
     db = applyTurnDiff(db, {
