@@ -19,10 +19,15 @@ import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
 import { applyJutsuDiff } from './jutsu';
 import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
-import { convertStateBlock, parseJsonObject } from './stateBlock';
+import { convertStateBlock, parseJsonObject, repairTruncatedJson } from './stateBlock';
 import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
 import { trimToSentence, uniqueList } from './util';
 import type { AppDatabase, CalendarDate, RawLogEntry, TurnDiff } from './types';
+
+/** Room for the state reply. Thinking tokens count against this too. */
+const STATE_MAX_TOKENS = 3000;
+/** A retry after the first reply hit the cap. */
+const STATE_RETRY_MAX_TOKENS = 4500;
 
 export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDatabase {
   if (!diff || typeof diff !== 'object') {
@@ -264,21 +269,61 @@ export async function extractTurnDiff(options: {
   const prompt = buildExtractionPrompt(db, userMessage, assistantMessage);
   recordDebugState(debugTurnId, { status: 'running' });
 
-  const result = await tracedChat('state', debugTurnId, {
+  const request: ChatRequest = {
     apiKey,
     model: db.settings.extractionModel,
     messages: prompt.messages,
     temperature: 0,
-    maxTokens: 1200,
+    // The schema asks for every field every turn, and any thinking the model
+    // does counts against this cap too. Too low and the JSON is cut off.
+    maxTokens: STATE_MAX_TOKENS,
     signal,
+    reasoning: { effort: 'low', exclude: true },
     jsonSchema: { name: TURN_STATE_SCHEMA_NAME, schema: TURN_STATE_SCHEMA },
-  });
+  };
 
-  const parsed = parseJsonObject(result.text);
-  recordDebugState(debugTurnId, { status: 'running', raw: result.text });
+  const first = await tracedChat('state', debugTurnId, request);
+  let raw = first.text;
+  let parsed = parseJsonObject(first.text);
+  let note: string | undefined;
 
-  // Unreadable reply: fall back to what the app can read from the prose
-  // itself (clock, pace) rather than blocking the turn.
+  // Unreadable reply: ask once more (with more room if it ran out), and if
+  // that fails too, salvage whatever complete part of either reply exists.
+  if (!parsed && !signal?.aborted) {
+    const cutOff = first.finishReason === 'length';
+    let second: Awaited<ReturnType<typeof tracedChat>> | null = null;
+
+    try {
+      second = await tracedChat('state', debugTurnId, {
+        ...request,
+        maxTokens: cutOff ? STATE_RETRY_MAX_TOKENS : STATE_MAX_TOKENS,
+      });
+    } catch {
+      // Fall through to repairing the first reply.
+    }
+
+    if (second) {
+      raw = `${first.text}\n\n--- retry ---\n\n${second.text}`;
+      parsed = parseJsonObject(second.text);
+    }
+
+    if (parsed) {
+      note = `First reply unreadable${cutOff ? ' (cut off at the token cap)' : ''}; the retry was read.`;
+    } else {
+      const repaired =
+        (second ? repairTruncatedJson(second.text) : null) ?? repairTruncatedJson(first.text);
+
+      if (repaired) {
+        parsed = repaired;
+        note = 'Reply was cut off; the complete part of it was applied.';
+      }
+    }
+  }
+
+  recordDebugState(debugTurnId, { status: 'running', raw, note });
+
+  // Still unreadable: the caller falls back to what the app can read from
+  // the prose itself (clock, pace, who is named, jutsu Kan called).
   if (!parsed) {
     return null;
   }

@@ -563,3 +563,79 @@ export function parseJsonObject(text: string): Record<string, unknown> | null {
 
   return null;
 }
+
+/**
+ * Salvages a JSON object that was cut off part-way (the reply hit its token
+ * cap). Walks back from the end to the last point where a value was complete,
+ * drops the half-written tail and closes every open array and object.
+ * Returns null if nothing usable is left.
+ */
+export function repairTruncatedJson(text: string): Record<string, unknown> | null {
+  const trimmed = text
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+  const start = trimmed.indexOf('{');
+
+  if (start === -1) {
+    return null;
+  }
+
+  const body = trimmed.slice(start);
+  // Cut points, newest last: [index to cut at, closers needed there].
+  const cuts: Array<[number, string]> = [];
+  const stack: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  const closers = () => stack.slice().reverse().join('');
+
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{' || char === '[') {
+      stack.push(char === '{' ? '}' : ']');
+      cuts.push([index + 1, closers()]);
+    } else if (char === '}' || char === ']') {
+      stack.pop();
+      cuts.push([index + 1, closers()]);
+
+      if (stack.length === 0) {
+        break;
+      }
+    } else if (char === ',') {
+      // Everything before the comma is a finished value.
+      cuts.push([index, closers()]);
+    }
+  }
+
+  for (let position = cuts.length - 1, tries = 0; position >= 0 && tries < 400; position -= 1, tries += 1) {
+    const [cut, close] = cuts[position];
+
+    try {
+      const parsed = JSON.parse(body.slice(0, cut) + close);
+
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Try an earlier cut.
+    }
+  }
+
+  return null;
+}

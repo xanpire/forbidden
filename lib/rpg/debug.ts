@@ -51,6 +51,8 @@ export type DebugStateStep = {
   diff?: TurnDiff | null;
   changes?: DebugChange[];
   error?: string;
+  /** How the reply was read when the first attempt failed (retry, repair). */
+  note?: string;
   at: number;
 };
 

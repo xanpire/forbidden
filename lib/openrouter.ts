@@ -692,6 +692,7 @@ export async function completeChat({
   signal,
   responseFormatJson = false,
   jsonSchema,
+  reasoning,
 }: ChatRequest): Promise<StreamResult> {
   if (!apiKey) {
     throw new Error('Add your OpenRouter API key in Settings first.');
@@ -703,7 +704,7 @@ export async function completeChat({
     temperature,
     max_tokens: maxTokens,
     stream: false,
-    reasoning: { exclude: true },
+    reasoning: { exclude: true, ...(reasoning ?? {}) },
     usage: { include: true },
   };
 
@@ -743,6 +744,7 @@ export async function completeChat({
         temperature,
         maxTokens,
         signal,
+        reasoning,
         responseFormatJson: true,
       });
     }
@@ -755,6 +757,7 @@ export async function completeChat({
         temperature,
         maxTokens,
         signal,
+        reasoning,
         responseFormatJson: false,
       });
     }
