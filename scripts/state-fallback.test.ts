@@ -15,7 +15,8 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { parseJsonObject, repairTruncatedJson } from '../lib/rpg/stateBlock';
-import { fallbackDiffFromProse, kanJutsuFromMessage, presentFromProse } from '../lib/rpg/proseFallback';
+import { fallbackDiffFromProse, kanJutsuFromMessage, preferPlayerJutsuNames, presentFromProse } from '../lib/rpg/proseFallback';
+import { applyTurnDiff } from '../lib/rpg/services';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_test', 'Test story'));
@@ -118,5 +119,95 @@ describe('state call retry', () => {
     expect(chat[0].max_tokens).toBe(3000);
     expect(chat[1].max_tokens).toBe(4500);
     expect(chat[0].reasoning).toEqual({ exclude: true, effort: 'low' });
+  });
+});
+
+describe('jutsu names stay as the player wrote them', () => {
+  test('custom style names are read from the message, any case', () => {
+    const db = seed();
+    expect(kanJutsuFromMessage(db, 'I use Fire Style: Hell on them.')).toEqual(['Fire Style: Hell']);
+    expect(kanJutsuFromMessage(db, 'I use fire style: Hell.')).toEqual(['fire style: Hell']);
+    expect(kanJutsuFromMessage(db, 'I slam my palms down. Lava Release: Rubber Wall!')).toEqual([
+      'Lava Release: Rubber Wall',
+    ]);
+    expect(kanJutsuFromMessage(db, 'I breathe out Katon: Gōkakyū no Jutsu.')).toEqual([
+      'Katon: Gōkakyū no Jutsu',
+    ]);
+  });
+
+  test('Style and Release are the same name', () => {
+    let db = seed();
+    db = applyTurnDiff(db, { jutsuUsed: [{ name: 'Fire Style: Hell', user: 'Kan' }] });
+    db = applyTurnDiff(db, { jutsuUsed: [{ name: 'Fire Release: Hell', user: 'Kan' }] });
+    const records = db.jutsuRecords.filter((record) => record.user === 'Kan' && /hell/i.test(record.name));
+    expect(records).toHaveLength(1);
+    expect(records[0].name).toBe('Fire Style: Hell');
+    expect(records[0].timesUsed).toBe(2);
+    expect(kanJutsuFromMessage(db, 'Again: Fire Release: Hell.')).toEqual(['Fire Style: Hell']);
+  });
+
+  test('a generic name from the state model is replaced by the player name', () => {
+    const db = seed();
+    const diff = preferPlayerJutsuNames(
+      db,
+      { jutsuUsed: [{ name: 'Fire Release', user: 'Kan', chakraNature: 'Fire', effect: 'a wall of flame' }] },
+      'I use Fire Style: Hell.'
+    );
+    expect(diff.jutsuUsed).toEqual([
+      { name: 'Fire Style: Hell', user: 'Kan', chakraNature: 'Fire', effect: 'a wall of flame' },
+    ]);
+  });
+
+  test('a jutsu the state model missed is added; others are untouched', () => {
+    const db = seed();
+    const diff = preferPlayerJutsuNames(
+      db,
+      { jutsuUsed: [{ name: 'Water Prison Jutsu', user: 'Kisame Hoshigaki' }] },
+      'I answer with Fire Style: Hell.'
+    );
+    expect(diff.jutsuUsed?.map((item) => item.name)).toEqual(['Water Prison Jutsu', 'Fire Style: Hell']);
+  });
+});
+
+describe('meeting someone', () => {
+  const unmet = (db: ReturnType<typeof seed>) =>
+    db.entities.find((entity) => entity.met === false && entity.status === 'Not yet met' && !entity.deceased)!;
+
+  test('first seen in a scene: "Newly met" and a bond', () => {
+    const db = seed();
+    const person = unmet(db);
+    const next = applyTurnDiff(db, { scene: { ended: false, entities: [person.name] } });
+    const after = next.entities.find((entity) => entity.id === person.id)!;
+    expect(after.met).toBe(true);
+    expect(after.status).toBe('Newly met');
+    expect(next.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
+  });
+
+  test('a failed state turn still meets who the prose shows', () => {
+    const db = seed();
+    const person = unmet(db);
+    const first = person.name.split(' ')[0];
+    const turnLogId = db.rawLog.filter((entry) => entry.role === 'assistant').at(-1)?.id ?? 'log_x';
+    const result = applyStateStep(
+      db,
+      null,
+      { turnLogId, userMessage: 'I wait.', narration: `${person.name} steps out of the rain. ${first} studies you.` },
+      new Set()
+    );
+    const after = result.db.entities.find((entity) => entity.id === person.id)!;
+    expect(after.status).toBe('Newly met');
+    expect(result.db.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
+  });
+
+  test('old saves with a met person stuck on "Not yet met" are repaired', () => {
+    const db = seed();
+    const person = unmet(db);
+    const broken = {
+      ...db,
+      entities: db.entities.map((entity) => (entity.id === person.id ? { ...entity, met: true } : entity)),
+    };
+    const fixed = normalizeDatabase(broken);
+    expect(fixed.entities.find((entity) => entity.id === person.id)?.status).toBe('Newly met');
+    expect(fixed.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
   });
 });

@@ -27,7 +27,7 @@ import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
-import { fallbackDiffFromProse } from './proseFallback';
+import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
   applyTurnDiff,
   extractTurnDiff,
@@ -229,7 +229,10 @@ export function applyStateStep(
 ): StateStepResult {
   // Unreadable state reply: still record who the prose shows and the jutsu
   // Kan called in his own message. Clock and pace come from the prose below.
-  const extraction = stateReply ?? fallbackDiffFromProse(latest, turn);
+  // Kan's jutsu always keep the names the player wrote.
+  const extraction = stateReply
+    ? preferPlayerJutsuNames(latest, stateReply, turn.userMessage)
+    : fallbackDiffFromProse(latest, turn);
   const beforeDate = latest.state.inStoryDate;
   const parsedTime = detectNarrationTime(turn.narration, beforeDate);
   const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;

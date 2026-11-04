@@ -11,6 +11,7 @@ import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
 import { ensureCanonCast } from './canonCast';
+import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import type { AppDatabase, MemoryIndex } from './types';
 
@@ -505,7 +506,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = normalizeDeaths(normalized);
+  const withDeaths = repairUnmetLabels(normalizeDeaths(normalized));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;

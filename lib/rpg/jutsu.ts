@@ -116,6 +116,30 @@ export function countJutsuByNature(records: JutsuRecord[]) {
 
 type JutsuDiff = NonNullable<TurnDiff['jutsuUsed']>[number];
 
+/**
+ * The key two jutsu names are compared by. "Style" and "Release" are the same
+ * word ("Fire Style: Hell" = "Fire Release: Hell"), and case, spacing and the
+ * colon don't matter.
+ */
+export function jutsuKey(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/\brelease\b/g, 'style')
+    .replace(/\s*:\s*/g, ': ')
+    .replace(/[\s,;.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The same name with "Style" and "Release" swapped, for finding it in text. */
+export function jutsuNameVariants(name: string) {
+  const swapped = /\bstyle\b/i.test(name)
+    ? name.replace(/\b(s)tyle\b/gi, (_, s: string) => (s === 'S' ? 'Release' : 'release'))
+    : name.replace(/\b(r)elease\b/gi, (_, r: string) => (r === 'R' ? 'Style' : 'style'));
+
+  return swapped === name ? [name] : [name, swapped];
+}
+
 export function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
   if (!jutsu?.name || typeof jutsu.name !== 'string' || !jutsu.user) {
     return db;
@@ -128,9 +152,10 @@ export function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
     return db;
   }
 
+  const key = jutsuKey(name);
   const existingIndex = db.jutsuRecords.findIndex(
     (item) =>
-      item.name.toLowerCase() === name.toLowerCase() &&
+      jutsuKey(item.name) === key &&
       (item.user.toLowerCase() === user.toLowerCase() ||
         resolveEntity(db, user)?.id === resolveEntity(db, item.user)?.id)
   );

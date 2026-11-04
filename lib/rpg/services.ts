@@ -16,7 +16,8 @@ import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharact
 import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
 import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
-import { applyJutsuDiff } from './jutsu';
+import { applyJutsuDiff, jutsuKey } from './jutsu';
+import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { convertStateBlock, parseJsonObject, repairTruncatedJson } from './stateBlock';
@@ -143,6 +144,9 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     };
   }
 
+  // Anyone seen for the first time this turn: "Newly met" and a bond.
+  next = settleNewlyMet(db, next);
+
   next = applyClockTick(next, diff);
   // After the clock: a bond the story set this turn cannot outlast canon.
   next = applyCanonEndgames(next);
@@ -172,16 +176,21 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (Array.isArray(state.jutsuAdded)) {
-    next.state.jutsu = uniqueList([
-      ...next.state.jutsu,
-      ...state.jutsuAdded.filter(Boolean),
-    ]).slice(-12);
+    // Same jutsu under "Style" or "Release": keep the name already listed.
+    const listed = new Set(next.state.jutsu.map(jutsuKey));
+    const added = state.jutsuAdded.filter((name) => {
+      if (!name || listed.has(jutsuKey(name))) {
+        return false;
+      }
+      listed.add(jutsuKey(name));
+      return true;
+    });
+    next.state.jutsu = uniqueList([...next.state.jutsu, ...added]).slice(-12);
   }
 
   if (Array.isArray(state.jutsuRemoved)) {
-    next.state.jutsu = next.state.jutsu.filter(
-      (jutsu) => !state.jutsuRemoved?.includes(jutsu)
-    );
+    const removed = new Set(state.jutsuRemoved.map(jutsuKey));
+    next.state.jutsu = next.state.jutsu.filter((jutsu) => !removed.has(jutsuKey(jutsu)));
   }
 
   if (Array.isArray(state.inventoryAdded)) {

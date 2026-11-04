@@ -5,6 +5,7 @@ import { dateSortValue } from './calendar';
 import { moveCharacterImages } from './characterPortrait';
 import { characterRefs } from './characterRefs';
 import { makeId } from './id';
+import { isPlaceholderStatus, NEWLY_MET_STATUS } from './met';
 import { uniqueList } from './util';
 import type { AppDatabase, EntityRecord, TurnDiff } from './types';
 
@@ -379,10 +380,15 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     role: known(keep.role) ?? drop.role,
     personality: known(keep.personality) ?? drop.personality,
     speechStyle: known(keep.speechStyle) ?? drop.speechStyle,
-    status:
-      keep.status && keep.status !== 'Not yet met' && keep.status !== 'Newly met'
-        ? keep.status
-        : (drop.status ?? keep.status),
+    // A real status beats a placeholder; between placeholders, having met
+    // them on either side wins over "Not yet met".
+    status: !isPlaceholderStatus(keep.status)
+      ? keep.status
+      : !isPlaceholderStatus(drop.status)
+        ? drop.status
+        : keep.met === false && drop.met === false
+          ? keep.status || drop.status
+          : NEWLY_MET_STATUS,
     notes: [keep.notes, drop.notes].filter(Boolean).join(' ').trim() || keep.notes,
     mood: known(keep.mood) ?? drop.mood,
     appearance: known(keep.appearance) ?? drop.appearance,
