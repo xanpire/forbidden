@@ -187,6 +187,8 @@ export type LoreRecord = {
   priority: number;
   text: string;
   enabled: boolean;
+  /** Narrator-only guidance; never shown in the Journal. */
+  hidden?: boolean;
 };
 
 export type SummaryRecord = {
@@ -269,6 +271,30 @@ export type AppDatabase = {
   state: GameState;
   indices: MemoryIndex;
   snapshots: TurnSnapshot[];
+  portraits?: PortraitRecord[];
+};
+
+export type PortraitOutfit = 'black' | 'akatsuki';
+
+export type PortraitExpression = 'calm' | 'grim' | 'angry' | 'tired' | 'warm' | 'sad';
+
+export type PortraitSetting = 'village' | 'wilds' | 'road' | 'indoors';
+
+export type PortraitSignature = {
+  age: number;
+  outfit: PortraitOutfit;
+  expression: PortraitExpression;
+  setting: PortraitSetting;
+};
+
+export type PortraitRecord = {
+  id: string;
+  /** Image reference (img:...) or a data URI on platforms without IndexedDB. */
+  image: string;
+  signature: PortraitSignature;
+  inStoryDate: CalendarDate;
+  location: string;
+  createdAt: number;
 };
 
 export type TurnSnapshot = {

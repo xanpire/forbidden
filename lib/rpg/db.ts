@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { CANON_MILESTONES, CANON_VERSION } from './canon';
+import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canon';
 import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
@@ -103,7 +103,7 @@ function trimDatabase(db: AppDatabase, maxImages: number, maxSnapshots: number):
   for (let index = db.rawLog.length - 1; index >= 0; index -= 1) {
     const entry = db.rawLog[index];
 
-    if (entry.image) {
+    if (entry.image?.startsWith('data:')) {
       imageIndexes.push(index);
     }
   }
@@ -111,7 +111,9 @@ function trimDatabase(db: AppDatabase, maxImages: number, maxSnapshots: number):
   const keepImages = new Set(imageIndexes.slice(0, maxImages));
 
   const rawLog = db.rawLog.map((entry, index) =>
-    entry.image && !keepImages.has(index) ? { ...entry, image: null } : entry
+    entry.image?.startsWith('data:') && !keepImages.has(index)
+      ? { ...entry, image: null }
+      : entry
   );
 
   return {
@@ -332,9 +334,10 @@ function migrateCanonV2(db: AppDatabase): AppDatabase {
   const canonThreadIds = new Set(
     (db.threads ?? []).filter((thread) => thread.id.startsWith('thread_canon_')).map((thread) => thread.id)
   );
-  const canonPoints = new Set(
-    CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]
-  );
+  const canonPoints = new Set([
+    ...(CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]),
+    ...LEGACY_CANON_POINTS,
+  ]);
   const canonEventIds = new Set(
     (db.events ?? [])
       .filter(
@@ -394,7 +397,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
-      canonProgress: db.settings?.canonProgress ?? DEFAULT_SETTINGS.canonProgress,
+      canonProgress: true,
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>
@@ -451,6 +454,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     state: normalizeState(db.state),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
+    portraits: Array.isArray(db.portraits)
+      ? db.portraits.filter((portrait) => portrait && typeof portrait.image === 'string')
+      : [],
   };
 
   normalized.indices = buildIndices(normalized);

@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronDown, RefreshCw, Search, X } from 'lucide-react-native';
+import { ChevronRight, RefreshCw, Search, X } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
@@ -82,21 +82,19 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
   });
 
   return (
-    <View style={styles.wrap}>
-      <Text style={styles.label}>{label}</Text>
+    <>
       <Pressable
-        accessibilityLabel={`${label} model`}
+        accessibilityHint={hint}
+        accessibilityLabel={`${label} model: ${value}`}
         accessibilityRole="button"
         onPress={() => setPickerVisible(true)}
-        style={({ pressed }) => [styles.select, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
       >
-        <View style={styles.selectCopy}>
-          <Text numberOfLines={1} style={styles.selectValue}>
-            {value}
-          </Text>
-          {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-        </View>
-        <ChevronDown color={colors.textMuted} size={18} strokeWidth={2} />
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text numberOfLines={1} style={styles.rowValue}>
+          {shortModelName(value)}
+        </Text>
+        <ChevronRight color={colors.textDim} size={16} strokeWidth={2} />
       </Pressable>
 
       <Modal
@@ -226,13 +224,37 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
           </View>
         </View>
       </Modal>
-    </View>
+    </>
   );
 }
 
+/** "anthropic/claude-sonnet-4" → "claude-sonnet-4" for the compact row. */
+function shortModelName(value: string) {
+  const name = value.split('/').pop() ?? value;
+  return name || 'Choose…';
+}
+
 const styles = StyleSheet.create({
-  wrap: {
-    gap: 7,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 52,
+    paddingLeft: spacing.lg,
+    paddingRight: 14,
+  },
+  rowLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.text,
+  },
+  rowValue: {
+    flex: 1,
+    textAlign: 'right',
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: colors.textMuted,
   },
   label: {
     fontFamily: fonts.semibold,

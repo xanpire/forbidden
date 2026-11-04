@@ -20,7 +20,7 @@ import { buildNarrationPrompt, splitNarrationAndDiff, stripNarrationJson } from 
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
@@ -751,17 +751,9 @@ describe('canon scheduler', () => {
     ).toBe(true);
   });
 
-  test('disabling canon progression freezes it', () => {
-    let db = loadSave();
-    db = {
-      ...db,
-      settings: { ...db.settings, canonProgress: false },
-      state: { ...db.state, canonProgress: { completed: [], active: [], engaged: [] } },
-    };
-
-    const next = advanceCanon(db);
-    expect(next.state.canonProgress?.completed).toEqual([]);
-    expect(next.events.length).toBe(db.events.length);
+  test('canon progression stays on even if an old save turned it off', () => {
+    const db = loadSave();
+    expect(canonEnabled({ ...db, settings: { ...db.settings, canonProgress: false } })).toBe(true);
   });
 });
 
@@ -1569,5 +1561,54 @@ describe('canon + clock integration', () => {
     db = applyTurnDiff(db, { state: { scenePace: 'travel' } });
     const round = normalizeDatabase(JSON.parse(JSON.stringify(db)));
     expect(round.state.scenePace).toBe('travel');
+  });
+});
+
+describe('portraits', () => {
+  test('mood text maps to a coarse expression, leading word first', async () => {
+    const { expressionFromMood } = await import('../lib/rpg/portrait');
+    expect(expressionFromMood('Numb, guarded, quietly exhausted')).toBe('tired');
+    expect(expressionFromMood('Guarded, numb')).toBe('grim');
+    expect(expressionFromMood('Furious and cold')).toBe('angry');
+    expect(expressionFromMood('Something unusual')).toBe('calm');
+  });
+
+  test('a portrait goes stale on outfit, age, expression or setting changes only', async () => {
+    const { portraitSignature, portraitStaleReason } = await import('../lib/rpg/portrait');
+    const db = seedDatabase('slot_portrait', 'Portrait');
+    const signature = portraitSignature(db);
+    const record = {
+      id: 'p1',
+      image: 'img:x',
+      signature,
+      inStoryDate: db.state.inStoryDate,
+      location: db.state.location,
+      createdAt: 0,
+    };
+
+    expect(portraitStaleReason(null, signature)).toBe('No portrait yet');
+    expect(portraitStaleReason(record, signature)).toBeNull();
+
+    const reworded = { ...db, state: { ...db.state, mood: 'Exhausted, numb, quiet' } };
+    expect(portraitStaleReason(record, portraitSignature(reworded))).toBeNull();
+
+    const cloaked = { ...db, state: { ...db.state, inventory: [...db.state.inventory, 'Akatsuki cloak'] } };
+    expect(portraitStaleReason(record, portraitSignature(cloaked))).toBe('Now wearing the Akatsuki cloak');
+
+    const older = { ...db, state: { ...db.state, inStoryDate: { ...db.state.inStoryDate, year: db.state.inStoryDate.year + 1 } } };
+    expect(portraitStaleReason(record, portraitSignature(older))).toBe(`Turned ${signature.age + 1}`);
+  });
+
+  test('saves keep image references and old portraits through normalize', () => {
+    const db = seedDatabase('slot_refs', 'Refs');
+    const withPortrait = {
+      ...db,
+      portraits: [
+        { id: 'p1', image: 'img:abc', signature: { age: 13, outfit: 'black' as const, expression: 'tired' as const, setting: 'wilds' as const }, inStoryDate: db.state.inStoryDate, location: 'x', createdAt: 1 },
+      ],
+    };
+    const normalized = normalizeDatabase(withPortrait);
+    expect(normalized.portraits?.length).toBe(1);
+    expect(normalized.portraits?.[0].image).toBe('img:abc');
   });
 });

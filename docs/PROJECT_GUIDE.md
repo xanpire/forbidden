@@ -398,18 +398,23 @@ The current action appears **once** (it is excluded from the recent-message bloc
   - only people named in ACTION may appear; unnamed extras in the brief are allowed;
   - cast comes from `state.sceneCast`, never same-day `lastSeen`.
 - `lib/openrouter.ts` `generateImage` posts to `https://openrouter.ai/api/v1/images` with `input_references: [{type:'image_url', image_url:{url}}]`, retrying with fewer references if the provider rejects them.
-- Images are generated **only when the player taps the image button** (`generateSceneImage` in `game.tsx`).
+- Images are generated **only when the player taps the image button** (`generateSceneImage` in `app/(tabs)/index.tsx`).
+- **Storage (`imageStore.ts`)**: images never live in the save. `storeImage` writes the data URI to IndexedDB (`kan-images`) and returns a short `img:<id>` reference that goes into `rawLog[].image` / `portraits[].image`. `loadImage` / `useStoredImage` resolve references (in-memory cache). On load, switch and import, `externalizeImages` migrates any inline data URIs from older saves. Export inlines images again (`inlineImages`) so save files stay self-contained. Without IndexedDB, `storeImage` returns the data URI unchanged.
+- **Portraits (`portrait.ts`)**: `portraitSignature(db)` reduces Kan to age, outfit (Akatsuki cloak in inventory), a coarse expression bucket from `state.mood`, and a setting bucket from `locationKind`. `portraitStaleReason(latest, current)` says why the latest portrait is outdated (outfit → age → expression → setting) or returns null. `buildPortraitPrompt` asks for a 3:4 head-and-shoulders portrait using the face sheet, the current outfit and the previous portrait as references. Portraits are generated only from the Kan tab's Refresh button and stored in `db.portraits` (last 24).
 
 ---
 
 ## 12. UI
 
 - `app/_layout.tsx` — fonts (Manrope), navigation, GameProvider, toasts, Android nav bar.
-- `app/(tabs)/index.tsx` — story feed, status chips (mood, location, date + sun/moon clock), world-event/news banner, composer with `"` speech and `*` action markers, image/undo/regenerate controls, fullscreen image viewer.
-- `characters.tsx` — Bonds: characters sorted by most recent contact, lore, mood, appearance, role, speech, age, trust, relationship/attraction.
-- `jutsu.tsx` — permanent jutsu grouped by chakra nature with filters.
-- `journal.tsx` — Story (threads), So far (summaries), World (world description, location, canon point, heard canon timeline, lore), Memories (events).
-- `settings.tsx` — API key, four model pickers (narration/summary/extraction/image), canon toggle, save slots (export/import/copy/rename/delete), version and credit.
+Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `components/List.tsx` (`SectionLabel`, `ListCard`, `ListRow`, `FilterPills`, `Segmented`) and the type tokens in `constants/theme.ts` (`sectionLabel`, `rowTitle` 15 bold, `rowBody` 13, `rowMeta` 12, `prose` 16) — use them for new screens instead of one-off styles.
+
+- `app/(tabs)/index.tsx` — Story: narration as plain prose, Kan's turns as tinted blocks (`*actions*` italic), header with clock/date/location (tap → status sheet with mood, date, scene), news strip, Image / Retry / Undo under the latest reply, single-row composer with `"` and `*` markers, fullscreen image viewer.
+- `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal switch.
+  - `BondsSection.tsx` — search + compact rows (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories).
+  - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
+  - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people). `titleAndBody` splits a summary into a short title and the rest.
+- `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, version and credit.
 
 ---
 

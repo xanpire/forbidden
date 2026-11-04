@@ -27,6 +27,7 @@ import {
   type StorageMeta,
 } from './db';
 import { makeId } from './id';
+import { externalizeImages, inlineImages, storeImage } from './imageStore';
 import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
 import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
 import { streamChatCompletion } from '../openrouter';
@@ -53,11 +54,28 @@ import type {
   AppDatabase,
   BondRecord,
   EventRecord,
+  PortraitSignature,
   Settings,
   SummaryRecord,
   ThreadRecord,
   TurnDiff,
 } from './types';
+
+/** Moves inline images into IndexedDB and saves, so localStorage only holds references. */
+async function withStoredImages(db: AppDatabase): Promise<AppDatabase> {
+  try {
+    const moved = await externalizeImages(db);
+
+    if (!moved) {
+      return db;
+    }
+
+    await saveSlot(moved);
+    return moved;
+  } catch {
+    return db;
+  }
+}
 
 function endsMidSentence(text: string) {
   const trimmed = text.trim();
@@ -93,7 +111,7 @@ type GameContextValue = {
   deleteSlotById: (slotId: string) => Promise<void>;
   duplicateSlotById: (slotId: string, slotName: string) => Promise<void>;
   renameSlotById: (slotId: string, slotName: string) => Promise<void>;
-  exportActiveSlot: () => string | null;
+  exportActiveSlot: () => Promise<string | null>;
   importSlot: (json: string, slotName?: string) => Promise<void>;
   updateBond: (bondId: string, patch: Partial<BondRecord>) => Promise<void>;
   updateThread: (threadId: string, patch: Partial<ThreadRecord>) => Promise<void>;
@@ -104,6 +122,7 @@ type GameContextValue = {
   ) => Promise<void>;
   deleteMemory: (eventId: string) => Promise<void>;
   attachImage: (logId: string, image: string) => Promise<void>;
+  addPortrait: (image: string, signature: PortraitSignature) => Promise<void>;
 };
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -138,7 +157,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    Promise.all([loadStorageMeta(), loadActiveSlot(), loadApiKey(), listSlots()])
+    Promise.all([
+      loadStorageMeta(),
+      loadActiveSlot().then(withStoredImages),
+      loadApiKey(),
+      listSlots(),
+    ])
       .then(([storageMeta, activeSlot, storedApiKey, allSlots]) => {
         if (!active) {
           return;
@@ -629,11 +653,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const switchSlotById = useCallback(
     async (slotId: string) => {
-      const next = await switchSlot(slotId);
+      const loaded = await switchSlot(slotId);
 
-      if (!next) {
+      if (!loaded) {
         return;
       }
+
+      const next = await withStoredImages(loaded);
 
       setDb(next);
       dbRef.current = next;
@@ -690,14 +716,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb, refreshSlots]
   );
 
-  const exportActiveSlot = useCallback(() => {
+  const exportActiveSlot = useCallback(async () => {
     const current = dbRef.current;
-    return current ? exportDatabase(current) : null;
+    return current ? exportDatabase(await inlineImages(current)) : null;
   }, []);
 
   const importSlot = useCallback(
     async (json: string, slotName?: string) => {
-      const imported = await importDatabase(json, slotName);
+      const imported = await withStoredImages(await importDatabase(json, slotName));
       setDb(imported);
       dbRef.current = imported;
       setMeta(await loadStorageMeta());
@@ -823,13 +849,44 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const rawLog = current.rawLog.map((entry) =>
-        entry.id === logId ? { ...entry, image } : entry
+      const stored = await storeImage(image);
+      const latest = dbRef.current ?? current;
+      const rawLog = latest.rawLog.map((entry) =>
+        entry.id === logId ? { ...entry, image: stored } : entry
       );
 
       await commitDb({
-        ...current,
+        ...latest,
         rawLog,
+      });
+    },
+    [commitDb]
+  );
+
+  const addPortrait = useCallback(
+    async (image: string, signature: PortraitSignature) => {
+      const current = dbRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const stored = await storeImage(image);
+      const latest = dbRef.current ?? current;
+
+      await commitDb({
+        ...latest,
+        portraits: [
+          ...(latest.portraits ?? []),
+          {
+            id: makeId('portrait'),
+            image: stored,
+            signature,
+            inStoryDate: latest.state.inStoryDate,
+            location: latest.state.location,
+            createdAt: Date.now(),
+          },
+        ].slice(-24),
       });
     },
     [commitDb]
@@ -872,6 +929,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       editMemory,
       deleteMemory,
       attachImage,
+      addPortrait,
     }),
     [
       apiKey,
@@ -879,6 +937,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       db,
       deleteMemory,
       attachImage,
+      addPortrait,
       deleteSlotById,
       duplicateSlotById,
       editMemory,
