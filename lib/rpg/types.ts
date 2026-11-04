@@ -283,6 +283,8 @@ export type CanonProgress = {
   engaged: string[];
   expired?: string[];
   heard?: Record<string, { from: string; date: CalendarDate }>;
+  /** True when the last advance was held back because Kan was mid-fight. */
+  heldForCombat?: boolean;
 };
 
 export type RelationshipStage =

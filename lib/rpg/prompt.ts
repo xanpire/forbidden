@@ -10,6 +10,8 @@ import {
   upcomingCanonMilestones,
   upcomingWorldMilestones,
   unheardCanonNews,
+  isCombatPace,
+  NEWS_PER_TURN,
   hasHeardNews,
 } from './canon';
 import {
@@ -49,7 +51,7 @@ TIME
 
 CANON
 - Canon happens on schedule unless Kan plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
-- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer and make clear who told him. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer and make clear who told him: at most one piece of news per turn, and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
 - The masked man, Tobi, Obito, and "the fake Madara" are one person. The Akatsuki know him as Madara; he never unmasks before Itachi or Kan, and Itachi dies believing it. Only those present when his mask breaks in the Fourth War, against Kakashi and Naruto, learn he is Obito. The real Madara is a separate character who appears later.
 - Pain is one entity, Nagato, acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
 
@@ -623,6 +625,10 @@ function formatLore(lore: AppDatabase['loreEntries']) {
 }
 
 function formatUpcomingWorldBlock(db: AppDatabase) {
+  if (isCombatPace(db.state.scenePace)) {
+    return '';
+  }
+
   const upcoming = upcomingWorldMilestones(db, 10);
 
   if (upcoming.length === 0) {
@@ -710,18 +716,19 @@ function formatStyleGuard(db: AppDatabase) {
 }
 
 function formatNewsBlock(db: AppDatabase) {
-  if (!canonEnabled(db)) {
+  // No news mid-fight, and only one piece per turn.
+  if (!canonEnabled(db) || isCombatPace(db.state.scenePace)) {
     return '';
   }
 
-  const news = unheardCanonNews(db, 3);
+  const news = unheardCanonNews(db, NEWS_PER_TURN);
 
   if (news.length === 0) {
     return '';
   }
 
   const lines = [
-    'NEWS & RUMORS (events Kan has NOT learned yet). When a bearer is present or Kan is where news travels, let it surface in dialogue or a report, and make clear who tells him.',
+    'NEWS & RUMORS (an event Kan has NOT learned yet; deliver at most this one this turn). When a bearer is present or Kan is where news travels, let it surface in dialogue or a report, and make clear who tells him. Never deliver any other world news.',
   ];
 
   for (const item of news) {
@@ -827,7 +834,9 @@ function formatCanonTracking(db: AppDatabase) {
     );
   }
 
-  for (const item of unheardCanonNews(db, 3)) {
+  const newsOffered = isCombatPace(db.state.scenePace) ? [] : unheardCanonNews(db, NEWS_PER_TURN);
+
+  for (const item of newsOffered) {
     lines.push(
       `- ${item.milestoneId}: ${truncate(item.title, 70)} (news Kan has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told Kan this turn.`
     );

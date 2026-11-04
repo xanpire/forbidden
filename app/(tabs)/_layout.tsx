@@ -55,6 +55,8 @@ export default function TabsLayout() {
       />
       {/* Bond detail lives inside the tabs so the tab bar stays visible; Kan stays highlighted. */}
       <Tabs.Screen name="bond/[id]" options={{ href: null }} />
+      {/* Hidden: long-press the clock on the Story tab. */}
+      <Tabs.Screen name="world-clock" options={{ href: null }} />
     </Tabs>
   );
 }

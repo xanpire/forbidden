@@ -492,6 +492,8 @@ export default function StoryScreen() {
           <Pressable
             accessibilityLabel="Show your status"
             accessibilityRole="button"
+            delayLongPress={700}
+            onLongPress={() => router.push('/world-clock')}
             onPress={() => setStatusOpen(true)}
             style={({ pressed }) => [styles.statusButton, pressed && styles.pressed]}
           >

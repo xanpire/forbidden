@@ -106,12 +106,13 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 {
   version: 3
   baselineDate: CalendarDate
-  baselineTurn: number          // assistant message count when canon was activated
+  baselineTurn: number          // legacy; no longer used (canon follows dates only)
   completed: string[]           // milestone ids (including expired/silent)
   active: string[]              // open encounter windows
   engaged: string[]             // personal beats started but not finished
   expired: string[]             // windows that closed before they could happen
   heard: Record<eventId, { from: string; date: CalendarDate }>
+  heldForCombat?: boolean       // last advance was held because Kan was mid-fight
 }
 ```
 
@@ -212,7 +213,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 1. `formatState` (date, place, mood, world, inventory, canon point)
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
-4. `formatNewsBlock` — up to 3 unheard events, major first, with location, bearers, courier channel, overdue escalation
+4. `formatNewsBlock` — the single next unheard event (none in combat), major first, with location, bearers, courier channel, overdue escalation
 5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
 6. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
 7. `formatMemories` — retrieved events (≤ retrieval limit, 400 chars each), skipping any that repeat a summary already in STORY SO FAR
@@ -275,7 +276,7 @@ The current action appears **once** (it is excluded from the recent-message bloc
 {
   id, era, title, description, canonPoint?,
   from: {year, month, day?}, to?: {year, month, day?},
-  minScenes, facts: string[],
+  minScenes /* legacy, ignored */, facts: string[],
   opensThreads?, resolvesThreadTitles?,
   encounter?: { who, where, context },
   attendanceFact?, major?, playerDriven?
@@ -285,14 +286,14 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - **90 milestones** from the Uchiha massacre aftermath to the post-war epilogue.
 - Timeline spine: Kan/Itachi 13 at the massacre; Part 1 at 17–18; Shippuden 20–21; war 22–23.
 - `playerDriven` = **personal beat** (join Akatsuki, missions, Team 3 reunions, war side, Edo Itachi, epilogue…). These **never auto-fire**; they fire when the narrator marks them.
-- World milestones fire on **date window + `minScenes` + prerequisites**, max **4 per turn**, with late catch-up.
+- World milestones fire on the **in-story date + prerequisites only** — never on turn counts. There is no per-turn cap: a long time skip fires everything that came due, each stamped with the day it happened (clamped to the save's baseline), not the day the clock caught up.
+- **Nothing fires during combat.** `advanceCanon(db, { inCombat })` (default: `state.scenePace` is `combat`/`chase`) does nothing but set `heldForCombat`; `applyStateStep` passes `inCombat = combat/chase pace && !scene_ended`. Everything due fires on the first turn after the fight.
 - Windows use the **real calendar** (`daysFromCivil`).
 
 ### Scheduling (`advanceCanon`)
 
-- `baselineDate` + `baselineTurn` prevent a backlog dump on load/import.
+- `baselineDate` prevents a backlog dump on load/import.
 - Milestones whose `to` closed before the baseline are marked completed **silently** (no journal entry) and tracked in `expired`.
-- `scene count = assistant turns since baseline` (not scene-end events).
 - Encounter windows go into `active`; the narrator can resolve them.
 - Personal beats appear in the prompt as pending offers with their id.
 
@@ -305,7 +306,8 @@ The current action appears **once** (it is excluded from the recent-message bloc
 ### News & rumors
 
 - Every fired world event is **unheard** until delivered.
-- `unheardCanonNews` returns up to 3, major first, with region/location/bearers/channel.
+- `unheardCanonNews` returns unheard events, major first, with region/location/bearers/channel.
+- **One piece of news per turn** (`NEWS_PER_TURN`): the narrator and the state tracker are shown only the next unheard item, and `markNewsHeard` accepts only one relay per turn. During combat no news (and no "rumors of what's coming") is offered at all.
 - Knowledge classes: `public`, `village`, `akatsuki`, `witnesses`, `secret`.
 - Channels: Akatsuki → Itachi’s crow / Konan’s paper butterfly / Zetsu; Leaf → hawk/courier; Sand → caravan; Mist → sailor; Cloud → runner; Stone → stone-route courier; Iron → samurai rider; public → merchant/crier/bounty board.
 - Major events unheard for 7+ in-story days are marked **OVERDUE** so the narrator delivers them through the courier channel.
@@ -431,6 +433,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
   - `BondsSection.tsx` — search + compact rows (people you have met; unmet canon cast is hidden) (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories, Merge with…).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people). `titleAndBody` splits a summary into a short title and the rest.
+- `app/(tabs)/world-clock.tsx` — hidden **World clock** (long-press the clock in the Story header; `href: null`, no tab). Read-only view of `worldClock(db)`: running/held-for-combat status, not heard yet (next in line first), due-but-waiting, queued with dates and days until, personal moments open to you, fired (with who told you), and missed beats. Contains spoilers by design.
 - `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
 - `components/settings/DebugPanel.tsx` — Settings → Debug. For each of the last 30 turns: the exact messages the narrator saw (newest 5 only; copyable), the state step's status, raw reply, applied diff and a field-by-field list of what changed in the save, and every call the turn made (narrator, state, summaries, images) with billed tokens, thinking/cached tokens, time and cost.
 

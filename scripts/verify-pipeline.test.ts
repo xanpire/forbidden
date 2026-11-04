@@ -24,7 +24,7 @@ import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/imag
 import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { formatEncounterHint } from '../lib/rpg/prompt';
-import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
+import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { PLACE_NAME_RULE, hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
@@ -2096,5 +2096,96 @@ describe('image model capabilities', () => {
     const prompt = buildSceneImagePrompt(db, [], 'Kan stands in the rain.');
     expect(prompt).not.toContain('Reference image');
     expect(prompt).toContain('black spiky hair');
+  });
+});
+
+describe('canon timing: dates only, combat holds, one news per turn', () => {
+  const baseline = { year: 13, month: 10, day: 1, hour: 22, minute: 0 };
+  const lateDate = { year: 16, month: 2, day: 1, hour: 8, minute: 0 };
+  const withProgress = (db: AppDatabase, date = lateDate): AppDatabase => ({
+    ...db,
+    rawLog: [],
+    state: {
+      ...db.state,
+      inStoryDate: date,
+      canonProgress: {
+        version: CANON_VERSION,
+        baselineDate: baseline,
+        baselineTurn: 0,
+        completed: [],
+        active: [],
+        engaged: [],
+      },
+    },
+  });
+
+  test('world events fire from the date alone, with zero turns played', () => {
+    const next = advanceCanon(withProgress(loadSave()));
+    expect(next.state.canonProgress?.completed).toContain('juzo-death');
+  });
+
+  test('a long time skip fires everything due, not a capped handful', () => {
+    const next = advanceCanon(withProgress(loadSave()));
+    const opened = CANON_MILESTONES.filter(
+      (m) => !m.playerDriven && m.from.year * 12 + m.from.month <= 16 * 12 + 2
+    );
+    expect(opened.length).toBeGreaterThan(4);
+    for (const m of opened) {
+      expect(next.state.canonProgress?.completed).toContain(m.id);
+    }
+  });
+
+  test('fired events are dated when they happened, not when the clock caught up', () => {
+    const next = advanceCanon(withProgress(loadSave()));
+    const juzo = CANON_MILESTONES.find((m) => m.id === 'juzo-death')!;
+    const event = next.events.find((e) => e.id === 'event_canon_juzo-death')!;
+    expect(event.inStoryDate.year).toBe(juzo.from.year);
+    expect(event.inStoryDate.month).toBe(juzo.from.month);
+  });
+
+  test('nothing fires or expires during combat; it all fires once the fight ends', () => {
+    const db = withProgress(loadSave());
+    const held = advanceCanon(db, { inCombat: true });
+    expect(held.state.canonProgress?.completed ?? []).toEqual([]);
+    expect(held.events.filter((e) => e.tags.includes('canon')).length).toBe(0);
+    expect(held.state.canonProgress?.heldForCombat).toBe(true);
+
+    const fromState = advanceCanon({ ...db, state: { ...db.state, scenePace: 'combat' } });
+    expect(fromState.state.canonProgress?.completed ?? []).toEqual([]);
+
+    const after = advanceCanon(held, { inCombat: false });
+    expect(after.state.canonProgress?.completed).toContain('juzo-death');
+    expect(after.state.canonProgress?.heldForCombat).toBe(false);
+  });
+
+  test('only one piece of news is marked heard per turn', () => {
+    const db = advanceCanon(withProgress(loadSave()));
+    const unheard = unheardCanonNews(db, 99);
+    expect(unheard.length).toBeGreaterThan(1);
+    const relayed = markNewsHeard(db, unheard.slice(0, 3).map((n) => ({ id: n.milestoneId, from: 'Kisame' })));
+    expect(unheardCanonNews(relayed, 99).length).toBe(unheard.length - NEWS_PER_TURN);
+  });
+
+  test('narrator is offered at most one piece of news, and none mid-fight', () => {
+    const db = advanceCanon(withProgress(loadSave()));
+    const calm = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'conversation' } }, '*Kan listens.*', 10)
+      .messages.map((m) => m.content).join('\n');
+    const block = calm.split('NEWS & RUMORS (')[1]?.split('\n\n')[0] ?? '';
+    expect(block.split('\n').filter((line) => line.startsWith('- ')).length).toBe(1);
+
+    const fight = buildNarrationPrompt({ ...db, state: { ...db.state, scenePace: 'combat' } }, '*Kan strikes.*', 10)
+      .messages.map((m) => m.content).join('\n');
+    expect(fight).not.toContain('NEWS & RUMORS (');
+    expect(fight).not.toContain("RUMORS OF WHAT'S COMING (");
+  });
+
+  test('world clock shows fired, unheard and queued events', () => {
+    const db = advanceCanon(withProgress(loadSave()));
+    const clock = worldClock(db);
+    expect(clock.fired.some((f) => f.milestone.id === 'juzo-death')).toBe(true);
+    expect(clock.unheard.length).toBeGreaterThan(0);
+    expect(clock.queued.length).toBeGreaterThan(0);
+    expect(clock.queued.every((q) => !q.milestone.playerDriven)).toBe(true);
+    expect(clock.queued.some((q) => q.milestone.id === 'war-begins')).toBe(true);
   });
 });

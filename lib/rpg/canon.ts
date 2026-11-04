@@ -10,6 +10,8 @@ export type CanonProgress = {
   engaged: string[];
   expired?: string[];
   heard?: Record<string, { from: string; date: CalendarDate }>;
+  /** True when the last advance was held back because Kan was mid-fight. */
+  heldForCombat?: boolean;
 };
 
 export type CanonThreadSeed = {
@@ -34,6 +36,7 @@ export type CanonMilestone = {
   canonPoint?: string;
   from: { year: number; month: number; day?: number };
   to?: { year: number; month: number; day?: number };
+  /** Legacy pacing hint. The scheduler ignores it: canon follows in-story dates only. */
   minScenes: number;
   facts: string[];
   opensThreads?: CanonThreadSeed[];
@@ -1512,6 +1515,27 @@ function normalizeProgress(db: AppDatabase): CanonProgress {
       progress.heard && typeof progress.heard === 'object'
         ? progress.heard
         : {},
+    heldForCombat: Boolean(progress.heldForCombat),
+  };
+}
+
+/** Kan is mid-fight (or mid-chase): the world holds its breath. */
+export function isCombatPace(pace: string | undefined): boolean {
+  return pace === 'combat' || pace === 'chase';
+}
+
+/** At most one piece of world news reaches Kan per turn. */
+export const NEWS_PER_TURN = 1;
+
+/** The in-story moment a milestone's window opens (08:00 on its first day). */
+export function milestoneOpensAt(milestone: CanonMilestone): CalendarDate {
+  return {
+    year: milestone.from.year,
+    month: milestone.from.month,
+    day: milestone.from.day ?? 1,
+    hour: 8,
+    minute: 0,
+    second: 0,
   };
 }
 
@@ -1598,13 +1622,17 @@ function addMissedFact(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
   };
 }
 
-function fireMilestone(db: AppDatabase, milestone: CanonMilestone): AppDatabase {
+function fireMilestone(
+  db: AppDatabase,
+  milestone: CanonMilestone,
+  happenedAt: CalendarDate = db.state.inStoryDate
+): AppDatabase {
   const now = Date.now();
   const event = {
     id: `event_canon_${milestone.id}`,
     chapter: db.state.chapter,
     scene: 'Canon event',
-    inStoryDate: db.state.inStoryDate,
+    inStoryDate: happenedAt,
     summary: `${milestone.title}: ${milestone.description}`.slice(0, 240),
     importance: (milestone.major ? 5 : 3) as 1 | 2 | 3 | 4 | 5,
     tags: ['canon', `canon-${milestone.id}`, milestone.era.toLowerCase()],
@@ -1639,7 +1667,7 @@ function fireMilestone(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
           type: 'event',
           text: factText.slice(0, 200),
           whoKnows: [],
-          validFrom: db.state.inStoryDate,
+          validFrom: happenedAt,
           validTo: null,
           confidence: 'confirmed',
           sourceEventId: null,
@@ -1820,7 +1848,15 @@ export function applyCanonMarks(
   return withProgress(next, progress);
 }
 
-export function advanceCanon(db: AppDatabase): AppDatabase {
+/**
+ * Moves the world forward to the current in-story date. Only the date decides
+ * what fires — never how many turns have been played. While Kan is in a fight
+ * nothing fires or expires; everything due waits until the fight is over.
+ */
+export function advanceCanon(
+  db: AppDatabase,
+  options: { inCombat?: boolean } = {}
+): AppDatabase {
   if (!canonEnabled(db)) {
     return db;
   }
@@ -1829,9 +1865,7 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
   let progress = normalizeProgress(next);
   const completed = new Set(progress.completed);
   const active = new Set(progress.active);
-  const assistantTurns = next.rawLog.filter(
-    (entry) => entry.kind === 'story' && entry.role === 'assistant'
-  ).length;
+  const inCombat = options.inCombat ?? isCombatPace(next.state.scenePace);
 
   const needsBaseline =
     progress.version !== CANON_VERSION || !progress.baselineDate;
@@ -1841,17 +1875,38 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
       ...progress,
       version: CANON_VERSION,
       baselineDate: next.state.inStoryDate,
-      baselineTurn: assistantTurns,
+      baselineTurn: 0,
     };
   }
+
+  if (inCombat) {
+    return withProgress(next, { ...progress, heldForCombat: true });
+  }
+
+  progress = { ...progress, heldForCombat: false };
 
   const baselineKey = progress.baselineDate
     ? windowKey(progress.baselineDate)
     : dateWindowKey(next.state.inStoryDate);
-  const scenes = Math.max(0, assistantTurns - (progress.baselineTurn ?? assistantTurns));
+  const baselineSort = dateSortValue(progress.baselineDate ?? next.state.inStoryDate);
+  const nowSort = dateSortValue(next.state.inStoryDate);
   const dateKey = dateWindowKey(next.state.inStoryDate);
-  const MAX_AUTO_FIRES_PER_TURN = 4;
-  let autoFired = 0;
+  // A world event is stamped with the day it happened, not the day Kan's
+  // clock caught up with it (clamped to the start of this save).
+  const happenedAt = (milestone: CanonMilestone): CalendarDate => {
+    const opens = milestoneOpensAt(milestone);
+    const sort = dateSortValue(opens);
+
+    if (sort > nowSort) {
+      return next.state.inStoryDate;
+    }
+
+    if (sort < baselineSort && progress.baselineDate) {
+      return progress.baselineDate;
+    }
+
+    return opens;
+  };
 
   for (let index = 0; index < CANON_MILESTONES.length; index += 1) {
     const milestone = CANON_MILESTONES[index];
@@ -1888,7 +1943,7 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
     }
 
     if (milestone.playerDriven) {
-      if (fromOpen && toOpen && scenes >= milestone.minScenes) {
+      if (fromOpen && toOpen) {
         continue;
       }
 
@@ -1906,18 +1961,12 @@ export function advanceCanon(db: AppDatabase): AppDatabase {
       continue;
     }
 
-    if (
-      fromOpen &&
-      scenes >= milestone.minScenes &&
-      prerequisitesMet(next, index, completed) &&
-      autoFired < MAX_AUTO_FIRES_PER_TURN
-    ) {
+    if (fromOpen && prerequisitesMet(next, index, completed)) {
       if (!next.events.some((event) => event.id === `event_canon_${milestone.id}`)) {
-        next = fireMilestone(next, milestone);
+        next = fireMilestone(next, milestone, happenedAt(milestone));
       }
 
       completed.add(milestone.id);
-      autoFired += 1;
       progress = { ...progress, completed: [...progress.completed, milestone.id] };
 
       if (milestone.encounter) {
@@ -2362,16 +2411,24 @@ export function markNewsHeard(
 
   const progress = normalizeProgress(db);
   const heard = { ...(progress.heard ?? {}) };
+  let delivered = 0;
 
   for (const relay of relays) {
+    // One piece of news per turn; anything else waits for a later turn.
+    if (delivered >= NEWS_PER_TURN) {
+      break;
+    }
+
     const eventId = relay.id.startsWith('event_canon_')
       ? relay.id
       : `event_canon_${relay.id}`;
     const event = db.events.find((item) => item.id === eventId);
 
-    if (!event) {
+    if (!event || heard[eventId]) {
       continue;
     }
+
+    delivered += 1;
 
     heard[eventId] = {
       from: relay.from?.trim() || 'a rumor',
@@ -2385,4 +2442,110 @@ export function markNewsHeard(
 export function hasHeardNews(db: AppDatabase, eventId: string): boolean {
   const progress = normalizeProgress(db);
   return Boolean(progress.heard?.[eventId]);
+}
+
+// ---------------------------------------------------------------------------
+// World clock: a read-only view of the scheduler for the hidden screen.
+// ---------------------------------------------------------------------------
+
+export type WorldClockFired = {
+  milestone: CanonMilestone;
+  date: CalendarDate;
+  heardFrom: string | null;
+  heardOn: CalendarDate | null;
+  expired: boolean;
+};
+
+export type WorldClockQueued = {
+  milestone: CanonMilestone;
+  opensAt: CalendarDate;
+  daysUntil: number;
+  /** Its date has arrived but it is waiting (a fight, or an earlier event). */
+  due: boolean;
+};
+
+export type WorldClock = {
+  now: CalendarDate;
+  heldForCombat: boolean;
+  inCombat: boolean;
+  fired: WorldClockFired[];
+  unheard: UnheardNews[];
+  queued: WorldClockQueued[];
+  offers: CanonMilestone[];
+  missed: CanonMilestone[];
+};
+
+export function worldClock(db: AppDatabase): WorldClock {
+  const progress = normalizeProgress(db);
+  const completed = new Set(progress.completed);
+  const expired = new Set(progress.expired ?? []);
+  const heard = progress.heard ?? {};
+  const now = db.state.inStoryDate;
+  const nowSort = dateSortValue(now);
+  const nowKey = dateWindowKey(now);
+
+  const fired: WorldClockFired[] = [];
+
+  for (const milestone of CANON_MILESTONES) {
+    if (milestone.playerDriven) {
+      continue;
+    }
+
+    const event = db.events.find((item) => item.id === `event_canon_${milestone.id}`);
+
+    if (!event && !completed.has(milestone.id)) {
+      continue;
+    }
+
+    const record = heard[`event_canon_${milestone.id}`];
+
+    fired.push({
+      milestone,
+      date: event?.inStoryDate ?? milestoneOpensAt(milestone),
+      heardFrom: record?.from ?? null,
+      heardOn: record?.date ?? null,
+      expired: expired.has(milestone.id) && !event,
+    });
+  }
+
+  fired.sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
+
+  const queued: WorldClockQueued[] = CANON_MILESTONES.filter(
+    (milestone) => !milestone.playerDriven && !completed.has(milestone.id)
+  ).map((milestone) => {
+    const opensAt = milestoneOpensAt(milestone);
+
+    return {
+      milestone,
+      opensAt,
+      daysUntil: Math.max(0, daysBetween(now, opensAt)),
+      due: dateSortValue(opensAt) <= nowSort,
+    };
+  });
+
+  const offers = CANON_MILESTONES.filter(
+    (milestone) =>
+      milestone.playerDriven &&
+      !completed.has(milestone.id) &&
+      nowKey >= windowKey(milestone.from) &&
+      (!milestone.to || nowKey <= windowKey(milestone.to))
+  );
+
+  const missed = CANON_MILESTONES.filter(
+    (milestone) =>
+      milestone.playerDriven &&
+      completed.has(milestone.id) &&
+      db.facts.some((fact) => fact.id === `fact_missed_${milestone.id}`)
+  );
+
+  return {
+    now,
+    heldForCombat: Boolean(progress.heldForCombat),
+    inCombat: isCombatPace(db.state.scenePace),
+    fired,
+    unheard: unheardCanonNews(db, 99),
+    queued,
+    offers,
+    missed,
+  };
 }

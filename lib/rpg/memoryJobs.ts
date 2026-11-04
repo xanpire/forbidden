@@ -17,7 +17,7 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
-import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
+import { NEWS_PER_TURN, advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
@@ -245,7 +245,9 @@ export function applyStateStep(
       turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
     },
   };
-  const relays = extraction?.newsRelayed ?? [];
+  // At most one piece of news per turn; nothing in the world fires mid-fight.
+  const relays = (extraction?.newsRelayed ?? []).slice(0, NEWS_PER_TURN);
+  const inCombat = isCombatPace(pace) && !sceneEnded;
 
   next = applyCanonMarks(
     next,
@@ -254,7 +256,7 @@ export function applyStateStep(
     extraction?.canonPassed ?? []
   );
   next = markNewsHeard(next, relays);
-  next = advanceCanon(next);
+  next = advanceCanon(next, { inCombat });
 
   let notice: string | null = null;
 
