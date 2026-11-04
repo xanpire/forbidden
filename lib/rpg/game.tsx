@@ -54,6 +54,7 @@ import {
   applyStateStep,
   applySummaryJob,
   carryOverMemory,
+  correctTurnTime as correctTurnTimeInDb,
   extractStateForJob,
   isJobValid,
   markJobFailed,
@@ -140,6 +141,8 @@ type GameContextValue = {
   ) => Promise<void>;
   deleteMemory: (eventId: string) => Promise<void>;
   attachImage: (logId: string, image: string) => Promise<void>;
+  /** Sets how many in-story seconds a reply took; the clock shifts to match. */
+  correctTurnTime: (logId: string, seconds: number) => Promise<void>;
   addPortrait: (image: string, signature: PortraitSignature) => Promise<void>;
 };
 
@@ -1025,6 +1028,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const correctTurnTime = useCallback(
+    async (logId: string, seconds: number) => {
+      const slotId = dbRef.current?.meta.slotId;
+
+      if (!slotId) {
+        return;
+      }
+
+      try {
+        await updateLatest(slotId, (latest) => correctTurnTimeInDb(latest, logId, seconds));
+      } catch {
+        setError('The time change could not be saved. Check your storage space and try again.');
+      }
+    },
+    [updateLatest]
+  );
+
   const addPortrait = useCallback(
     async (image: string, signature: PortraitSignature) => {
       const current = dbRef.current;
@@ -1142,6 +1162,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       editMemory,
       deleteMemory,
       attachImage,
+      correctTurnTime,
       addPortrait,
     }),
     [
@@ -1151,6 +1172,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       deleteMemory,
       attachImage,
       addPortrait,
+      correctTurnTime,
       deleteSlotById,
       duplicateSlotById,
       editMemory,

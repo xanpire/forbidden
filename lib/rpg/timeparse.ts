@@ -5,6 +5,8 @@ export type ParsedTime = {
   elapsedSeconds: number;
   clock?: { hour: number; minute: number };
   explicitDate?: CalendarDate;
+  /** A full night's sleep: the turn clock jumps to the next morning. */
+  sleptNight?: boolean;
 };
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -225,13 +227,12 @@ export function detectNarrationTime(text: string, current: CalendarDate): Parsed
   let elapsedSeconds = 0;
   let clock: { hour: number; minute: number } | undefined;
 
-  if (
-    /\b(a|one)\s+(good\s+)?night'?s?\s+(sleep|rest)\b|\bslept\s+(through\s+the\s+night|until\s+(dawn|morning|sunrise))\b/i.test(
+  // A full night's sleep jumps to morning (resolveTurnClock), so it adds no
+  // fixed hours here.
+  const sleptNight =
+    /\b(a|one)\s+(good\s+|full\s+|long\s+)?night'?s?\s+(sleep|rest)\b|\bslept\s+(through\s+the\s+night|until\s+(dawn|morning|sunrise))\b/i.test(
       text
-    )
-  ) {
-    elapsedSeconds = Math.max(elapsedSeconds, 8.5 * 3600);
-  }
+    );
 
   if (/\b(a\s+)?(short\s+rest|nap)\b|\bdosed\s+off\b/i.test(text)) {
     elapsedSeconds = Math.max(elapsedSeconds, 30 * 60);
@@ -297,15 +298,17 @@ export function detectNarrationTime(text: string, current: CalendarDate): Parsed
 
   const explicit = explicitDate(text, current);
 
+  const sleep = sleptNight ? { sleptNight: true } : {};
+
   if (explicit) {
-    return { elapsedSeconds, clock, explicitDate: explicit };
+    return { elapsedSeconds, clock, explicitDate: explicit, ...sleep };
   }
 
   if (nextDay && !clock) {
     clock = { hour: 7, minute: 0 };
   }
 
-  return { elapsedSeconds, clock };
+  return { elapsedSeconds, clock, ...sleep };
 }
 
 export function applyParsedTime(current: CalendarDate, parsed: ParsedTime): CalendarDate {

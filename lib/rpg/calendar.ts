@@ -191,6 +191,49 @@ export function advanceSeconds(date: CalendarDate, seconds: number): CalendarDat
   };
 }
 
+/** Compact elapsed time for the reply chip: "+15 s", "+2 min", "+1 h 30 min", "+2 d 4 h". */
+export function formatElapsed(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+
+  if (total < 60) {
+    return `+${total} s`;
+  }
+
+  if (total < SECONDS_PER_HOUR) {
+    return `+${Math.round(total / 60)} min`;
+  }
+
+  if (total < SECONDS_PER_DAY) {
+    const hours = Math.floor(total / SECONDS_PER_HOUR);
+    const minutes = Math.round((total % SECONDS_PER_HOUR) / 60);
+    return minutes > 0 && minutes < 60 ? `+${hours} h ${minutes} min` : `+${minutes === 60 ? hours + 1 : hours} h`;
+  }
+
+  const days = Math.floor(total / SECONDS_PER_DAY);
+  const hours = Math.round((total % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
+  return hours > 0 && hours < 24 ? `+${days} d ${hours} h` : `+${hours === 24 ? days + 1 : days} d`;
+}
+
+/** Seconds from `from` to `to` (negative when `to` is earlier). */
+export function secondsBetween(from: CalendarDate, to: CalendarDate) {
+  return dateSortValue(to) - dateSortValue(from);
+}
+
+/** Moves a date by any number of seconds, forward or back. */
+export function shiftSeconds(date: CalendarDate, seconds: number): CalendarDate {
+  const total = dateSortValue(date) + Math.round(seconds);
+  const dayNumber = Math.floor(total / SECONDS_PER_DAY);
+  const remainder = total - dayNumber * SECONDS_PER_DAY;
+
+  return {
+    ...date,
+    ...dayNumberToDate(dayNumber),
+    hour: Math.floor(remainder / SECONDS_PER_HOUR),
+    minute: Math.floor((remainder % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE),
+    second: remainder % SECONDS_PER_MINUTE,
+  };
+}
+
 export function setClock(
   date: CalendarDate,
   hour: number,

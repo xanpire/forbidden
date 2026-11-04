@@ -90,7 +90,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   location: string
   locationKind?: 'settlement' | 'road' | 'wilderness' | 'structure'
   inStoryDate: CalendarDate
-  turnsWithoutTimeChange?: number   // prompt nudge only; never advances the clock
+  turnsWithoutTimeChange?: number   // turns where only the pace minimum moved the clock; drives a prompt nudge
   canonPoint: string
   canonProgress?: CanonProgress
   chapter: number
@@ -163,7 +163,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 **Phase 1 — state step (`runStateStep` → `applyStateStep`)**, saved immediately:
 
 1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
-2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` (capped elapsed seconds, safe clock time, combat blocks date jumps).
+2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
 3. `applyTurnDiff` (state/clock, entities, jutsu, bonds incl. romance, facts, threads, duplicate merge, scene events, presence, stall counter).
 4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
 5. Queue follow-up jobs in `db.memoryJobs`:
@@ -211,7 +211,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 ### Dynamic user block (in order)
 
 1. `formatState` (date, place, mood, world, inventory, canon point)
-2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a stall nudge if `turnsWithoutTimeChange > 0`
+2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
 4. `formatNewsBlock` — up to 3 unheard events, major first, with location, bearers, courier channel, overdue escalation
 5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
@@ -319,7 +319,8 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - Real month lengths + leap years (`daysInMonth`, `isLeapYear`).
 - `daysFromCivil` / `civilFromDays` (proleptic Gregorian).
 - `advanceSeconds`, `shiftDate`, `setClock` (rolls to next day when the target time is earlier).
-- `daysBetween`, `dateSortValue` (full timestamp sort key), `sameDate`, `isBirthday`.
+- `daysBetween`, `dateSortValue` (full timestamp sort key), `secondsBetween`, `shiftSeconds` (forward or back), `sameDate`, `isBirthday`.
+- `formatElapsed(seconds)` — the reply chip label: `+15 s`, `+2 min`, `+1 h 30 min`, `+2 d 4 h`.
 - `calculateAge`, `formatClock` (AM/PM), `formatDate`, `formatShortDate`, `formatDay`, `formatStoryDate`, `timeOfDayOf`.
 - `paceCapSeconds(pace, sceneEnded)`:
   - combat 600 s (7200 if scene ends), chase 1800 s (7200),
@@ -329,7 +330,8 @@ The current action appears **once** (it is excluded from the recent-message bloc
 
 `detectNarrationTime(text, current)` returns `{ elapsedSeconds, clock?, explicitDate? }`:
 
-- Fixed phrases: heartbeat/instant (2 s), few seconds (5 s), short rest/nap (30 min), full night’s sleep (8.5 h), seconds of fighting (15 s).
+- Fixed phrases: heartbeat/instant (2 s), few seconds (5 s), short rest/nap (30 min), seconds of fighting (15 s).
+- A (good/full/long) night’s sleep or “slept through the night / until dawn” sets `sleptNight` instead of fixed hours.
 - Number + unit only when elapsed markers are present (`later`, `after`, `passed`, `of travel`, past-tense verbs). Ignores “three nights of flight”, “four months ago”, “watched for a week”, “two-day march”.
 - Exact clocks: `at 3:40 PM`, `03:40`, `at dawn/noon/dusk/midnight/nightfall`, “it is evening now”.
 - Explicit dates: “the fifth of October”, “October 5”, with real-month clamping and year rollover.
@@ -340,16 +342,32 @@ The current action appears **once** (it is excluded from the recent-message bloc
 ### `lib/rpg/pacing.ts`
 
 - `inferScenePace(text)` keyword fallback: combat → chase → downtime → travel → conversation.
-- `resolveElapsedSeconds({reportedSeconds, detectedSeconds, pace, sceneEnded})` = max(reported, detected) capped by pace.
-- `resolveTurnClock({reportedSeconds, detected, pace, sceneEnded, current})` — the single source of truth used by `game.tsx`; **combat/chase with an unfinished scene blocks explicit-date jumps and backward clock moves**.
+- `PACE_MINIMUM_SECONDS` / `paceMinimumSeconds(pace)`: combat 15 s, chase 1 min, conversation 2 min, downtime 10 min, travel 30 min (no pace → conversation).
+- `resolveElapsedSeconds({reportedSeconds, detectedSeconds, pace, sceneEnded})` = what the story says: max(reported, detected) capped by pace.
+- `secondsUntilMorning(current)` — seconds to the next 7:00; going to bed after 3 AM sleeps 8 h instead.
+- `resolveTurnClock({reportedSeconds, reportedClock, detected, pace, sceneEnded, current})` — the single source of truth used by `applyStateStep`. Returns `{ elapsedSeconds, minimumSeconds, storyTimed }`, where `elapsedSeconds` is the whole forward step:
+  - story time (capped) → then a stated hour (parser first, then the state model’s `clock_time`) on the day the story reached, or the next occurrence of that hour; an hour up to 60 min behind the clock is treated as a restatement of “now” and ignored;
+  - an explicit date jumps there when it is ahead of the clock;
+  - `sleptNight` jumps to the next morning (or later if the story says so);
+  - finally `max(minimum, that step)`, so the clock always moves forward;
+  - combat/chase with an unfinished scene: no date jumps, no backward hours, no sleep jump.
+- `storyTimed` is false when only the minimum moved the clock; it feeds `turnsWithoutTimeChange`.
+
+### Reply time chip
+
+- `applyStateStep` stores the seconds the turn actually moved the clock on the reply (`rawLog[].elapsedSeconds`).
+- Story shows it as a `+2 min` chip under each reply (`TimeChip` in `app/(tabs)/index.tsx`); tapping opens a sheet with presets (15 s … 3 days) and a custom amount in min / hours / days.
+- `correctTurnTime(db, logId, seconds)` (`memoryJobs.ts`, exposed as `useGame().correctTurnTime`) shifts the clock — and every later log entry’s `inStoryDate` — by the difference, marks the reply `timeCorrected`, and runs `advanceCanon` when time moved forward.
 
 ### Rules
 
-- **No automatic fallback**: if the narration and the narrator report no time, the clock does not move. `turnsWithoutTimeChange` only nudges the prompt.
-- Fights: seconds/minutes, never day skips.
-- Travel: only explicit/stated time (capped 3 days per turn).
-- Sleep/rest: parser advances to next morning / stated hours.
-- Conversation: no movement unless stated.
+Each turn, time passed = the largest of: what the narrator reports, what the text parser finds, or the minimum for the scene type.
+
+- Minimums: combat ~15 s, chase ~1 min, conversation ~2 min, downtime ~10 min, travel ~30 min.
+- Fights can’t skip days (10 min cap, 2 h once the scene ends; no date jumps).
+- Travel only skips days when the story says so (capped 3 days per turn); otherwise it moves the 30 min minimum.
+- A full night’s sleep jumps to morning.
+- A `+N min` chip under each reply; tap it to correct the time for that turn.
 
 ---
 
@@ -404,7 +422,7 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - `app/_layout.tsx` — fonts (Manrope), navigation, GameProvider, toasts, Android nav bar.
 Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `components/List.tsx` (`SectionLabel`, `ListCard`, `ListRow`, `FilterPills`, `Segmented`) and the type tokens in `constants/theme.ts` (`sectionLabel`, `rowTitle` 15 bold, `rowBody` 13, `rowMeta` 12, `prose` 16) — use them for new screens instead of one-off styles.
 
-- `app/(tabs)/index.tsx` — Story: narration as plain prose, Kan's turns as tinted blocks (`*actions*` italic), header with clock/date/location (tap → status sheet with mood, date, scene), news strip, Image / Retry / Undo under the latest reply, single-row composer with `"` and `*` markers, fullscreen image viewer.
+- `app/(tabs)/index.tsx` — Story: narration as plain prose, Kan's turns as tinted blocks (`*actions*` italic), header with clock/date/location (tap → status sheet with mood, date, scene), news strip, a `+N min` time chip under each reply (tap to correct), Image / Retry / Undo under the latest reply, single-row composer with `"` and `*` markers, fullscreen image viewer.
 - `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal switch.
   - `BondsSection.tsx` — search + compact rows (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
@@ -426,7 +444,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 1. **Never control Kan.** The narrator stops when the player must act.
 2. **The narrator writes prose only.** Never add JSON, field names or canon ids to the narrator prompt; state comes from the separate structured state call. `stripNarrationJson` / `streamingPreview` remain as safety nets. JSON must never appear in the chat.
 3. **Canon truth**: no invented canon event, funeral, death or date; only milestones/news/facts count.
-4. **No automatic time advance.** Clock changes only from narrator reports, the narration parser, or explicit clock/date fields.
+4. **Time always moves, by the largest of** the narrator’s report, the narration parser, or the scene-type minimum (combat 15 s, chase 1 min, conversation 2 min, downtime 10 min, travel 30 min). Every advance goes through `resolveTurnClock`, never forward-only hacks elsewhere; the player can correct any turn from its time chip.
 5. **Combat cannot skip days** around the player; the cap is enforced in `resolveTurnClock`.
 6. **Masked man identity** stays hidden until the war mask-break; real Madara is separate.
 7. **Pain/Nagato** are one entity; six paths are one.
@@ -461,7 +479,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 
 | Symptom | Likely cause / fix |
 |---|---|
-| Clock not moving | The prose gave no time cue and the state model reported none. Check the narrator's TIME rules, `time` in the state reply, and `detectNarrationTime`. |
+| Clock only moving by minutes | The story gave no time cue, so only the pace minimum applied. Check the narrator's TIME rules, `time` in the state reply, `scene_pace`, and `detectNarrationTime`; the player can fix a turn from its time chip. |
 | Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
 | Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
 | Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |

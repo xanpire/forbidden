@@ -84,6 +84,10 @@ export type RawLogEntry = {
   inStoryDate: CalendarDate;
   createdAt: number;
   image?: string | null;
+  /** In-story seconds this reply moved the clock (assistant story turns). */
+  elapsedSeconds?: number;
+  /** True once the player corrected elapsedSeconds by hand. */
+  timeCorrected?: boolean;
 };
 
 export type EntityRecord = {

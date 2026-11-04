@@ -26,6 +26,7 @@ import {
   Download,
   Image as ImageIcon,
   Moon,
+  Clock3,
   RotateCcw,
   Sparkles,
   Sun,
@@ -34,10 +35,16 @@ import {
 } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
-import { ListCard, ListRow, SectionLabel } from '@/components/List';
+import { FilterPills, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
-import { formatClock, formatDayMonth, formatStoryDate, timeOfDayOf } from '@/lib/rpg/calendar';
+import {
+  formatClock,
+  formatDayMonth,
+  formatElapsed,
+  formatStoryDate,
+  timeOfDayOf,
+} from '@/lib/rpg/calendar';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { streamingPreview, stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
@@ -55,7 +62,42 @@ type StoryMessage = {
   role: 'user' | 'assistant';
   content: string;
   image: string | null;
+  elapsedSeconds?: number;
 };
+
+const TIME_PRESETS: { value: string; label: string; seconds: number }[] = [
+  { value: '15', label: '15 s', seconds: 15 },
+  { value: '60', label: '1 min', seconds: 60 },
+  { value: '120', label: '2 min', seconds: 120 },
+  { value: '600', label: '10 min', seconds: 600 },
+  { value: '1800', label: '30 min', seconds: 1800 },
+  { value: '3600', label: '1 h', seconds: 3600 },
+  { value: '10800', label: '3 h', seconds: 10800 },
+  { value: '28800', label: '8 h', seconds: 28800 },
+  { value: '86400', label: '1 day', seconds: 86400 },
+  { value: '259200', label: '3 days', seconds: 259200 },
+];
+
+type TimeUnit = 'min' | 'h' | 'd';
+
+const UNIT_SECONDS: Record<TimeUnit, number> = { min: 60, h: 3600, d: 86400 };
+
+function TimeChip({ seconds, onPress }: { seconds: number; onPress: () => void }) {
+  const label = formatElapsed(seconds);
+
+  return (
+    <Pressable
+      accessibilityLabel={`This took ${label.slice(1)}. Tap to correct the time.`}
+      accessibilityRole="button"
+      hitSlop={6}
+      onPress={onPress}
+      style={({ pressed }) => [styles.timeChip, pressed && styles.pressed]}
+    >
+      <Clock3 color={colors.textDim} size={12} strokeWidth={2} />
+      <Text style={styles.timeChipLabel}>{label}</Text>
+    </Pressable>
+  );
+}
 
 function paragraphsOf(text: string) {
   return text
@@ -158,6 +200,7 @@ export default function StoryScreen() {
     regenerate,
     undoLastTurn,
     attachImage,
+    correctTurnTime,
   } = useGame();
   const { showToast } = useToast();
 
@@ -165,6 +208,9 @@ export default function StoryScreen() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [timeTarget, setTimeTarget] = useState<{ id: string; seconds: number } | null>(null);
+  const [customAmount, setCustomAmount] = useState('');
+  const [customUnit, setCustomUnit] = useState<TimeUnit>('min');
   const imageScale = useSharedValue(1);
   const imageTranslateX = useSharedValue(0);
   const imageTranslateY = useSharedValue(0);
@@ -192,6 +238,7 @@ export default function StoryScreen() {
             ? stripNarrationJson(message.content)
             : message.content,
         image: message.image ?? null,
+        elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
       }));
   }, [db]);
 
@@ -368,6 +415,26 @@ export default function StoryScreen() {
     );
   }
 
+  const openTimeSheet = (id: string, seconds: number) => {
+    setCustomAmount('');
+    setCustomUnit(seconds >= 86400 ? 'd' : seconds >= 3600 ? 'h' : 'min');
+    setTimeTarget({ id, seconds });
+  };
+
+  const applyTime = (seconds: number) => {
+    const target = timeTarget;
+    setTimeTarget(null);
+
+    if (target && Math.round(seconds) !== target.seconds) {
+      void correctTurnTime(target.id, seconds);
+    }
+  };
+
+  const customSeconds = (() => {
+    const amount = Number.parseFloat(customAmount.replace(',', '.'));
+    return Number.isFinite(amount) && amount >= 0 ? amount * UNIT_SECONDS[customUnit] : null;
+  })();
+
   const storyStarted = messages.length > 0;
   const state = db.state;
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
@@ -467,6 +534,12 @@ export default function StoryScreen() {
                 {message.image ? <SceneImage onOpen={openImage} value={message.image} /> : null}
                 {message.id === lastAssistantId && !isNarrating ? (
                   <View style={styles.inlineActions}>
+                    {message.elapsedSeconds !== undefined ? (
+                      <TimeChip
+                        onPress={() => openTimeSheet(message.id, message.elapsedSeconds ?? 0)}
+                        seconds={message.elapsedSeconds}
+                      />
+                    ) : null}
                     <InlineAction
                       busy={isGeneratingImage}
                       disabled={!apiKey}
@@ -483,6 +556,13 @@ export default function StoryScreen() {
                       icon={<Undo2 color={colors.textMuted} size={15} strokeWidth={2} />}
                       label="Undo"
                       onPress={() => void undoLastTurn()}
+                    />
+                  </View>
+                ) : message.elapsedSeconds !== undefined ? (
+                  <View style={styles.inlineActions}>
+                    <TimeChip
+                      onPress={() => openTimeSheet(message.id, message.elapsedSeconds ?? 0)}
+                      seconds={message.elapsedSeconds}
                     />
                   </View>
                 ) : null}
@@ -674,6 +754,75 @@ export default function StoryScreen() {
               label="Close"
               onPress={() => setStatusOpen(false)}
               style={styles.sheetClose}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setTimeTarget(null)}
+        transparent
+        visible={Boolean(timeTarget)}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            accessibilityLabel="Close time"
+            onPress={() => setTimeTarget(null)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <SectionLabel first>How long did this take?</SectionLabel>
+            <Text style={type.rowBody}>
+              {timeTarget ? `Now ${formatElapsed(timeTarget.seconds).slice(1)}. ` : ''}
+              Your clock moves by the difference.
+            </Text>
+            <FilterPills
+              onChange={(value) => {
+                const preset = TIME_PRESETS.find((item) => item.value === value);
+                if (preset) applyTime(preset.seconds);
+              }}
+              options={TIME_PRESETS}
+              value={
+                (TIME_PRESETS.find((item) => item.seconds === timeTarget?.seconds)?.value ??
+                  '') as string
+              }
+            />
+            <View style={styles.timeCustomRow}>
+              <TextInput
+                accessibilityLabel="Custom amount"
+                inputMode="decimal"
+                keyboardType="decimal-pad"
+                onChangeText={setCustomAmount}
+                onSubmitEditing={() => {
+                  if (customSeconds !== null) applyTime(customSeconds);
+                }}
+                placeholder="Amount"
+                placeholderTextColor={colors.textDim}
+                style={styles.timeCustomInput}
+                value={customAmount}
+              />
+              <FilterPills
+                onChange={setCustomUnit}
+                options={[
+                  { value: 'min', label: 'min' },
+                  { value: 'h', label: 'hours' },
+                  { value: 'd', label: 'days' },
+                ]}
+                value={customUnit}
+              />
+            </View>
+            <AppButton
+              disabled={customSeconds === null}
+              label="Set time"
+              onPress={() => {
+                if (customSeconds !== null) applyTime(customSeconds);
+              }}
+            />
+            <AppButton
+              label="Cancel"
+              onPress={() => setTimeTarget(null)}
               variant="secondary"
             />
           </View>
@@ -921,6 +1070,36 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 44,
     paddingHorizontal: 10,
+  },
+  timeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 44,
+    paddingHorizontal: 10,
+  },
+  timeChipLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.textDim,
+    fontVariant: ['tabular-nums'],
+  },
+  timeCustomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  timeCustomInput: {
+    width: 96,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    color: colors.text,
   },
   inlineActionLabel: {
     fontFamily: fonts.semibold,

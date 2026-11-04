@@ -14,7 +14,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
-import { advanceSeconds, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
+import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildExtractionPrompt, buildNarrationPrompt, splitNarrationAndDiff, streamingPreview, stripNarrationJson } from '../lib/rpg/prompt';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
@@ -1311,7 +1311,7 @@ describe('narration clock parsing', () => {
     expect(detectNarrationTime('Two days later, they reached the quarry.', current).elapsedSeconds).toBe(2 * 86400);
     expect(detectNarrationTime('They traveled for three days across the ridge.', current).elapsedSeconds).toBe(3 * 86400);
     expect(detectNarrationTime('A week passed before the rain stopped.', current).elapsedSeconds).toBe(7 * 86400);
-    expect(detectNarrationTime('A good night\'s sleep left him rested.', current).elapsedSeconds).toBe(30600);
+    expect(detectNarrationTime('A good night\'s sleep left him rested.', current).sleptNight).toBe(true);
     expect(detectNarrationTime('A short rest by the fire.', current).elapsedSeconds).toBe(1800);
     expect(detectNarrationTime('A heartbeat later, the blade was at his throat.', current).elapsedSeconds).toBe(2);
   });
@@ -1565,9 +1565,125 @@ describe('canon + clock integration', () => {
       current,
     });
 
+    // Capped at 600 s of fighting, then the stated hour (forward, same day) lands.
+    expect(fight.elapsedSeconds).toBe(2 * 3600);
+  });
+
+  test('every turn moves at least the pace minimum', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
+    const none = { elapsedSeconds: 0 };
+    const run = (pace: 'combat' | 'chase' | 'conversation' | 'downtime' | 'travel') =>
+      resolveTurnClock({ reportedSeconds: 0, detected: none, pace, sceneEnded: false, current });
+
+    expect(run('combat').elapsedSeconds).toBe(15);
+    expect(run('chase').elapsedSeconds).toBe(60);
+    expect(run('conversation').elapsedSeconds).toBe(120);
+    expect(run('downtime').elapsedSeconds).toBe(600);
+    expect(run('travel').elapsedSeconds).toBe(1800);
+    expect(run('conversation').storyTimed).toBe(false);
+  });
+
+  test('the largest of reported, parsed and minimum wins', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
+    const result = resolveTurnClock({
+      reportedSeconds: 300,
+      detected: { elapsedSeconds: 900 },
+      pace: 'conversation',
+      sceneEnded: false,
+      current,
+    });
+    expect(result.elapsedSeconds).toBe(900);
+    expect(result.storyTimed).toBe(true);
+  });
+
+  test('fights cannot skip days, travel only when the story says so', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
+    const fight = resolveTurnClock({
+      reportedSeconds: 3 * 86400,
+      detected: { elapsedSeconds: 0 },
+      pace: 'combat',
+      sceneEnded: false,
+      current,
+    });
     expect(fight.elapsedSeconds).toBe(600);
-    expect(fight.explicitDate).toBeUndefined();
-    expect(fight.clock).toEqual({ hour: 20, minute: 0 });
+
+    const quietRoad = resolveTurnClock({
+      reportedSeconds: 0,
+      detected: { elapsedSeconds: 0 },
+      pace: 'travel',
+      sceneEnded: false,
+      current,
+    });
+    expect(quietRoad.elapsedSeconds).toBe(1800);
+
+    const longRoad = resolveTurnClock({
+      reportedSeconds: 2 * 86400,
+      detected: { elapsedSeconds: 0 },
+      pace: 'travel',
+      sceneEnded: false,
+      current,
+    });
+    expect(longRoad.elapsedSeconds).toBe(2 * 86400);
+  });
+
+  test('a full night of sleep jumps to the next morning', () => {
+    const late = { year: 13, month: 10, day: 4, hour: 22, minute: 30, second: 0 };
+    const parsed = detectNarrationTime('After a full night\'s sleep, the fire is cold.', late);
+    const result = resolveTurnClock({
+      reportedSeconds: 0,
+      detected: parsed,
+      pace: 'conversation',
+      sceneEnded: false,
+      current: late,
+    });
+    const wake = advanceSeconds(late, result.elapsedSeconds);
+    expect(wake.day).toBe(5);
+    expect(wake.hour).toBe(7);
+    expect(wake.minute).toBe(0);
+  });
+
+  test('a restated current hour does not roll the clock a day', () => {
+    const current = { year: 13, month: 10, day: 4, hour: 15, minute: 45, second: 0 };
+    const result = resolveTurnClock({
+      reportedSeconds: 0,
+      detected: { elapsedSeconds: 0, clock: { hour: 15, minute: 40 } },
+      pace: 'conversation',
+      sceneEnded: false,
+      current,
+    });
+    expect(result.elapsedSeconds).toBe(120);
+  });
+
+  test('a reply time correction shifts the clock by the difference', async () => {
+    const { correctTurnTime } = await import('../lib/rpg/memoryJobs');
+    const base = loadSave();
+    const db = {
+      ...base,
+      rawLog: [
+        {
+          id: 'reply_1',
+          turn: 1,
+          kind: 'story' as const,
+          role: 'assistant' as const,
+          content: 'x',
+          model: null,
+          promptTokens: 0,
+          completionTokens: 0,
+          chapter: 1,
+          scene: 'x',
+          inStoryDate: base.state.inStoryDate,
+          createdAt: 0,
+          elapsedSeconds: 120,
+        },
+      ],
+    };
+    const corrected = correctTurnTime(db, 'reply_1', 3600);
+    expect(corrected).not.toBeNull();
+    expect(corrected!.rawLog[0].elapsedSeconds).toBe(3600);
+    expect(dateSortValue(corrected!.state.inStoryDate) - dateSortValue(db.state.inStoryDate)).toBe(3480);
+
+    const back = correctTurnTime(corrected!, 'reply_1', 15);
+    expect(dateSortValue(back!.state.inStoryDate) - dateSortValue(db.state.inStoryDate)).toBe(-105);
   });
 
   test('scenePace survives an export/import round trip', () => {

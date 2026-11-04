@@ -937,8 +937,8 @@ function formatLastBeat(messages: RawLogEntry[]) {
 function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narrator') {
   const stalled = db.state.turnsWithoutTimeChange ?? 0;
   const nudge =
-    audience === 'narrator' && stalled >= 1
-      ? ' — several beats have passed without the clock moving; let time advance naturally.'
+    audience === 'narrator' && stalled >= 2
+      ? ' — the last few beats never said how long they took; say plainly how much time passes.'
       : '';
 
   const label = audience === 'state' ? 'TIME BEFORE THIS TURN' : 'TIME';

@@ -18,7 +18,7 @@
  * to no longer exists (undo, regenerate).
  */
 import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
-import { daysBetween } from './calendar';
+import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
@@ -209,27 +209,41 @@ export function applyStateStep(
   const sceneEnded = extraction?.scene?.ended ?? false;
   const clock = resolveTurnClock({
     reportedSeconds,
+    reportedClock: extraction?.state?.clockTime,
     detected: parsedTime,
     pace,
     sceneEnded,
     current: beforeDate,
   });
 
-  let effectiveDiff = extraction;
+  // The clock always moves: resolveTurnClock folds the reported time, the
+  // parsed time and the pace minimum into one forward step.
+  const merged = { ...(extraction ?? {}) };
+  merged.state = {
+    ...(merged.state ?? {}),
+    elapsedSeconds: clock.elapsedSeconds,
+    scenePace: merged.state?.scenePace ?? pace,
+    clockTime: undefined,
+    inStoryDate: undefined,
+  };
+  const effectiveDiff: TurnDiff = merged;
 
-  if (clock.elapsedSeconds > 0 || clock.clock || clock.explicitDate || pace) {
-    const merged = { ...(extraction ?? {}) };
-    merged.state = {
-      ...(merged.state ?? {}),
-      elapsedSeconds: clock.elapsedSeconds,
-      scenePace: merged.state?.scenePace ?? pace,
-      clockTime: clock.clock ?? merged.state?.clockTime,
-      inStoryDate: clock.explicitDate ?? merged.state?.inStoryDate,
-    };
-    effectiveDiff = merged;
-  }
+  let next = applyTurnDiff(latest, effectiveDiff);
+  const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
+  const stalled = latest.state.turnsWithoutTimeChange ?? 0;
 
-  let next = effectiveDiff ? applyTurnDiff(latest, effectiveDiff) : latest;
+  next = {
+    ...next,
+    // The chip under the reply shows this, and tapping it corrects it.
+    rawLog: next.rawLog.map((entry) =>
+      entry.id === turn.turnLogId ? { ...entry, elapsedSeconds: appliedSeconds } : entry
+    ),
+    state: {
+      ...next.state,
+      // Counts turns where only the pace minimum moved the clock.
+      turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
+    },
+  };
   const relays = extraction?.newsRelayed ?? [];
 
   next = applyCanonMarks(
@@ -288,6 +302,42 @@ export function applyStateStep(
   }
 
   return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
+}
+
+/**
+ * Sets how much time a past reply took (the "+2 min" chip). The clock, and
+ * every later entry's timestamp, shifts by the difference. Pure.
+ */
+export function correctTurnTime(db: AppDatabase, logId: string, seconds: number): AppDatabase | null {
+  const index = db.rawLog.findIndex((entry) => entry.id === logId);
+  const entry = db.rawLog[index];
+
+  if (!entry || entry.role !== 'assistant') {
+    return null;
+  }
+
+  const target = Math.max(0, Math.min(30 * 86400, Math.round(seconds)));
+  const delta = target - (entry.elapsedSeconds ?? 0);
+
+  if (delta === 0) {
+    return null;
+  }
+
+  const nextDate = shiftSeconds(db.state.inStoryDate, delta);
+  let next = applyTurnDiff(db, { state: { inStoryDate: nextDate } });
+
+  next = {
+    ...next,
+    rawLog: next.rawLog.map((item, position) =>
+      position === index
+        ? { ...item, elapsedSeconds: target, timeCorrected: true }
+        : position > index
+          ? { ...item, inStoryDate: shiftSeconds(item.inStoryDate, delta) }
+          : item
+    ),
+  };
+
+  return delta > 0 ? advanceCanon(next) : next;
 }
 
 /**
