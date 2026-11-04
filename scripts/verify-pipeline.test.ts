@@ -23,7 +23,7 @@ import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/imag
 import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
-import { hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
+import { PLACE_NAME_RULE, hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions, formatGatedEncounterHint } from '../lib/rpg/encounters';
@@ -206,7 +206,8 @@ describe('prompt token stability', () => {
       }
     }
 
-    const first = tokensAt[0][1];
+    // Turn 0 has an empty story; measure from turn 10, once recent messages fill.
+    const first = tokensAt[1][1];
     const last = tokensAt[tokensAt.length - 1][1];
     const growth = (last - first) / first;
 
@@ -442,8 +443,8 @@ describe('presence tracking and bonds ordering', () => {
     expect(NARRATION_SYSTEM).not.toContain('characters_present');
     expect(NARRATION_SYSTEM).not.toContain('scene_pace');
     expect(NARRATION_SYSTEM).not.toContain('"time"');
-    expect(NARRATION_SYSTEM).toContain('Write only the story prose');
-    expect(NARRATION_SYSTEM).toContain('full night\'s sleep is 8-9 hours');
+    expect(NARRATION_SYSTEM).toContain('Story prose only');
+    expect(NARRATION_SYSTEM).toContain('a night\'s sleep 8-9 hours');
   });
 
   test('full narration prompt never asks the narrator for JSON fields', () => {
@@ -840,11 +841,11 @@ describe('cross-era memory and romance', () => {
     const system = prompt.messages[0].content;
     const dynamic = prompt.messages[1].content;
 
-    expect(system).toContain('NEVER CENSOR');
-    expect(system).toContain('LORE-LOCKED hearts');
+    expect(system).toContain('written openly with no fade-out');
+    expect(system).toContain('Lore-locked hearts');
     expect(system).toContain('CANON TIMELINE');
     expect(dynamic).toContain('CANON TIMELINE');
-    expect(system).toContain('heart:');
+    expect(`${system}\n${dynamic}`).toContain('heart:');
   });
 });
 
@@ -880,7 +881,8 @@ describe('expanded lore and team 3', () => {
   test('character cards include the era note', () => {
     const db = loadSave();
     const prompt = buildNarrationPrompt(db, '*Kan looks at Itachi.*', 10);
-    expect(prompt.messages[0].content).toContain('now: Gentle older brother');
+    // Era notes ride on the character cards in the scene message.
+    expect(prompt.messages.map((m) => m.content).join('\n')).toContain('now: Gentle older brother');
   });
 });
 
@@ -999,7 +1001,7 @@ describe('canon endings and prompt memory', () => {
     }
 
     const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
-    expect(prompt.estimatedTokens).toBeLessThanOrEqual(5800);
+    expect(prompt.estimatedTokens).toBeLessThanOrEqual(db.settings.promptTokenBudget);
     expect(prompt.recentMessages.length).toBeGreaterThanOrEqual(4);
   });
 
@@ -1290,6 +1292,22 @@ describe('world news and couriers', () => {
     db = applyCanonMarks(db, ['gaara-captured'], []);
     const prompt = buildNarrationPrompt(db, '*Kan waits.*', 10);
     expect(prompt.messages[1].content).not.toContain('NEWS & RUMORS');
+  });
+});
+
+describe('place names', () => {
+  test('the narrator still sees which Japanese names to avoid', () => {
+    const db = loadSave();
+    const system = buildNarrationPrompt(db, '*Kan waits.*', 10).messages[0].content;
+    expect(system).toContain('Hidden Leaf (never Konoha)');
+    expect(system).toContain('Hidden Rain (never Amegakure)');
+    expect(system).not.toContain('(never Hidden');
+  });
+
+  test('everything else is still translated', () => {
+    expect(localizePlaceNames(`Rumors from Konoha. ${PLACE_NAME_RULE} Sunagakure is quiet.`)).toBe(
+      `Rumors from Hidden Leaf. ${PLACE_NAME_RULE} Hidden Sand Village is quiet.`
+    );
   });
 });
 

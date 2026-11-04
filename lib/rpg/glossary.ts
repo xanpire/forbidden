@@ -41,6 +41,12 @@ export function localizePlaceNames(text: string): string {
     return text;
   }
 
+  // The rule itself names the Japanese forms to avoid; translating it would
+  // turn "Hidden Leaf (never Konoha)" into "Hidden Leaf (never Hidden Leaf)".
+  if (text.includes(PLACE_NAME_RULE)) {
+    return text.split(PLACE_NAME_RULE).map(localizePlaceNames).join(PLACE_NAME_RULE);
+  }
+
   let result = text;
 
   for (const [pattern, replacement] of REPLACEMENTS) {
