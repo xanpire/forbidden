@@ -18,6 +18,19 @@ const pageStyles = `
   * {
     -webkit-tap-highlight-color: transparent;
   }
+  /* App text is not selectable, so a long press on the phone never grabs
+     words. Only fields you type in (your action, settings, names) can be
+     selected and edited. */
+  body, body * {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   ::selection {
     background: #E50914;
     color: #FFFFFF;

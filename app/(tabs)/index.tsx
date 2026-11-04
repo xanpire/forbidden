@@ -260,15 +260,33 @@ export default function StoryScreen() {
     [isNarrating, streamingText]
   );
 
+  // The story only scrolls itself at two moments: when a save is opened (jump
+  // to the latest turn) and when you send an action (show it and where the
+  // reply will start). While the narrator streams, the screen stays wherever
+  // you put it, so you can scroll up and down freely.
+  const slotId = db?.meta.slotId ?? null;
+  const scrolledSlotRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (messages.length === 0 && streamingText.length === 0) {
+    if (!slotId || messages.length === 0 || scrolledSlotRef.current === slotId) {
+      return;
+    }
+
+    scrolledSlotRef.current = slotId;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [slotId, messages.length]);
+
+  useEffect(() => {
+    if (!isNarrating) {
       return;
     }
 
     requestAnimationFrame(() => {
       scrollRef.current?.scrollToEnd({ animated: true });
     });
-  }, [messages.length, streamingText]);
+  }, [isNarrating]);
 
   const submit = useCallback(
     async (value: string) => {
