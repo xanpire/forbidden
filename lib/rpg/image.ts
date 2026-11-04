@@ -1,3 +1,4 @@
+import { mentionsEntity } from './characterRefs';
 import { localizePlaceNames } from './glossary';
 import type { AppDatabase } from './types';
 
@@ -15,14 +16,14 @@ function sceneCast(db: AppDatabase): string[] {
   const latestAssistant = [...db.rawLog]
     .reverse()
     .find((message) => message.kind === 'story' && message.role === 'assistant');
-  const text = `${latestAssistant?.content ?? ''} ${db.state.scene}`.toLowerCase();
+  const text = `${latestAssistant?.content ?? ''} ${db.state.scene}`;
 
   return db.entities
     .filter(
       (entity) =>
         entity.type === 'character' &&
         entity.name.toLowerCase() !== 'kan' &&
-        [entity.name, ...entity.aliases].some((name) => text.includes(name.toLowerCase()))
+        mentionsEntity(text, entity)
     )
     .slice(0, 5)
     .map((entity) => entity.name);

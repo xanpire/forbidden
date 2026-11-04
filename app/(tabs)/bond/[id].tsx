@@ -1,12 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, GitMerge } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
 import { titleAndBody } from '@/components/kan/JournalSection';
+import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { calculateAge, dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
@@ -22,7 +23,8 @@ function Chip({ label, accent }: { label: string; accent?: boolean }) {
 export default function BondScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { db } = useGame();
+  const { db, mergeCharacters } = useGame();
+  const [merging, setMerging] = useState(false);
 
   const entity = db?.entities.find((item) => item.id === id) ?? null;
   const bond = db?.bonds.find((item) => item.entityId === id) ?? null;
@@ -167,7 +169,38 @@ export default function BondScreen() {
             })}
           </ListCard>
         )}
+
+        {entity.name.toLowerCase() !== 'kan' ? (
+          <>
+            <SectionLabel>Same person?</SectionLabel>
+            <ListCard>
+              <ListRow
+                accessibilityLabel={`Merge ${entity.name} with someone else`}
+                body="If the story split one person into two, fold them back together."
+                chevron
+                leading={<GitMerge color={colors.textMuted} size={18} strokeWidth={2} />}
+                onPress={() => setMerging(true)}
+                title="Merge with…"
+              />
+            </ListCard>
+          </>
+        ) : null}
       </ScrollView>
+
+      <MergeSheet
+        db={db}
+        entity={entity}
+        onCancel={() => setMerging(false)}
+        onMerge={async (keepId, dropId) => {
+          await mergeCharacters(keepId, dropId);
+          setMerging(false);
+
+          if (keepId !== entity.id) {
+            router.replace({ pathname: '/bond/[id]', params: { id: keepId } });
+          }
+        }}
+        visible={merging}
+      />
     </SafeAreaView>
   );
 }

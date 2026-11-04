@@ -1,6 +1,7 @@
 import { calculateAge, formatDate } from './calendar';
 import { groupJutsuByNature } from './jutsu';
 import { ROMANCE_RULES, eraNoteFor, loreProfileFor } from './romance';
+import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
 import {
   activeCanonMilestones,
   canonEnabled,
@@ -23,6 +24,7 @@ import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
   AppDatabase,
   BondRecord,
+  EntityRecord,
   EventRecord,
   FactRecord,
   OpenRouterMessage,
@@ -74,7 +76,7 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 
 PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
-PEOPLE: characters_present lists only those physically in the scene at the end; [] if Kan is alone. new_characters: every newly named character not under CHARACTERS, with age, role, personality, speech, and appearance. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, and news_relayed.from. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
 
 JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Keep effect and visual short and consistent with earlier uses.
 
@@ -133,11 +135,7 @@ export function buildNarrationPrompt(
   const entityText = [...recentMessages.map((message) => message.content), userMessage].join('\n');
   const matchedEntityIds = new Set(
     db.entities
-      .filter((entity) =>
-        [entity.name, ...entity.aliases].some((name) =>
-          entityText.toLowerCase().includes(name.toLowerCase())
-        )
-      )
+      .filter((entity) => mentionsEntity(entityText, entity))
       .map((entity) => entity.id)
   );
   const facts = relevantFacts(db, matchedEntityIds, entityText);
@@ -240,7 +238,7 @@ export function buildExtractionPrompt(
     .find((message) => message.role === 'assistant' && message.content !== assistantMessage);
 
   const stable = [
-    formatEntities(db),
+    formatCharacterRoster(db),
     formatJutsu(db),
     formatBonds(db),
     formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
@@ -249,6 +247,7 @@ export function buildExtractionPrompt(
 
   const dynamic = [
     formatState(db),
+    formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
     formatTimeLine(db, 'state'),
     formatCanonTracking(db),
     previousBeat
@@ -463,49 +462,64 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
   ].join('\n');
 }
 
-function formatEntities(db: AppDatabase) {
-  const characters = db.entities
-    .filter((entity) => entity.type === 'character')
-    .sort((a, b) => {
-      const aKan = a.name.toLowerCase() === 'kan' ? 1 : 0;
-      const bKan = b.name.toLowerCase() === 'kan' ? 1 : 0;
+/**
+ * Everyone the state tracker can refer to, by ID. Stable from turn to turn
+ * (it only changes when someone is added, merged or renamed), so it sits in
+ * the cached part of the prompt.
+ */
+function formatCharacterRoster(db: AppDatabase) {
+  const refs = [...characterRefs(db)];
 
-      if (aKan !== bKan) {
-        return bKan - aKan;
-      }
-
-      return b.id.localeCompare(a.id);
-    })
-    .slice(0, 12);
-
-  if (characters.length === 0) {
-    return 'CHARACTERS\nNone.';
+  if (refs.length === 0) {
+    return 'KNOWN CHARACTERS\nNone.';
   }
 
   return [
-    'CHARACTERS',
-    ...characters.map(
-      (entity) => {
-        const age =
-          entity.birthYear !== undefined && entity.birthday
-            ? calculateAge(
-                db.state.inStoryDate,
-                entity.birthday,
-                entity.birthYear
-              )
-            : entity.age;
+    'KNOWN CHARACTERS (id: name, other names) — refer to people by id; anyone listed already exists',
+    ...refs.map(([ref, entity]) => {
+      const others = entity.aliases.filter((alias) => alias.toLowerCase() !== entity.name.toLowerCase()).slice(0, 4);
+      const notes = [
+        entity.name.toLowerCase() === 'kan' ? 'the player' : null,
+        entity.met === false ? 'not met yet' : null,
+        entity.status === 'Deceased' ? 'deceased' : null,
+      ].filter(Boolean);
 
-        const mood = truncate(entity.mood ?? 'unknown', 60);
-        const appearance = truncate(entity.appearance ?? 'unknown', 80);
-        const personality = truncate(entity.personality ?? 'unknown', 60);
-        const speech = truncate(entity.speechStyle ?? 'unknown', 50);
-        const role = truncate(entity.role ?? '', 40);
+      return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}`;
+    }),
+  ].join('\n');
+}
 
-        const aliasNote = entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : '';
+/**
+ * Details for the people this turn is about: Kan, the current scene cast,
+ * and anyone named in the turn.
+ */
+function formatCharacterDetails(db: AppDatabase, turnText: string) {
+  const refByEntity = refByEntityId(db);
+  const cast = new Set((db.state.sceneCast ?? []).map((name) => name.toLowerCase()));
+  const mentioned = (entity: EntityRecord) =>
+    [entity.name, ...entity.aliases].some((name) => cast.has(name.toLowerCase())) ||
+    mentionsEntity(turnText, entity);
 
-        return `- ${entity.name}${aliasNote}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}: personality ${personality}; speech ${speech}; mood ${mood}; appearance ${appearance}`;
-      }
-    ),
+  const characters = db.entities
+    .filter((entity) => entity.type === 'character')
+    .filter((entity) => entity.name.toLowerCase() === 'kan' || mentioned(entity))
+    .slice(0, 10);
+
+  if (characters.length === 0) {
+    return '';
+  }
+
+  return [
+    'CHARACTERS IN THIS TURN',
+    ...characters.map((entity) => {
+      const age =
+        entity.birthYear !== undefined && entity.birthday
+          ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
+          : entity.age;
+      const role = truncate(entity.role ?? '', 40);
+
+      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`;
+    }),
   ].join('\n');
 }
 

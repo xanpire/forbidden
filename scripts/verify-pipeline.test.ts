@@ -15,9 +15,10 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
-import { applyEntityDiff, entityGroup, entityHints, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
+import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity, storyMessagesSinceLastSummary, trimToSentence } from '../lib/rpg/services';
 import { buildExtractionPrompt, buildNarrationPrompt, splitNarrationAndDiff, streamingPreview, stripNarrationJson } from '../lib/rpg/prompt';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
+import { mentionsName } from '../lib/rpg/characterRefs';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { formatEncounterHint } from '../lib/rpg/prompt';
@@ -483,7 +484,9 @@ describe('masked man identity resolution', () => {
 
     const maskedEntities = db.entities.filter((entity) =>
       ['masked man', 'tobi', 'obito'].some((hint) =>
-        [entity.name, ...entity.aliases].some((alias) => alias.toLowerCase().includes(hint))
+        [entity.name, ...entity.aliases].some((alias) =>
+          new RegExp(`\\b${hint}\\b`).test(alias.toLowerCase())
+        )
       )
     );
 
@@ -602,7 +605,7 @@ describe('encounter frequency and image cast', () => {
     db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
 
-    const matches = db.entities.filter((entity) => /masked man|tobi/i.test(entity.name));
+    const matches = db.entities.filter((entity) => /masked man|\btobi\b/i.test(entity.name));
     expect(matches.length).toBe(1);
     expect(matches[0]?.aliases.map((a) => a.toLowerCase())).toContain('tobi');
   });
@@ -1870,5 +1873,127 @@ describe('two-call turn: prose narrator + structured state call', () => {
     expect(streamingPreview('Rain falls.\n\n```json\n{"mood"')).toBe('Rain falls.');
     expect(streamingPreview('Rain falls.\n{"state":')).toBe('Rain falls.');
     expect(streamingPreview('Rain falls. "Move," he says.')).toBe('Rain falls. "Move," he says.');
+  });
+});
+
+describe('duplicate characters', () => {
+  const kisameCount = (db: AppDatabase) =>
+    db.entities.filter((entity) =>
+      [entity.name, ...entity.aliases].some((name) => /\bkisame\b/i.test(name))
+    ).length;
+
+  test('the canon cast is loaded once each, unmet, with aliases', () => {
+    const db = loadSave();
+    const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki');
+
+    expect(kisame?.met).toBe(false);
+    expect(kisame?.aliases).toContain('Kisame');
+    expect(kisameCount(db)).toBe(1);
+    // Itachi comes from the story seed, not the cast list, and is not doubled.
+    expect(db.entities.filter((entity) => /\bitachi\b/i.test(entity.name)).length).toBe(1);
+    // The real Madara is not pre-loaded: bare "Madara" still means the masked man.
+    expect(resolveEntity(db, 'Madara')?.name).toBe('Masked man');
+  });
+
+  test('older saves gain the cast without doubling people they already have', () => {
+    const seeded = loadSave();
+    const old: AppDatabase = {
+      ...seeded,
+      entities: [
+        ...seeded.entities.filter((entity) => entity.met !== false),
+        { id: 'entity_old_kisame', name: 'Kisame', type: 'character', aliases: [], tags: [], role: 'Swordsman' },
+      ],
+    };
+
+    const once = normalizeDatabase(old);
+    const twice = normalizeDatabase(once);
+    const kisame = once.entities.find((entity) => entity.id === 'entity_old_kisame');
+
+    expect(kisameCount(once)).toBe(1);
+    expect(kisame?.aliases).toContain('Kisame Hoshigaki');
+    expect(kisame?.met).toBeUndefined();
+    expect(twice.entities.length).toBe(once.entities.length);
+  });
+
+  test('the state prompt lists everyone by id', () => {
+    const db = loadSave();
+    const prompt = buildExtractionPrompt(db, 'I nod.', 'Kisame grins at you.')
+      .messages.map((message) => message.content)
+      .join('\n');
+
+    expect(prompt).toContain('KNOWN CHARACTERS');
+    expect(prompt).toContain('- kisame-hoshigaki: Kisame Hoshigaki (Kisame, Hoshigaki Kisame) [not met yet]');
+    expect(prompt).toContain('- itachi-uchiha: Itachi Uchiha');
+    expect(prompt).toContain('CHARACTERS IN THIS TURN');
+    expect(TURN_STATE_SCHEMA.properties.bonds.items.properties).toHaveProperty('character_id');
+    expect(TURN_STATE_SCHEMA.properties.new_characters.items.properties).toHaveProperty('is_new');
+  });
+
+  test('ids resolve to known people; only is_new adds someone', () => {
+    let db = loadSave();
+    const before = db.entities.length;
+    const { diff } = convertStateBlock({
+      characters_present: ['kisame-hoshigaki', 'itachi-uchiha', 'Haku the Fisherman'],
+      bonds: [
+        { character_id: 'kisame-hoshigaki', affinity_change: 1, status: 'Wary', note: null, relationship: null, attraction: null, romance_note: null },
+        { character_id: 'some-stranger', affinity_change: 2, status: null, note: null, relationship: null, attraction: null, romance_note: null },
+      ],
+      new_characters: [
+        { is_new: false, name: 'Kisame', age: 30, role: null, personality: null, speech_style: null, appearance: null },
+        { is_new: true, name: 'Hoshigaki Kisame', age: null, role: 'Swordsman', personality: null, speech_style: null, appearance: null },
+        { is_new: true, name: 'Haku the Fisherman', age: 50, role: 'Ferryman', personality: null, speech_style: null, appearance: null },
+      ],
+      character_updates: [
+        { character_id: 'itachi-uchiha', mood: 'tired', appearance: null },
+        { character_id: 'nobody-at-all', mood: 'angry', appearance: null },
+      ],
+      jutsu_used: [{ name: 'Water Prison', user: 'kisame-hoshigaki', chakra_nature: 'Water', effect: null, visual: null }],
+    });
+
+    db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
+
+    const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki');
+
+    expect(kisameCount(db)).toBe(1);
+    expect(kisame?.met).toBe(true);
+    expect(db.bonds.find((bond) => bond.entityId === kisame?.id)?.status).toBe('Wary');
+    expect(db.bonds.some((bond) => bond.characterName === 'some-stranger')).toBe(false);
+    expect(db.entities.length).toBe(before + 1);
+    expect(db.entities.some((entity) => entity.name === 'Haku the Fisherman')).toBe(true);
+    expect(db.entities.find((entity) => entity.name === 'Itachi Uchiha')?.mood).toBe('tired');
+    expect(db.state.sceneCast).toEqual(['Kisame Hoshigaki', 'Itachi Uchiha', 'Haku the Fisherman']);
+    expect(db.jutsuRecords.find((record) => record.name === 'Water Prison')?.user).toBe('Kisame Hoshigaki');
+  });
+
+  test('merging folds one person into another', () => {
+    let db = loadSave();
+    db = applyEntityDiff(db, { name: 'Shark-faced man', isNew: true, role: 'Swordsman' });
+    db = applyTurnDiff(db, { bonds: [{ character: 'Shark-faced man', affinityDelta: 3, status: 'Respect' }] });
+
+    const shark = db.entities.find((entity) => entity.name === 'Shark-faced man')!;
+    const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki')!;
+
+    db = mergeEntityPair(db, kisame.id, shark.id);
+
+    const merged = db.entities.find((entity) => entity.id === kisame.id);
+
+    expect(db.entities.some((entity) => entity.id === shark.id)).toBe(false);
+    expect(merged?.aliases).toContain('Shark-faced man');
+    expect(merged?.met).toBeUndefined();
+    expect(db.bonds.filter((bond) => bond.entityId === kisame.id).length).toBe(1);
+    expect(db.bonds.find((bond) => bond.entityId === kisame.id)?.affinity).toBe(3);
+    expect(resolveEntity(db, 'Shark-faced man')?.id).toBe(kisame.id);
+  });
+});
+
+describe('name mentions', () => {
+  test('names match whole words only', () => {
+    expect(mentionsName('You fall asleep by the fire.', 'Lee')).toBe(false);
+    expect(mentionsName('Lee bows deeply.', 'Lee')).toBe(true);
+    expect(mentionsName('Hiruzen Sarutobi lights his pipe.', 'Tobi')).toBe(false);
+    expect(mentionsName('Tobi waves.', 'tobi')).toBe(true);
+    expect(mentionsName('Jūzō lowers his blade.', 'Jūzō')).toBe(true);
+    expect(mentionsName('The pain in your side flares.', 'Pain')).toBe(false);
+    expect(mentionsName('Pain looks down at you.', 'Pain')).toBe(true);
   });
 });

@@ -49,6 +49,7 @@ import {
   restoreLastSnapshot,
   rollD20,
   trimToSentence,
+  mergeEntityPair,
 } from './services';
 import {
   applyStateStep,
@@ -133,6 +134,8 @@ type GameContextValue = {
   exportActiveSlot: () => Promise<string | null>;
   importSlot: (json: string, slotName?: string) => Promise<void>;
   updateBond: (bondId: string, patch: Partial<BondRecord>) => Promise<void>;
+  /** Folds dropId into keepId: one person, with both histories. */
+  mergeCharacters: (keepId: string, dropId: string) => Promise<void>;
   updateThread: (threadId: string, patch: Partial<ThreadRecord>) => Promise<void>;
   toggleMemoryPin: (eventId: string) => Promise<void>;
   editMemory: (
@@ -917,6 +920,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const mergeCharacters = useCallback(
+    async (keepId: string, dropId: string) => {
+      const current = dbRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const merged = mergeEntityPair(current, keepId, dropId);
+
+      if (merged === current) {
+        return;
+      }
+
+      await commitDb(merged);
+    },
+    [commitDb]
+  );
+
   const updateThread = useCallback(
     async (threadId: string, patch: Partial<ThreadRecord>) => {
       const current = dbRef.current;
@@ -1157,6 +1179,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       exportActiveSlot,
       importSlot,
       updateBond,
+      mergeCharacters,
       updateThread,
       toggleMemoryPin,
       editMemory,
@@ -1199,6 +1222,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       toggleMemoryPin,
       undoLastTurn,
       updateBond,
+      mergeCharacters,
       updateSettings,
       updateThread,
     ]

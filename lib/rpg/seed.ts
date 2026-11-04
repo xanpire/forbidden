@@ -1,4 +1,5 @@
 import { DEFAULT_DATE } from './calendar';
+import { ensureCanonCast } from './canonCast';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { makeId } from './id';
 import type {
@@ -22,7 +23,7 @@ const FOREST_ID = makeId('entity');
 export function seedDatabase(slotId: string, slotName: string): AppDatabase {
   const now = Date.now();
 
-  const entities: EntityRecord[] = [
+  const storyEntities: EntityRecord[] = [
     {
       id: KAN_ID,
       name: 'Kan',
@@ -134,6 +135,10 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       tags: ['faction', 'akatsuki'],
     },
   ];
+
+  // The main canon cast is loaded up front, each person once, so the state
+  // tracker refers to them by ID instead of inventing duplicates.
+  const entities = ensureCanonCast(storyEntities, () => makeId('entity'));
 
   const openingEvent: EventRecord = {
     id: makeId('event'),

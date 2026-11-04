@@ -1,7 +1,8 @@
 import { completeChat, type ChatRequest } from '../openrouter';
 import { recordDebugCall, recordDebugState, type DebugCallKind } from './debug';
 import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
-import { advanceSeconds, normalizeDate, formatDate, daysBetween, setClock } from './calendar';
+import { advanceSeconds, dateSortValue, normalizeDate, formatDate, daysBetween, setClock } from './calendar';
+import { characterRefs } from './characterRefs';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { normalizeRelationship, normalizeAttraction } from './romance';
 import { classifyLocation } from './encounters';
@@ -277,6 +278,7 @@ export function convertStateBlock(
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
         const bond = item as {
+          character_id?: unknown;
           character?: unknown;
           affinity_change?: unknown;
           status?: unknown;
@@ -287,7 +289,8 @@ export function convertStateBlock(
         };
 
         return {
-          character: typeof bond.character === 'string' ? bond.character : '',
+          character:
+            cleanString(bond.character_id) ?? (typeof bond.character === 'string' ? bond.character : ''),
           affinityDelta:
             typeof bond.affinity_change === 'number' ? bond.affinity_change : undefined,
           status: typeof bond.status === 'string' ? bond.status : undefined,
@@ -347,6 +350,9 @@ export function convertStateBlock(
   if (Array.isArray(block.new_characters)) {
     diff.entities = block.new_characters
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      // A known person flagged is_new: false is never re-added. (Older
+      // replies without the flag are still read as new.)
+      .filter((item) => item.is_new !== false)
       .map((item) => {
         const character = item as {
           name?: unknown;
@@ -359,6 +365,7 @@ export function convertStateBlock(
         };
 
         return {
+          isNew: true,
           name: typeof character.name === 'string' ? character.name : '',
           age: typeof character.age === 'number' ? character.age : undefined,
           role: typeof character.role === 'string' ? character.role : undefined,
@@ -381,7 +388,7 @@ export function convertStateBlock(
     const updates = block.character_updates
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
-        name: cleanString(item.name) ?? '',
+        name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
         mood: cleanString(item.mood),
         appearance: cleanString(item.appearance),
       }))
@@ -526,6 +533,114 @@ export function storyMessagesSinceLastSummary(db: AppDatabase): number {
   return db.rawLog.filter(
     (message) => message.kind === 'story' && message.createdAt > lastChapterSummaryAt
   ).length;
+}
+
+type CharacterRef = { entityId?: string; name: string };
+
+/**
+ * Turns the state tracker's character IDs back into people. Each reference is
+ * a KNOWN CHARACTERS ID ("kisame-hoshigaki"), the exact name of someone added
+ * this turn under new_characters, or — when the model slipped — a name or
+ * alias of someone already known. Anything else is dropped rather than
+ * becoming a new person: only new_characters with is_new: true can add one.
+ */
+export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff {
+  const refs = characterRefs(db);
+  const newNames = new Map(
+    (diff.entities ?? [])
+      .filter((entity) => entity.isNew && entity.name.trim())
+      .map((entity) => [entity.name.trim().toLowerCase(), entity.name.trim()])
+  );
+
+  const resolve = (raw: string | undefined): CharacterRef | null => {
+    const value = raw?.trim();
+
+    if (!value) {
+      return null;
+    }
+
+    const lower = value.toLowerCase();
+    const byRef = refs.get(lower);
+
+    if (byRef) {
+      return { entityId: byRef.id, name: byRef.name };
+    }
+
+    const fresh = newNames.get(lower);
+
+    if (fresh) {
+      return { name: fresh };
+    }
+
+    const byName = resolveEntity(db, value) ?? (value.includes('-') ? resolveEntity(db, value.replace(/-/g, ' ')) : null);
+
+    return byName ? { entityId: byName.id, name: byName.name } : null;
+  };
+
+  /** For free-text fields (fact subjects, jutsu users): an ID becomes a name, anything else stays. */
+  const nameOf = (raw: string | undefined) => (raw ? (resolve(raw)?.name ?? raw) : raw);
+  const people = (names: string[]) =>
+    uniqueList(names.map((name) => resolve(name)?.name).filter((name): name is string => Boolean(name)));
+
+  const next: TurnDiff = { ...diff };
+
+  if (diff.entities) {
+    next.entities = diff.entities.flatMap((entity) => {
+      if (entity.isNew) {
+        // "New" but written as a known ID: it is an update, not a second person.
+        const known = refs.get(entity.name.trim().toLowerCase());
+
+        return [known ? { ...entity, entityId: known.id, name: known.name, isNew: false } : entity];
+      }
+
+      const ref = resolve(entity.entityId ?? entity.name);
+
+      return ref?.entityId ? [{ ...entity, entityId: ref.entityId, name: ref.name, isNew: false }] : [];
+    });
+  }
+
+  if (diff.bonds) {
+    next.bonds = diff.bonds.flatMap((bond) => {
+      const ref = resolve(bond.entityId ?? bond.character);
+
+      return ref ? [{ ...bond, character: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
+  if (diff.state?.sceneCast) {
+    next.state = { ...diff.state, sceneCast: people(diff.state.sceneCast) };
+  }
+
+  if (diff.scene?.entities) {
+    next.scene = { ...diff.scene, entities: people(diff.scene.entities) };
+  }
+
+  if (diff.facts) {
+    next.facts = diff.facts.map((fact) => ({
+      ...fact,
+      subject: nameOf(fact.subject),
+      whoKnows: fact.whoKnows ? uniqueList(fact.whoKnows.map((name) => nameOf(name) ?? name)) : fact.whoKnows,
+    }));
+  }
+
+  if (diff.jutsuUsed) {
+    next.jutsuUsed = diff.jutsuUsed.map((jutsu) => ({ ...jutsu, user: nameOf(jutsu.user) ?? jutsu.user }));
+  }
+
+  if (diff.threads) {
+    next.threads = diff.threads.map((thread) => ({
+      ...thread,
+      participants: thread.participants
+        ? uniqueList(thread.participants.map((name) => nameOf(name) ?? name))
+        : thread.participants,
+    }));
+  }
+
+  if (diff.newsRelayed) {
+    next.newsRelayed = diff.newsRelayed.map((news) => ({ ...news, from: nameOf(news.from) }));
+  }
+
+  return next;
 }
 
 export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDatabase {
@@ -744,88 +859,146 @@ function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
       const keep = i < j ? primary : other;
       const drop = keep === primary ? other : primary;
 
-      const newAliases = [
-        ...keep.aliases,
-        drop.name,
-        ...drop.aliases,
-      ].filter(
-        (alias, index, list) =>
-          alias.toLowerCase() !== keep.name.toLowerCase() &&
-          list.findIndex((item) => item.toLowerCase() === alias.toLowerCase()) === index
-      ).slice(0, 8);
-
-      const merged: EntityRecord = {
-        ...keep,
-        aliases: newAliases,
-        age: keep.age ?? drop.age,
-        birthYear: keep.birthYear ?? drop.birthYear,
-        role: keep.role !== 'Unknown' ? keep.role : drop.role,
-        personality: keep.personality !== 'Unknown' ? keep.personality : drop.personality,
-        speechStyle: keep.speechStyle !== 'Unknown' ? keep.speechStyle : drop.speechStyle,
-        mood: keep.mood !== 'Unknown' ? keep.mood : drop.mood,
-        appearance: keep.appearance !== 'Unknown' ? keep.appearance : drop.appearance,
-        lastSeen: keep.lastSeen ?? drop.lastSeen,
-      };
-
-      const entities = next.entities.filter((entity) => entity.id !== drop.id);
-      const keepIndex = entities.findIndex((entity) => entity.id === keep.id);
-
-      entities[keepIndex] = merged;
-
-      const idMap = new Map([[drop.id, keep.id]]);
-
-      next = remapEntityReferences(next, entities, idMap);
+      next = mergeEntityPair(next, keep.id, drop.id);
     }
   }
 
   return next;
 }
 
-function remapEntityReferences(
-  db: AppDatabase,
-  entities: EntityRecord[],
-  idMap: Map<string, string>
-): AppDatabase {
-  const bonds = db.bonds.map((bond) => {
-    const entityId = idMap.get(bond.entityId) ?? bond.entityId;
+function known(value: string | undefined) {
+  return value && value !== 'Unknown' ? value : undefined;
+}
 
-    return { ...bond, entityId };
-  });
+/**
+ * Folds one character into another: the dropped person's names become
+ * aliases, missing details are filled in, and every bond, fact, memory link,
+ * thread, jutsu record and scene reference moves to the kept person. Used by
+ * the automatic identity merge (Tobi / masked man, Pain / Nagato) and by
+ * "Merge with…" on the bond screen.
+ */
+export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string): AppDatabase {
+  const keep = db.entities.find((entity) => entity.id === keepId);
+  const drop = db.entities.find((entity) => entity.id === dropId);
 
-  const dedupedBonds: BondRecord[] = [];
-  const seenBond = new Map<string, BondRecord>();
-
-  for (const bond of bonds) {
-    const prev = seenBond.get(bond.entityId);
-
-    if (!prev) {
-      seenBond.set(bond.entityId, bond);
-      dedupedBonds.push(bond);
-      continue;
-    }
-
-    const newer =
-      (bond.updatedInStoryDate?.year ?? 0) > (prev.updatedInStoryDate?.year ?? 0) ? bond : prev;
-
-    if (newer !== prev) {
-      dedupedBonds[dedupedBonds.findIndex((item) => item.id === prev.id)] = newer;
-    }
+  // You are never folded into someone else.
+  if (!keep || !drop || keep.id === drop.id || drop.name.toLowerCase() === 'kan') {
+    return db;
   }
+
+  const aliases = [...keep.aliases, drop.name, ...drop.aliases]
+    .filter(
+      (alias, index, list) =>
+        alias.trim().length > 0 &&
+        alias.toLowerCase() !== keep.name.toLowerCase() &&
+        list.findIndex((item) => item.toLowerCase() === alias.toLowerCase()) === index
+    )
+    .slice(0, 10);
+
+  const lastSeen =
+    keep.lastSeen && drop.lastSeen
+      ? dateSortValue(keep.lastSeen) >= dateSortValue(drop.lastSeen)
+        ? keep.lastSeen
+        : drop.lastSeen
+      : (keep.lastSeen ?? drop.lastSeen);
+
+  const merged: EntityRecord = {
+    ...drop,
+    ...keep,
+    aliases,
+    age: keep.age ?? drop.age,
+    birthday: keep.birthday ?? drop.birthday,
+    birthYear: keep.birthYear ?? drop.birthYear,
+    role: known(keep.role) ?? drop.role,
+    personality: known(keep.personality) ?? drop.personality,
+    speechStyle: known(keep.speechStyle) ?? drop.speechStyle,
+    status:
+      keep.status && keep.status !== 'Not yet met' && keep.status !== 'Newly met'
+        ? keep.status
+        : (drop.status ?? keep.status),
+    notes: [keep.notes, drop.notes].filter(Boolean).join(' ').trim() || keep.notes,
+    mood: known(keep.mood) ?? drop.mood,
+    appearance: known(keep.appearance) ?? drop.appearance,
+    lastSeen,
+    met: keep.met === false && drop.met === false ? false : undefined,
+    tags: uniqueList([...keep.tags, ...drop.tags]),
+  };
+
+  if (merged.met === undefined) {
+    delete merged.met;
+  }
+
+  const entities = db.entities
+    .filter((entity) => entity.id !== drop.id)
+    .map((entity) => (entity.id === keep.id ? merged : entity));
+
+  // One bond survives: the more recently updated one, with gaps filled from the other.
+  const keepBond = db.bonds.find((bond) => bond.entityId === keep.id);
+  const dropBond = db.bonds.find((bond) => bond.entityId === drop.id);
+  let bonds = db.bonds.filter((bond) => bond.entityId !== drop.id);
+
+  if (dropBond && !keepBond) {
+    bonds = [...bonds, { ...dropBond, entityId: keep.id, characterName: merged.name }];
+  } else if (dropBond && keepBond) {
+    const newer =
+      dateSortValue(dropBond.updatedInStoryDate) > dateSortValue(keepBond.updatedInStoryDate)
+        ? dropBond
+        : keepBond;
+    const older = newer === keepBond ? dropBond : keepBond;
+
+    bonds = bonds.map((bond) =>
+      bond.id === keepBond.id
+        ? {
+            ...older,
+            ...newer,
+            id: keepBond.id,
+            entityId: keep.id,
+            characterName: merged.name,
+            note: newer.note || older.note,
+            romanceNote: newer.romanceNote || older.romanceNote,
+            isMajor: keepBond.isMajor || dropBond.isMajor,
+            lastKeyEventId: newer.lastKeyEventId ?? older.lastKeyEventId,
+          }
+        : bond
+    );
+  } else if (keepBond) {
+    bonds = bonds.map((bond) =>
+      bond.id === keepBond.id ? { ...bond, characterName: merged.name } : bond
+    );
+  }
+
+  const dropNames = new Set([drop.name, ...drop.aliases].map((name) => name.toLowerCase()));
+  const rename = (name: string) => (dropNames.has(name.trim().toLowerCase()) ? merged.name : name);
+  const renameAll = (names: string[]) => uniqueList(names.map(rename));
+
+  const links = db.eventEntities.map((link) =>
+    link.entityId === drop.id ? { ...link, entityId: keep.id } : link
+  );
 
   return {
     ...db,
     entities,
-    bonds: dedupedBonds,
+    bonds,
     facts: db.facts.map((fact) => ({
       ...fact,
-      subjectEntityId: fact.subjectEntityId
-        ? (idMap.get(fact.subjectEntityId) ?? fact.subjectEntityId)
-        : null,
+      subjectEntityId: fact.subjectEntityId === drop.id ? keep.id : fact.subjectEntityId,
+      whoKnows: renameAll(fact.whoKnows),
     })),
-    eventEntities: db.eventEntities.map((link) => ({
-      ...link,
-      entityId: idMap.get(link.entityId) ?? link.entityId,
+    eventEntities: links.filter(
+      (link, index) =>
+        links.findIndex(
+          (other) => other.eventId === link.eventId && other.entityId === link.entityId
+        ) === index
+    ),
+    threads: db.threads.map((thread) => ({
+      ...thread,
+      participants: renameAll(thread.participants),
     })),
+    jutsuRecords: db.jutsuRecords.map((record) => ({ ...record, user: rename(record.user) })),
+    state: {
+      ...db.state,
+      sceneCast: Array.isArray(db.state.sceneCast) ? renameAll(db.state.sceneCast) : db.state.sceneCast,
+    },
   };
 }
 
@@ -861,7 +1034,7 @@ function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
     ...db,
     entities: db.entities.map((entity) =>
       entity.type === 'character' && matched.has(entity.id)
-        ? { ...entity, lastSeen: db.state.inStoryDate }
+        ? { ...entity, lastSeen: db.state.inStoryDate, met: true }
         : entity
     ),
   };
@@ -1130,17 +1303,21 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   const hints = nameHints(name);
   const group = entityGroup(hints);
 
-  let existing = resolveEntity(db, name);
+  const byId = entity.entityId
+    ? (db.entities.find((item) => item.id === entity.entityId) ?? null)
+    : null;
+  let existing = byId ?? resolveEntity(db, name);
 
   // The real Madara must never be merged into the masked man entity.
-  if (existing && group === 'real-madara' && entityIsFake(existing)) {
+  // (An exact ID from the state tracker is trusted as-is.)
+  if (!byId && existing && group === 'real-madara' && entityIsFake(existing)) {
     existing = findRealMadara(db);
   }
 
   // Shared-identity aliases always resolve to their one entity, never a new
   // character: masked-man names (Tobi, Obito, ...), Pain/Nagato and the six
   // paths, and Zetsu halves.
-  if (!existing && group) {
+  if (!byId && !existing && group) {
     existing = findEntityByGroup(db, group);
 
     // Bare "Madara" with no real Madara in the story yet refers to the masked
@@ -1149,6 +1326,12 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     if (!existing && group === 'real-madara' && isBareMadara(name)) {
       existing = findFakeEntity(db);
     }
+  }
+
+  // Only someone the tracker flagged as new may be created; an update for a
+  // person who cannot be found is dropped instead of becoming a duplicate.
+  if (!existing && entity.isNew === false) {
+    return db;
   }
 
   if (!existing) {
@@ -1192,7 +1375,8 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   entities[existingIndex] = {
     ...existing,
-    aliases: [...existing.aliases, ...extraAlias].slice(0, 6),
+    aliases: [...existing.aliases, ...extraAlias].slice(0, 10),
+    met: true,
     lastSeen: db.state.inStoryDate,
     age: nextAge,
     birthYear:
@@ -1288,13 +1472,29 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
     return db;
   }
 
-  const existingEntity = resolveEntity(db, characterName);
+  const existingEntity =
+    (bond.entityId ? db.entities.find((item) => item.id === bond.entityId) : undefined) ??
+    resolveEntity(db, characterName);
 
-  const existingIndex = db.bonds.findIndex(
-    (item) =>
-      item.characterName.toLowerCase() === characterName.toLowerCase() ||
-      (existingEntity !== null && item.entityId === existingEntity.id)
-  );
+  const byEntity = existingEntity
+    ? db.bonds.findIndex((item) => item.entityId === existingEntity.id)
+    : -1;
+  const existingIndex =
+    byEntity !== -1
+      ? byEntity
+      : db.bonds.findIndex(
+          (item) => item.characterName.toLowerCase() === characterName.toLowerCase()
+        );
+
+  // A bond means you know them now: canon cast members join the bonds list.
+  if (existingEntity && existingEntity.met === false) {
+    db = {
+      ...db,
+      entities: db.entities.map((item) =>
+        item.id === existingEntity.id ? { ...item, met: true } : item
+      ),
+    };
+  }
 
   if (existingIndex === -1) {
     let bondEntity = existingEntity;
@@ -1348,6 +1548,7 @@ function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
 
   bonds[existingIndex] = {
     ...existing,
+    characterName: existingEntity?.name ?? existing.characterName,
     affinity: clamp(
       existing.affinity +
         (typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0),
@@ -1624,7 +1825,9 @@ export async function extractTurnDiff(options: {
     return null;
   }
 
-  return convertStateBlock(parsed).diff;
+  const diff = convertStateBlock(parsed).diff;
+
+  return diff ? resolveCharacterRefs(db, diff) : null;
 }
 
 export async function summarizeScene(options: {

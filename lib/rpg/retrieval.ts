@@ -1,4 +1,5 @@
 import { daysBetween, sameDate } from './calendar';
+import { mentionsEntity } from './characterRefs';
 import type {
   AppDatabase,
   EntityRecord,
@@ -26,14 +27,13 @@ export function retrieveMemories(
   query: RetrievalQuery,
   limit: number
 ): EventRecord[] {
-  const combinedText = [
+  const rawText = [
     ...query.recentMessages.map((message) => message.content),
     query.userMessage,
-  ]
-    .join('\n')
-    .toLowerCase();
+  ].join('\n');
+  const combinedText = rawText.toLowerCase();
 
-  const entities = matchEntities(db, combinedText);
+  const entities = matchEntities(db, rawText);
   const entityIds = new Set(entities.map((entity) => entity.id));
   const tags = extractTags(combinedText);
   const candidateIds = new Set<string>();
@@ -177,11 +177,7 @@ export function triggeredLore(db: AppDatabase, text: string): LoreRecord[] {
 }
 
 function matchEntities(db: AppDatabase, text: string): EntityRecord[] {
-  return db.entities.filter((entity) => {
-    const names = [entity.name, ...entity.aliases];
-
-    return names.some((name) => name.length > 2 && text.includes(name.toLowerCase()));
-  });
+  return db.entities.filter((entity) => mentionsEntity(text, entity));
 }
 
 function extractTags(text: string): Set<string> {

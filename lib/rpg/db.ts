@@ -7,6 +7,7 @@ import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canon';
 import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
+import { ensureCanonCast } from './canonCast';
 import type { AppDatabase, MemoryIndex } from './types';
 
 const META_KEY = 'kan.meta.v1';
@@ -432,8 +433,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
           description: record.description ?? '',
         }))
       : [],
-    entities: Array.isArray(db.entities)
-      ? db.entities.map((entity) => ({
+    entities: ensureCanonCast(
+      Array.isArray(db.entities)
+        ? db.entities.map((entity) => ({
           ...entity,
           mood:
             entity.mood ??
@@ -446,7 +448,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
               ? (entity.romanceAccessibility ?? 'winnable')
               : undefined,
         }))
-      : [],
+        : [],
+      () => makeId('entity')
+    ),
     events: Array.isArray(db.events) ? db.events : [],
     eventEntities: Array.isArray(db.eventEntities) ? db.eventEntities : [],
     bonds: Array.isArray(db.bonds)

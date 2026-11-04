@@ -19,6 +19,7 @@
  */
 import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
 import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
+import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
@@ -664,13 +665,8 @@ function saveSummaryMemory(
       event.createdAt <= last.createdAt + 60_000
   );
   const supersededIds = new Set(superseded.map((event) => event.id));
-  const text = summary.text.toLowerCase();
   const mentioned = db.entities.filter(
-    (entity) =>
-      entity.name.toLowerCase() !== 'kan' &&
-      [entity.name, ...entity.aliases].some(
-        (name) => name.length > 2 && text.includes(name.toLowerCase())
-      )
+    (entity) => entity.name.toLowerCase() !== 'kan' && mentionsEntity(summary.text, entity)
   );
 
   const event: EventRecord = {

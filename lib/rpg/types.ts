@@ -109,6 +109,12 @@ export type EntityRecord = {
   romanceAccessibility?: 'winnable' | 'lore-locked';
   canonDevotion?: string;
   orientation?: string;
+  /**
+   * false for canon cast members loaded at the start whom you have not met
+   * yet: they are known to the state tracker but stay off the bonds list.
+   * Missing means met (older saves, and everyone the story introduced).
+   */
+  met?: boolean;
   tags: string[];
 };
 
@@ -375,6 +381,10 @@ export type TurnDiff = {
   /** The state model judged this beat visually striking (queues a scene summary). */
   imageWorthy?: boolean;
   entities?: {
+    /** Set when the state tracker referred to a known character by ID. */
+    entityId?: string;
+    /** From new_characters with is_new: true — the only entries allowed to create someone. */
+    isNew?: boolean;
     name: string;
     age?: number;
     role?: string;
@@ -392,6 +402,8 @@ export type TurnDiff = {
     description?: string;
   }[];
   bonds?: {
+    /** Set when the state tracker referred to a known character by ID. */
+    entityId?: string;
     character: string;
     affinityDelta?: number;
     status?: string;

@@ -73,13 +73,16 @@ export const TURN_STATE_SCHEMA = object({
   inventory_removed: stringList,
   jutsu_used: list({
     name: { type: 'string' },
+    // A character ID ("kan", "kisame-hoshigaki"), or a description for an unnamed user.
     user: { type: 'string' },
     chakra_nature: nullableString,
     effect: nullableString,
     visual: nullableString,
   }),
+  // People are referred to by their ID from KNOWN CHARACTERS (or, for someone
+  // added this turn under new_characters, by that exact name).
   bonds: list({
-    character: { type: 'string' },
+    character_id: { type: 'string' },
     affinity_change: nullableNumber,
     status: nullableString,
     note: nullableString,
@@ -98,7 +101,10 @@ export const TURN_STATE_SCHEMA = object({
     description: nullableString,
     status: { type: 'string', enum: [...THREAD_STATUSES] },
   }),
+  // Only people absent from KNOWN CHARACTERS, each with is_new: true. Entries
+  // with is_new: false are dropped, so a known person can never be re-added.
   new_characters: list({
+    is_new: { type: 'boolean' },
     name: { type: 'string' },
     age: nullableNumber,
     role: nullableString,
@@ -107,7 +113,7 @@ export const TURN_STATE_SCHEMA = object({
     appearance: nullableString,
   }),
   character_updates: list({
-    name: { type: 'string' },
+    character_id: { type: 'string' },
     mood: nullableString,
     appearance: nullableString,
   }),

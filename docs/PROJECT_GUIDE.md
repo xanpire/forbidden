@@ -127,9 +127,9 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
     scenePace?, canonPoint?, chapter?, scene?, imageBrief?, sceneCast?
   },
   imageWorthy?: boolean,
-  entities?: [{ name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
+  entities?: [{ entityId?, isNew?, name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
   jutsuUsed?: [{ name, user, chakraNature?, effect?, visual? }],
-  bonds?: [{ character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
+  bonds?: [{ entityId?, character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
   facts?: [{ action, type?, text, subject?, whoKnows?, validFrom?, ... }],
   threads?: [{ action, title, description?, type?, participants? }],
   canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
@@ -255,8 +255,16 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - Identity groups: `masked-man`, `real-madara`, `pain`, `zetsu`.
   - All masked-man aliases merge; real Madara never merges with the masked man.
   - Pain/Nagato/six paths merge; Zetsu halves merge.
-- `mergeDuplicateEntities` runs on every turn and remaps bonds/facts/event links.
+- `mergeDuplicateEntities` runs on every turn; it and the manual merge both use `mergeEntityPair`, which folds one person into another (names become aliases, bonds combined, facts/event links/threads/jutsu/scene cast moved).
 - `lastSeen` is stamped only for `characters_present` (physically present, not merely mentioned).
+
+### Duplicate characters
+
+- **Canon cast** (`canonCast.ts`): the main canon characters (Sasuke, Kakashi, Kisame, Kakuzu, Pain, the masked man, …) are in every save from the start, each once, with aliases, birthdays and roles as of year 13. They start with `met: false` and stay off the bonds list until they are present in a scene, get a bond, or are updated by the tracker. `ensureCanonCast` runs in `seedDatabase` and `normalizeDatabase`: older saves gain the people they lack, and a person they already have under any name gets the other names as aliases instead of a second entry. The real Madara is deliberately absent (bare "Madara" stays the masked man). Aliases avoid common words ("Guy", "Leader").
+- **IDs for the state tracker** (`characterRefs.ts`): the extraction prompt lists `KNOWN CHARACTERS` as `- kisame-hoshigaki: Kisame Hoshigaki (Kisame, Hoshigaki Kisame) [not met yet]` (cached part), plus `CHARACTERS IN THIS TURN` details (dynamic part). IDs are slugs of the current name, `-2` on collisions. The schema uses `bonds[].character_id`, `character_updates[].character_id`, and IDs in `characters_present`, `facts.entity/who_knows`, `jutsu_used.user`, `news_relayed.from`.
+- **Only `is_new: true` adds someone**: `new_characters[]` entries need `is_new: true`; `false` is dropped. `resolveCharacterRefs` (run in `extractTurnDiff`) maps each reference to a person: known ID → exact new name from this turn → name/alias fallback → otherwise dropped (a bond or update for an unknown ID never creates a person). A "new" person whose name resolves to someone known becomes an update.
+- **Name mentions** (`mentionsName` / `mentionsEntity`): whole-word, Unicode-aware; "Pain" must be capitalized. Used for narrator scene cards, retrieval, image cast fallback and summary links, so "asleep" no longer finds Lee and "Sarutobi" no longer finds Tobi.
+- **Merge with…** on the bond screen (`components/kan/MergeSheet.tsx`, `mergeCharacters` in `game.tsx`): pick the other person (likely duplicates by shared name words first), choose which name to keep, merge.
 
 ---
 
@@ -424,7 +432,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 
 - `app/(tabs)/index.tsx` — Story: narration as plain prose, Kan's turns as tinted blocks (`*actions*` italic), header with clock/date/location (tap → status sheet with mood, date, scene), news strip, a `+N min` time chip under each reply (tap to correct), Image / Retry / Undo under the latest reply, single-row composer with `"` and `*` markers, fullscreen image viewer.
 - `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal switch.
-  - `BondsSection.tsx` — search + compact rows (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories).
+  - `BondsSection.tsx` — search + compact rows (people you have met; unmet canon cast is hidden) (avatar, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (bond meter, chips, mood/personality/speech/appearance, shared memories, Merge with…).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people). `titleAndBody` splits a summary into a short title and the rest.
 - `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
@@ -460,6 +468,9 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 
 ### Add a canon milestone
 Add an object to `CANON_MILESTONES` in chronological position (order = prerequisite order), with a real date window, `minScenes`, facts, optional encounter, and `playerDriven` if it depends on Kan. Add a test that it opens on the right day.
+
+### Add a canon cast member
+Add an entry to `CANON_CAST` in `canonCast.ts` (name, aliases without common words, birthday/birthYear counted from Kan's birth, role at year 13). Existing saves pick them up on next load.
 
 ### Add a character’s lore/heart
 Add to `CHARACTER_LORE` (devotion, accessibility, orientation) and optionally `ERA_NOTES`.
@@ -497,6 +508,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Save compatibility & normalization
 - JSON stripping (fenced, truncated, unfenced, labels)
 - Identity resolution (masked man, real Madara, Pain/Nagato, Zetsu)
+- Duplicate characters (canon cast seeding and migration, ID roster in the state prompt, `is_new` gate, ID resolution, manual merge, whole-word name mentions)
 - Time parsing and clock arithmetic (seconds/minutes/days, leap years, month lengths)
 - Pacing caps and combat date blocking
 - Canon scheduling (baseline, real dates, personal vs world, passed/completed, news/heard, couriers)

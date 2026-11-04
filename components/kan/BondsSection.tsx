@@ -82,7 +82,10 @@ export function BondsSection() {
     const term = query.trim().toLowerCase();
 
     return db.entities
-      .filter((entity) => entity.type === 'character' && entity.name !== 'Kan')
+      // Canon cast members you have not met yet stay off the list.
+      .filter(
+        (entity) => entity.type === 'character' && entity.name !== 'Kan' && entity.met !== false
+      )
       .map((entity) => ({
         entity,
         bond: db.bonds.find((bond) => bond.entityId === entity.id) ?? null,
