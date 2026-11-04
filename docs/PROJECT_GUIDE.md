@@ -96,7 +96,6 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   chapter: number
   scene: string
   scenePace?: 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime'
-  imageBrief?: string
   sceneCast?: string[]
 }
 ```
@@ -124,7 +123,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
     mood?, worldDescription?, jutsuAdded?, jutsuRemoved?,
     inventoryAdded?, inventoryRemoved?, location?, locationKind?,
     inStoryDate?, elapsedSeconds?, clockTime?: {hour,minute},
-    scenePace?, canonPoint?, chapter?, scene?, imageBrief?, sceneCast?
+    scenePace?, canonPoint?, chapter?, scene?, sceneCast?
   },
   imageWorthy?: boolean,
   entities?: [{ entityId?, isNew?, name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
@@ -138,7 +137,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
-Note: the state model returns **snake_case** JSON matching `TURN_STATE_SCHEMA` (`lib/rpg/stateSchema.ts`): flat `location`, `time.elapsed`, `affinity_change`, `characters_present`, `character_updates`, `scene_ended`, `image_brief`, `image_worthy`, `news_relayed`, `canon_completed`, … Strict mode means every field is always present, with `null` / `[]` for “unchanged”. `convertStateBlock` (services.ts) ignores those and translates the rest → `TurnDiff` camelCase. It still accepts the older nested `state: { location, … }` shape.
+Note: the state model returns **snake_case** JSON matching `TURN_STATE_SCHEMA` (`lib/rpg/stateSchema.ts`): flat `location`, `time.elapsed`, `affinity_change`, `characters_present`, `character_updates`, `scene_ended`, `image_worthy`, `news_relayed`, `canon_completed`, … Strict mode means every field is always present, with `null` / `[]` for “unchanged”. `convertStateBlock` (services.ts) ignores those and translates the rest → `TurnDiff` camelCase. It still accepts the older nested `state: { location, … }` shape.
 
 ---
 
@@ -409,16 +408,13 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 ## 11. Image pipeline (`lib/rpg/image.ts`, `referenceImages.ts`)
 
 - Three static references: `kan-face-sheet.jpg`, `kan-outfit-black.jpg`, `kan-outfit-akatsuki.jpg`, plus up to two recent scene images.
-- `referenceImages.ts` loads face + both outfits as data URIs (cached) and orders **face → current outfit → alternate**; the current outfit is chosen from inventory (`Akatsuki cloak`).
-- `collectRecentSceneImages(db)` returns the last **2** assistant images for style continuity.
-- `buildSceneImagePrompt(db, recentImages)`:
-  - previous scene images: style/palette/lighting only, ignore characters;
-  - reference numbering: recent images first, then face sheet, current outfit, alternate outfit;
-  - **ACTION**: `state.imageBrief` (fallback: last 700 chars of narration);
-  - **ACTOR RULE**: Kan performs the action, the other person is the target; never Kan as the victim of his own action;
-  - only people named in ACTION may appear; unnamed extras in the brief are allowed;
-  - cast comes from `state.sceneCast`, never same-day `lastSeen`.
-- `lib/openrouter.ts` `generateImage` posts to `https://openrouter.ai/api/v1/images` with `input_references: [{type:'image_url', image_url:{url}}]`, retrying with fewer references if the provider rejects them.
+- **Model capabilities (`imageCaps.ts`, `fetchImageModelCaps`)**: when an image model is picked in Settings, the app reads `GET /api/v1/images/models/{id}/endpoints` and keeps only what *every* endpoint accepts (enum values intersected, ranges narrowed), falling back to the model-level summary. Saved as `settings.imageModelCaps` (`maxReferences` from `input_references.max`) and re-checked when stale or when the model changes. Settings shows a line under Images ("Takes up to N reference images…", red when 0).
+- `buildImageRequestBody(caps, …)` sends only accepted fields: `resolution` 1K, `aspect_ratio` (closest allowed ratio if 16:9 / 3:4 isn't offered), `quality`, `output_format` jpeg/webp + `output_compression`, and at most `maxReferences` references. On a 400/422 it retries once with just prompt + the same references; it never drops references silently.
+- `referencePlan.ts` `planReferences` orders by priority **face → current outfit → recent scene images (newest first) → alternate outfit** and cuts at the model's limit, so Kan's face is the last to go. If the face can't be sent (model takes 0 references, or the sheet failed to load) the player gets a warning toast (`faceDroppedWarning`), and the prompt describes Kan in words instead.
+- `buildSceneImagePrompt(db, references, action)` labels references in the order actually sent; previous scene images are style/palette/lighting only.
+- **ACTION**: written fresh on every tap by `writeImageAction` — a small call to the memory (extraction) model with the latest reply, Kan's last input, location, outfit and cast; it returns one or two sentences naming who does what to whom. Logged in Debug as "Image description". Falls back to the last 700 chars of narration if the call fails. The state tracker no longer writes an image brief each turn.
+  - actor rule (Kan performs the action unless stated otherwise), named cast only, no text in image.
+- Portraits (`PortraitHeader.tsx`) use the same caps and plan: face → outfit → previous portrait.
 - Images are generated **only when the player taps the image button** (`generateSceneImage` in `app/(tabs)/index.tsx`).
 - **Storage (`imageStore.ts`)**: images never live in the save. `storeImage` writes the data URI to IndexedDB (`kan-images`) and returns a short `img:<id>` reference that goes into `rawLog[].image` / `portraits[].image`. `loadImage` / `useStoredImage` resolve references (in-memory cache). On load, switch and import, `externalizeImages` migrates any inline data URIs from older saves. Export inlines images again (`inlineImages`) so save files stay self-contained. Without IndexedDB, `storeImage` returns the data URI unchanged.
 - **Portraits (`portrait.ts`)**: `portraitSignature(db)` reduces Kan to age, outfit (Akatsuki cloak in inventory), a coarse expression bucket from `state.mood`, and a setting bucket from `locationKind`. `portraitStaleReason(latest, current)` says why the latest portrait is outdated (outfit → age → expression → setting) or returns null. `buildPortraitPrompt` asks for a 3:4 head-and-shoulders portrait using the face sheet, the current outfit and the previous portrait as references. Portraits are generated only from the Kan tab's Refresh button and stored in `db.portraits` (last 24).
@@ -495,7 +491,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 | Canon events not appearing | `canonProgress.baselineTurn`/`completed`; world milestones need date + `minScenes` (turns). Personal beats need state-call marks — check `CANON TRACKING` in the state prompt. |
 | Canon event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
 | JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
-| Wrong characters in images | `image_brief` and `characters_present` from the state call; cast comes from `sceneCast`. |
+| Wrong characters in images | The ACTION line is written fresh on tap by `writeImageAction` (memory model); cast comes from `sceneCast`. Check Settings → Debug → Image description. |
 | Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/canon caps. |
 | Save quota error | `saveSlot` trims images/snapshots; clearing old slots helps. |
 | Need to see what really happened | Settings → Debug: prompt, state diff, tokens and cost per turn. |

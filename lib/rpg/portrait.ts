@@ -1,6 +1,7 @@
 import { calculateAge } from './calendar';
 import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
+import type { PlannedReference } from './referencePlan';
 import type {
   AppDatabase,
   PortraitExpression,
@@ -136,24 +137,37 @@ const EXPRESSION_TEXT: Record<PortraitExpression, string> = {
 export function buildPortraitPrompt(
   db: AppDatabase,
   signature: PortraitSignature,
-  hasPreviousPortrait: boolean
+  references: PlannedReference[]
 ) {
   const outfit =
     signature.outfit === 'akatsuki'
       ? 'the Akatsuki cloak (black with red clouds)'
       : 'the plain black shinobi outfit, no Akatsuki cloak';
-  let index = 1;
   const lines = [
     'Character portrait of Kan, a shinobi from the Naruto world. Dark cinematic anime illustration.',
     'Visual image only. No words, letters, numbers, captions, logos, watermarks or readable text anywhere.',
-    `Reference image ${index++}: Kan's face sheet. Match his face exactly: black spiky hair, brown eyes, facial structure, hairline.`,
-    `Reference image ${index++}: the outfit he wears now (${outfit}), shown without a person. Dress him in exactly this.`,
   ];
 
-  if (hasPreviousPortrait) {
-    lines.push(
-      `Reference image ${index++}: his previous portrait. Keep the same art style, framing and lighting, but update age, clothes, expression and background as described below.`
-    );
+  references.forEach((reference, i) => {
+    const n = i + 1;
+
+    if (reference.kind === 'face') {
+      lines.push(
+        `Reference image ${n}: Kan's face sheet. Match his face exactly: black spiky hair, brown eyes, facial structure, hairline.`
+      );
+    } else if (reference.kind === 'outfit') {
+      lines.push(
+        `Reference image ${n}: the outfit he wears now (${outfit}), shown without a person. Dress him in exactly this.`
+      );
+    } else if (reference.kind === 'previous') {
+      lines.push(
+        `Reference image ${n}: his previous portrait. Keep the same art style, framing and lighting, but update age, clothes, expression and background as described below.`
+      );
+    }
+  });
+
+  if (!references.some((reference) => reference.kind === 'face')) {
+    lines.push('Kan has black spiky hair, brown eyes, and a lean, guarded face.');
   }
 
   lines.push(

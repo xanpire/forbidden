@@ -29,6 +29,7 @@ const KIND_LABEL: Record<DebugCallKind, string> = {
   arc: 'Arc summary',
   year: 'Year summary',
   image: 'Scene image',
+  imageAction: 'Image description',
   portrait: 'Portrait',
 };
 

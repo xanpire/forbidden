@@ -70,7 +70,7 @@ OUTPUT
 const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is Kan. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
 
 - Report only what THIS turn shows changed: null when unchanged, [] when empty. Never invent anything or contradict the state below.
-- Player-facing text calls Kan "you" (world_description, canon_point, threads, bond status and notes, jutsu effects). Use "Kan" in image_brief, facts, and the jutsu "user" field.
+- Player-facing text calls Kan "you" (world_description, canon_point, threads, bond status and notes, jutsu effects). Use "Kan" in facts and the jutsu "user" field.
 
 TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. time.clock_time is "HH:MM" only when the prose fixes an hour. scene_pace: combat, chase, conversation, travel, or downtime.
 
@@ -84,7 +84,7 @@ MEMORY: facts are lasting truths (a death, injury, secret, membership, key item 
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise [].
 
-IMAGE: image_worthy is true only for visually striking moments, never pure dialogue. image_brief is then one sentence of up to 30 words naming who does what to whom, and where ("Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens."); otherwise null.`;
+IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 

@@ -157,13 +157,6 @@ export function convertStateBlock(
     diff.state = { ...diff.state, mood: block.mood.trim().slice(0, 60) };
   }
 
-  if (typeof block.image_brief === 'string' && block.image_brief.trim()) {
-    diff.state = {
-      ...diff.state,
-      imageBrief: block.image_brief.trim().slice(0, 240),
-    };
-  }
-
   if (typeof block.world_description === 'string' && block.world_description.trim()) {
     diff.state = {
       ...diff.state,
@@ -1201,10 +1194,6 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.locationKind = state.locationKind ?? classifyLocation(next.state.location);
   } else if (state.locationKind) {
     next.state.locationKind = state.locationKind;
-  }
-
-  if (typeof state.imageBrief === 'string' && state.imageBrief.trim()) {
-    next.state.imageBrief = state.imageBrief.trim().slice(0, 240);
   }
 
   if (Array.isArray(state.sceneCast)) {

@@ -6,7 +6,9 @@ const kanOutfitAkatsuki = require('../../assets/images/kan-outfit-akatsuki.jpg')
 
 let referencesPromise: Promise<string[]> | null = null;
 
-export function loadKanReferenceImages(wearsAkatsukiCloak: boolean): Promise<string[]> {
+export type KanReferences = { face: string; outfit: string; alternate: string };
+
+export function loadKanReferenceImages(wearsAkatsukiCloak: boolean): Promise<KanReferences> {
   if (!referencesPromise) {
     referencesPromise = Promise.all([
       toDataUri(Asset.fromModule(kanFaceSheet)),
@@ -19,7 +21,7 @@ export function loadKanReferenceImages(wearsAkatsukiCloak: boolean): Promise<str
     const current = wearsAkatsukiCloak ? akatsuki : black;
     const alternate = wearsAkatsukiCloak ? black : akatsuki;
 
-    return [face, current, alternate].filter(Boolean);
+    return { face: face ?? '', outfit: current ?? '', alternate: alternate ?? '' };
   });
 }
 
@@ -59,3 +61,6 @@ async function toDataUri(asset: Asset) {
     return uri;
   }
 }
+
+export { faceDroppedWarning, planReferences } from './referencePlan';
+export type { PlannedReference, ReferenceKind } from './referencePlan';

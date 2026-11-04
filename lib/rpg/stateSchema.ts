@@ -118,7 +118,6 @@ export const TURN_STATE_SCHEMA = object({
     appearance: nullableString,
   }),
   characters_present: stringList,
-  image_brief: nullableString,
   image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },
   canon_engaged: stringList,

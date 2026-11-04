@@ -13,6 +13,8 @@ export type OpenRouterModelSummary = {
   contextLength: number;
   promptPrice: string | null;
   recommended: boolean;
+  /** Short tag shown next to the name, e.g. "4 refs". */
+  badge?: string;
 };
 
 type RawModel = {
@@ -29,6 +31,8 @@ export type OpenRouterImageModelSummary = {
   supportsStreaming: boolean;
   supportsImageInput: boolean;
   supportedParameters: string[];
+  params: Record<string, ImageParamDescriptor>;
+  maxReferences: number;
 };
 
 export type ImageGenerationResult = {
@@ -244,27 +248,262 @@ export async function fetchOpenRouterImageModels(): Promise<OpenRouterImageModel
         model.architecture?.input_modalities?.includes('image')
       ),
       supportedParameters: Object.keys(model.supported_parameters ?? {}),
+      params: readParams(model.supported_parameters),
+      maxReferences: maxReferencesOf(readParams(model.supported_parameters)),
     }))
     .sort((a, b) => {
-      if (a.supportsImageInput !== b.supportsImageInput) {
-        return a.supportsImageInput ? -1 : 1;
+      if (a.maxReferences !== b.maxReferences) {
+        return b.maxReferences - a.maxReferences;
       }
 
       return a.name.localeCompare(b.name);
     });
 }
 
+/** One request field an image endpoint accepts, as OpenRouter describes it. */
+export type ImageParamDescriptor =
+  | { type: 'enum'; values: string[] }
+  | { type: 'range'; min: number; max: number }
+  | { type: 'boolean' };
+
+/**
+ * What the chosen image model accepts. Looked up when the model is picked in
+ * Settings, so requests only carry fields the model takes.
+ */
+export type ImageModelCaps = {
+  modelId: string;
+  params: Record<string, ImageParamDescriptor>;
+  /** How many reference images every endpoint of this model accepts. 0 = none. */
+  maxReferences: number;
+  /** "endpoints": strict per-provider records. "model": the looser model-level summary. */
+  source: 'endpoints' | 'model';
+  fetchedAt: number;
+};
+
+function readDescriptor(raw: unknown): ImageParamDescriptor | null {
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const value = raw as { type?: string; values?: unknown; min?: unknown; max?: unknown };
+
+  if (value.type === 'enum' && Array.isArray(value.values)) {
+    return { type: 'enum', values: value.values.filter((v): v is string => typeof v === 'string') };
+  }
+
+  if (value.type === 'range') {
+    const min = typeof value.min === 'number' ? value.min : 0;
+    const max = typeof value.max === 'number' ? value.max : min;
+    return { type: 'range', min, max };
+  }
+
+  if (value.type === 'boolean') {
+    return { type: 'boolean' };
+  }
+
+  return null;
+}
+
+function readParams(raw: unknown): Record<string, ImageParamDescriptor> {
+  const params: Record<string, ImageParamDescriptor> = {};
+
+  if (!raw || typeof raw !== 'object') {
+    return params;
+  }
+
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const descriptor = readDescriptor(value);
+
+    if (descriptor) {
+      params[key] = descriptor;
+    }
+  }
+
+  return params;
+}
+
+/** Keeps only what every endpoint accepts, so whichever provider serves the call takes it. */
+function intersectParams(list: Array<Record<string, ImageParamDescriptor>>) {
+  if (list.length === 0) {
+    return {};
+  }
+
+  const result: Record<string, ImageParamDescriptor> = {};
+
+  for (const [key, first] of Object.entries(list[0])) {
+    const all = list.map((params) => params[key]);
+
+    if (all.some((descriptor) => !descriptor || descriptor.type !== first.type)) {
+      continue;
+    }
+
+    if (first.type === 'enum') {
+      const values = first.values.filter((v) =>
+        all.every((d) => (d as { values: string[] }).values.includes(v))
+      );
+
+      if (values.length > 0) {
+        result[key] = { type: 'enum', values };
+      }
+    } else if (first.type === 'range') {
+      const min = Math.max(...all.map((d) => (d as { min: number }).min));
+      const max = Math.min(...all.map((d) => (d as { max: number }).max));
+
+      if (max >= min) {
+        result[key] = { type: 'range', min, max };
+      }
+    } else {
+      result[key] = first;
+    }
+  }
+
+  return result;
+}
+
+function maxReferencesOf(params: Record<string, ImageParamDescriptor>) {
+  const descriptor = params.input_references;
+
+  if (!descriptor) {
+    return 0;
+  }
+
+  if (descriptor.type === 'range') {
+    return Math.max(0, Math.floor(descriptor.max));
+  }
+
+  // Supported but no count given: one is the only safe number.
+  return 1;
+}
+
+/**
+ * Looks up which settings and how many reference images an image model
+ * takes. Uses the per-endpoint records (the strict truth) and falls back to
+ * the model list's summary.
+ */
+export async function fetchImageModelCaps(modelId: string): Promise<ImageModelCaps> {
+  const id = modelId.trim();
+
+  try {
+    const response = await fetch(`${IMAGE_MODELS_URL}/${id}/endpoints`, {
+      headers: { Accept: 'application/json' },
+    });
+
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        data?: { endpoints?: Array<{ supported_parameters?: unknown }> };
+        endpoints?: Array<{ supported_parameters?: unknown }>;
+      };
+      const endpoints = payload.endpoints ?? payload.data?.endpoints ?? [];
+
+      if (endpoints.length > 0) {
+        const params = intersectParams(endpoints.map((e) => readParams(e.supported_parameters)));
+
+        return {
+          modelId: id,
+          params,
+          maxReferences: maxReferencesOf(params),
+          source: 'endpoints',
+          fetchedAt: Date.now(),
+        };
+      }
+    }
+  } catch {
+    // Fall through to the model list.
+  }
+
+  const models = await fetchOpenRouterImageModels();
+  const model = models.find((entry) => entry.id === id);
+
+  if (!model) {
+    throw new Error(`OpenRouter has no image model called ${id}.`);
+  }
+
+  return {
+    modelId: id,
+    params: model.params,
+    maxReferences: maxReferencesOf(model.params),
+    source: 'model',
+    fetchedAt: Date.now(),
+  };
+}
+
+function ratioOf(value: string) {
+  const [w, h] = value.split(':').map(Number);
+  return w > 0 && h > 0 ? w / h : null;
+}
+
+/** The request body for this model: only fields it accepts, with values it allows. */
+export function buildImageRequestBody(
+  caps: ImageModelCaps,
+  request: { prompt: string; references: string[]; aspectRatio: string }
+) {
+  const { params } = caps;
+  const body: Record<string, unknown> = { model: caps.modelId, prompt: request.prompt };
+  const pick = (key: string, preferred: string[]) => {
+    const descriptor = params[key];
+
+    if (descriptor?.type !== 'enum') {
+      return null;
+    }
+
+    return preferred.find((value) => descriptor.values.includes(value)) ?? null;
+  };
+
+  const resolution = pick('resolution', ['1K', '2K']);
+  if (resolution) body.resolution = resolution;
+
+  const aspect = params.aspect_ratio;
+  if (aspect?.type === 'enum' && aspect.values.length > 0) {
+    if (aspect.values.includes(request.aspectRatio)) {
+      body.aspect_ratio = request.aspectRatio;
+    } else {
+      const target = ratioOf(request.aspectRatio) ?? 1;
+      const closest = aspect.values
+        .map((value) => ({ value, ratio: ratioOf(value) }))
+        .filter((entry): entry is { value: string; ratio: number } => entry.ratio !== null)
+        .sort((a, b) => Math.abs(Math.log(a.ratio / target)) - Math.abs(Math.log(b.ratio / target)))[0];
+
+      if (closest) body.aspect_ratio = closest.value;
+    }
+  }
+
+  const quality = pick('quality', ['high', 'medium', 'auto']);
+  if (quality) body.quality = quality;
+
+  const format = pick('output_format', ['jpeg', 'webp']);
+  if (format) {
+    body.output_format = format;
+    const compression = params.output_compression;
+
+    if (compression?.type === 'range') {
+      body.output_compression = Math.min(compression.max, Math.max(compression.min, 80));
+    }
+  }
+
+  const references = request.references.filter(Boolean).slice(0, caps.maxReferences);
+
+  if (references.length > 0) {
+    body.input_references = references.map((url) => ({
+      type: 'image_url',
+      image_url: { url },
+    }));
+  }
+
+  return { body, sentReferences: references.length };
+}
+
 export async function generateImage({
   apiKey,
-  model,
+  caps,
   prompt,
   inputReferences,
   aspectRatio = '16:9',
   signal,
 }: {
   apiKey: string;
-  model: string;
+  caps: ImageModelCaps;
   prompt: string;
+  /** In priority order: anything past the model's limit is left off the end. */
   inputReferences?: string[];
   aspectRatio?: '16:9' | '3:4';
   signal?: AbortSignal;
@@ -273,65 +512,32 @@ export async function generateImage({
     throw new Error('Add your OpenRouter API key in Settings first.');
   }
 
-  const fullBody: Record<string, unknown> = {
-    model,
+  const { body } = buildImageRequestBody(caps, {
     prompt,
-    n: 1,
-    resolution: '1K',
-    aspect_ratio: aspectRatio,
-    quality: 'high',
-    output_format: 'jpeg',
-    output_compression: 80,
-  };
-
-  const references = inputReferences?.filter(Boolean) ?? [];
-
-  if (references.length > 0) {
-    fullBody.input_references = references.map((url) => ({
-      type: 'image_url',
-      image_url: { url },
-    }));
-  }
+    references: inputReferences ?? [],
+    aspectRatio,
+  });
 
   let response = await fetch(IMAGES_URL, {
     method: 'POST',
     headers: buildHeaders(apiKey, false),
-    body: JSON.stringify(fullBody),
+    body: JSON.stringify(body),
     signal,
   });
 
-  if ((response.status === 400 || response.status === 422) && references.length > 2) {
-    response = await fetch(IMAGES_URL, {
-      method: 'POST',
-      headers: buildHeaders(apiKey, false),
-      body: JSON.stringify({
-        ...fullBody,
-        input_references: references.slice(0, 2).map((url) => ({
-          type: 'image_url',
-          image_url: { url },
-        })),
-      }),
-      signal,
-    });
-  }
-
-  if ((response.status === 400 || response.status === 422) && references.length > 0) {
-    const withoutReferences = { ...fullBody };
-    delete withoutReferences.input_references;
-
-    response = await fetch(IMAGES_URL, {
-      method: 'POST',
-      headers: buildHeaders(apiKey, false),
-      body: JSON.stringify(withoutReferences),
-      signal,
-    });
-  }
-
+  // A rejected optional setting: retry with only the prompt and the same
+  // references. References are never dropped here: that would lose Kan's face.
   if (response.status === 400 || response.status === 422) {
+    const minimal: Record<string, unknown> = { model: body.model, prompt: body.prompt };
+
+    if (body.input_references) {
+      minimal.input_references = body.input_references;
+    }
+
     response = await fetch(IMAGES_URL, {
       method: 'POST',
       headers: buildHeaders(apiKey, false),
-      body: JSON.stringify({ model, prompt }),
+      body: JSON.stringify(minimal),
       signal,
     });
   }

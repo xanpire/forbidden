@@ -1,3 +1,4 @@
+import type { ImageModelCaps } from '../openrouter';
 export type ScenePace = 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime';
 
 export type CalendarDate = {
@@ -66,7 +67,6 @@ export type GameState = {
   chapter: number;
   scene: string;
   scenePace?: ScenePace;
-  imageBrief?: string;
   sceneCast?: string[];
 };
 
@@ -262,6 +262,8 @@ export type Settings = {
   summaryModel: string;
   extractionModel: string;
   imageModel: string;
+  /** What the image model accepts, looked up when it is picked. */
+  imageModelCaps?: ImageModelCaps | null;
   contextMessages: number;
   retrievalLimit: number;
   autoSummarizeThreshold: number;
@@ -375,7 +377,6 @@ export type TurnDiff = {
     canonPoint?: string;
     chapter?: number;
     scene?: string;
-    imageBrief?: string;
     sceneCast?: string[];
   };
   /** The state model judged this beat visually striking (queues a scene summary). */

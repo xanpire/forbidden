@@ -50,12 +50,22 @@ import { streamingPreview, stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
-import { buildSceneImagePrompt, collectRecentSceneImages } from '@/lib/rpg/image';
+import {
+  buildSceneImagePrompt,
+  collectRecentSceneImages,
+  fallbackImageAction,
+  writeImageAction,
+} from '@/lib/rpg/image';
+import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { loadImages, useStoredImage } from '@/lib/rpg/imageStore';
-import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
+import {
+  faceDroppedWarning,
+  loadKanReferenceImages,
+  planReferences,
+} from '@/lib/rpg/referenceImages';
 import { wearsAkatsukiCloak } from '@/lib/rpg/portrait';
 import { generateImage } from '@/lib/openrouter';
-import { recordDebugImage } from '@/lib/rpg/debug';
+import { recordDebugImage, recordDebugSideCall } from '@/lib/rpg/debug';
 
 type StoryMessage = {
   id: string;
@@ -201,6 +211,7 @@ export default function StoryScreen() {
     undoLastTurn,
     attachImage,
     correctTurnTime,
+    updateSettings,
   } = useGame();
   const { showToast } = useToast();
 
@@ -335,21 +346,49 @@ export default function StoryScreen() {
     setIsGeneratingImage(true);
 
     try {
-      const recentImages = await loadImages(collectRecentSceneImages(db));
-      const prompt = buildSceneImagePrompt(db, recentImages);
-      const staticReferences = await loadKanReferenceImages(wearsAkatsukiCloak(db));
-      const inputReferences = [...recentImages, ...staticReferences];
+      const [caps, written, recentImages, kanRefs] = await Promise.all([
+        ensureImageCaps(db, updateSettings),
+        writeImageAction(apiKey, db),
+        loadImages(collectRecentSceneImages(db)),
+        loadKanReferenceImages(wearsAkatsukiCloak(db)),
+      ]);
+
+      if (written) {
+        recordDebugSideCall(latestAssistant.id, {
+          kind: 'imageAction',
+          model: written.model,
+          usage: written.usage,
+          apiKey,
+        });
+      }
+
+      const action = written?.action ?? fallbackImageAction(db);
+      const plan = planReferences(
+        [
+          { kind: 'face', uri: kanRefs.face },
+          { kind: 'outfit', uri: kanRefs.outfit },
+          ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
+          { kind: 'alternate', uri: kanRefs.alternate },
+        ],
+        caps.maxReferences
+      );
+
+      if (plan.faceDropped) {
+        showToast(faceDroppedWarning(plan.faceDropped, caps.modelId), 'error');
+      }
+
+      const prompt = buildSceneImagePrompt(db, plan.references, action);
       const startedAt = Date.now();
       const result = await generateImage({
         apiKey,
-        model: db.settings.imageModel,
+        caps,
         prompt,
-        inputReferences,
+        inputReferences: plan.references.map((reference) => reference.uri),
       });
       recordDebugImage(
         latestAssistant.id,
         'image',
-        db.settings.imageModel,
+        caps.modelId,
         result.cost,
         Date.now() - startedAt
       );
@@ -361,7 +400,7 @@ export default function StoryScreen() {
     } finally {
       setIsGeneratingImage(false);
     }
-  }, [apiKey, attachImage, db, isGeneratingImage, showToast]);
+  }, [apiKey, attachImage, db, isGeneratingImage, showToast, updateSettings]);
 
   const insertMarker = useCallback((marker: string) => {
     setInput((current) => {

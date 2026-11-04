@@ -20,6 +20,7 @@ export type DebugCallKind =
   | 'arc'
   | 'year'
   | 'image'
+  | 'imageAction'
   | 'portrait';
 
 export type DebugCall = {
@@ -355,6 +356,19 @@ export function recordDebugImage(
       durationMs,
     },
   });
+}
+
+/** Records a side call (like the image description) against a reply's turn, or the newest turn. */
+export function recordDebugSideCall(
+  turnLogId: string | null,
+  call: { kind: DebugCallKind; model: string; usage: CallUsage | null; apiKey?: string; error?: string }
+) {
+  const target =
+    (turnLogId && log.turns.find((turn) => turn.id === turnLogId)) || log.turns[0] || null;
+
+  if (target) {
+    recordDebugCall(target.id, call);
+  }
 }
 
 export function recordDebugState(turnId: string | null | undefined, step: Omit<DebugStateStep, 'at'>) {

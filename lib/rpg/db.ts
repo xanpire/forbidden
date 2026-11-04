@@ -601,8 +601,6 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
       state.scenePace === 'downtime'
         ? state.scenePace
         : undefined,
-    imageBrief:
-      typeof state.imageBrief === 'string' ? state.imageBrief.slice(0, 240) : undefined,
     sceneCast: Array.isArray(state.sceneCast)
       ? state.sceneCast.filter(Boolean).slice(0, 6)
       : [],

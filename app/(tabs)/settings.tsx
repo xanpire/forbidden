@@ -31,7 +31,8 @@ import { DebugPanel } from '@/components/settings/DebugPanel';
 import { useToast } from '@/components/Toast';
 import { APP_VERSION } from '@/lib/version';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
-import { testOpenRouterKey } from '@/lib/openrouter';
+import { fetchImageModelCaps, testOpenRouterKey } from '@/lib/openrouter';
+import { describeImageCaps } from '@/lib/rpg/imageCaps';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { DEFAULT_SETTINGS, PROMPT_BUDGET_OPTIONS } from '@/lib/rpg/defaults';
 import { downloadJson, pickJsonFile } from '@/lib/rpg/file';
@@ -70,6 +71,7 @@ export default function SettingsScreen() {
   const [testingKey, setTestingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [capsState, setCapsState] = useState<'idle' | 'loading' | 'failed'>('idle');
 
   const [creating, setCreating] = useState(false);
   const [newSlotName, setNewSlotName] = useState('');
@@ -82,6 +84,49 @@ export default function SettingsScreen() {
   useEffect(() => {
     setKeyDraft(apiKey);
   }, [apiKey]);
+
+  // Look up what the image model accepts whenever it changes (debounced so
+  // typing a custom ID doesn't fire a lookup per keystroke).
+  const imageModel = db?.settings.imageModel.trim() ?? '';
+  const imageCaps = db?.settings.imageModelCaps ?? null;
+  const capsCurrent = Boolean(imageCaps && imageCaps.modelId === imageModel);
+
+  useEffect(() => {
+    if (!imageModel || capsCurrent) {
+      setCapsState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setCapsState('loading');
+    const timer = setTimeout(() => {
+      fetchImageModelCaps(imageModel)
+        .then(async (caps) => {
+          if (!cancelled) {
+            await updateSettings({ imageModelCaps: caps });
+            setCapsState('idle');
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCapsState('failed');
+          }
+        });
+    }, 600);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [capsCurrent, imageModel, updateSettings]);
+
+  const imageCapsNote =
+    capsCurrent && imageCaps
+      ? describeImageCaps(imageCaps)
+      : capsState === 'failed'
+        ? 'Couldn’t check what this model accepts. It will be checked again when you make an image.'
+        : 'Checking what this model accepts…';
+  const imageCapsWarning = Boolean(capsCurrent && imageCaps && imageCaps.maxReferences === 0);
 
   const keyEditorVisible = keyOpen || !apiKey;
 
@@ -359,6 +404,14 @@ export default function SettingsScreen() {
               onChange={(value) => void updateSettings({ imageModel: value })}
               value={db.settings.imageModel}
             />
+            <Text
+              style={[
+                styles.capsNote,
+                imageCapsWarning && styles.capsWarning,
+              ]}
+            >
+              {imageCapsNote}
+            </Text>
             <ListRow
               accessibilityState={{ expanded: advancedOpen }}
               onPress={() => setAdvancedOpen((open) => !open)}
@@ -689,6 +742,17 @@ const styles = StyleSheet.create({
   nested: {
     paddingLeft: spacing.md,
     backgroundColor: '#0A0A0A',
+  },
+  capsNote: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textDim,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  capsWarning: {
+    color: colors.accent,
   },
   nestedDivider: {
     height: 1,

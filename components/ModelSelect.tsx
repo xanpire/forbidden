@@ -48,7 +48,11 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
               name: model.name,
               contextLength: 0,
               promptPrice: null,
-              recommended: model.supportsImageInput,
+              recommended: model.maxReferences > 0,
+              badge:
+                model.maxReferences > 0
+                  ? `${model.maxReferences} ref${model.maxReferences === 1 ? '' : 's'}`
+                  : 'no refs',
             }))
           : await fetchOpenRouterModels();
 
@@ -206,8 +210,12 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
                         <Text numberOfLines={1} style={styles.modelName}>
                           {model.name}
                         </Text>
-                        {kind === 'image' && model.recommended ? (
-                          <Text style={styles.referenceBadge}>refs</Text>
+                        {kind === 'image' && model.badge ? (
+                          <Text
+                            style={[styles.referenceBadge, !model.recommended && styles.referenceBadgeOff]}
+                          >
+                            {model.badge}
+                          </Text>
                         ) : null}
                       </View>
                       <Text numberOfLines={1} style={styles.modelId}>
@@ -412,6 +420,9 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     color: colors.accent,
     textTransform: 'uppercase',
+  },
+  referenceBadgeOff: {
+    color: colors.textDim,
   },
   modelName: {
     fontFamily: fonts.semibold,

@@ -21,6 +21,8 @@ import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { mentionsName } from '../lib/rpg/characterRefs';
 import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
+import { planReferences } from '../lib/rpg/referencePlan';
+import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { formatEncounterHint } from '../lib/rpg/prompt';
 import { CANON_MILESTONES, CANON_VERSION, activeCanonMilestones, advanceCanon, applyCanonMarks, canonEnabled, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
@@ -251,11 +253,21 @@ describe('narration JSON stripping edge cases', () => {
 describe('image reference pipeline', () => {
   test('prompt numbers references dynamically and carries scene data', () => {
     const db = loadSave();
-    const recent = ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'];
-    const prompt = buildSceneImagePrompt(db, recent);
+    const plan = planReferences(
+      [
+        { kind: 'face', uri: 'data:face' },
+        { kind: 'outfit', uri: 'data:outfit' },
+        { kind: 'previous', uri: 'data:image/jpeg;base64,AAA' },
+        { kind: 'previous', uri: 'data:image/jpeg;base64,BBB' },
+        { kind: 'alternate', uri: 'data:alt' },
+      ],
+      5
+    );
+    const prompt = buildSceneImagePrompt(db, plan.references, 'Kan waits.');
 
-    expect(prompt).toContain('Reference image 1: a previous scene image');
-    expect(prompt).toContain('Reference image 5');
+    expect(prompt).toContain("Reference image 1: Kan's face sheet");
+    expect(prompt).toContain('Reference image 3: a previous scene image');
+    expect(prompt).toContain('Reference image 5: the alternate outfit');
     expect(prompt).toContain(db.state.location.slice(0, 20));
     expect(prompt).toContain('no text');
     expect(prompt).toContain('face sheet');
@@ -1448,13 +1460,21 @@ describe('style guard and image brief', () => {
     let db = loadSave();
     db = applyTurnDiff(db, {
       state: {
-        imageBrief:
-          'Kan chokes a Stone ninja from behind at the quarry gate; the ninja\'s face reddens.',
         sceneCast: ['Itachi Uchiha'],
       },
     });
 
-    const prompt = buildSceneImagePrompt(db, []);
+    const prompt = buildSceneImagePrompt(
+      db,
+      [
+        { kind: 'face', uri: 'data:face' },
+        { kind: 'outfit', uri: 'data:outfit' },
+      ],
+      'Kan chokes a Stone ninja from behind at the quarry gate; the ninja\'s face reddens.'
+    );
+
+    expect(prompt).toContain("Reference image 1: Kan's face sheet");
+    expect(prompt).toContain('Reference image 2: the clothes Kan currently wears');
 
     expect(prompt).toContain('ACTION (depict this exactly)');
     expect(prompt).toContain('chokes a Stone ninja');
@@ -1810,7 +1830,6 @@ describe('two-call turn: prose narrator + structured state call', () => {
       new_characters: [],
       character_updates: [{ name: 'Itachi Uchiha', mood: 'withdrawn', appearance: null }],
       characters_present: ['Itachi Uchiha'],
-      image_brief: null,
       image_worthy: true,
       scene_ended: false,
       canon_engaged: [],
@@ -1841,7 +1860,7 @@ describe('two-call turn: prose narrator + structured state call', () => {
       scene_pace: null, location: null, location_kind: null, mood: null,
       world_description: null, canon_point: null, inventory_added: [], inventory_removed: [],
       jutsu_used: [], bonds: [], facts: [], threads: [], new_characters: [], character_updates: [],
-      characters_present: [], image_brief: null, image_worthy: false, scene_ended: false,
+      characters_present: [], image_worthy: false, scene_ended: false,
       canon_engaged: [], canon_completed: [], canon_passed: [], news_relayed: [],
     });
 
@@ -1995,5 +2014,87 @@ describe('name mentions', () => {
     expect(mentionsName('Jūzō lowers his blade.', 'Jūzō')).toBe(true);
     expect(mentionsName('The pain in your side flares.', 'Pain')).toBe(false);
     expect(mentionsName('Pain looks down at you.', 'Pain')).toBe(true);
+  });
+});
+
+describe('image model capabilities', () => {
+  const caps = (params: ImageModelCaps['params'], maxReferences: number): ImageModelCaps => ({
+    modelId: 'test/image',
+    params,
+    maxReferences,
+    source: 'endpoints',
+    fetchedAt: Date.now(),
+  });
+
+  test('Kan\'s face is the last reference to be left out', () => {
+    const candidates = [
+      { kind: 'previous' as const, uri: 'data:old' },
+      { kind: 'face' as const, uri: 'data:face' },
+      { kind: 'outfit' as const, uri: 'data:outfit' },
+      { kind: 'alternate' as const, uri: 'data:alt' },
+    ];
+
+    const one = planReferences(candidates, 1);
+    expect(one.references.map((r) => r.kind)).toEqual(['face']);
+    expect(one.faceDropped).toBeNull();
+
+    const three = planReferences(candidates, 3);
+    expect(three.references.map((r) => r.kind)).toEqual(['face', 'outfit', 'previous']);
+
+    const none = planReferences(candidates, 0);
+    expect(none.references).toEqual([]);
+    expect(none.faceDropped).toBe('no-references');
+
+    const missing = planReferences([{ kind: 'face', uri: '' }, { kind: 'outfit', uri: 'data:o' }], 4);
+    expect(missing.faceDropped).toBe('not-loaded');
+  });
+
+  test('requests carry only settings the model accepts', () => {
+    const { body, sentReferences } = buildImageRequestBody(
+      caps(
+        {
+          aspect_ratio: { type: 'enum', values: ['1:1', '3:2', '2:3'] },
+          input_references: { type: 'range', min: 0, max: 2 },
+        },
+        2
+      ),
+      { prompt: 'p', references: ['a', 'b', 'c'], aspectRatio: '16:9' }
+    );
+
+    expect(body.aspect_ratio).toBe('3:2');
+    expect(body.resolution).toBeUndefined();
+    expect(body.quality).toBeUndefined();
+    expect(body.output_format).toBeUndefined();
+    expect(sentReferences).toBe(2);
+
+    const full = buildImageRequestBody(
+      caps(
+        {
+          resolution: { type: 'enum', values: ['1K', '2K'] },
+          aspect_ratio: { type: 'enum', values: ['16:9', '3:4'] },
+          quality: { type: 'enum', values: ['low', 'high'] },
+          output_format: { type: 'enum', values: ['png', 'jpeg'] },
+          output_compression: { type: 'range', min: 0, max: 100 },
+        },
+        0
+      ),
+      { prompt: 'p', references: ['a'], aspectRatio: '3:4' }
+    );
+
+    expect(full.body).toMatchObject({
+      resolution: '1K',
+      aspect_ratio: '3:4',
+      quality: 'high',
+      output_format: 'jpeg',
+      output_compression: 80,
+    });
+    expect(full.body.input_references).toBeUndefined();
+  });
+
+  test('a scene without the face reference describes Kan in words', () => {
+    const db = loadSave();
+    const prompt = buildSceneImagePrompt(db, [], 'Kan stands in the rain.');
+    expect(prompt).not.toContain('Reference image');
+    expect(prompt).toContain('black spiky hair');
   });
 });

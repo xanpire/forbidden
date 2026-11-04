@@ -26,7 +26,12 @@ import {
   portraitTag,
   wearsAkatsukiCloak,
 } from '@/lib/rpg/portrait';
-import { loadKanReferenceImages } from '@/lib/rpg/referenceImages';
+import { ensureImageCaps } from '@/lib/rpg/imageCaps';
+import {
+  faceDroppedWarning,
+  loadKanReferenceImages,
+  planReferences,
+} from '@/lib/rpg/referenceImages';
 import type { PortraitRecord } from '@/lib/rpg/types';
 
 /** Empty frame until Kan's first portrait is painted. */
@@ -77,7 +82,7 @@ function Thumb({
 }
 
 export function PortraitHeader() {
-  const { db, apiKey, addPortrait } = useGame();
+  const { db, apiKey, addPortrait, updateSettings } = useGame();
   const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
   const [viewing, setViewing] = useState<PortraitRecord | null>(null);
@@ -101,25 +106,40 @@ export function PortraitHeader() {
     setBusy(true);
 
     try {
-      const [face, outfit] = await loadKanReferenceImages(wearsAkatsukiCloak(db));
+      const [caps, kanRefs] = await Promise.all([
+        ensureImageCaps(db, updateSettings),
+        loadKanReferenceImages(wearsAkatsukiCloak(db)),
+      ]);
       const previous = latest ? await loadImage(latest.image) : null;
-      const references = [face, outfit, previous].filter((value): value is string => Boolean(value));
+      const plan = planReferences(
+        [
+          { kind: 'face', uri: kanRefs.face },
+          { kind: 'outfit', uri: kanRefs.outfit },
+          { kind: 'previous', uri: previous ?? '' },
+        ],
+        caps.maxReferences
+      );
+
+      if (plan.faceDropped) {
+        showToast(faceDroppedWarning(plan.faceDropped, caps.modelId), 'error');
+      }
+
       const startedAt = Date.now();
       const result = await generateImage({
         apiKey,
-        model: db.settings.imageModel,
-        prompt: buildPortraitPrompt(db, signature, Boolean(previous)),
-        inputReferences: references,
+        caps,
+        prompt: buildPortraitPrompt(db, signature, plan.references),
+        inputReferences: plan.references.map((reference) => reference.uri),
         aspectRatio: '3:4',
       });
-      recordDebugImage(null, 'portrait', db.settings.imageModel, result.cost, Date.now() - startedAt);
+      recordDebugImage(null, 'portrait', caps.modelId, result.cost, Date.now() - startedAt);
       await addPortrait(result.dataUri, signature);
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'The portrait wouldn’t paint. Try again.', 'error');
     } finally {
       setBusy(false);
     }
-  }, [addPortrait, apiKey, busy, db, latest, showToast, signature]);
+  }, [addPortrait, apiKey, busy, db, latest, showToast, signature, updateSettings]);
 
   if (!db) {
     return null;
