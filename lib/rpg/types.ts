@@ -222,6 +222,10 @@ export type EventRecord = {
   scene: string;
   inStoryDate: CalendarDate;
   summary: string;
+  /** Short name shown in the Journal; `summary` is then the description. */
+  title?: string;
+  /** The chapter summary this memory was written from. */
+  summaryId?: string;
   importance: 1 | 2 | 3 | 4 | 5;
   tags: string[];
   pinned: boolean;
@@ -311,6 +315,10 @@ export type SummaryRecord = {
     to: CalendarDate;
   };
   text: string;
+  /** Short title written by the summary model. */
+  title?: string;
+  /** The chapter number this summary closes (chapter summaries). */
+  chapter?: number;
   tokenCount: number;
   eventIds: string[];
   createdAt: number;

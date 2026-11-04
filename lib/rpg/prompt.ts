@@ -95,7 +95,7 @@ DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: t
 
 JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Keep effect and visual short and consistent with earlier uses.
 
-MEMORY: facts are lasting truths (a death, injury, secret, membership, key item or event) with who_knows. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded.
+MEMORY: facts are lasting truths (a death, injury, secret, membership, key item or event) with who_knows. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Ambush at the river ford"), only when this turn starts a new scene (Kan reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null.
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
@@ -112,7 +112,12 @@ Write a 100-150 word summary of the supplied scene.
 - Concrete and specific.
 - No meta-text, no commentary, no greeting.
 - Mention the most important NPCs, your choices, and the consequences.
-- Preserve any timeline information.`;
+- Preserve any timeline information.
+
+Reply in exactly this format, nothing else:
+TITLE: a 2-6 word name for this stretch of story, no ending punctuation
+MEMORY: one or two short sentences (under 40 words), second person, on what you will remember of it
+SUMMARY: the 100-150 word summary`;
 
 const ARC_SUMMARY_SYSTEM = `You are a story archivist for a long-running interactive novel.
 
@@ -121,7 +126,11 @@ Combine the supplied chapter summaries into one compact arc summary.
 - Second person, present tense: Kan is "you". Everyone else is named.
 - Keep cause and effect clear.
 - Preserve names, dates, and major consequences.
-- No meta-text.`;
+- No meta-text.
+
+Reply in exactly this format, nothing else:
+TITLE: a 2-6 word name for the arc, no ending punctuation
+SUMMARY: the arc summary`;
 
 const TIME_SKIP_SYSTEM = `You are a time-skip narrator for a long-running interactive novel.
 
@@ -129,7 +138,11 @@ Write 100-150 words describing what happened meanwhile during the supplied time 
 - Second person, present tense: Kan is "you". Everyone else is named.
 - Focus on your off-screen growth as Kan, NPC changes, and world movement.
 - Respect the facts and bonds provided.
-- No meta-text.`;
+- No meta-text.
+
+Reply in exactly this format, nothing else:
+TITLE: a 2-6 word name for this stretch of time, no ending punctuation
+SUMMARY: the 100-150 word summary`;
 
 export function buildNarrationPrompt(
   db: AppDatabase,
@@ -165,7 +178,11 @@ export function buildNarrationPrompt(
     [storySoFar.arc, ...storySoFar.chapters].filter((text): text is string => Boolean(text))
   );
   // A memory saved from a summary that is already shown would only repeat it.
-  const freshMemories = memories.filter((memory) => !shownSummaries.has(memory.summary));
+  const freshMemories = memories.filter(
+    (memory) =>
+      !shownSummaries.has(memory.summary) &&
+      !(memory.summaryId && storySoFar.ids.includes(memory.summaryId))
+  );
   const arcSummary = storySoFar.arc ?? storySoFar.chapters[storySoFar.chapters.length - 1] ?? null;
 
   // Ordered from never-changing to changing-every-turn, so the front of the
@@ -197,7 +214,7 @@ export function buildNarrationPrompt(
       formatLetterBlock(db),
       formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
-      formatMemories(freshMemories),
+      formatMemories(db, freshMemories),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       formatEncounterConditions(db),
@@ -389,6 +406,8 @@ type StorySoFar = {
   arc: string | null;
   /** Newest chapter summaries, oldest first. */
   chapters: string[];
+  /** Ids of the summaries shown. */
+  ids: string[];
 };
 
 /**
@@ -406,7 +425,11 @@ function getStorySoFar(db: AppDatabase): StorySoFar {
     picked = chapters.slice(-2);
   }
 
-  return { arc: arc?.text ?? null, chapters: picked.map((summary) => summary.text) };
+  return {
+    arc: arc?.text ?? null,
+    chapters: picked.map((summary) => summary.text),
+    ids: [...(arc ? [arc.id] : []), ...picked.map((summary) => summary.id)],
+  };
 }
 
 function formatStorySoFar(story: StorySoFar) {
@@ -899,14 +922,22 @@ function truncate(value: string, maxLength: number) {
   return `${value.slice(0, maxLength).trimEnd()}…`;
 }
 
-function formatMemories(memories: EventRecord[]) {
+function formatMemories(db: AppDatabase, memories: EventRecord[]) {
   if (memories.length === 0) {
     return 'RELEVANT MEMORIES\nNone.';
   }
 
   return [
     'RELEVANT MEMORIES',
-    ...memories.map((memory) => `- ${truncate(memory.summary, 400)}`),
+    ...memories.map((memory) => {
+      // A memory written from a chapter summary recalls the whole summary;
+      // the Journal shows only its short description.
+      const full = memory.summaryId
+        ? db.summaries.find((summary) => summary.id === memory.summaryId)?.text
+        : undefined;
+      const text = full ?? memory.summary;
+      return `- ${memory.title ? `${memory.title}: ` : ''}${truncate(text, 400)}`;
+    }),
   ].join('\n');
 }
 

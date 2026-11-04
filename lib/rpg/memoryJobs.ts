@@ -36,6 +36,7 @@ import {
   summarizeTimeSkip,
 } from './services';
 import { storyMessagesSinceLastSummary } from './log';
+import { firstSentences, shortTitle } from './util';
 import { detectNarrationTime } from './timeparse';
 import type {
   AppDatabase,
@@ -49,8 +50,10 @@ import type {
 } from './types';
 
 const TIME_SKIP_DAYS = 180;
-const SCENE_MESSAGES = 8;
-const MERGED_SCENE_MESSAGES = 12;
+/** Most story messages one chapter summary covers; the rest wait for the next. */
+const MAX_SCENE_MESSAGES = 16;
+/** Fewest new messages worth a chapter summary, unless the scene ended. */
+const MIN_SCENE_MESSAGES = 4;
 const ARC_SIZE = 3;
 const YEAR_SIZE = 12;
 const SUMMARY_TAG = 'summary';
@@ -84,6 +87,22 @@ function lastAssistantId(db: AppDatabase) {
 
 function chapterSummaries(db: AppDatabase) {
   return db.summaries.filter((summary) => summary.level === 'chapter');
+}
+
+/**
+ * Story messages no chapter summary covers yet, oldest first. A message
+ * counts as covered when a summary lists it, or (for older saves whose
+ * summaries don't list their messages) when it is older than the newest one.
+ */
+export function unsummarizedStory(db: AppDatabase): RawLogEntry[] {
+  const chapters = chapterSummaries(db);
+  const covered = new Set(chapters.flatMap((summary) => summary.sourceLogIds ?? []));
+  const untracedAt = Math.max(
+    0,
+    ...chapters.filter((summary) => !summary.sourceLogIds?.length).map((summary) => summary.createdAt)
+  );
+
+  return storyLog(db).filter((entry) => !covered.has(entry.id) && entry.createdAt > untracedAt);
 }
 
 function sameIds(a: string[] | undefined, b: string[] | undefined) {
@@ -332,7 +351,7 @@ export function applyStateStep(
     storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
 
   if (shouldSummarize) {
-    const planned = queueSceneJob(next, turn.turnLogId, activeIds);
+    const planned = queueSceneJob(next, turn.turnLogId, activeIds, sceneEnded ? 2 : MIN_SCENE_MESSAGES);
     next = planned.db;
 
     if (planned.jobId) {
@@ -380,31 +399,32 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
 }
 
 /**
- * Queues a scene summary for the latest story messages. If an earlier scene
- * summary is still pending (and not running), it is widened to cover the new
- * messages instead of stacking a second job each turn.
+ * Queues a chapter summary for the story messages no summary covers yet.
+ * If an earlier one is still pending (and not running), it is widened to
+ * cover the new messages instead of stacking a second job each turn.
  */
 function queueSceneJob(
   db: AppDatabase,
   turnLogId: string,
-  activeIds: ReadonlySet<string>
+  activeIds: ReadonlySet<string>,
+  minMessages: number
 ): { db: AppDatabase; jobId: string | null } {
-  const story = storyLog(db);
-  const recentIds = story.slice(-SCENE_MESSAGES).map((entry) => entry.id);
+  // Messages a running job is already writing about are left to it.
+  const running = new Set(
+    jobsOf(db)
+      .filter((job) => job.kind === 'scene' && activeIds.has(job.id))
+      .flatMap((job) => job.logIds ?? [])
+  );
+  const fresh = unsummarizedStory(db).filter((entry) => !running.has(entry.id));
+  const logIds = fresh.slice(0, MAX_SCENE_MESSAGES).map((entry) => entry.id);
 
-  if (recentIds.length === 0) {
+  if (logIds.length < Math.max(2, minMessages)) {
     return { db, jobId: null };
   }
 
   const existing = jobsOf(db).find((job) => job.kind === 'scene' && !activeIds.has(job.id));
 
   if (existing) {
-    const wanted = new Set([...(existing.logIds ?? []), ...recentIds]);
-    const logIds = story
-      .filter((entry) => wanted.has(entry.id))
-      .slice(-MERGED_SCENE_MESSAGES)
-      .map((entry) => entry.id);
-
     return {
       db: withJobs(
         db,
@@ -418,7 +438,7 @@ function queueSceneJob(
     };
   }
 
-  const job = newJob('scene', turnLogId, { logIds: recentIds });
+  const job = newJob('scene', turnLogId, { logIds });
   return { db: withJobs(db, [...jobsOf(db), job]), jobId: job.id };
 }
 
@@ -495,6 +515,10 @@ export async function extractStateForJob(apiKey: string, db: AppDatabase, job: M
 
 export type SummaryJobOutput = {
   text: string;
+  /** Short title from the summary model. */
+  title?: string;
+  /** One or two sentences for the scene's memory (chapter summaries). */
+  memory?: string;
   /** Inputs actually used, so the result can be checked against the latest save. */
   logIds?: string[];
 };
@@ -505,12 +529,12 @@ export async function runSummaryJob(
   base: AppDatabase,
   job: MemoryJob
 ): Promise<SummaryJobOutput> {
-  let text: string | null = null;
+  let result: Awaited<ReturnType<typeof summarizeScene>> = null;
   let logIds: string[] | undefined;
 
   switch (job.kind) {
     case 'timeSkip':
-      text = await summarizeTimeSkip({
+      result = await summarizeTimeSkip({
         apiKey,
         db: base,
         fromDate: job.fromDate as CalendarDate,
@@ -522,7 +546,7 @@ export async function runSummaryJob(
       const wanted = new Set(job.logIds ?? []);
       const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
       logIds = messages.map((entry) => entry.id);
-      text = await summarizeScene({ apiKey, db: base, messages, debugTurnId: job.turnLogId });
+      result = await summarizeScene({ apiKey, db: base, messages, debugTurnId: job.turnLogId });
       break;
     }
     case 'arc':
@@ -531,7 +555,7 @@ export async function runSummaryJob(
       const texts = wanted
         .map((id) => base.summaries.find((summary) => summary.id === id)?.text)
         .filter((value): value is string => Boolean(value));
-      text = await rollArcSummary({
+      result = await rollArcSummary({
         apiKey,
         db: base,
         chapterSummaries: texts,
@@ -544,11 +568,16 @@ export async function runSummaryJob(
       throw new Error(`Unknown memory step: ${job.kind}`);
   }
 
-  if (!text) {
+  if (!result?.summary) {
     throw new Error('The summary came back empty.');
   }
 
-  return { text, logIds };
+  return {
+    text: result.summary,
+    title: result.title ?? undefined,
+    memory: result.memory ?? undefined,
+    logIds,
+  };
 }
 
 /**
@@ -581,6 +610,7 @@ export function applySummaryJob(
           chapter: next.state.chapter,
           scene: 'Time skip',
           inStoryDate: job.toDate ?? next.state.inStoryDate,
+          title: output.title ?? 'Time passes',
           summary: output.text,
           importance: 4,
           tags: ['time-skip', 'meanwhile'],
@@ -594,12 +624,35 @@ export function applySummaryJob(
     }
     case 'scene': {
       const used = new Set(output.logIds ?? []);
-      const messages = next.rawLog.filter((entry) => used.has(entry.id));
+      // Only messages no other summary covers yet: a job that ran twice, or
+      // overlapped one that already landed, never saves the same stretch again.
+      const open = new Set(unsummarizedStory(next).map((entry) => entry.id));
+      const messages = next.rawLog.filter((entry) => used.has(entry.id) && open.has(entry.id));
+      const repeated = chapterSummaries(next).some(
+        (summary) => summary.text.trim() === output.text.trim()
+      );
 
-      // The covered messages were undone while the summary was being written.
-      if (messages.length < 2) {
+      // Undone while the summary was being written, or already summarized.
+      if (messages.length < 2 || repeated) {
+        const left = (current.logIds ?? []).filter((id) => !used.has(id) && open.has(id));
+
+        if (left.length >= 2) {
+          return {
+            db: withJobs(
+              next,
+              jobsOf(next).map((entry) =>
+                entry.id === job.id ? { ...entry, logIds: left, status: 'queued' } : entry
+              )
+            ),
+            followUpIds: [job.id],
+          };
+        }
+
         return { db: removeJob(next, job.id), followUpIds: [] };
       }
+
+      const title = output.title?.trim() || shortTitle(output.text);
+      const chapter = Math.max(1, next.state.chapter);
 
       const first = messages[0];
       const last = messages[messages.length - 1];
@@ -614,6 +667,8 @@ export function applySummaryJob(
           to: last.inStoryDate,
         },
         text: output.text,
+        title,
+        chapter,
         tokenCount: Math.ceil(output.text.length / 4),
         eventIds: lastEvent ? [lastEvent.id] : [],
         // Stamped just after the last covered message, so a summary that
@@ -621,8 +676,13 @@ export function applySummaryJob(
         createdAt: last.createdAt + 1,
         sourceLogIds: messages.map((entry) => entry.id),
       };
-      next = { ...next, summaries: [...next.summaries, record] };
-      next = saveSummaryMemory(next, record, messages);
+      next = {
+        ...next,
+        summaries: [...next.summaries, record],
+        // The summary closes this chapter; the story moves on to the next.
+        state: { ...next.state, chapter: chapter + 1 },
+      };
+      next = saveSummaryMemory(next, record, messages, output.memory);
 
       // If the job was widened while this one was running, keep the newer
       // messages queued instead of marking them as summarized.
@@ -661,6 +721,7 @@ export function applySummaryJob(
           level: job.kind,
           range: { fromEventId: '', toEventId: '', from, to },
           text: output.text,
+          title: output.title?.trim() || shortTitle(output.text),
           tokenCount: Math.ceil(output.text.length / 4),
           eventIds: [],
           createdAt: Date.now(),
@@ -685,7 +746,8 @@ export function applySummaryJob(
 function saveSummaryMemory(
   db: AppDatabase,
   summary: SummaryRecord,
-  messages: RawLogEntry[]
+  messages: RawLogEntry[],
+  memory?: string
 ): AppDatabase {
   const first = messages[0];
   const last = messages[messages.length - 1];
@@ -709,10 +771,14 @@ function saveSummaryMemory(
 
   const event: EventRecord = {
     id: makeId('event'),
-    chapter: db.state.chapter,
-    scene: db.state.scene,
+    chapter: summary.chapter ?? db.state.chapter,
+    scene: last.scene || db.state.scene,
     inStoryDate: last.inStoryDate,
-    summary: summary.text,
+    // The Journal shows the title and a one-to-two sentence description;
+    // the narrator recalls the whole summary through summaryId.
+    title: summary.title,
+    summary: memory?.trim() || firstSentences(summary.text),
+    summaryId: summary.id,
     importance: Math.max(3, ...superseded.map((entry) => entry.importance)) as EventRecord['importance'],
     tags: [
       SUMMARY_TAG,
@@ -787,8 +853,14 @@ export function carryOverMemory(current: AppDatabase, restored: AppDatabase): Ap
   );
   const extraEventIds = new Set(extraEvents.map((event) => event.id));
 
+  // A carried-over summary closed its chapter, so the story stays past it.
+  const closed = Math.max(0, ...extraSummaries.map((summary) => summary.chapter ?? 0));
   const merged: AppDatabase = {
     ...restored,
+    state:
+      closed >= restored.state.chapter
+        ? { ...restored.state, chapter: closed + 1 }
+        : restored.state,
     summaries: [...restored.summaries, ...extraSummaries],
     events: [...restored.events, ...extraEvents],
     eventEntities: [

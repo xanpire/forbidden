@@ -142,6 +142,8 @@ export const TURN_STATE_SCHEMA = object({
   }),
   image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },
+  // A short name for the scene, only when a new scene starts this turn.
+  scene_title: nullableString,
   canon_engaged: stringList,
   canon_completed: stringList,
   canon_passed: stringList,

@@ -7,7 +7,7 @@ import { ChevronLeft, Flame, Footprints, GitMerge, HeartPulse, Skull, UserMinus 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { formatAffinity } from '@/components/kan/BondsSection';
 import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
-import { titleAndBody } from '@/components/kan/JournalSection';
+import { memoryTitle } from '@/components/kan/JournalSection';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
@@ -204,7 +204,7 @@ export default function BondScreen() {
         ) : (
           <ListCard>
             {shared.map((event) => {
-              const { title, body } = titleAndBody(event.summary);
+              const { title, body } = memoryTitle(event);
 
               return (
                 <ListRow

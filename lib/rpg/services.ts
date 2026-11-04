@@ -21,7 +21,7 @@ import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
 import { convertStateBlock, parseJsonObject, repairTruncatedJson } from './stateBlock';
 import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
-import { trimToSentence, uniqueList } from './util';
+import { type TitledSummary, parseTitledSummary, uniqueList } from './util';
 import type { AppDatabase, CalendarDate, RawLogEntry, TurnDiff } from './types';
 
 /** Room for the state reply. Thinking tokens count against this too. */
@@ -35,6 +35,9 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   }
 
   let next = cloneDatabase(db);
+  // The scene that was running when this turn began (a new scene_title
+  // names what comes next, not the scene that just ended).
+  const sceneBefore = db.state.scene;
 
   if (diff.state) {
     next = applyStateDiff(next, diff.state);
@@ -115,7 +118,11 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   const present = castWithCompanions(next, diff.scene?.entities ?? []);
 
   if (diff.scene?.ended) {
-    next = recordSceneEvent(next, { ...diff, scene: { ...diff.scene, entities: present } });
+    next = recordSceneEvent(
+      next,
+      { ...diff, scene: { ...diff.scene, entities: present } },
+      { sceneName: sceneBefore }
+    );
     next = applySharedScene(next, { pace: next.state.scenePace, storyMovedBond });
   }
 
@@ -222,7 +229,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (typeof state.scene === 'string' && state.scene.trim()) {
-    next.state.scene = state.scene.trim().slice(0, 140);
+    next.state.scene = state.scene.trim().slice(0, 60);
   }
 
   return next;
@@ -333,12 +340,41 @@ export async function extractTurnDiff(options: {
   return diff ? resolveCharacterRefs(db, diff) : null;
 }
 
+/**
+ * Room for a summary reply. Any thinking the model does counts against the
+ * cap too, so it is generous; a reply that still runs out is asked again
+ * with more room.
+ */
+const SUMMARY_MAX_TOKENS = 2000;
+const ARC_SUMMARY_MAX_TOKENS = 2400;
+const SUMMARY_RETRY_FACTOR = 1.75;
+
+async function summaryChat(
+  kind: DebugCallKind,
+  debugTurnId: string | undefined,
+  request: ChatRequest
+): Promise<TitledSummary | null> {
+  const first = await tracedChat(kind, debugTurnId, request);
+  const parsed = parseTitledSummary(first.text);
+
+  // Cut off before the summary was finished (or began): ask once more.
+  if (first.finishReason === 'length' && (!parsed || !/[.!?]["'”’)]*\s*$/.test(first.text.trim()))) {
+    const second = await tracedChat(kind, debugTurnId, {
+      ...request,
+      maxTokens: Math.round((request.maxTokens ?? SUMMARY_MAX_TOKENS) * SUMMARY_RETRY_FACTOR),
+    });
+    return parseTitledSummary(second.text) ?? parsed;
+  }
+
+  return parsed;
+}
+
 export async function summarizeScene(options: {
   apiKey: string;
   db: AppDatabase;
   messages: RawLogEntry[];
   debugTurnId?: string;
-}): Promise<string | null> {
+}): Promise<TitledSummary | null> {
   const { apiKey, db, messages, debugTurnId } = options;
 
   if (messages.length === 0) {
@@ -347,17 +383,14 @@ export async function summarizeScene(options: {
 
   const prompt = buildSceneSummaryPrompt(db, messages);
 
-  const result = await tracedChat('scene', debugTurnId, {
+  return summaryChat('scene', debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,
     temperature: 0.2,
-    maxTokens: 700,
+    maxTokens: SUMMARY_MAX_TOKENS,
+    reasoning: { effort: 'low', exclude: true },
   });
-
-  const text = trimToSentence(result.text);
-
-  return text || null;
 }
 
 export async function summarizeTimeSkip(options: {
@@ -366,7 +399,7 @@ export async function summarizeTimeSkip(options: {
   fromDate: CalendarDate;
   toDate: CalendarDate;
   debugTurnId?: string;
-}): Promise<string | null> {
+}): Promise<TitledSummary | null> {
   const { apiKey, db, fromDate, toDate, debugTurnId } = options;
 
   if (Math.abs(daysBetween(fromDate, toDate)) < 180) {
@@ -379,15 +412,14 @@ export async function summarizeTimeSkip(options: {
     formatDate(toDate)
   );
 
-  const result = await tracedChat('timeSkip', debugTurnId, {
+  return summaryChat('timeSkip', debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,
     temperature: 0.2,
-    maxTokens: 700,
+    maxTokens: SUMMARY_MAX_TOKENS,
+    reasoning: { effort: 'low', exclude: true },
   });
-
-  return trimToSentence(result.text) || null;
 }
 
 export async function rollArcSummary(options: {
@@ -396,7 +428,7 @@ export async function rollArcSummary(options: {
   chapterSummaries: string[];
   debugTurnId?: string;
   debugKind?: 'arc' | 'year';
-}): Promise<string | null> {
+}): Promise<TitledSummary | null> {
   const { apiKey, db, chapterSummaries, debugTurnId, debugKind = 'arc' } = options;
 
   if (chapterSummaries.length < 3) {
@@ -405,13 +437,12 @@ export async function rollArcSummary(options: {
 
   const prompt = buildArcSummaryPrompt(db, chapterSummaries);
 
-  const result = await tracedChat(debugKind, debugTurnId, {
+  return summaryChat(debugKind, debugTurnId, {
     apiKey,
     model: db.settings.summaryModel,
     messages: prompt.messages,
     temperature: 0.2,
-    maxTokens: 900,
+    maxTokens: ARC_SUMMARY_MAX_TOKENS,
+    reasoning: { effort: 'low', exclude: true },
   });
-
-  return trimToSentence(result.text) || null;
 }

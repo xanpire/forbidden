@@ -158,7 +158,11 @@ export function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabas
   };
 }
 
-export function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
+export function recordSceneEvent(
+  db: AppDatabase,
+  diff: TurnDiff,
+  options: { sceneName?: string } = {}
+): AppDatabase {
   const scene = diff.scene;
   const summary =
     scene?.summary?.trim() ||
@@ -177,8 +181,11 @@ export function recordSceneEvent(db: AppDatabase, diff: TurnDiff): AppDatabase {
   const event: EventRecord = {
     id: makeId('event'),
     chapter: db.state.chapter,
-    scene: db.state.scene,
+    scene: options.sceneName ?? db.state.scene,
     inStoryDate: db.state.inStoryDate,
+    // Raw prose until the scene's summary replaces this memory; the scene's
+    // name is its title, so the prose is never shown as one.
+    title: options.sceneName ?? db.state.scene,
     summary: trimToSentence(summary.slice(0, 220)),
     importance: scene?.importance ?? 3,
     tags: Array.isArray(scene?.tags) ? scene.tags.filter(Boolean).slice(0, 6) : [],

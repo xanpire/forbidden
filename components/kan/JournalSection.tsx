@@ -7,6 +7,7 @@ import { dateSortValue, formatClock, formatDayMonth } from '@/lib/rpg/calendar';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
+import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories';
 
@@ -17,22 +18,16 @@ const VIEWS: { value: JournalView; label: string }[] = [
   { value: 'memories', label: 'Memories' },
 ];
 
-/** Splits a summary into a short title (first sentence or "Title: …") and the rest. */
-export function titleAndBody(text: string): { title: string; body: string | null } {
-  const trimmed = text.trim();
-  const colon = /^([^:.!?]{3,70}):\s+(.+)$/s.exec(trimmed);
+// Kept here too: the bond screen imports it from this file.
+export { titleAndBody };
 
-  if (colon) {
-    return { title: colon[1].trim(), body: colon[2].trim() };
+/** A memory's title and description: its own title, else one cut from its text. */
+export function memoryTitle(event: EventRecord): { title: string; body: string | null } {
+  if (event.title?.trim()) {
+    return { title: event.title.trim(), body: event.summary.trim() || null };
   }
 
-  const sentence = /^(.{8,120}?[.!?…])(?:["'”’)]*)\s+(.+)$/s.exec(trimmed);
-
-  if (sentence) {
-    return { title: sentence[1].trim(), body: sentence[2].trim() };
-  }
-
-  return { title: trimmed, body: null };
+  return titleAndBody(event.summary);
 }
 
 function peopleIn(db: AppDatabase, eventId: string) {
@@ -100,21 +95,22 @@ function RecapView({ db }: { db: AppDatabase }) {
   const entries = useMemo<RecapEntry[]>(() => {
     if (db.summaries.length > 0) {
       return [...db.summaries]
+        .filter(
+          (summary, index, all) =>
+            all.findIndex((other) => other.text.trim() === summary.text.trim()) === index
+        )
         .sort((a, b) => dateSortValue(b.range.to) - dateSortValue(a.range.to))
         .slice(0, 16)
         .map((summary) => {
-          const lastEvent = db.events.find((event) => event.id === summary.range.toEventId);
           const level = summary.level.charAt(0).toUpperCase() + summary.level.slice(1);
+          const label = summary.chapter ? `${level} ${summary.chapter}` : level;
           const from = formatDayMonth(summary.range.from);
           const to = formatDayMonth(summary.range.to);
 
           return {
             id: summary.id,
-            when: `${level} · ${from === to ? from : `${from} – ${to}`}, year ${summary.range.to.year}`,
-            title:
-              lastEvent?.scene && lastEvent.scene !== 'Canon event'
-                ? lastEvent.scene
-                : titleAndBody(summary.text).title,
+            when: `${label} · ${from === to ? from : `${from} – ${to}`}, year ${summary.range.to.year}`,
+            title: summary.title?.trim() || shortTitle(summary.text),
             body: summary.text,
           };
         });
@@ -125,7 +121,7 @@ function RecapView({ db }: { db: AppDatabase }) {
       .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
       .slice(0, 20)
       .map((event) => {
-        const { title, body } = titleAndBody(event.summary);
+        const { title, body } = memoryTitle(event);
 
         return {
           id: event.id,
@@ -254,7 +250,7 @@ function MemoriesView({ db }: { db: AppDatabase }) {
       ) : (
         <ListCard>
           {memories.map((memory) => {
-            const { title, body } = titleAndBody(memory.summary);
+            const { title, body } = memoryTitle(memory);
             const people = peopleIn(db, memory.id);
 
             return (

@@ -225,6 +225,15 @@ export function convertStateBlock(
     };
   }
 
+  const sceneTitle = cleanString(block.scene_title)
+    ?.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+
+  if (sceneTitle && sceneTitle.length >= 2) {
+    diff.state = { ...diff.state, scene: sceneTitle.slice(0, 60) };
+  }
+
   const flatLocation = cleanString(block.location);
   const flatLocationKind = asLocationKind(block.location_kind);
   const flatCanonPoint = cleanString(block.canon_point);

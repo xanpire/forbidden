@@ -475,7 +475,15 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     facts: Array.isArray(db.facts) ? db.facts : [],
     threads: Array.isArray(db.threads) ? db.threads : [],
     loreEntries: Array.isArray(db.loreEntries) ? db.loreEntries : [],
-    summaries: Array.isArray(db.summaries) ? db.summaries : [],
+    // The same summary saved twice (a job that ran twice) is kept once.
+    summaries: Array.isArray(db.summaries)
+      ? db.summaries.filter(
+          (summary, index, all) =>
+            all.findIndex(
+              (other) => other.level === summary.level && other.text.trim() === summary.text.trim()
+            ) === index
+        )
+      : [],
     state: normalizeState(db.state),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
