@@ -33,7 +33,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
 | `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
 | `returning.ts` | Characters who come back: the occasional optional `A FAMILIAR FACE` offer |
-| `db.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration, new saves, the canon cast |
+| `db.ts` / `slotStore.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration (slots in IndexedDB), new saves, the canon cast |
 | `retrieval.ts` | Memory/fact/lore retrieval |
 | `romance.ts` | Hearts, lore locks, era notes |
 | `canonEndgame.ts` | Canon-bound hearts: winnable, then settled with their canon partner (§10) |
@@ -59,11 +59,13 @@ Tech: Expo SDK 54, Expo Router, React Native Web, TypeScript, `bun` as package m
 
 `lib/rpg/db.ts`
 
-| Key | Contents |
-|---|---|
-| `kan.meta.v1` | `StorageMeta`: active slot id, slot list, timestamps |
-| `kan.slot.<slotId>.v1` | One `AppDatabase` JSON per save slot |
-| `kan.apiKey.v1` | OpenRouter API key (never stored in slots or exports) |
+| Key | Where | Contents |
+|---|---|---|
+| `kan.meta.v1` | AsyncStorage (localStorage) | `StorageMeta`: active slot id, slot list |
+| `kan.slot.<slotId>.v1` | IndexedDB `kan-saves` / `slots` (`slotStore.ts`) | One `AppDatabase` JSON per save slot |
+| `kan.apiKey.v1` | AsyncStorage (localStorage) | OpenRouter API key (never stored in slots or exports) |
+
+Slots live in IndexedDB because localStorage is ~5 MB for the whole app, shared by every slot, and a long story with its 3 undo snapshots (each a full copy) outgrows that after a few hundred turns. `slotStore.ts` picks the backend once per session (IndexedDB, or AsyncStorage on native / when IndexedDB can't open), moves an old localStorage copy into IndexedDB on first read (newer `meta.updatedAt` wins if both exist) and then removes it, and asks for `navigator.storage.persist()` so the browser doesn't evict the data under storage pressure. Images are in a separate IndexedDB (`kan-images`, `imageStore.ts`).
 
 Important functions:
 
@@ -74,14 +76,14 @@ Important functions:
 
 ### Storage quota strategy
 
-`saveSlot` tries progressively smaller writes until one succeeds:
+`saveSlot` tries progressively smaller writes until one succeeds (a safety net; with IndexedDB it should practically never trigger):
 
 1. full database
 2. max 3 assistant images, 1 snapshot (`MAX_STORED_IMAGES`, `MAX_SNAPSHOTS`)
 3. 1 image, 0 snapshots
 4. 0 images, 0 snapshots
 
-Each generated image is ~0.5 MB base64, so images are the main quota risk.
+Images are normally stored as `img:` references, so only inline data URIs (native / no IndexedDB) are trimmed.
 
 ---
 
@@ -654,7 +656,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 | JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
 | Wrong characters in images | The ACTION line is written fresh on tap by `writeImageAction` (memory model); cast comes from `sceneCast`. Check Settings → Debug → Image description. |
 | Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/canon caps. |
-| Save quota error | `saveSlot` trims images/snapshots; clearing old slots helps. |
+| Save quota error | Slots should be in IndexedDB — check `slotBackend()`. On the AsyncStorage fallback `saveSlot` trims images/snapshots; clearing old slots helps. |
 | Need to see what really happened | Settings → Debug: prompt, state diff, tokens and cost per turn. |
 | PWA stale | Bump version so `generate-sw.js` changes the cache name; rebuild. |
 
@@ -663,6 +665,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 ## 16. Test coverage map (`scripts/verify-pipeline.test.ts`)
 
 - Save compatibility & normalization
+- Slot storage (`scripts/slot-store.test.ts`): IndexedDB backend, localStorage migration, newer-copy-wins, long stories past the localStorage cap, AsyncStorage fallback
 - JSON stripping (fenced, truncated, unfenced, labels)
 - Identity resolution (masked man, real Madara, Pain/Nagato, Zetsu)
 - Duplicate characters (canon cast seeding and migration, ID roster in the state prompt, `is_new` gate, ID resolution, manual merge, whole-word name mentions)

@@ -1,8 +1,8 @@
 /**
  * Image storage outside the save file.
  *
- * Saves live in localStorage (a few MB). Generated images are large data URIs,
- * so they go into IndexedDB instead and the save only keeps a short reference
+ * Generated images are large data URIs, so they go into their own IndexedDB
+ * store and the save only keeps a short reference
  * like `img:abc123`. Where IndexedDB is unavailable (native, private mode),
  * storeImage falls back to returning the data URI itself, so callers never
  * need a second code path.

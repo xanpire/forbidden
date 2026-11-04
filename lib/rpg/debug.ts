@@ -2,7 +2,7 @@
  * Debug log: what each turn actually sent, what came back, what it changed,
  * and what it cost. Shown in Settings → Debug.
  *
- * Kept outside the save so it never bloats localStorage or travels with an
+ * Kept outside the save so it never bloats the save or travels with an
  * exported story. Persisted to its own IndexedDB store when available, so it
  * survives a reload; on platforms without IndexedDB it lives in memory only.
  */

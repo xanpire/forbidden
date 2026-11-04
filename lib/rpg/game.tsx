@@ -74,7 +74,7 @@ import type {
   TurnDiff,
 } from './types';
 
-/** Moves inline images into IndexedDB and saves, so localStorage only holds references. */
+/** Moves inline images into IndexedDB and saves, so the save only holds references. */
 async function withStoredImages(db: AppDatabase): Promise<AppDatabase> {
   try {
     const moved = await externalizeImages(db);

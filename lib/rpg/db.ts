@@ -11,6 +11,7 @@ import { normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
 import { ensureCanonCast } from './canonCast';
+import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import type { AppDatabase, MemoryIndex } from './types';
 
 const META_KEY = 'kan.meta.v1';
@@ -68,7 +69,7 @@ export async function saveStorageMeta(meta: StorageMeta) {
 }
 
 export async function ensureSlot(slotId: string, slotName: string) {
-  const existing = await AsyncStorage.getItem(`${SLOT_PREFIX}${slotId}.v1`);
+  const existing = await readSlotJson(`${SLOT_PREFIX}${slotId}.v1`);
 
   if (existing) {
     return;
@@ -79,7 +80,7 @@ export async function ensureSlot(slotId: string, slotName: string) {
 }
 
 export async function loadSlot(slotId: string): Promise<AppDatabase> {
-  const stored = await AsyncStorage.getItem(`${SLOT_PREFIX}${slotId}.v1`);
+  const stored = await readSlotJson(`${SLOT_PREFIX}${slotId}.v1`);
 
   if (!stored) {
     return seedDatabase(slotId, DEFAULT_SLOT_NAME);
@@ -100,7 +101,7 @@ export async function loadSlot(slotId: string): Promise<AppDatabase> {
 
 /** Loads a slot only if it is actually stored, without seeding a fresh one. */
 export async function loadStoredSlot(slotId: string): Promise<AppDatabase | null> {
-  const stored = await AsyncStorage.getItem(`${SLOT_PREFIX}${slotId}.v1`);
+  const stored = await readSlotJson(`${SLOT_PREFIX}${slotId}.v1`);
 
   if (!stored) {
     return null;
@@ -165,7 +166,7 @@ export async function saveSlot(db: AppDatabase) {
 
   for (const attempt of attempts) {
     try {
-      await AsyncStorage.setItem(key, JSON.stringify(attempt));
+      await writeSlotJson(key, JSON.stringify(attempt));
       return;
     } catch (error) {
       if (attempt === attempts[attempts.length - 1]) {
@@ -220,7 +221,7 @@ export async function deleteSlot(slotId: string) {
   const meta = await loadStorageMeta();
   const slotOrder = meta.slotOrder.filter((id) => id !== slotId);
 
-  await AsyncStorage.removeItem(`${SLOT_PREFIX}${slotId}.v1`);
+  await removeSlotJson(`${SLOT_PREFIX}${slotId}.v1`);
 
   if (slotOrder.length === 0) {
     const fresh = seedDatabase(slotId, DEFAULT_SLOT_NAME);
