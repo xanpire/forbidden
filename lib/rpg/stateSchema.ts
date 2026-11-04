@@ -43,6 +43,7 @@ export const RELATIONSHIPS = [
   'romantic interest',
   'partner',
   'rejected',
+  'ex',
 ] as const;
 export const ATTRACTIONS = ['none', 'warm', 'strong'] as const;
 export const FACT_TYPES = [

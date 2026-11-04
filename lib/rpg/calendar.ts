@@ -88,6 +88,24 @@ export function calculateAge(
   return Math.max(0, age);
 }
 
+/**
+ * A character's age on a date: exact from their birthday, a whole-year
+ * estimate when only the birth year is known (the databooks give no birthday
+ * for many people), or their recorded age.
+ */
+export function entityAge(
+  date: CalendarDate,
+  entity: { birthday?: { month: number; day: number }; birthYear?: number; age?: number }
+): number | undefined {
+  if (entity.birthYear === undefined) {
+    return entity.age;
+  }
+
+  return entity.birthday
+    ? calculateAge(date, entity.birthday, entity.birthYear)
+    : Math.max(0, date.year - entity.birthYear);
+}
+
 export function formatStoryDate(
   date: CalendarDate,
   birthday: { month: number; day: number },
