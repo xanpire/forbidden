@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults'
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
 import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canonData';
-import { normalizeJutsuNature } from './jutsu';
+import { dropBareNatureJutsu, normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
 import { ensureCanonCast } from './canonCast';
@@ -506,7 +506,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = repairUnmetLabels(normalizeDeaths(normalized));
+  const withDeaths = dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalized)));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;

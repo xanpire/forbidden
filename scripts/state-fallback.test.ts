@@ -17,6 +17,7 @@ import { seedDatabase } from '../lib/rpg/seed';
 import { parseJsonObject, repairTruncatedJson } from '../lib/rpg/stateBlock';
 import { fallbackDiffFromProse, kanJutsuFromMessage, preferPlayerJutsuNames, presentFromProse } from '../lib/rpg/proseFallback';
 import { applyTurnDiff } from '../lib/rpg/services';
+import { deleteJutsuRecord, isBareNatureName, renameJutsuRecord } from '../lib/rpg/jutsu';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_test', 'Test story'));
@@ -209,5 +210,64 @@ describe('meeting someone', () => {
     const fixed = normalizeDatabase(broken);
     expect(fixed.entities.find((entity) => entity.id === person.id)?.status).toBe('Newly met');
     expect(fixed.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
+  });
+});
+
+describe('fixing jutsu by hand', () => {
+  const withJutsu = () => {
+    let db = seed();
+    db = applyTurnDiff(db, { jutsuUsed: [{ name: 'Fire Style: Hell', user: 'Kan', chakraNature: 'Fire' }] });
+    db = applyTurnDiff(db, { jutsuUsed: [{ name: 'Phoenix Flower', user: 'Kan', chakraNature: 'Fire' }] });
+    return db;
+  };
+
+  test('rename changes the record and Kan\'s list', () => {
+    let db = withJutsu();
+    db = { ...db, state: { ...db.state, jutsu: [...db.state.jutsu, 'Phoenix Flower'] } };
+    const record = db.jutsuRecords.find((item) => item.name === 'Phoenix Flower')!;
+    const next = renameJutsuRecord(db, record.id, 'Fire Style: Phoenix Flower Jutsu');
+    expect(next.jutsuRecords.find((item) => item.id === record.id)?.name).toBe('Fire Style: Phoenix Flower Jutsu');
+    expect(next.state.jutsu).toContain('Fire Style: Phoenix Flower Jutsu');
+    expect(next.state.jutsu).not.toContain('Phoenix Flower');
+  });
+
+  test('renaming onto an existing name merges the two', () => {
+    const db = withJutsu();
+    const record = db.jutsuRecords.find((item) => item.name === 'Phoenix Flower')!;
+    const next = renameJutsuRecord(db, record.id, 'Fire Release: Hell');
+    const hell = next.jutsuRecords.filter((item) => item.user === 'Kan' && /hell/i.test(item.name));
+    expect(hell).toHaveLength(1);
+    expect(hell[0].timesUsed).toBe(2);
+    expect(next.jutsuRecords.some((item) => item.id === record.id)).toBe(false);
+  });
+
+  test('delete removes the record', () => {
+    const db = withJutsu();
+    const record = db.jutsuRecords.find((item) => item.name === 'Fire Style: Hell')!;
+    const next = deleteJutsuRecord(db, record.id);
+    expect(next.jutsuRecords.some((item) => item.id === record.id)).toBe(false);
+  });
+
+  test('bare element names are never kept as jutsu', () => {
+    expect(isBareNatureName('Fire Release')).toBe(true);
+    expect(isBareNatureName('water style:')).toBe(true);
+    expect(isBareNatureName('Fire Style: Hell')).toBe(false);
+    expect(isBareNatureName('Shadow Clone Jutsu')).toBe(false);
+
+    const db = seed();
+    const fresh = applyTurnDiff(db, { jutsuUsed: [{ name: 'Fire Release', user: 'Kan' }] });
+    expect(fresh.jutsuRecords.some((item) => item.name === 'Fire Release')).toBe(false);
+
+    const old = {
+      ...db,
+      jutsuRecords: [
+        ...db.jutsuRecords,
+        { ...withJutsu().jutsuRecords.at(-1)!, id: 'jutsu_old', name: 'Fire Release' },
+      ],
+      state: { ...db.state, jutsu: [...db.state.jutsu, 'Fire Release'] },
+    };
+    const cleaned = normalizeDatabase(old);
+    expect(cleaned.jutsuRecords.some((item) => item.name === 'Fire Release')).toBe(false);
+    expect(cleaned.state.jutsu).not.toContain('Fire Release');
   });
 });

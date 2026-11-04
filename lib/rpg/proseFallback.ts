@@ -5,7 +5,7 @@
 
 import { mentionsEntity, mentionsName } from './characterRefs';
 import { isCompanion } from './companions';
-import { jutsuKey, jutsuNameVariants, normalizeJutsuNature } from './jutsu';
+import { jutsuKey, jutsuNameVariants, NATURE_WORDS, normalizeJutsuNature } from './jutsu';
 import type { AppDatabase, TurnDiff } from './types';
 
 /** Sentences that describe someone else, or talk about a jutsu, not Kan using it. */
@@ -14,13 +14,6 @@ const NOT_USING =
 
 /** Lead words that are part of the sentence, not the jutsu's name. */
 const LEAD_WORDS = new Set(['i', 'the', 'my', 'a', 'an', 'then', 'and', 'with', 'kan', 'so', 'now']);
-
-/** Element words that may start a "Style"/"Release" name even in lowercase. */
-const NATURE_WORDS = new Set([
-  'fire', 'water', 'wind', 'earth', 'lightning', 'wood', 'ice', 'lava', 'boil', 'storm',
-  'scorch', 'magnet', 'dust', 'crystal', 'explosion', 'swift', 'steel', 'yin', 'yang',
-  'yin-yang', 'shadow', 'sand', 'mud', 'stone',
-]);
 
 /** Small words allowed inside a name ("Dragon of the Flames", "Gōkakyū no Jutsu"). */
 const NAME_JOINERS = '(?:(?:of|no|the|and|to|de)\\s+){0,2}';

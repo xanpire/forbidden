@@ -1,3 +1,4 @@
+import { dateSortValue } from './calendar';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import type { AppDatabase, JutsuRecord, TurnDiff } from './types';
@@ -131,6 +132,22 @@ export function jutsuKey(name: string) {
     .trim();
 }
 
+/** Element words: "Fire" in "Fire Style", "Scorch" in "Scorch Release". */
+export const NATURE_WORDS = new Set([
+  'fire', 'water', 'wind', 'earth', 'lightning', 'wood', 'ice', 'lava', 'boil', 'storm',
+  'scorch', 'magnet', 'dust', 'crystal', 'explosion', 'swift', 'steel', 'yin', 'yang',
+  'yin-yang', 'shadow', 'sand', 'mud', 'stone',
+]);
+
+/**
+ * A chakra element's name with nothing after it ("Fire Release", "Water
+ * Style:"). It names a nature, not a jutsu, so it is never kept as a record.
+ */
+export function isBareNatureName(name: string) {
+  const match = name.trim().match(/^([\p{L}-]+)\s+(?:style|release)\s*:?\s*$/iu);
+  return Boolean(match && NATURE_WORDS.has(match[1].toLowerCase()));
+}
+
 /** The same name with "Style" and "Release" swapped, for finding it in text. */
 export function jutsuNameVariants(name: string) {
   const swapped = /\bstyle\b/i.test(name)
@@ -148,7 +165,7 @@ export function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
   const name = jutsu.name.trim();
   const user = jutsu.user.trim();
 
-  if (!name || !user) {
+  if (!name || !user || isBareNatureName(name)) {
     return db;
   }
 
@@ -198,4 +215,117 @@ export function applyJutsuDiff(db: AppDatabase, jutsu: JutsuDiff): AppDatabase {
     ...db,
     jutsuRecords,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Hand corrections from the jutsu screen
+// ---------------------------------------------------------------------------
+
+function sameUser(db: AppDatabase, a: string, b: string) {
+  return a.toLowerCase() === b.toLowerCase() || resolveEntity(db, a)?.id === resolveEntity(db, b)?.id;
+}
+
+/** Swaps one name for another in Kan's quick jutsu list. */
+function renameInKanList(db: AppDatabase, oldName: string, newName: string | null) {
+  const oldKey = jutsuKey(oldName);
+  const list = db.state.jutsu ?? [];
+
+  if (!list.some((item) => jutsuKey(item) === oldKey)) {
+    return db.state;
+  }
+
+  const seen = new Set<string>();
+  const jutsu = list
+    .map((item) => (jutsuKey(item) === oldKey ? newName : item))
+    .filter((item): item is string => {
+      if (!item || seen.has(jutsuKey(item))) {
+        return false;
+      }
+      seen.add(jutsuKey(item));
+      return true;
+    });
+
+  return { ...db.state, jutsu };
+}
+
+/**
+ * Renames a jutsu record. If the same user already has a jutsu by the new
+ * name, the two become one record with both histories.
+ */
+export function renameJutsuRecord(db: AppDatabase, recordId: string, rawName: string): AppDatabase {
+  const record = db.jutsuRecords.find((item) => item.id === recordId);
+  const name = rawName.trim().replace(/\s+/g, ' ');
+
+  if (!record || !name || name === record.name) {
+    return db;
+  }
+
+  const twin = db.jutsuRecords.find(
+    (item) => item.id !== record.id && jutsuKey(item.name) === jutsuKey(name) && sameUser(db, item.user, record.user)
+  );
+  let jutsuRecords: JutsuRecord[];
+
+  if (twin) {
+    const first = dateSortValue(twin.firstSeen) <= dateSortValue(record.firstSeen) ? twin : record;
+    const last = dateSortValue(twin.lastSeen) >= dateSortValue(record.lastSeen) ? twin : record;
+    const merged: JutsuRecord = {
+      ...twin,
+      name,
+      chakraNature: twin.chakraNature !== 'Unknown' ? twin.chakraNature : record.chakraNature,
+      effect: twin.effect || record.effect,
+      visual: twin.visual || record.visual,
+      description: twin.description || record.description,
+      firstSeen: first.firstSeen,
+      lastSeen: last.lastSeen,
+      timesUsed: twin.timesUsed + record.timesUsed,
+      tags: [...new Set([...twin.tags, ...record.tags])],
+    };
+    jutsuRecords = db.jutsuRecords
+      .filter((item) => item.id !== record.id)
+      .map((item) => (item.id === twin.id ? merged : item));
+  } else {
+    jutsuRecords = db.jutsuRecords.map((item) => (item.id === record.id ? { ...item, name } : item));
+  }
+
+  const isKan = record.user.toLowerCase() === 'kan';
+
+  return {
+    ...db,
+    jutsuRecords,
+    state: isKan ? renameInKanList(db, record.name, name) : db.state,
+  };
+}
+
+/** Removes a jutsu record (and, for Kan, the same name from his quick list). */
+export function deleteJutsuRecord(db: AppDatabase, recordId: string): AppDatabase {
+  const record = db.jutsuRecords.find((item) => item.id === recordId);
+
+  if (!record) {
+    return db;
+  }
+
+  const jutsuRecords = db.jutsuRecords.filter((item) => item.id !== record.id);
+  const isKan = record.user.toLowerCase() === 'kan';
+  const stillHas = jutsuRecords.some(
+    (item) => item.user.toLowerCase() === 'kan' && jutsuKey(item.name) === jutsuKey(record.name)
+  );
+
+  return {
+    ...db,
+    jutsuRecords,
+    state: isKan && !stillHas ? renameInKanList(db, record.name, null) : db.state,
+  };
+}
+
+/** Clears element names saved as if they were jutsu ("Fire Release" alone). */
+export function dropBareNatureJutsu(db: AppDatabase): AppDatabase {
+  const jutsuRecords = db.jutsuRecords.filter((record) => !isBareNatureName(record.name));
+  const list = db.state.jutsu ?? [];
+  const jutsu = list.filter((name) => !isBareNatureName(name));
+
+  if (jutsuRecords.length === db.jutsuRecords.length && jutsu.length === list.length) {
+    return db;
+  }
+
+  return { ...db, jutsuRecords, state: { ...db.state, jutsu } };
 }

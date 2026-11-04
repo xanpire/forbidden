@@ -16,7 +16,7 @@ import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharact
 import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
 import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
-import { applyJutsuDiff, jutsuKey } from './jutsu';
+import { applyJutsuDiff, isBareNatureName, jutsuKey } from './jutsu';
 import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
@@ -179,7 +179,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     // Same jutsu under "Style" or "Release": keep the name already listed.
     const listed = new Set(next.state.jutsu.map(jutsuKey));
     const added = state.jutsuAdded.filter((name) => {
-      if (!name || listed.has(jutsuKey(name))) {
+      if (!name || isBareNatureName(name) || listed.has(jutsuKey(name))) {
         return false;
       }
       listed.add(jutsuKey(name));

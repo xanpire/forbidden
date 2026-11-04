@@ -16,6 +16,8 @@ type ConfirmDialogProps = {
   title: string;
   body: string;
   confirmLabel: string;
+  /** The small warning label above the title. */
+  label?: string;
   busy?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
@@ -26,6 +28,7 @@ export function ConfirmDialog({
   title,
   body,
   confirmLabel,
+  label = 'Reset settings',
   busy = false,
   onCancel,
   onConfirm,
@@ -46,7 +49,7 @@ export function ConfirmDialog({
         <View style={styles.dialog}>
           <View style={styles.labelRow}>
             <TriangleAlert color={colors.danger} size={15} strokeWidth={2} />
-            <Text style={styles.label}>Reset settings</Text>
+            <Text style={styles.label}>{label}</Text>
           </View>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.body}>{body}</Text>
