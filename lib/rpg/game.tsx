@@ -20,6 +20,7 @@ import {
   loadActiveSlot,
   loadApiKey,
   loadStorageMeta,
+  loadStoredSlot,
   renameSlot,
   saveApiKey,
   saveSlot,
@@ -29,34 +30,39 @@ import {
 import { makeId } from './id';
 import { externalizeImages, inlineImages, storeImage } from './imageStore';
 import { buildNarrationPrompt, splitNarrationAndDiff } from './prompt';
-import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
 import { streamChatCompletion } from '../openrouter';
 import {
   appendStoryMessage,
-  applyTurnDiff,
   cloneDatabase,
   convertInlineDiff,
   extractTurnDiff,
   getLastExchange,
   pushSnapshot,
   restoreLastSnapshot,
-  rollArcSummary,
   rollD20,
-  storyMessagesSinceLastSummary,
-  summarizeScene,
   trimToSentence,
-  summarizeTimeSkip,
 } from './services';
-import { daysBetween } from './calendar';
-import { detectNarrationTime } from './timeparse';
-import { inferScenePace, resolveTurnClock } from './pacing';
+import {
+  applyStateStep,
+  applySummaryJob,
+  carryOverMemory,
+  extractStateForJob,
+  isJobValid,
+  markJobFailed,
+  markJobsQueued,
+  pendingMemoryJobs,
+  pruneJobs,
+  queueStateRetry,
+  removeJob,
+  runSummaryJob,
+  type TurnInfo,
+} from './memoryJobs';
 import type {
   AppDatabase,
   BondRecord,
   EventRecord,
   PortraitSignature,
   Settings,
-  SummaryRecord,
   ThreadRecord,
   TurnDiff,
 } from './types';
@@ -94,9 +100,12 @@ type GameContextValue = {
   apiKey: string;
   loading: boolean;
   error: string | null;
-  processingError: string | null;
   isNarrating: boolean;
+  /** True while the state step or any summary step is running. */
   isProcessing: boolean;
+  /** Memory steps that failed or were interrupted and are waiting for a retry. */
+  pendingMemoryCount: number;
+  retryPendingMemory: () => Promise<void>;
   streamingText: string;
   lastPromptTokens: number;
   worldEventNotice: string | null;
@@ -134,16 +143,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [apiKey, setApiKeyState] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [processingError, setProcessingError] = useState<string | null>(null);
   const [isNarrating, setIsNarrating] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [stateStepRunning, setStateStepRunning] = useState(false);
+  const [activeJobCount, setActiveJobCount] = useState(0);
   const [streamingText, setStreamingText] = useState('');
   const [lastPromptTokens, setLastPromptTokens] = useState(0);
   const [worldEventNotice, setWorldEventNotice] = useState<string | null>(null);
 
   const dbRef = useRef<AppDatabase | null>(null);
+  /** The current turn's state step. The next turn, undo and regenerate wait for it. */
   const backgroundPromiseRef = useRef<Promise<void> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  /** Saves run one at a time, in order, so an older copy never lands last. */
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** Serializes read-modify-write on slots that aren't open right now. */
+  const inactiveLockRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** Summary steps run one after another on this chain. */
+  const memoryChainRef = useRef<Promise<void>>(Promise.resolve());
+  const activeJobIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     dbRef.current = db;
@@ -189,246 +206,305 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const commitDb = useCallback(async (next: AppDatabase) => {
-    const normalized = {
-      ...next,
-      indices: buildIndices(next),
-    };
-
-    await saveSlot(normalized);
-    dbRef.current = normalized;
-    setDb(normalized);
-
-    return normalized;
+  const enqueueSave = useCallback((next: AppDatabase) => {
+    const write = saveQueueRef.current.catch(() => undefined).then(() => saveSlot(next));
+    saveQueueRef.current = write;
+    return write;
   }, []);
+
+  const commitDb = useCallback(
+    async (next: AppDatabase) => {
+      const normalized = {
+        ...next,
+        indices: buildIndices(next),
+      };
+
+      // Update the in-memory copy first (synchronously), so anything that
+      // reads dbRef next builds on this version rather than the one before it.
+      dbRef.current = normalized;
+      setDb(normalized);
+      await enqueueSave(normalized);
+
+      return normalized;
+    },
+    [enqueueSave]
+  );
+
+  /** The newest copy of a slot: the open one in memory, otherwise what's stored. */
+  const readLatest = useCallback(async (slotId: string) => {
+    const active = dbRef.current;
+
+    if (active?.meta.slotId === slotId) {
+      return active;
+    }
+
+    await saveQueueRef.current.catch(() => undefined);
+    return loadStoredSlot(slotId);
+  }, []);
+
+  /**
+   * Applies a change to the latest copy of a slot and saves it. `mutate`
+   * returns null to skip the write (e.g. the turn it belonged to is gone).
+   */
+  const updateLatest = useCallback(
+    async (
+      slotId: string,
+      mutate: (latest: AppDatabase) => AppDatabase | null
+    ): Promise<AppDatabase | null> => {
+      const active = dbRef.current;
+
+      if (active?.meta.slotId === slotId) {
+        const next = mutate(active);
+        return next ? commitDb(next) : null;
+      }
+
+      const run = inactiveLockRef.current
+        .catch(() => undefined)
+        .then(async (): Promise<AppDatabase | null | 'reopened'> => {
+          await saveQueueRef.current.catch(() => undefined);
+
+          if (dbRef.current?.meta.slotId === slotId) {
+            return 'reopened';
+          }
+
+          const stored = await loadStoredSlot(slotId);
+
+          if (!stored) {
+            return null;
+          }
+
+          const next = mutate(stored);
+
+          if (!next) {
+            return null;
+          }
+
+          const normalized = { ...next, indices: buildIndices(next) };
+          await enqueueSave(normalized);
+          return normalized;
+        });
+
+      inactiveLockRef.current = run;
+      const result = await run;
+
+      if (result === 'reopened') {
+        // The player switched back to this slot while we waited.
+        const reopened = dbRef.current;
+        const next = reopened ? mutate(reopened) : null;
+        return next ? commitDb(next) : null;
+      }
+
+      return result;
+    },
+    [commitDb, enqueueSave]
+  );
 
   const setApiKey = useCallback(async (key: string) => {
     await saveApiKey(key);
     setApiKeyState(key.trim());
   }, []);
 
-  const processBackground = useCallback(
-    async (
-      activeKey: string,
-      currentDb: AppDatabase,
-      userMessage: string,
-      assistantMessage: string,
-      inlineDiff: TurnDiff | null,
-      inlineImageWorthy: boolean
-    ) => {
-      setIsProcessing(true);
-      setProcessingError(null);
-      try {
-        const beforeDate = currentDb.state.inStoryDate;
-        const extraction = inlineDiff
-          ? inlineDiff
-          : await extractTurnDiff({
-              apiKey: activeKey,
-              db: currentDb,
-              userMessage,
-              assistantMessage,
+  const setJobActive = useCallback((jobId: string, active: boolean) => {
+    if (active) {
+      activeJobIdsRef.current.add(jobId);
+    } else {
+      activeJobIdsRef.current.delete(jobId);
+    }
+
+    setActiveJobCount(activeJobIdsRef.current.size);
+  }, []);
+
+  const showNotice = useCallback((slotId: string, notice: string | null) => {
+    if (notice && dbRef.current?.meta.slotId === slotId) {
+      setWorldEventNotice(notice);
+    }
+  }, []);
+
+  /**
+   * Runs memory jobs one at a time. Each job reads the latest save, calls the
+   * model, then applies its result to the save as it is at that moment. A
+   * failure only marks that one job as pending; the others still run.
+   */
+  const drainJobs = useCallback(
+    async (activeKey: string, slotId: string, jobIds: string[]) => {
+      const queue = [...jobIds];
+
+      while (queue.length > 0) {
+        const jobId = queue.shift() as string;
+        const followUps: string[] = [];
+
+        try {
+          const base = await readLatest(slotId);
+          const job = base?.memoryJobs?.find((entry) => entry.id === jobId);
+
+          if (!base || !job) {
+            continue;
+          }
+
+          if (!isJobValid(base, job)) {
+            await updateLatest(slotId, (latest) => removeJob(latest, jobId));
+            continue;
+          }
+
+          if (job.kind === 'state') {
+            const extraction = await extractStateForJob(activeKey, base, job);
+            let notice: string | null = null;
+
+            await updateLatest(slotId, (latest) => {
+              const current = latest.memoryJobs?.find((entry) => entry.id === jobId);
+
+              if (!current || !isJobValid(latest, current)) {
+                return null;
+              }
+
+              const narration =
+                latest.rawLog.find((entry) => entry.id === job.turnLogId)?.content ?? '';
+              const result = applyStateStep(
+                latest,
+                extraction,
+                {
+                  turnLogId: job.turnLogId,
+                  userMessage: job.userMessage ?? '',
+                  narration,
+                  hadInlineDiff: false,
+                  inlineImageWorthy: false,
+                },
+                activeJobIdsRef.current
+              );
+              followUps.push(...result.followUpIds);
+              notice = result.notice;
+              return result.db;
             });
 
-        const parsedTime = detectNarrationTime(assistantMessage, currentDb.state.inStoryDate);
-        const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
-        const pace = extraction?.state?.scenePace ?? inferScenePace(assistantMessage);
-        const sceneEnded = extraction?.scene?.ended ?? false;
-        const clock = resolveTurnClock({
-          reportedSeconds,
-          detected: parsedTime,
-          pace,
-          sceneEnded,
-          current: currentDb.state.inStoryDate,
-        });
+            showNotice(slotId, notice);
+          } else {
+            const output = await runSummaryJob(activeKey, base, job);
 
-        let effectiveDiff = extraction;
+            await updateLatest(slotId, (latest) => {
+              const result = applySummaryJob(latest, job, output);
 
-        if (clock.elapsedSeconds > 0 || clock.clock || clock.explicitDate || pace) {
-          const merged = { ...(extraction ?? {}) };
-          merged.state = {
-            ...(merged.state ?? {}),
-            elapsedSeconds: clock.elapsedSeconds,
-            scenePace: merged.state?.scenePace ?? pace,
-            clockTime: clock.clock ?? merged.state?.clockTime,
-            inStoryDate: clock.explicitDate ?? merged.state?.inStoryDate,
-          };
-          effectiveDiff = merged;
-        }
+              if (!result) {
+                return null;
+              }
 
-        let next = effectiveDiff ? applyTurnDiff(currentDb, effectiveDiff) : currentDb;
+              followUps.push(...result.followUpIds);
+              return result.db;
+            });
+          }
+        } catch (caught) {
+          try {
+            await updateLatest(slotId, (latest) =>
+              latest.memoryJobs?.some((entry) => entry.id === jobId)
+                ? markJobFailed(latest, jobId, caught)
+                : null
+            );
+          } catch {
+            // Storage itself failed; the job stays queued and shows as pending.
+          }
+        } finally {
+          for (const id of followUps) {
+            setJobActive(id, true);
 
-        const relays = extraction?.newsRelayed ?? [];
+            if (!queue.includes(id)) {
+              queue.push(id);
+            }
+          }
 
-        next = applyCanonMarks(
-          next,
-          extraction?.canonCompleted ?? [],
-          extraction?.canonEngaged ?? [],
-          extraction?.canonPassed ?? []
-        );
-        next = markNewsHeard(next, relays);
-        next = advanceCanon(next);
-
-        if (relays.length > 0) {
-          const delivered = next.events.find((event) => {
-            const id = relays[0].id.startsWith('event_canon_')
-              ? relays[0].id
-              : `event_canon_${relays[0].id}`;
-            return event.id === id;
-          });
-
-          if (delivered) {
-            const title = delivered.summary.split(':')[0].trim();
-            const from = relays[0].from?.trim() || 'a rumor';
-            setWorldEventNotice(`${title} — from ${from}`.slice(0, 110));
+          if (!queue.includes(jobId)) {
+            setJobActive(jobId, false);
           }
         }
-
-        if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= 180) {
-          const timeSkip = await summarizeTimeSkip({
-            apiKey: activeKey,
-            db: next,
-            fromDate: beforeDate,
-            toDate: next.state.inStoryDate,
-          });
-
-          if (timeSkip) {
-            const event: EventRecord = {
-              id: makeId('event'),
-              chapter: next.state.chapter,
-              scene: 'Time skip',
-              inStoryDate: next.state.inStoryDate,
-              summary: timeSkip,
-              importance: 4,
-              tags: ['time-skip', 'meanwhile'],
-              pinned: false,
-              sourceLogId: null,
-              createdAt: Date.now(),
-            };
-
-            next = {
-              ...next,
-              events: [...next.events, event],
-            };
-          }
-        }
-
-        const story = next.rawLog.filter((message) => message.kind === 'story');
-
-        const shouldSummarize =
-          (inlineDiff !== null && inlineImageWorthy) ||
-          extraction?.scene?.ended ||
-          storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
-
-        if (shouldSummarize) {
-          const sceneMessages = story.slice(-Math.min(story.length, 8));
-          const summary = await summarizeScene({
-            apiKey: activeKey,
-            db: next,
-            messages: sceneMessages,
-          });
-
-          if (summary) {
-            const lastEvent = next.events[next.events.length - 1];
-            const summaryRecord: SummaryRecord = {
-              id: makeId('summary'),
-              level: 'chapter',
-              range: {
-                fromEventId: lastEvent?.id ?? '',
-                toEventId: lastEvent?.id ?? '',
-                from: next.state.inStoryDate,
-                to: next.state.inStoryDate,
-              },
-              text: summary,
-              tokenCount: Math.ceil(summary.length / 4),
-              eventIds: lastEvent ? [lastEvent.id] : [],
-              createdAt: Date.now(),
-            };
-
-            next = {
-              ...next,
-              summaries: [...next.summaries, summaryRecord],
-            };
-          }
-        }
-
-        const chapterSummaries = next.summaries
-          .filter((summary) => summary.level === 'chapter')
-          .map((summary) => summary.text);
-
-        if (chapterSummaries.length > 0 && chapterSummaries.length % 3 === 0) {
-          const arcSummary = await rollArcSummary({
-            apiKey: activeKey,
-            db: next,
-            chapterSummaries: chapterSummaries.slice(-3),
-          });
-
-          if (arcSummary) {
-            const arcRecord: SummaryRecord = {
-              id: makeId('summary'),
-              level: 'arc',
-              range: {
-                fromEventId: '',
-                toEventId: '',
-                from: next.state.inStoryDate,
-                to: next.state.inStoryDate,
-              },
-              text: arcSummary,
-              tokenCount: Math.ceil(arcSummary.length / 4),
-              eventIds: [],
-              createdAt: Date.now(),
-            };
-
-            next = {
-              ...next,
-              summaries: [...next.summaries, arcRecord],
-            };
-          }
-        }
-
-        if (chapterSummaries.length >= 12 && chapterSummaries.length % 12 === 0) {
-          const yearSummary = await rollArcSummary({
-            apiKey: activeKey,
-            db: next,
-            chapterSummaries: chapterSummaries.slice(-12),
-          });
-
-          if (yearSummary) {
-            const yearRecord: SummaryRecord = {
-              id: makeId('summary'),
-              level: 'year',
-              range: {
-                fromEventId: '',
-                toEventId: '',
-                from: next.state.inStoryDate,
-                to: next.state.inStoryDate,
-              },
-              text: yearSummary,
-              tokenCount: Math.ceil(yearSummary.length / 4),
-              eventIds: [],
-              createdAt: Date.now(),
-            };
-
-            next = {
-              ...next,
-              summaries: [...next.summaries, yearRecord],
-            };
-          }
-        }
-
-        if (dbRef.current?.meta.slotId === next.meta.slotId) {
-          await commitDb(next);
-        } else {
-          await saveSlot(next);
-        }
-      } catch {
-        setProcessingError('Memory update failed. Your story is still saved.');
-      } finally {
-        setIsProcessing(false);
-        backgroundPromiseRef.current = null;
       }
     },
-    [commitDb]
+    [readLatest, setJobActive, showNotice, updateLatest]
   );
+
+  const scheduleJobs = useCallback(
+    (activeKey: string, slotId: string, jobIds: string[]) => {
+      if (jobIds.length === 0) {
+        return memoryChainRef.current;
+      }
+
+      jobIds.forEach((id) => setJobActive(id, true));
+
+      const run = memoryChainRef.current
+        .catch(() => undefined)
+        .then(() => drainJobs(activeKey, slotId, jobIds));
+
+      memoryChainRef.current = run;
+      return run;
+    },
+    [drainJobs, setJobActive]
+  );
+
+  /**
+   * Phase 1 of a turn: apply and save the state change straight away. The
+   * summaries it calls for are queued and run afterwards on their own.
+   */
+  const runStateStep = useCallback(
+    async (activeKey: string, slotId: string, turn: TurnInfo, inlineDiff: TurnDiff | null) => {
+      setStateStepRunning(true);
+
+      try {
+        let extraction = inlineDiff;
+
+        if (!extraction) {
+          try {
+            const base = await readLatest(slotId);
+
+            if (!base) {
+              return;
+            }
+
+            extraction = await extractTurnDiff({
+              apiKey: activeKey,
+              db: base,
+              userMessage: turn.userMessage,
+              assistantMessage: turn.narration,
+            });
+          } catch (caught) {
+            await updateLatest(slotId, (latest) =>
+              latest.rawLog.some((entry) => entry.id === turn.turnLogId)
+                ? queueStateRetry(latest, turn, caught)
+                : null
+            );
+            return;
+          }
+        }
+
+        let followUps: string[] = [];
+        let notice: string | null = null;
+
+        await updateLatest(slotId, (latest) => {
+          if (!latest.rawLog.some((entry) => entry.id === turn.turnLogId)) {
+            return null;
+          }
+
+          const result = applyStateStep(latest, extraction, turn, activeJobIdsRef.current);
+          followUps = result.followUpIds;
+          notice = result.notice;
+          return result.db;
+        });
+
+        showNotice(slotId, notice);
+        void scheduleJobs(activeKey, slotId, followUps);
+      } catch {
+        setError('Your last turn could not be saved. Check your storage space and try again.');
+      } finally {
+        setStateStepRunning(false);
+      }
+    },
+    [readLatest, scheduleJobs, showNotice, updateLatest]
+  );
+
+  const trackBackground = useCallback((task: Promise<void>) => {
+    backgroundPromiseRef.current = task;
+    void task.catch(() => undefined).finally(() => {
+      if (backgroundPromiseRef.current === task) {
+        backgroundPromiseRef.current = null;
+      }
+    });
+  }, []);
 
   const sendTurnInner = useCallback(
     async (action: string, activeKey: string) => {
@@ -520,33 +596,46 @@ export function GameProvider({ children }: { children: ReactNode }) {
           : split.narration;
         const { diff: inlineTurnDiff, imageWorthy } = convertInlineDiff(split.inlineDiff);
 
-        const withAssistant = appendStoryMessage(
-          withUser,
-          'assistant',
-          narration,
-          withUser.settings.narrationModel,
-          promptTokens,
-          completionTokens
-        );
+        // Save onto the latest copy, not the one the prompt was built from,
+        // so summaries that finished during narration are kept.
+        const slotId = current.meta.slotId;
+        const model = withUser.settings.narrationModel;
+        let turnLogId = '';
 
-        const saved =
-          dbRef.current?.meta.slotId === withAssistant.meta.slotId
-            ? await commitDb(withAssistant)
-            : withAssistant;
-
-        if (saved === withAssistant && dbRef.current?.meta.slotId !== withAssistant.meta.slotId) {
-          await saveSlot(withAssistant);
-        }
+        const saved = await updateLatest(slotId, (latest) => {
+          const withSnapshot = pushSnapshot(latest);
+          const withPlayer = appendStoryMessage(withSnapshot, 'user', action, null, 0, 0);
+          const withReply = appendStoryMessage(
+            withPlayer,
+            'assistant',
+            narration,
+            model,
+            promptTokens,
+            completionTokens
+          );
+          turnLogId = withReply.rawLog[withReply.rawLog.length - 1].id;
+          return withReply;
+        });
 
         setStreamingText('');
 
-        backgroundPromiseRef.current = processBackground(
-          activeKey,
-          saved,
-          action,
-          narration,
-          inlineTurnDiff,
-          imageWorthy
+        if (!saved || !turnLogId) {
+          return;
+        }
+
+        trackBackground(
+          runStateStep(
+            activeKey,
+            slotId,
+            {
+              turnLogId,
+              userMessage: action,
+              narration,
+              hadInlineDiff: inlineTurnDiff !== null,
+              inlineImageWorthy: imageWorthy,
+            },
+            inlineTurnDiff
+          )
         );
       } catch (caught) {
         const message =
@@ -557,7 +646,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         abortRef.current = null;
       }
     },
-    [commitDb, processBackground]
+    [runStateStep, trackBackground, updateLatest]
   );
 
 
@@ -605,7 +694,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    await commitDb(restored);
+    await commitDb(carryOverMemory(current, restored));
     setStreamingText('');
     setError(null);
   }, [commitDb]);
@@ -627,7 +716,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const restored = restoreLastSnapshot(current) ?? current;
+    const snapshot = restoreLastSnapshot(current);
+    const restored = snapshot ? carryOverMemory(current, snapshot) : current;
     await commitDb(restored);
     await sendTurn(userMessage);
   }, [commitDb, sendTurn]);
@@ -653,6 +743,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const switchSlotById = useCallback(
     async (slotId: string) => {
+      // Let pending writes land first so the slot is read back up to date.
+      await saveQueueRef.current.catch(() => undefined);
+      await inactiveLockRef.current.catch(() => undefined);
       const loaded = await switchSlot(slotId);
 
       if (!loaded) {
@@ -892,6 +985,55 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const retryPendingMemory = useCallback(async () => {
+    const current = dbRef.current;
+
+    if (!current) {
+      return;
+    }
+
+    const activeKey = apiKey.trim() || (await loadApiKey()).trim();
+
+    if (!activeKey) {
+      setError('Add your OpenRouter API key in Settings to retry.');
+      return;
+    }
+
+    if (backgroundPromiseRef.current) {
+      await backgroundPromiseRef.current;
+    }
+
+    const slotId = current.meta.slotId;
+    const pending = pendingMemoryJobs(dbRef.current, activeJobIdsRef.current);
+
+    if (pending.length === 0) {
+      return;
+    }
+
+    const ids = pending.map((job) => job.id);
+    await updateLatest(slotId, (latest) =>
+      markJobsQueued(pruneJobs(latest, activeJobIdsRef.current), ids)
+    );
+
+    const run = scheduleJobs(activeKey, slotId, ids);
+
+    // A state step must land before the next turn is narrated.
+    if (pending.some((job) => job.kind === 'state')) {
+      trackBackground(run);
+    }
+
+    await run;
+  }, [apiKey, scheduleJobs, trackBackground, updateLatest]);
+
+  const pendingMemoryCount = useMemo(
+    () => pendingMemoryJobs(db, activeJobIdsRef.current).length,
+    // activeJobCount changes whenever the running set does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [db, activeJobCount]
+  );
+
+  const isProcessing = stateStepRunning || activeJobCount > 0;
+
   const dismissWorldEventNotice = useCallback(() => {
     setWorldEventNotice(null);
   }, []);
@@ -904,9 +1046,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       apiKey,
       loading,
       error,
-      processingError,
       isNarrating,
       isProcessing,
+      pendingMemoryCount,
+      retryPendingMemory,
       streamingText,
       lastPromptTokens,
       worldEventNotice,
@@ -949,7 +1092,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       lastPromptTokens,
       loading,
       meta,
-      processingError,
+      pendingMemoryCount,
+      retryPendingMemory,
       regenerate,
       renameSlotById,
       sendTurn,

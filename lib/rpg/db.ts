@@ -94,6 +94,22 @@ export async function loadSlot(slotId: string): Promise<AppDatabase> {
   }
 }
 
+/** Loads a slot only if it is actually stored, without seeding a fresh one. */
+export async function loadStoredSlot(slotId: string): Promise<AppDatabase | null> {
+  const stored = await AsyncStorage.getItem(`${SLOT_PREFIX}${slotId}.v1`);
+
+  if (!stored) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(stored) as AppDatabase;
+    return parsed && parsed.schemaVersion === 1 ? normalizeDatabase(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
 const MAX_STORED_IMAGES = 3;
 const MAX_SNAPSHOTS = 1;
 
@@ -456,6 +472,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
     portraits: Array.isArray(db.portraits)
       ? db.portraits.filter((portrait) => portrait && typeof portrait.image === 'string')
+      : [],
+    memoryJobs: Array.isArray(db.memoryJobs)
+      ? db.memoryJobs.filter((job) => job && typeof job.turnLogId === 'string')
       : [],
   };
 

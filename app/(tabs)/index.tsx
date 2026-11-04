@@ -147,6 +147,8 @@ export default function StoryScreen() {
     error,
     isNarrating,
     isProcessing,
+    pendingMemoryCount,
+    retryPendingMemory,
     streamingText,
     worldEventNotice,
     dismissWorldEventNotice,
@@ -525,6 +527,33 @@ export default function StoryScreen() {
               <ActivityIndicator color={colors.accent} size="small" />
               <Text style={type.rowMeta}>Memory updating…</Text>
             </View>
+          ) : pendingMemoryCount > 0 ? (
+            <View
+              accessibilityLabel={`Memory pending: ${pendingMemoryCount} ${
+                pendingMemoryCount === 1 ? 'step' : 'steps'
+              } didn't finish. Your story is saved.`}
+              style={styles.processingRow}
+            >
+              <CircleAlert color={colors.warning} size={14} strokeWidth={2.2} />
+              <Text style={[type.rowMeta, styles.pendingLabel]}>
+                Memory pending{pendingMemoryCount > 1 ? ` · ${pendingMemoryCount}` : ''}
+              </Text>
+              <Pressable
+                accessibilityLabel="Retry memory update"
+                accessibilityRole="button"
+                disabled={isNarrating}
+                hitSlop={8}
+                onPress={() => void retryPendingMemory()}
+                style={({ pressed }) => [
+                  styles.pendingRetry,
+                  pressed && styles.pressed,
+                  isNarrating && styles.disabled,
+                ]}
+              >
+                <RotateCcw color={colors.textMuted} size={12} strokeWidth={2.2} />
+                <Text style={styles.inlineActionLabel}>Retry</Text>
+              </Pressable>
+            </View>
           ) : null}
           <View style={styles.composer}>
             <Pressable
@@ -888,6 +917,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: spacing.sm,
+  },
+  pendingLabel: {
+    flex: 1,
+  },
+  pendingRetry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   composer: {
     flexDirection: 'row',

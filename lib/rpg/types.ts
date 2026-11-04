@@ -204,6 +204,38 @@ export type SummaryRecord = {
   tokenCount: number;
   eventIds: string[];
   createdAt: number;
+  /** Story log entries this summary was written from (chapter summaries). */
+  sourceLogIds?: string[];
+  /** Chapter summaries this summary rolled up (arc and year summaries). */
+  sourceSummaryIds?: string[];
+};
+
+/**
+ * A background memory step that runs after a turn's state is already saved.
+ * Jobs live in the save so a failed or interrupted step survives a reload
+ * and can be retried from the story screen.
+ */
+export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year';
+
+export type MemoryJob = {
+  id: string;
+  kind: MemoryJobKind;
+  /** queued = waiting or running, failed = needs a retry. */
+  status: 'queued' | 'failed';
+  /** The narrator reply this job belongs to. */
+  turnLogId: string;
+  /** state: the player's action for that turn. */
+  userMessage?: string;
+  /** scene: the story messages to summarize. */
+  logIds?: string[];
+  /** arc / year: the chapter summaries to roll up. */
+  summaryIds?: string[];
+  /** timeSkip: the jump being summarized. */
+  fromDate?: CalendarDate;
+  toDate?: CalendarDate;
+  attempts: number;
+  error?: string;
+  createdAt: number;
 };
 
 export type MemoryIndex = {
@@ -272,6 +304,7 @@ export type AppDatabase = {
   indices: MemoryIndex;
   snapshots: TurnSnapshot[];
   portraits?: PortraitRecord[];
+  memoryJobs?: MemoryJob[];
 };
 
 export type PortraitOutfit = 'black' | 'akatsuki';

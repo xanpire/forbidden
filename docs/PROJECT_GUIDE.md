@@ -159,35 +159,37 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
    - returns `{ narration, inlineDiff }`,
    - cleans stray fences and `State update:` labels.
 9. If narration is still cut mid-sentence, trim to the last complete sentence (`trimToSentence`).
-10. Append the assistant message, commit the slot.
-11. `processBackground(...)` runs asynchronously.
+10. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
+11. `runStateStep(...)` starts; the next turn, undo and regenerate wait for it.
 
-### `processBackground`
+### Saving a turn: two phases (`lib/rpg/memoryJobs.ts`)
 
-1. `extraction = inlineDiff ?? extractTurnDiff(...)` (the fallback is a separate cheap LLM call and only runs when no inline block parsed).
-2. **Narration clock**: `detectNarrationTime(assistantMessage, currentDate)`.
-3. **Pace**: `extraction.state.scenePace ?? inferScenePace(assistantMessage)`.
-4. `resolveTurnClock(...)` → capped elapsed seconds, safe clock time, safe explicit date (combat blocks date jumps).
-5. `applyTurnDiff`:
-   - state/clock, entities, jutsu, bonds (incl. romance), facts, threads,
-   - `mergeDuplicateEntities` (identity groups),
-   - `recordSceneEvent` when `scene.ended`,
-   - `recordPresence` (`lastSeen`, `sceneCast`),
-   - `applyClockTick` (stall counter only — no auto advance),
-   - rebuild indices.
-6. `applyCanonMarks(completed, engaged, passed)` then `markNewsHeard(relays)` then `advanceCanon`.
-7. Optional time-skip summary if `daysBetween(before, after) >= 180`.
-8. Optional scene summary when:
-   - inline diff + `image_worthy`, or
-   - `scene.ended`, or
-   - `storyMessagesSinceLastSummary >= autoSummarizeThreshold`.
-9. Every 3 chapter summaries → arc summary; every 12 → year summary (`rollArcSummary`).
-10. Commit.
+**Phase 1 — state step (`runStateStep` → `applyStateStep`)**, saved immediately:
+
+1. `extraction = inlineDiff ?? extractTurnDiff(...)` (the fallback is a separate cheap LLM call and only runs when no inline block parsed). If that call fails, a `state` job is stored as pending and nothing else changes.
+2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` (capped elapsed seconds, safe clock time, combat blocks date jumps).
+3. `applyTurnDiff` (state/clock, entities, jutsu, bonds incl. romance, facts, threads, duplicate merge, scene events, presence, stall counter).
+4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
+5. Queue follow-up jobs in `db.memoryJobs`:
+   - `timeSkip` if `daysBetween(before, after) >= 180`,
+   - `scene` when inline diff + `image_worthy`, `scene.ended`, or `storyMessagesSinceLastSummary >= autoSummarizeThreshold`. A pending scene job is widened (up to 12 messages) instead of stacking a new one.
+6. Commit. The clock, bonds, facts and canon are now saved.
+
+**Phase 2 — summary jobs (`drainJobs`)**, one at a time, never blocking the next turn:
+
+- Each job reads the latest save, calls the model (`runSummaryJob`), then `applySummaryJob` applies the result to the save **as it is at that moment**. If the turn it came from was undone or the job was removed, the result is discarded.
+- A finished chapter summary queues `arc` (every 3 chapters) and `year` (every 12) roll-ups, deduplicated by `sourceSummaryIds`.
+- Every step has its own error handling: a failure marks just that job `failed` (with `attempts` and `error`); the rest still run.
+- Jobs are stored in the save, so a step interrupted by closing the tab survives a reload.
+- Story screen: "Memory updating…" while any step runs; "Memory pending · N" with **Retry** when a step failed (`pendingMemoryCount`, `retryPendingMemory`).
+- A `state` job only stays valid while its turn is the newest; once another turn is narrated it is dropped.
+
+**Write ordering**: `commitDb` updates `dbRef` synchronously and saves through a serial queue, so an older copy can never be written last. Writes to a slot that isn't open go through `updateLatest`'s inactive path (load → mutate → save, serialized).
 
 ### `undoLastTurn` / `regenerate`
 
-- Undo restores the most recent snapshot (taken before the turn).
-- Regenerate re-sends the last user message from the pre-turn state.
+- Undo restores the most recent snapshot (taken just before the turn was saved), then `carryOverMemory` keeps summaries that finished later if everything they were written from still exists (`sourceLogIds` / `sourceSummaryIds`), plus pending jobs that still apply.
+- Regenerate re-sends the last user message from the pre-turn state (same carry-over).
 
 ---
 
