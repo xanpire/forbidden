@@ -154,6 +154,15 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
+  // Grudges belong to people the save knows.
+  if (diff.grudges) {
+    next.grudges = diff.grudges.flatMap((grudge) => {
+      const ref = resolve(grudge.entityId ?? grudge.name);
+
+      return ref?.entityId ? [{ ...grudge, name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
   if (diff.lettersReceived) {
     next.lettersReceived = diff.lettersReceived.flatMap((letter) => {
       const ref = resolve(letter.entityId ?? letter.name);

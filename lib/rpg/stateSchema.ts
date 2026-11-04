@@ -55,6 +55,9 @@ export const FACT_TYPES = [
   'event',
   'other',
 ] as const;
+export const REPUTATION_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki'] as const;
+export const VILLAGE_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
+export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
 
 export const TURN_STATE_SCHEMA = object({
@@ -152,6 +155,20 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People whose letter actually reached Kan on the page this turn.
   letters_received: stringList,
+  // What a village (or the Akatsuki) now has on Kan, from deeds its people
+  // saw or survived this turn; and villages whose entry on him he learned of.
+  reputation: list({
+    faction: { type: 'string', enum: [...REPUTATION_FACTIONS] },
+    change: { type: 'number' },
+    reason: nullableString,
+  }),
+  bounty_seen: { type: 'array', items: { type: 'string', enum: [...VILLAGE_FACTIONS] } },
+  // Grudges against Kan: started, acted on, settled, or forgiven.
+  grudges: list({
+    character_id: { type: 'string' },
+    event: { type: 'string', enum: [...GRUDGE_EVENTS] },
+    reason: nullableString,
+  }),
 });
 
 export const TURN_STATE_SCHEMA_NAME = 'kan_turn_state';

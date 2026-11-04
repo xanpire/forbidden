@@ -12,6 +12,8 @@ import { buildIndices } from './db';
 import { type DebugCallKind, recordDebugCall, recordDebugState } from './debug';
 import { classifyLocation } from './encounters';
 import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
+import { applyGrudgeChanges } from './grudges';
+import { applyReputationChanges } from './reputation';
 import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
 import { applyJutsuDiff } from './jutsu';
 import { cloneDatabase } from './log';
@@ -85,6 +87,11 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
       }
     }
   }
+
+  // After bonds and deaths: a soured bond can turn into a grudge, and the
+  // dead let theirs go.
+  next = applyGrudgeChanges(next, diff);
+  next = applyReputationChanges(next, diff.reputation, diff.bountySeen);
 
   if (Array.isArray(diff.facts)) {
     for (const fact of diff.facts) {

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizePost } from './letters';
+import { normalizeReputation } from './reputation';
 import { normalizeDeaths } from './deaths';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
@@ -608,6 +609,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
       ? state.sceneCast.filter(Boolean).slice(0, 6)
       : [],
     post: normalizePost(state.post),
+    reputation: normalizeReputation(state.reputation),
   };
 }
 

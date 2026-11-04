@@ -1,6 +1,6 @@
 // Reading the state model's reply: JSON parsing and snake_case → TurnDiff.
 
-import type { FactType, LocationKind, TurnDiff } from './types';
+import type { FactType, LocationKind, ReputationFaction, TurnDiff, VillageFaction } from './types';
 
 /**
  * Turns the state model's snake_case JSON (see stateSchema.ts) into a
@@ -73,6 +73,48 @@ export function convertStateBlock(
 
     if (received.length > 0) {
       diff.lettersReceived = received;
+    }
+  }
+
+  if (Array.isArray(block.reputation)) {
+    const factions = new Set(['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki']);
+    const changes = block.reputation
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        faction: (typeof item.faction === 'string' ? item.faction.trim().toLowerCase() : '') as ReputationFaction,
+        change: typeof item.change === 'number' && Number.isFinite(item.change) ? item.change : 0,
+        reason: cleanString(item.reason)?.slice(0, 160),
+      }))
+      .filter((item) => factions.has(item.faction) && item.change !== 0)
+      .slice(0, 6);
+
+    if (changes.length > 0) {
+      diff.reputation = changes;
+    }
+  }
+
+  const seen = stringItems(block.bounty_seen)
+    .map((item) => item.toLowerCase())
+    .filter((item): item is VillageFaction => ['leaf', 'sand', 'mist', 'cloud', 'stone'].includes(item));
+
+  if (seen.length > 0) {
+    diff.bountySeen = [...new Set(seen)];
+  }
+
+  if (Array.isArray(block.grudges)) {
+    const events = new Set(['wronged', 'struck', 'settled', 'forgiven']);
+    const grudges = block.grudges
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
+        event: (typeof item.event === 'string' ? item.event.trim().toLowerCase() : '') as 'wronged' | 'struck' | 'settled' | 'forgiven',
+        reason: cleanString(item.reason)?.slice(0, 160),
+      }))
+      .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan' && events.has(item.event))
+      .slice(0, 4);
+
+    if (grudges.length > 0) {
+      diff.grudges = grudges;
     }
   }
 

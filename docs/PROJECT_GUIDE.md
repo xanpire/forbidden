@@ -26,6 +26,8 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `canonData.ts` | **Data only**: the 90 milestones (dates, place, who could know), canon types, courier tables, era order |
 | `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), the unheard-news queue and its escalation (`unheardCanonNews`, `newsUrgency`), world clock |
 | `newsDelivery.ts` | How news reaches Kan this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
+| `reputation.ts` | Bingo books and Akatsuki standing (`state.reputation`): `applyReputationChanges`, `ensureLeafListing`, `bingoListings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
+| `grudges.ts` | Grudges, the dark mirror of romance (`BondRecord.grudge`): `applyGrudgeChanges`, `grudgeStage`, `grudgeHeat`, `grudgeOffer` (SOMEONE WANTS YOU TO PAY), `GRUDGE_RULES` (§10a) |
 | `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -165,6 +167,24 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   lastLetterIn?: CalendarDate    // when a letter last reached Kan
 }
 ```
+
+### `state.reputation` (`reputation.ts`)
+
+```ts
+{
+  villages: { leaf?|sand?|mist?|cloud?|stone?: {
+    heat: number,                // 0-100 before cooling
+    listedOn?: CalendarDate,     // in the bingo book since; never removed
+    lastDeedOn?: CalendarDate,   // cooling counts from here
+    lastReason?: string,
+    known: boolean               // Kan has seen or been told of it
+  } },
+  akatsuki?: { standing: number /* -100..100 */, lastReason?, updatedOn? },
+  recent: [{ faction, change, reason?, date }]   // last 12
+}
+```
+
+`BondRecord.grudge?: { since, reason, heat, updatedOn, lastStrike?, strikes }` — set while that person holds a grudge against Kan (§10a).
 
 ### `TurnDiff` (what the state call produces)
 
@@ -501,6 +521,17 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 - Cadence: one offer turn per `RETURN_WINDOW_TURNS` (8) player turns, picked by a hash of slot + window, never before turn 6, never in combat/chase, never where `encounterRisk` is `none`. The pick rotates among the top three. Everything is deterministic, so a regenerated turn gets the same offer; once someone resurfaces, their `lastSeen` resets and they leave the pool.
 - The block is optional for the narrator: use them only if it fits; if used, they are the turn's encounter.
 
+### 9b. Reputation & bounty hunters (`lib/rpg/reputation.ts`)
+
+- **Bingo books**: each great village keeps a `heat` (0-100). The tracker's `reputation: [{faction, change, reason}]` moves it (one move per faction per turn, clamped to −15..+25) when that village's people saw Kan and lived, he hurt or killed its people, or worked openly in its land. At `LIST_HEAT` (15) he is listed; ranks C 15 / B 35 / A 60 / S 85; bounty `heat² × 6000` ryō rounded to 100k (≈1.4M C, 7M B, 22M A, 43M+ S).
+- **Cooling**: after `COOL_AFTER_DAYS` (60) without a new deed, −1 heat per `COOL_DAYS_PER_POINT` (20) days, computed lazily (`currentHeat`) and baked in on the next change. A listed entry never drops below 15 and is never removed.
+- **The Leaf**: `ensureLeafListing` (every turn, inside `applyReputationChanges`) writes Kan into the Leaf's book at B-rank (40) once the clock passes the morning after the massacre night (`LEAF_LISTS_ON`, Year 13 · 2 Oct 06:00). Older saves get it on their next turn.
+- **What Kan knows**: entries start `known: false`. `bounty_seen: [village]` (a poster, a hunter naming his price, someone telling him) marks one known and shows a news-strip notice. The narrator always sees every entry (so strangers react honestly) plus a line saying which ones Kan has not seen; the Kan tab shows only known ones.
+- **Akatsuki standing** (−100..100, `akatsuki` faction, usually ±10): bands suspected / doubted / unproven / trusted / valued. Shown to the narrator only once `kan-joins-akatsuki` is completed.
+- **YOUR NAME OUT THERE** (narrator, after ENCOUNTER CONDITIONS): `territoryOf(location)` picks the great village whose land Kan is in (or none for small countries); one line on how its shinobi would react by rank, other villages that want him, civilians (wanted posters only at S), the Akatsuki cloak (feared by everyone from Year 17, by hunter-nin and the underworld before), and the standing line. Skipped where `encounterRisk` is `none`, except the standing line. Recognition needs a good look and someone who would know.
+- **A PRICE ON YOUR HEAD (optional)**: `hunterOffer` — one possible turn per `HUNTER_WINDOW_TURNS` (10), never before turn 8, only on roads and in towns, never in combat or empty places, only if Kan is listed somewhere; the chance per window rises with the top rank (C ¼ … S always). Hunter-nin only on their own village's land. Deterministic per slot + window.
+- **One pressure per turn**: the prompt takes a due grudge first, else a bounty hunter, else A FAMILIAR FACE (`formatPressure` in `prompt.ts`).
+
 ---
 
 ## 10. Romance & lore (`lib/rpg/romance.ts`)
@@ -513,6 +544,18 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 - `ROMANCE_RULES` is injected into the narrator system prompt.
 - Bonds store relationship/attraction/romanceNote; a rejection stays until the narrator moves it on (never from affinity alone); a winnable heart that rejected Kan can slowly change its mind over time.
 - Adult NPCs deflect while Kan is under 17; explicit intimacy only when both are 18+; the prompt instructs **never to censor** when ages permit.
+
+### 10a. Grudges (`lib/rpg/grudges.ts`)
+
+The dark mirror of romance: slow, earned, lasting.
+
+- **Start**: a bond diff that leaves affinity at or below `GRUDGE_AFFINITY` (−6), or the tracker's `grudges: [{character_id, event: 'wronged', reason}]` (Kan kills or maims someone they love, betrays, humiliates or ruins them; creates a bond if there is none). Opens a `grudge` thread (`<name>'s grudge against you`) and a fact.
+- **Heat** (0-100): starts at 30 + 5 per point below −6 (45 for `wronged`; +25 for a further `wronged`); a negative bond move adds 4 per point, a positive one removes 5; left alone it stews +1 per `STEW_DAYS` (10), up to +20 since it last moved (`grudgeHeat`).
+- **Stage**: resentful < 40 ≤ vengeful < 70 ≤ hunting. Only original characters can hunt; canon characters (`isOriginalCharacter` false) stop at vengeful and act within their canon path — the mirror of lore-locked hearts.
+- **Strikes**: `grudgeOffer` offers one vengeful/hunting grudge (not a companion, not in the scene, not mid-fight) once `STRIKE_GAP_DAYS` passed since the last strike (vengeful 30, hunting 14): on one turn in five, or every turn once `STRIKE_PRESS_DAYS` (10) overdue. The style is deterministic per turn: hunting → ambush (at night in towns), trap, hired blades, signs they are close, or — after a failed strike — a threat against someone Kan cares about; vengeful → his movements sold, a message, paid blades, or them turning up if this place is on their path. `struck` records `lastStrike`.
+- **End**: the bond climbing back to `LET_GO_AFFINITY` (−2) → let go; `settled` (a reckoning they accept) or `forgiven` from the tracker; death. Each resolves the thread; all but death add a fact.
+- Prompts: `GRUDGE_RULES` (ENEMIES) sits in the narrator rules; BONDS shows `[grudge: stage, reason]`; the state prompt gets REPUTATION & GRUDGES (field rules + the offered grudge's id).
+- UI: Bonds → "Your name out there" card (known listings, Akatsuki standing bar), a "Want you to pay" group with a red stage tag; the bond screen shows a Grudge card.
 
 ---
 
@@ -628,6 +671,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Prompt composition (blocks, dedupe, no dice roll / style guard, encounter conditions, budget)
 - Companions (state reply → diff, always in the scene cast, shared-scene bond steps, cap and hostility floor, parting and death, new person joining, party limit, both prompts, reload and merge)
 - Characters who come back (original-only pool, place fit, travellers, cadence, no offers in fights or empty places, `lastSeenAt` recording)
+- Reputation & grudges (`scripts/enemies.test.ts`): Leaf listing timing, heat → rank/bounty, per-turn clamp, cooling floor, `bounty_seen`, territory lines, empty places, Akatsuki standing, hunter cadence; grudges from soured bonds and `wronged`, stewing, canon hunt cap, due/pressed/combat/in-scene offers, `struck`, let go / settled / death, schema and reload
 - Token stability over 60 turns
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 

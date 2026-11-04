@@ -70,6 +70,43 @@ export type GameState = {
   sceneCast?: string[];
   /** Personal letters to and from Kan (see letters.ts). */
   post?: PostState;
+  /** Bingo books and Akatsuki standing (see reputation.ts). */
+  reputation?: ReputationState;
+};
+
+export type VillageFaction = 'leaf' | 'sand' | 'mist' | 'cloud' | 'stone';
+export type ReputationFaction = VillageFaction | 'akatsuki';
+
+/** What one great village has on Kan (see reputation.ts). */
+export type BingoEntry = {
+  /** 0-100: how badly they want him, before cooling since lastDeedOn. */
+  heat: number;
+  /** When they wrote him into their bingo book. An entry is never removed. */
+  listedOn?: CalendarDate;
+  /** Their last new reason to want him; cooling counts from here. */
+  lastDeedOn?: CalendarDate;
+  lastReason?: string;
+  /** True once Kan has seen or been told what they wrote about him. */
+  known: boolean;
+};
+
+export type ReputationState = {
+  villages: Partial<Record<VillageFaction, BingoEntry>>;
+  /** -100..100: how the Akatsuki regard him. */
+  akatsuki?: { standing: number; lastReason?: string; updatedOn?: CalendarDate };
+  /** The last few changes, newest last. */
+  recent: { faction: ReputationFaction; change: number; reason?: string; date: CalendarDate }[];
+};
+
+/** Someone's grudge against Kan, kept on their bond (see grudges.ts). */
+export type Grudge = {
+  since: CalendarDate;
+  reason: string;
+  /** 0-100, before the stewing since updatedOn. */
+  heat: number;
+  updatedOn: CalendarDate;
+  lastStrike?: CalendarDate;
+  strikes: number;
 };
 
 /**
@@ -224,6 +261,8 @@ export type BondRecord = {
   relationship?: RelationshipStage;
   attraction?: Attraction;
   romanceNote?: string;
+  /** Set while this person holds a grudge against Kan (grudges.ts). */
+  grudge?: Grudge;
   updatedInStoryDate: CalendarDate;
 };
 
@@ -508,6 +547,17 @@ export type TurnDiff = {
   lettersSent?: { entityId?: string; name: string; gist?: string }[];
   /** People whose letter reached Kan on the page this turn. */
   lettersReceived?: { entityId?: string; name: string }[];
+  /** What a village or the Akatsuki now has on Kan. */
+  reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
+  /** Villages whose bingo-book entry on Kan he saw or was told of this turn. */
+  bountySeen?: VillageFaction[];
+  /** Grudges started, acted on, settled or forgiven this turn. */
+  grudges?: {
+    entityId?: string;
+    name: string;
+    event: 'wronged' | 'struck' | 'settled' | 'forgiven';
+    reason?: string;
+  }[];
   scene?: SceneInfo;
 };
 

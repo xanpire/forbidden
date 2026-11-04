@@ -4,9 +4,11 @@ import { useRouter } from 'expo-router';
 import { Search } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
+import { ReputationCard } from '@/components/kan/ReputationCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
+import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import type { BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 
@@ -166,13 +168,22 @@ export function BondsSection() {
         </Text>
         {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
         {entry.entity.companion && !entry.dead && query ? <Text style={styles.major}>With you</Text> : null}
+        {entry.bond?.grudge && !entry.dead ? (
+          <Text style={styles.grudge}>{STAGE_LABEL[grudgeStage(db, entry.bond) ?? 'resentful']}</Text>
+        ) : null}
       </View>
       {entry.bond && !entry.dead ? <AffinityBar affinity={entry.bond.affinity} /> : null}
     </ListRow>
   );
 
+  // People who want you to pay, hottest first, under their own heading.
+  const enemies = query ? [] : living.filter((entry) => entry.bond?.grudge);
+  const others = living.filter((entry) => !enemies.includes(entry));
+
   return (
     <View style={styles.section}>
+      {!query ? <ReputationCard db={db} /> : null}
+
       <View style={styles.search}>
         <Search color={colors.textDim} size={16} strokeWidth={2} />
         <TextInput
@@ -204,10 +215,17 @@ export function BondsSection() {
         </>
       ) : null}
 
-      {living.length > 0 ? (
+      {enemies.length > 0 ? (
+        <>
+          <SectionLabel>Want you to pay</SectionLabel>
+          <ListCard>{enemies.map(renderRow)}</ListCard>
+        </>
+      ) : null}
+
+      {others.length > 0 ? (
         <>
           <SectionLabel>{query ? 'Results' : 'Seen recently'}</SectionLabel>
-          <ListCard>{living.map(renderRow)}</ListCard>
+          <ListCard>{others.map(renderRow)}</ListCard>
         </>
       ) : null}
 
@@ -272,6 +290,13 @@ const styles = StyleSheet.create({
   },
   nameDead: {
     color: colors.textMuted,
+  },
+  grudge: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.danger,
   },
   major: {
     fontFamily: fonts.bold,

@@ -18,6 +18,8 @@ import {
   locationKindOf,
 } from './encounters';
 import { formatReturningCharacter } from './returning';
+import { GRUDGE_RULES, formatGrudgeOffer, grudgeOffer, grudgeStage, grudgeTrackingLines } from './grudges';
+import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTrackingLines } from './reputation';
 import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
@@ -67,6 +69,8 @@ STYLE
 
 ${ROMANCE_RULES}
 
+${GRUDGE_RULES}
+
 OUTPUT
 - Story prose only, starting straight in the scene: no JSON, code, lists, headings, labels, summaries, or out-of-character notes. Speech in quotation marks; italics only for NPC thoughts.
 - The app tracks state from your prose, so make changes clear in it: where Kan goes, who is there, which jutsu are used and how they look, what is learned or promised, and when a scene ends.`;
@@ -80,7 +84,7 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 
 PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
-PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, and letters_received. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
 
 COMPANIONS: people marked [travelling with Kan] are with him in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with Kan this turn (agrees to come along, is assigned as his partner, leaves with him), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to Kan: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
@@ -93,6 +97,8 @@ MEMORY: facts are lasting truths (a death, injury, secret, membership, key item 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
 LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise [].
+
+NAME & ENEMIES: reputation, bounty_seen, and grudges follow the rules under REPUTATION & GRUDGES; otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.`;
 
@@ -192,7 +198,10 @@ export function buildNarrationPrompt(
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       formatEncounterConditions(db),
-      formatReturningCharacter(db, entityText),
+      formatReputationBlock(db),
+      // At most one outside pressure per turn: a grudge first, then a
+      // bounty hunter, then a familiar face.
+      formatPressure(db, entityText),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
     ]
@@ -266,6 +275,7 @@ export function buildExtractionPrompt(
     formatTimeLine(db, 'state'),
     formatCanonTracking(db),
     formatLetterTracking(db),
+    formatEnemyTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
@@ -627,7 +637,7 @@ function formatBonds(db: AppDatabase) {
       .map((entity) => [entity.id, kanKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, Kan does not know yet]'])
   );
   const bonds = [...db.bonds]
-    .filter((bond) => bond.isMajor || Math.abs(bond.affinity) >= 4)
+    .filter((bond) => bond.isMajor || Math.abs(bond.affinity) >= 4 || bond.grudge)
     .sort((a, b) => b.affinity - a.affinity)
     .slice(0, 10);
 
@@ -639,7 +649,7 @@ function formatBonds(db: AppDatabase) {
     'BONDS',
     ...bonds.map(
       (bond) =>
-        `- ${bond.characterName}${deadLabel.get(bond.entityId) ?? ''} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}`
+        `- ${bond.characterName}${deadLabel.get(bond.entityId) ?? ''} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}${bond.grudge ? ` [grudge: ${grudgeStage(db, bond)}, ${truncate(bond.grudge.reason, 60)}]` : ''}`
     ),
   ].join('\n');
 }
@@ -837,6 +847,26 @@ function formatCanonTracking(db: AppDatabase) {
   }
 
   return ['CANON TRACKING', ...lines].join('\n');
+}
+
+function formatPressure(db: AppDatabase, recentText: string) {
+  const grudge = formatGrudgeOffer(db, grudgeOffer(db));
+
+  if (grudge) {
+    return grudge;
+  }
+
+  return formatHunterOffer(hunterOffer(db)) || formatReturningCharacter(db, recentText);
+}
+
+function formatEnemyTracking(db: AppDatabase) {
+  const refByEntity = refByEntityId(db);
+
+  return [
+    'REPUTATION & GRUDGES',
+    ...reputationTrackingLines(db).map((line) => `- ${line}`),
+    ...grudgeTrackingLines(grudgeOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name).map((line) => `- ${line}`),
+  ].join('\n');
 }
 
 function formatLetterTracking(db: AppDatabase) {

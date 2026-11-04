@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, Footprints, GitMerge, HeartPulse, Skull, UserMinus } from 'lucide-react-native';
+import { ChevronLeft, Flame, Footprints, GitMerge, HeartPulse, Skull, UserMinus } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
@@ -12,6 +12,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { calculateAge, dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
+import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 
 function Chip({ label, accent }: { label: string; accent?: boolean }) {
@@ -90,6 +91,22 @@ export default function BondScreen() {
       ? 'Joined you today'
       : `Together ${formatTogether(together)}`
     : null;
+  const grudge = !dead && bond?.grudge ? bond.grudge : null;
+  const stage = grudge && bond ? grudgeStage(db, bond) : null;
+  const STAGE_TEXT = {
+    resentful: 'They resent you, and left alone it will only grow.',
+    vengeful: 'They want you to pay, and will act when they get the chance.',
+    hunting: 'They are coming after you.',
+  } as const;
+  const grudgeMeta = grudge
+    ? [
+        `Since ${formatDayMonth(grudge.since)}, Year ${grudge.since.year}`,
+        grudge.strikes > 0 ? `struck ${grudge.strikes === 1 ? 'once' : `${grudge.strikes} times`}` : 'hasn’t acted yet',
+        grudge.lastStrike ? `last ${formatDayMonth(grudge.lastStrike)}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : null;
   const partyFull = !companion && companionsOf(db).length >= MAX_COMPANIONS;
   const details = [
     { label: 'Died', value: dead ? death?.cause : undefined },
@@ -160,6 +177,20 @@ export default function BondScreen() {
               {bond.romanceNote ? <Text style={type.rowBody}>{bond.romanceNote}</Text> : null}
             </View>
           </ListCard>
+        ) : null}
+
+        {grudge && stage ? (
+          <>
+            <SectionLabel>Grudge</SectionLabel>
+            <ListCard>
+              <ListRow
+                body={`${STAGE_TEXT[stage]} ${grudge.reason}`}
+                leading={<Flame color={colors.danger} size={18} strokeWidth={2} />}
+                meta={grudgeMeta}
+                title={STAGE_LABEL[stage]}
+              />
+            </ListCard>
+          </>
         ) : null}
 
         {details.length > 0 ? (

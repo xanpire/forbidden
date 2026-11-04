@@ -17,6 +17,7 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
+import { bingoListings, formatRyo } from './reputation';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
 import { newsAllowance } from './newsDelivery';
@@ -290,6 +291,15 @@ export function applyStateStep(
 
   if (!notice && extraction?.lettersReceived?.length) {
     notice = `A letter from ${extraction.lettersReceived[0].name}`;
+  }
+
+  // Kan just learned what a village has on him.
+  if (!notice && extraction?.bountySeen?.length) {
+    const listing = bingoListings(next).find((item) => item.village === extraction.bountySeen![0]);
+
+    if (listing) {
+      notice = `${listing.name} bingo book: ${listing.rank}-rank · ${formatRyo(listing.bounty)}`;
+    }
   }
 
   // The state step is done; any earlier state job for this turn is settled.
