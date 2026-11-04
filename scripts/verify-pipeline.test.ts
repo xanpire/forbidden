@@ -27,7 +27,7 @@ import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/imag
 import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { CANON_MILESTONES, CANON_VERSION } from '../lib/rpg/canonData';
-import { activeCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
+import { activeCanonMilestones, upcomingCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
 import { eraNoteFor } from '../lib/rpg/romance';
 import { PLACE_NAME_RULE, hasJapanesePlaceName, localizePlaceNames } from '../lib/rpg/glossary';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
@@ -2878,5 +2878,110 @@ describe('personal letters', () => {
     db = sendLetters(db, [{ entityId: hana.id, name: hana.name }]);
     const reloaded = normalizeDatabase(JSON.parse(JSON.stringify(db)));
     expect(reloaded.state.post?.letters).toHaveLength(1);
+  });
+});
+
+describe('living world timeline', () => {
+  const baseline = { year: 13, month: 10, day: 1, hour: 22, minute: 0, second: 0 };
+  const key = (w: { year: number; month: number; day?: number }) => (w.year * 12 + w.month) * 32 + (w.day ?? 1);
+  const byId = (id: string) => CANON_MILESTONES.find((m) => m.id === id)!;
+
+  test('the world list is in date order, so the chain never holds an event back', () => {
+    const world = CANON_MILESTONES.filter((m) => !m.playerDriven);
+    for (let i = 1; i < world.length; i++) {
+      expect(key(world[i].from)).toBeGreaterThanOrEqual(key(world[i - 1].from));
+    }
+  });
+
+  test('walking the clock day by day fires every world event on its own day', () => {
+    let db: AppDatabase = {
+      ...loadSave(),
+      rawLog: [],
+      state: {
+        ...loadSave().state,
+        inStoryDate: baseline,
+        canonProgress: { version: CANON_VERSION, baselineDate: baseline, baselineTurn: 0, completed: [], active: [], engaged: [] },
+      },
+    };
+    const firedOn = new Map<string, number>();
+    let date = { ...baseline, hour: 8, minute: 0 };
+
+    for (let step = 0; step < 365 * 24; step++) {
+      db = advanceCanon({ ...db, state: { ...db.state, inStoryDate: date } }, { inCombat: false });
+      for (const id of db.state.canonProgress?.completed ?? []) {
+        if (!firedOn.has(id)) firedOn.set(id, key(date));
+      }
+      date = { ...date, ...advanceSeconds(date, 86400) };
+      if (date.year > 34) break;
+    }
+
+    for (const m of CANON_MILESTONES.filter((item) => !item.playerDriven && item.from.year <= 33)) {
+      expect({ id: m.id, day: firedOn.get(m.id) }).toEqual({ id: m.id, day: key(m.from) });
+    }
+  });
+
+  test('the requested canon points exist in the right years', () => {
+    for (const [id, year] of [
+      ['five-tails-captured', 19],
+      ['seven-tails-captured', 20],
+      ['yagura-dies', 20],
+      ['mei-mizukage', 20],
+      ['sai-yamato', 21],
+      ['four-tails-captured', 21],
+      ['six-tails-captured', 21],
+      ['taka-formed', 21],
+      ['kurenai-pregnant', 21],
+      ['itachi-izanami', 23],
+    ] as const) {
+      expect(byId(id).from.year).toBe(year);
+    }
+    expect(byId('yagura-puppet').bearers).toContain('the masked man');
+    expect(byId('kan-hunt-seven-tails').encounter?.who).toContain('Kakuzu');
+  });
+
+  test('canon order: Hebi before Itachi dies before Taka; Jiraiya dies before sage training', () => {
+    expect(key(byId('sasuke-absorbs-orochimaru').from)).toBeLessThan(key(byId('itachi-vs-sasuke').from));
+    expect(key(byId('itachi-vs-sasuke').from)).toBeLessThan(key(byId('taka-formed').from));
+    expect(key(byId('jiraiya-dies').from)).toBeLessThan(key(byId('naruto-sage-training').from));
+    expect(key(byId('two-tails-captured').from)).toBeLessThan(key(byId('hidan-kakuzu').from));
+    expect(key(byId('pain-assault').from)).toBeLessThan(key(byId('killer-bee-training').from));
+    expect(key(byId('edo-itachi').from)).toBeLessThanOrEqual(key(byId('itachi-izanami').from));
+    expect(key(byId('itachi-izanami').from)).toBeLessThanOrEqual(key(byId('hokage-edo').from));
+  });
+
+  test('the Fourth War lasts four days', () => {
+    const war = CANON_MILESTONES.filter((m) => m.era === 'The Fourth War' && !m.playerDriven);
+    for (const m of war) {
+      expect(key(m.from)).toBeGreaterThanOrEqual(key({ year: 23, month: 1, day: 10 }));
+      expect(key(m.from)).toBeLessThanOrEqual(key({ year: 23, month: 1, day: 13 }));
+    }
+  });
+
+  test('each hunt offer closes on the day its capture fires', () => {
+    for (const [offer, capture] of [
+      ['kan-hunt-five-tails', 'five-tails-captured'],
+      ['kan-hunt-seven-tails', 'seven-tails-captured'],
+      ['kan-hunt-one-tail', 'gaara-captured'],
+      ['kan-hunt-two-tails', 'two-tails-captured'],
+      ['kan-hunt-four-tails', 'four-tails-captured'],
+      ['kan-hunt-six-tails', 'six-tails-captured'],
+    ] as const) {
+      expect(byId(offer).playerDriven).toBe(true);
+      expect(byId(offer).encounter).toBeDefined();
+      expect(key(byId(offer).to!)).toBe(key(byId(capture).from));
+    }
+  });
+
+  test('the personal beat closing soonest is offered first', () => {
+    const db = loadSave();
+    const next = {
+      ...db,
+      state: {
+        ...db.state,
+        inStoryDate: { year: 20, month: 3, day: 1, hour: 8, minute: 0, second: 0 },
+        canonProgress: { version: CANON_VERSION, baselineDate: baseline, completed: [], active: [], engaged: [] },
+      },
+    };
+    expect(upcomingCanonMilestones(next, 1)[0]?.id).toBe('kan-hunt-seven-tails');
   });
 });

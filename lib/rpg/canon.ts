@@ -457,10 +457,16 @@ export function activeCanonMilestones(db: AppDatabase): CanonMilestone[] {
   );
 }
 
-/** Personal beats whose window is open and that have not started. */
+/**
+ * Personal beats whose window is open and that have not started, the one
+ * closing soonest first — so a short mission offer (a beast hunt) is not
+ * buried under a beat that stays open for years.
+ */
 export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilestone[] {
   const progress = normalizeProgress(db);
   const today = dayKey(db.state.inStoryDate);
+  const closes = (milestone: CanonMilestone) =>
+    milestone.to ? dayKey(milestone.to) : Number.POSITIVE_INFINITY;
 
   return CANON_MILESTONES.filter((milestone) => {
     const { started, notClosed } = windowOpen(milestone, today);
@@ -472,7 +478,9 @@ export function upcomingCanonMilestones(db: AppDatabase, limit = 3): CanonMilest
       started &&
       notClosed
     );
-  }).slice(0, limit);
+  })
+    .sort((a, b) => (closes(a) === closes(b) ? 0 : closes(a) < closes(b) ? -1 : 1))
+    .slice(0, limit);
 }
 
 export function recentlyConcludedMilestones(db: AppDatabase, limit = 3): CanonMilestone[] {
