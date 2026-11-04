@@ -147,7 +147,8 @@ export function returningCandidates(db: AppDatabase, recentText = ''): Returning
   const offers: Array<ReturningOffer & { score: number }> = [];
 
   for (const entity of db.entities) {
-    if (!isOriginalCharacter(entity) || entity.met === false || isDeceased(entity) || !entity.lastSeen) {
+    // Companions never left, so they can't come back.
+    if (!isOriginalCharacter(entity) || entity.met === false || isDeceased(entity) || entity.companion || !entity.lastSeen) {
       continue;
     }
 

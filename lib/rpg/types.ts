@@ -128,7 +128,26 @@ export type EntityRecord = {
    * Missing means met (older saves, and everyone the story introduced).
    */
   met?: boolean;
+  /**
+   * Set while this person travels with Kan (see companions.ts): they are in
+   * every scene until the story shows them leave, and the scenes they share
+   * move their bond.
+   */
+  companion?: Companion;
   tags: string[];
+};
+
+export type Companion = {
+  /** When they started travelling with Kan. */
+  since: CalendarDate;
+  /** Where they joined (state.location at the time). */
+  sinceLocation?: string;
+  /** Why, in a few words ("assigned as your Akatsuki partner"). */
+  reason?: string;
+  /** Scenes that ended with them at Kan's side. */
+  sharedScenes: number;
+  /** Shared-time progress toward the next bond step (see companions.ts). */
+  bondPoints: number;
 };
 
 export type EventRecord = {
@@ -448,6 +467,10 @@ export type TurnDiff = {
   deaths?: { entityId?: string; name: string; cause?: string }[];
   /** People genuinely brought back to life (never Edo Tensei). */
   revived?: { entityId?: string; name: string }[];
+  /** People who start travelling with Kan this turn. */
+  companionsJoined?: { entityId?: string; name: string; reason?: string }[];
+  /** Companions who part ways with Kan this turn. */
+  companionsLeft?: { entityId?: string; name: string; reason?: string }[];
   canonCompleted?: string[];
   canonEngaged?: string[];
   canonPassed?: string[];

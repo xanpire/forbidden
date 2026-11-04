@@ -48,6 +48,7 @@ import {
 import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { streamingPreview, stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
+import { companionsOf } from '@/lib/rpg/companions';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
 import {
@@ -789,6 +790,12 @@ export default function StoryScreen() {
                 title={location}
               />
               <ListRow meta="Mood" title={state.mood} />
+              {db && companionsOf(db).length > 0 ? (
+                <ListRow
+                  meta="Travelling with you"
+                  title={companionsOf(db).map((entity) => entity.name).join(', ')}
+                />
+              ) : null}
               <ListRow meta={`Chapter ${state.chapter}`} title={state.scene} />
             </ListCard>
             <AppButton

@@ -373,6 +373,17 @@ export function convertStateBlock(
     diff.revived = revived;
   }
 
+  const companionsJoined = companionRefs(block.companions_joined);
+  const companionsLeft = companionRefs(block.companions_left);
+
+  if (companionsJoined.length > 0) {
+    diff.companionsJoined = companionsJoined;
+  }
+
+  if (companionsLeft.length > 0) {
+    diff.companionsLeft = companionsLeft;
+  }
+
   if (Array.isArray(block.character_updates)) {
     const updates = block.character_updates
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
@@ -399,6 +410,26 @@ export function convertStateBlock(
     );
 
   return { diff: hasChanges ? diff : null, imageWorthy };
+}
+
+function companionRefs(value: unknown): { name: string; reason?: string }[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) =>
+      typeof item === 'string'
+        ? { name: item.trim() }
+        : item && typeof item === 'object'
+          ? {
+              name: cleanString((item as Record<string, unknown>).character_id) ?? cleanString((item as Record<string, unknown>).name) ?? '',
+              reason: cleanString((item as Record<string, unknown>).reason),
+            }
+          : { name: '' }
+    )
+    .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan')
+    .map((item) => (item.reason ? item : { name: item.name }));
 }
 
 function cleanString(value: unknown): string | undefined {

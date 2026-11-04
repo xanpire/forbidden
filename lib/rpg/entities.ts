@@ -124,6 +124,23 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
+  // A new person can join this turn: their name passes through and is
+  // resolved once they exist (applyCompanionChanges).
+  const companions = (list: { entityId?: string; name: string; reason?: string }[]) =>
+    list.flatMap((person) => {
+      const ref = resolve(person.entityId ?? person.name);
+
+      return ref ? [{ ...person, name: ref.name, entityId: ref.entityId }] : [];
+    });
+
+  if (diff.companionsJoined) {
+    next.companionsJoined = companions(diff.companionsJoined);
+  }
+
+  if (diff.companionsLeft) {
+    next.companionsLeft = companions(diff.companionsLeft);
+  }
+
   if (diff.newsRelayed) {
     next.newsRelayed = diff.newsRelayed.map((news) => ({ ...news, from: nameOf(news.from) }));
   }

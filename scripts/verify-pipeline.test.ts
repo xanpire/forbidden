@@ -2431,3 +2431,186 @@ describe('characters who come back', () => {
     expect(db.entities.find((entity) => entity.id === 'entity_mei')?.lastSeenAt).toBe('the Hidden Rain Village');
   });
 });
+
+import {
+  BOND_POINTS_PER_STEP,
+  MAX_COMPANIONS,
+  SHARED_TIME_AFFINITY_CAP,
+  companionsOf,
+  setCompanion,
+} from '../lib/rpg/companions';
+
+describe('companions', () => {
+  const itachiOf = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Itachi Uchiha')!;
+  const bondOf = (db: AppDatabase, id: string) => db.bonds.find((bond) => bond.entityId === id);
+  const withItachi = () => {
+    const db = loadSave();
+    const id = itachiOf(db).id;
+
+    return { db: applyTurnDiff(db, { companionsJoined: [{ entityId: id, name: 'Itachi Uchiha', reason: 'leaving the Leaf together' }] }), id };
+  };
+
+  test('the state reply joins and parts companions', () => {
+    const block = {
+      companions_joined: [{ character_id: 'itachi-uchiha', reason: 'leaving together' }],
+      companions_left: [{ character_id: 'kan', reason: null }],
+    };
+    const { diff } = convertStateBlock(block);
+
+    expect(diff?.companionsJoined).toEqual([{ name: 'itachi-uchiha', reason: 'leaving together' }]);
+    expect(diff?.companionsLeft).toBeUndefined();
+
+    const db = loadSave();
+    const resolved = resolveCharacterRefs(db, diff!);
+    expect(resolved.companionsJoined?.[0].entityId).toBe(itachiOf(db).id);
+    expect(TURN_STATE_SCHEMA.required).toContain('companions_joined');
+    expect(TURN_STATE_SCHEMA.required).toContain('companions_left');
+  });
+
+  test('a companion is in every scene, even when the tracker leaves them out', () => {
+    const { db, id } = withItachi();
+
+    expect(companionsOf(db).map((entity) => entity.id)).toEqual([id]);
+    expect(itachiOf(db).companion?.reason).toBe('leaving the Leaf together');
+    expect(bondOf(db, id)).toBeDefined();
+    expect(db.facts.some((fact) => fact.text.startsWith('Itachi Uchiha began travelling with Kan'))).toBe(true);
+
+    const later = applyTurnDiff(db, {
+      state: { sceneCast: ['Kisame Hoshigaki'], elapsedSeconds: 3600 },
+      scene: { ended: true, entities: ['Kisame Hoshigaki'] },
+    });
+
+    expect(later.state.sceneCast).toContain('Itachi Uchiha');
+    expect(later.state.sceneCast?.[0]).toBe('Itachi Uchiha');
+    expect(dateSortValue(itachiOf(later).lastSeen!)).toBe(dateSortValue(later.state.inStoryDate));
+
+    const scene = later.events[later.events.length - 1];
+    expect(later.eventEntities.some((link) => link.eventId === scene.id && link.entityId === id)).toBe(true);
+    expect(itachiOf(later).companion?.sharedScenes).toBe(1);
+
+    // A bare clock step (time correction path) still keeps them present.
+    const tick = applyTurnDiff(db, { state: { elapsedSeconds: 60 } });
+    expect(tick.state.sceneCast).toContain('Itachi Uchiha');
+  });
+
+  test('shared scenes slowly build the bond; the story moving it resets the count', () => {
+    let { db, id } = withItachi();
+    db = { ...db, bonds: db.bonds.map((bond) => (bond.entityId === id ? { ...bond, affinity: 2 } : bond)) };
+    const start = 2;
+
+    // Calm scenes: one point each.
+    for (let index = 0; index < BOND_POINTS_PER_STEP; index += 1) {
+      db = applyTurnDiff(db, { state: { scenePace: 'conversation' }, scene: { ended: true } });
+    }
+    expect(bondOf(db, id)!.affinity).toBe(start + 1);
+
+    // A fight survived together counts double.
+    db = applyTurnDiff(db, { state: { scenePace: 'combat' }, scene: { ended: true } });
+    expect(itachiOf(db).companion?.bondPoints).toBe(2);
+
+    // The story moved the bond itself: no extra drift, count starts over.
+    db = applyTurnDiff(db, {
+      state: { scenePace: 'combat' },
+      bonds: [{ entityId: id, character: 'Itachi Uchiha', affinityDelta: -2 }],
+      scene: { ended: true },
+    });
+    expect(bondOf(db, id)!.affinity).toBe(start - 1);
+    expect(itachiOf(db).companion?.bondPoints).toBe(0);
+
+    // Time alone never pushes past the cap.
+    db = { ...db, bonds: db.bonds.map((bond) => (bond.entityId === id ? { ...bond, affinity: SHARED_TIME_AFFINITY_CAP } : bond)) };
+    for (let index = 0; index < BOND_POINTS_PER_STEP * 3; index += 1) {
+      db = applyTurnDiff(db, { scene: { ended: true } });
+    }
+    expect(bondOf(db, id)!.affinity).toBe(SHARED_TIME_AFFINITY_CAP);
+  });
+
+  test('time together does not soften real hostility', () => {
+    let { db, id } = withItachi();
+    db = { ...db, bonds: db.bonds.map((bond) => (bond.entityId === id ? { ...bond, affinity: -5 } : bond)) };
+
+    for (let index = 0; index < BOND_POINTS_PER_STEP * 2; index += 1) {
+      db = applyTurnDiff(db, { scene: { ended: true } });
+    }
+
+    expect(bondOf(db, id)!.affinity).toBe(-5);
+  });
+
+  test('companions leave when the story parts them, or when they die', () => {
+    const { db, id } = withItachi();
+    const parted = applyTurnDiff(db, {
+      state: { sceneCast: ['Itachi Uchiha'] },
+      companionsLeft: [{ entityId: id, name: 'Itachi Uchiha', reason: 'called away by the Akatsuki' }],
+    });
+
+    expect(companionsOf(parted)).toHaveLength(0);
+    expect(parted.state.sceneCast ?? []).not.toContain('Itachi Uchiha');
+    expect(parted.facts.some((fact) => fact.text.startsWith('Itachi Uchiha parted ways with Kan'))).toBe(true);
+
+    const died = applyTurnDiff(db, { deaths: [{ entityId: id, name: 'Itachi Uchiha', cause: 'illness' }] });
+    expect(companionsOf(died)).toHaveLength(0);
+    expect(itachiOf(died).companion).toBeUndefined();
+  });
+
+  test('a person introduced this turn can join at once; Kan and the dead never join', () => {
+    const db = loadSave();
+    const raw = convertStateBlock({
+      new_characters: [{ is_new: true, name: 'Rokuro Tanabe', age: 30, role: 'Ferryman', personality: null, speech_style: null, appearance: null }],
+      companions_joined: [{ character_id: 'Rokuro Tanabe', reason: 'hired as a guide' }],
+    }).diff!;
+    const next = applyTurnDiff(db, resolveCharacterRefs(db, raw));
+
+    expect(companionsOf(next).map((entity) => entity.name)).toEqual(['Rokuro Tanabe']);
+
+    const kan = db.entities.find((entity) => entity.name === 'Kan')!;
+    expect(setCompanion(db, kan.id, true)).toBe(db);
+
+    const dead = db.entities.find((entity) => entity.deceased)!;
+    expect(setCompanion(db, dead.id, true)).toBe(db);
+  });
+
+  test('the party has a size limit', () => {
+    let db = loadSave();
+    const people = db.entities.filter((entity) => entity.type === 'character' && entity.name !== 'Kan' && !entity.deceased);
+
+    for (const person of people.slice(0, MAX_COMPANIONS + 2)) {
+      db = setCompanion(db, person.id, true);
+    }
+
+    expect(companionsOf(db)).toHaveLength(MAX_COMPANIONS);
+    expect(db.state.sceneCast!.length).toBeLessThanOrEqual(6);
+  });
+
+  test('both prompts know who travels with Kan', () => {
+    const { db } = withItachi();
+    const narration = buildNarrationPrompt(db, '"We move at dawn."');
+    const system = narration.messages[0].content;
+    const user = narration.messages[1].content;
+
+    expect(system).toContain('TRAVELLING WITH KAN is physically at his side in every scene');
+    expect(user).toContain('TRAVELLING WITH KAN (at his side');
+    expect(user).toMatch(/- Itachi Uchiha: joined today \(leaving the Leaf together/);
+    expect(user).toContain('CHARACTERS IN SCENE');
+    expect(JSON.stringify(narration.messages)).not.toContain('companions_joined');
+
+    const state = buildExtractionPrompt(db, 'We move.', 'You walk on beside Itachi.');
+    const stateText = state.messages.map((message) => message.content).join('\n');
+    expect(stateText).toContain('TRAVELLING WITH KAN: itachi-uchiha (Itachi Uchiha)');
+    expect(stateText).toContain('[travelling with Kan]');
+    expect(stateText).toContain('companions_joined');
+
+    const alone = buildExtractionPrompt(loadSave(), 'Wait.', 'You wait.');
+    expect(alone.messages[1].content).toContain('TRAVELLING WITH KAN: nobody');
+  });
+
+  test('companions survive a merge and a reload', () => {
+    const { db, id } = withItachi();
+    const reloaded = normalizeDatabase(JSON.parse(JSON.stringify(db)));
+    expect(companionsOf(reloaded).map((entity) => entity.id)).toEqual([id]);
+
+    const duplicate = applyEntityDiff(reloaded, { isNew: true, name: 'Hayate Moriya' });
+    const dupId = duplicate.entities.find((entity) => entity.name === 'Hayate Moriya')!.id;
+    const merged = mergeEntityPair(duplicate, dupId, id);
+    expect(companionsOf(merged).map((entity) => entity.id)).toEqual([dupId]);
+  });
+});

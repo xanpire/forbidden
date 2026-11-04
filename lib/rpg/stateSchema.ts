@@ -126,6 +126,16 @@ export const TURN_STATE_SCHEMA = object({
   }),
   revived: stringList,
   characters_present: stringList,
+  // Someone who clearly sets out with Kan this turn, or a companion who truly
+  // parts ways (not a short step away), by character id.
+  companions_joined: list({
+    character_id: { type: 'string' },
+    reason: nullableString,
+  }),
+  companions_left: list({
+    character_id: { type: 'string' },
+    reason: nullableString,
+  }),
   image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },
   canon_engaged: stringList,

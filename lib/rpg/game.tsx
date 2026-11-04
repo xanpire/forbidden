@@ -43,6 +43,7 @@ import { streamChatCompletion } from '../openrouter';
 import { extractTurnDiff } from './services';
 import { appendStoryMessage, cloneDatabase, getLastExchange, pushSnapshot, restoreLastSnapshot } from './log';
 import { markAlive, markDeceased } from './deaths';
+import { endCompanion, setCompanion } from './companions';
 import { mergeEntityPair } from './entities';
 import { trimToSentence } from './util';
 import {
@@ -132,6 +133,8 @@ type GameContextValue = {
   mergeCharacters: (keepId: string, dropId: string) => Promise<void>;
   /** Hand correction when the story got someone's death wrong. */
   setCharacterDeceased: (entityId: string, deceased: boolean) => Promise<void>;
+  /** Hand correction: starts or ends someone travelling with Kan. */
+  setTravelling: (entityId: string, travelling: boolean) => Promise<void>;
   updateThread: (threadId: string, patch: Partial<ThreadRecord>) => Promise<void>;
   toggleMemoryPin: (eventId: string) => Promise<void>;
   editMemory: (
@@ -941,9 +944,29 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // The dead stop travelling with you.
       const next = deceased
-        ? markDeceased(current, entityId, { known: true })
+        ? endCompanion(markDeceased(current, entityId, { known: true }), entityId, 'died')
         : markAlive(current, entityId);
+
+      if (next === current) {
+        return;
+      }
+
+      await commitDb(next);
+    },
+    [commitDb]
+  );
+
+  const setTravelling = useCallback(
+    async (entityId: string, travelling: boolean) => {
+      const current = dbRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const next = setCompanion(current, entityId, travelling);
 
       if (next === current) {
         return;
@@ -1196,6 +1219,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       updateBond,
       mergeCharacters,
       setCharacterDeceased,
+      setTravelling,
       updateThread,
       toggleMemoryPin,
       editMemory,
@@ -1240,6 +1264,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       updateBond,
       mergeCharacters,
       setCharacterDeceased,
+      setTravelling,
       updateSettings,
       updateThread,
     ]

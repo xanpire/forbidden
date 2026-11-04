@@ -22,6 +22,7 @@ import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { isDeceased, kanKnowsDeath } from './deaths';
+import { companionsOf, daysTogether, formatTogether } from './companions';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
   AppDatabase,
@@ -41,6 +42,7 @@ CORE
 - Never speak, act, think, or decide for Kan. Describe the world and the reactions, then stop where Kan must respond. End on a hook: a sound, a question, an NPC line, a threat.
 - ${PLACE_NAME_RULE}
 - The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body, or through a revival or reanimation the canon timeline allows. Where it says Kan does not know yet, never reveal the death through narration; he learns it only through someone who could know.
+- Anyone under TRAVELLING WITH KAN is physically at his side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, Kan sends them away, they are called away, captured, or killed). What they live through beside Kan, good or bad, changes how they feel about him. Someone joins only when the story makes it clear they are coming along.
 - Characters have the age, rank, and knowledge they would have on the current date, and goals of their own: they can refuse, lie, or leave. Canon power levels hold, with no power creep or nerfing. Trust and love are earned.
 - The supplied state, characters, bonds, facts, threads, summaries, and memories are truth, and win over canon where they differ. Characters know only the secrets they learned in this story. Open threads are binding: never change a mission's goal, destination, or allies unless Kan does.
 
@@ -78,6 +80,8 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
 PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, and news_relayed.from. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
+
+COMPANIONS: people marked [travelling with Kan] are with him in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with Kan this turn (agrees to come along, is assigned as his partner, leaves with him), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to Kan: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
 DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: they die on screen, Kan sees the body, or someone tells Kan they died (also for someone already marked deceased whom Kan did not know about). Never for someone unconscious, missing, faking, or only rumored dead. The dead are never in characters_present or bonds. revived lists ids only for a true return to life (like Chiyo's or Nagato's revival jutsu); an Edo Tensei reanimation is still dead.
 
@@ -135,11 +139,13 @@ export function buildNarrationPrompt(
     db.settings.retrievalLimit
   );
   const entityText = [...recentMessages.map((message) => message.content), userMessage].join('\n');
-  const matchedEntityIds = new Set(
-    db.entities
+  // Companions are in every scene, so their character cards always come along.
+  const matchedEntityIds = new Set([
+    ...companionsOf(db).map((entity) => entity.id),
+    ...db.entities
       .filter((entity) => mentionsEntity(entityText, entity))
-      .map((entity) => entity.id)
-  );
+      .map((entity) => entity.id),
+  ]);
   const facts = relevantFacts(db, matchedEntityIds, entityText);
   const lore = triggeredLore(db, entityText);
   const storySoFar = getStorySoFar(db);
@@ -170,6 +176,7 @@ export function buildNarrationPrompt(
   const buildDynamic = (messagesForScene: RawLogEntry[]) =>
     [
       formatState(db),
+      formatCompanions(db),
       formatTimeLine(db),
       formatMatchedEntities(db, matchedEntityIds),
       formatFacts(facts),
@@ -250,6 +257,7 @@ export function buildExtractionPrompt(
 
   const dynamic = [
     formatState(db),
+    formatCompanionIds(db),
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
     formatTimeLine(db, 'state'),
     formatCanonTracking(db),
@@ -438,6 +446,50 @@ function formatState(db: AppDatabase) {
   ].join('\n');
 }
 
+/**
+ * Who travels with Kan, for the narrator: they are in every scene. Changes
+ * only by the day count, so it sits right after the state block.
+ */
+function formatCompanions(db: AppDatabase) {
+  const companions = companionsOf(db);
+
+  if (companions.length === 0) {
+    return '';
+  }
+
+  const bonds = new Map(db.bonds.map((bond) => [bond.entityId, bond]));
+
+  return [
+    'TRAVELLING WITH KAN (at his side in every scene until the story shows them leave)',
+    ...companions.map((entity) => {
+      const bond = bonds.get(entity.id);
+      const companion = entity.companion!;
+      const days = daysTogether(db, entity);
+      const together = days <= 0 ? 'joined today' : `together ${formatTogether(days)}`;
+      const how = [companion.reason, companion.sinceLocation ? `from ${companion.sinceLocation}` : null]
+        .filter(Boolean)
+        .join(', ');
+      const feeling = bond
+        ? `; feels ${bond.affinity > 0 ? '+' : ''}${bond.affinity}/10 toward Kan${bond.relationship && bond.relationship !== 'stranger' ? ` (${bond.relationship})` : ''}${bond.note ? `: ${truncate(bond.note, 70)}` : ''}`
+        : '';
+
+      return `- ${entity.name}: ${together}${how ? ` (${truncate(how, 80)})` : ''}, ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared${feeling}`;
+    }),
+  ].join('\n');
+}
+
+/** The same, for the state tracker: ids it must keep in characters_present. */
+function formatCompanionIds(db: AppDatabase) {
+  const companions = companionsOf(db);
+  const refByEntity = refByEntityId(db);
+
+  return `TRAVELLING WITH KAN: ${
+    companions.length > 0
+      ? companions.map((entity) => `${refByEntity.get(entity.id)} (${entity.name})`).join(', ')
+      : 'nobody'
+  }`;
+}
+
 function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
   if (entityIds.size === 0) {
     return '';
@@ -450,6 +502,8 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
         entityIds.has(entity.id) &&
         entity.name.toLowerCase() !== 'kan'
     )
+    // Companions first, so a crowded scene never cuts them.
+    .sort((a, b) => Number(Boolean(b.companion)) - Number(Boolean(a.companion)))
     .slice(0, 6);
 
   if (characters.length === 0) {
@@ -484,6 +538,7 @@ function formatCharacterRoster(db: AppDatabase) {
       const notes = [
         entity.name.toLowerCase() === 'kan' ? 'the player' : null,
         entity.met === false ? 'not met yet' : null,
+        entity.companion && !isDeceased(entity) ? 'travelling with Kan' : null,
         isDeceased(entity) ? (kanKnowsDeath(db, entity) ? 'deceased' : 'deceased, Kan does not know yet') : null,
       ].filter(Boolean);
 
@@ -505,7 +560,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
 
   const characters = db.entities
     .filter((entity) => entity.type === 'character')
-    .filter((entity) => entity.name.toLowerCase() === 'kan' || mentioned(entity))
+    .filter((entity) => entity.name.toLowerCase() === 'kan' || Boolean(entity.companion) || mentioned(entity))
     .slice(0, 10);
 
   if (characters.length === 0) {
@@ -525,7 +580,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
         return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
       }
 
-      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`;
+      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with Kan]' : ''}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`;
     }),
   ].join('\n');
 }

@@ -142,7 +142,9 @@ export function BondsSection() {
       });
   }, [db, query]);
 
-  const living = entries.filter((entry) => !entry.dead);
+  // People travelling with you lead the list; everyone else by last contact.
+  const travelling = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
+  const living = entries.filter((entry) => !entry.dead && !travelling.includes(entry));
   const dead = entries.filter((entry) => entry.dead);
 
   if (!db) {
@@ -163,6 +165,7 @@ export function BondsSection() {
           {entry.entity.name}
         </Text>
         {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
+        {entry.entity.companion && !entry.dead && query ? <Text style={styles.major}>With you</Text> : null}
       </View>
       {entry.bond && !entry.dead ? <AffinityBar affinity={entry.bond.affinity} /> : null}
     </ListRow>
@@ -191,6 +194,13 @@ export function BondsSection() {
             body={query ? 'Try another name.' : 'People appear here as you meet them.'}
             title={query ? 'You don’t know anyone by that name' : 'No one yet'}
           />
+        </>
+      ) : null}
+
+      {travelling.length > 0 ? (
+        <>
+          <SectionLabel>Travelling with you</SectionLabel>
+          <ListCard>{travelling.map(renderRow)}</ListCard>
         </>
       ) : null}
 

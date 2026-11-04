@@ -16,6 +16,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `stateBlock.ts` | Reading the state model's reply: `parseJsonObject`, `convertStateBlock` (snake_case → `TurnDiff`) |
 | `entities.ts` | People/places: `resolveEntity`, identity groups, `resolveCharacterRefs`, `applyEntityDiff`, presence, `mergeDuplicateEntities`, `mergeEntityPair` |
 | `bonds.ts` | `applyBondDiff`: affinity, status, relationship stage, attraction |
+| `companions.ts` | People travelling with Kan: `startCompanion`, `endCompanion`, `setCompanion`, `applyCompanionChanges`, `castWithCompanions`, `applySharedScene` (§6a) |
 | `facts.ts` | `applyFactDiff`, `applyThreadDiff`, `recordSceneEvent` |
 | `deaths.ts` | Who is dead: `isDeceased`, `kanKnowsDeath`, `markDeceased`, `markDeathsByName` (canon, exact names only), `markAlive`, `normalizeDeaths` (load-time backfill) |
 | `clock.ts` | `applyClockChange` (date/elapsed/clock from the diff, ageing across years), `applyClockTick` (stall counter) |
@@ -132,6 +133,8 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 }
 ```
 
+`EntityRecord.companion?: { since, sinceLocation?, reason?, sharedScenes, bondPoints }` — set while that person travels with Kan (§6a).
+
 ### `CanonProgress`
 
 ```ts
@@ -166,6 +169,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   threads?: [{ action, title, description?, type?, participants? }],
   canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
   newsRelayed?: [{ id, from? }],
+  companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
 ```
@@ -195,7 +199,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
-3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), revivals and deaths (`deaths.ts`), jutsu (`jutsu.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event, duplicate merge, presence, stall counter.
+3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), revivals and deaths (`deaths.ts`), jutsu (`jutsu.ts`), companion joins/partings (`companions.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event (with companions) + shared-scene bond step, duplicate merge, presence (companions always included), stall counter.
 4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
@@ -242,6 +246,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 ### Dynamic user block (in order)
 
 1. `formatState` (date, place, mood, world, inventory, canon point)
+1a. `formatCompanions` — `TRAVELLING WITH KAN`: each companion, how long together, why/where they joined, shared scenes, how they feel (only when someone travels with Kan). Their character cards are always in `CHARACTERS IN SCENE`, companions first.
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
 4. `formatNewsBlock` — the single next unheard event (none in combat), major first, with location, bearers, courier channel, overdue escalation
@@ -300,6 +305,16 @@ The current action appears **once** (it is excluded from the recent-message bloc
 - **Merge with…** on the bond screen (`components/kan/MergeSheet.tsx`, `mergeCharacters` in `game.tsx`): pick the other person (likely duplicates by shared name words first), choose which name to keep, merge.
 
 ---
+
+### 6a. Companions (`companions.ts`)
+
+A companion is someone travelling with Kan: `EntityRecord.companion` is set until the story parts them.
+
+- **Joining / leaving**: the state tracker's `companions_joined` / `companions_left` (`character_id`, `reason`). It sees `TRAVELLING WITH KAN: <ids>` in the dynamic block, `[travelling with Kan]` in `KNOWN CHARACTERS` and `CHARACTERS IN THIS TURN`, and the COMPANIONS rule in `STATE_SYSTEM` (scouting ahead or sleeping in the next room is not leaving). Someone added under `new_characters` can join the same turn. Kan, the dead and a full party (`MAX_COMPANIONS` = 4) never join. Joining creates a bond if there is none and a fact; parting ends the flag, records "parted ways after N days together (reason)" and takes them out of the scene cast. Death ends it automatically (state tracker, canon, or **Mark as dead**).
+- **In every scene**: `castWithCompanions` puts them first in `sceneCast` on every applied diff, presence (`lastSeen`/`lastSeenAt`) is stamped for them, and scene-end memories link them, so they show under Shared memories and in images. The narrator gets a CORE rule (in the cached rules) that anyone under TRAVELLING WITH KAN is present every turn with their own voice and only leaves when the story makes it happen.
+- **Bond moves with shared events**: the state tracker is told to give companions a `bonds` entry whenever shared events move their feelings (fighting side by side, being protected, secrets, arguments, betrayal). On top of that, `applySharedScene` runs when a scene ends: `sharedScenes += 1`, and if the story did not move that bond this turn, shared time adds `bondPoints` (1, or 2 after combat/chase); every `BOND_POINTS_PER_STEP` (3) points lift affinity by 1 — never above `SHARED_TIME_AFFINITY_CAP` (+6) and never when affinity is below `SHARED_TIME_AFFINITY_FLOOR` (−2), so time alone builds familiarity but cannot fix real hostility. A bond the story moved resets the points.
+- **UI**: Bonds lists companions first under "Travelling with you"; the bond screen shows a chip, how long and why, shared scene count, and **Travel together / Part ways** for corrections (`setTravelling` in `game.tsx`); the Story status sheet lists who is with you.
+- Not offered as "A FAMILIAR FACE" (`returning.ts`), since they never left.
 
 ### Deaths (`deaths.ts`)
 
@@ -583,6 +598,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Romance persistence and lore era notes
 - Image brief/cast/action rules
 - Prompt composition (blocks, dedupe, no dice roll / style guard, encounter conditions, budget)
+- Companions (state reply → diff, always in the scene cast, shared-scene bond steps, cap and hostility floor, parting and death, new person joining, party limit, both prompts, reload and merge)
 - Characters who come back (original-only pool, place fit, travellers, cadence, no offers in fights or empty places, `lastSeenAt` recording)
 - Token stability over 60 turns
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies

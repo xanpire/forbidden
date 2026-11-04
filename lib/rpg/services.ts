@@ -6,6 +6,7 @@ import { type ChatRequest, completeChat } from '../openrouter';
 import { applyBondDiff } from './bonds';
 import { daysBetween, formatDate } from './calendar';
 import { applyClockChange, applyClockTick } from './clock';
+import { applyCompanionChanges, applySharedScene, castWithCompanions } from './companions';
 import { markAlive, markDeceased } from './deaths';
 import { buildIndices } from './db';
 import { type DebugCallKind, recordDebugCall, recordDebugState } from './debug';
@@ -64,9 +65,24 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     }
   }
 
+  // Joins and partings: after people and deaths, before bonds, so a bond
+  // the story gives a new companion lands on the bond they start with.
+  next = applyCompanionChanges(next, diff);
+
+  // Whose bond the story itself moved this turn (shared time adds nothing on top).
+  const storyMovedBond = new Set<string>();
+
   if (Array.isArray(diff.bonds)) {
     for (const bond of diff.bonds) {
       next = applyBondDiff(next, bond);
+
+      if (typeof bond.affinityDelta === 'number' && bond.affinityDelta !== 0) {
+        const id = bond.entityId ?? resolveEntity(next, bond.character)?.id;
+
+        if (id) {
+          storyMovedBond.add(id);
+        }
+      }
     }
   }
 
@@ -82,22 +98,27 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     }
   }
 
+  // Companions are in every scene, whether or not the tracker listed them.
+  const present = castWithCompanions(next, diff.scene?.entities ?? []);
+
   if (diff.scene?.ended) {
-    next = recordSceneEvent(next, diff);
+    next = recordSceneEvent(next, { ...diff, scene: { ...diff.scene, entities: present } });
+    next = applySharedScene(next, { pace: next.state.scenePace, storyMovedBond });
   }
 
   next = mergeDuplicateEntities(next);
 
-  if (Array.isArray(diff.scene?.entities) && diff.scene.entities.length > 0) {
-    next = recordPresence(next, diff.scene.entities);
+  if (present.length > 0) {
+    next = recordPresence(next, present);
+    const cast =
+      Array.isArray(next.state.sceneCast) && next.state.sceneCast.length > 0
+        ? next.state.sceneCast
+        : present;
     next = {
       ...next,
       state: {
         ...next.state,
-        sceneCast:
-          Array.isArray(next.state.sceneCast) && next.state.sceneCast.length > 0
-            ? next.state.sceneCast.slice(0, 6)
-            : diff.scene.entities.slice(0, 6),
+        sceneCast: castWithCompanions(next, cast).slice(0, 6),
       },
     };
   }

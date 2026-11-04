@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, GitMerge, HeartPulse, Skull } from 'lucide-react-native';
+import { ChevronLeft, Footprints, GitMerge, HeartPulse, Skull, UserMinus } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
@@ -10,6 +10,7 @@ import { titleAndBody } from '@/components/kan/JournalSection';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { calculateAge, dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
+import { MAX_COMPANIONS, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { useGame } from '@/lib/rpg/game';
 
@@ -24,7 +25,7 @@ function Chip({ label, accent }: { label: string; accent?: boolean }) {
 export default function BondScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { db, mergeCharacters, setCharacterDeceased } = useGame();
+  const { db, mergeCharacters, setCharacterDeceased, setTravelling } = useGame();
   const [merging, setMerging] = useState(false);
 
   const entity = db?.entities.find((item) => item.id === id) ?? null;
@@ -82,6 +83,14 @@ export default function BondScreen() {
       ? 'Seen today'
       : `Last seen ${formatDayMonth(entity.lastSeen)}`
     : null;
+  const companion = !dead ? entity.companion : undefined;
+  const together = companion ? daysTogether(db, entity) : 0;
+  const togetherLabel = companion
+    ? together <= 0
+      ? 'Joined you today'
+      : `Together ${formatTogether(together)}`
+    : null;
+  const partyFull = !companion && companionsOf(db).length >= MAX_COMPANIONS;
   const details = [
     { label: 'Died', value: dead ? death?.cause : undefined },
     { label: 'Mood', value: dead ? undefined : entity.mood },
@@ -139,6 +148,7 @@ export default function BondScreen() {
               </View>
               <View style={styles.chips}>
                 {dead ? <Chip label="Deceased" /> : null}
+                {companion ? <Chip accent label="Travelling with you" /> : null}
                 {relationship ? <Chip label={relationship} /> : null}
                 {bond.isMajor ? <Chip accent label="Major bond" /> : null}
                 {bond.attraction && bond.attraction !== 'none' ? (
@@ -185,6 +195,49 @@ export default function BondScreen() {
 
         {entity.name.toLowerCase() !== 'kan' ? (
           <>
+            {!dead ? (
+              <>
+                <SectionLabel>Travelling</SectionLabel>
+                <ListCard>
+                  {companion ? (
+                    <ListRow
+                      body={[
+                        companion.reason ? `${companion.reason.charAt(0).toUpperCase()}${companion.reason.slice(1)}.` : null,
+                        companion.sinceLocation ? `Joined you at ${companion.sinceLocation}.` : null,
+                        'In every scene with you until the story parts you. The scenes you share move their bond.',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      leading={<Footprints color={colors.accentText} size={18} strokeWidth={2} />}
+                      meta={`${togetherLabel} · ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared`}
+                      title="Travelling with you"
+                    />
+                  ) : null}
+                  <ListRow
+                    accessibilityLabel={
+                      companion ? `Part ways with ${entity.name}` : `Travel together with ${entity.name}`
+                    }
+                    body={
+                      companion
+                        ? 'If they left in the story and it was missed, let them go.'
+                        : partyFull
+                          ? `You already travel with ${MAX_COMPANIONS} people. Part ways with someone first.`
+                          : 'If they are coming along and the story missed it, keep them at your side.'
+                    }
+                    leading={
+                      companion ? (
+                        <UserMinus color={colors.textMuted} size={18} strokeWidth={2} />
+                      ) : (
+                        <Footprints color={colors.textMuted} size={18} strokeWidth={2} />
+                      )
+                    }
+                    onPress={partyFull ? undefined : () => setTravelling(entity.id, !companion)}
+                    title={companion ? 'Part ways' : 'Travel together'}
+                  />
+                </ListCard>
+              </>
+            ) : null}
+
             <SectionLabel>Same person?</SectionLabel>
             <ListCard>
               <ListRow
