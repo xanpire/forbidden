@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { normalizeDeaths } from './deaths';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
@@ -483,9 +484,10 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  normalized.indices = buildIndices(normalized);
+  const withDeaths = normalizeDeaths(normalized);
+  withDeaths.indices = buildIndices(withDeaths);
 
-  return normalized;
+  return withDeaths;
 }
 
 export function buildIndices(db: AppDatabase): MemoryIndex {

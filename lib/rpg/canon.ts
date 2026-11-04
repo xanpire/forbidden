@@ -21,6 +21,7 @@ import {
   type CanonProgress,
   type CanonWindow,
 } from './canonData';
+import { markDeathsByName } from './deaths';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
@@ -190,6 +191,13 @@ function fireMilestone(
 
   for (const text of milestone.facts) {
     next = addFactOnce(next, `fact_canon_${milestone.id}_${next.facts.length}`, text, [], happenedAt);
+  }
+
+  if (milestone.deaths?.length) {
+    next = markDeathsByName(next, milestone.deaths, {
+      date: happenedAt,
+      canonEventId: eventIdFor(milestone.id),
+    });
   }
 
   for (const title of milestone.resolvesThreadTitles ?? []) {

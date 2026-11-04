@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft, GitMerge } from 'lucide-react-native';
+import { ChevronLeft, GitMerge, HeartPulse, Skull } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Avatar, formatAffinity } from '@/components/kan/BondsSection';
@@ -10,6 +10,7 @@ import { titleAndBody } from '@/components/kan/JournalSection';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { calculateAge, dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
+import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { useGame } from '@/lib/rpg/game';
 
 function Chip({ label, accent }: { label: string; accent?: boolean }) {
@@ -23,7 +24,7 @@ function Chip({ label, accent }: { label: string; accent?: boolean }) {
 export default function BondScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { db, mergeCharacters } = useGame();
+  const { db, mergeCharacters, setCharacterDeceased } = useGame();
   const [merging, setMerging] = useState(false);
 
   const entity = db?.entities.find((item) => item.id === id) ?? null;
@@ -61,18 +62,29 @@ export default function BondScreen() {
     entity.birthYear !== undefined && entity.birthday
       ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
       : entity.age;
+  // Only once the story has told you: a death still on its way is not spoiled here.
+  const dead = kanKnowsDeath(db, entity);
+  const death = entity.deceased;
+  const deathLabel = dead
+    ? death?.date
+      ? `Died ${formatDayMonth(death.date)} · Year ${death.date.year}`
+      : 'Deceased'
+    : null;
   const affinity = bond?.affinity ?? 0;
   const relationship =
     bond?.relationship && bond.relationship !== 'stranger'
       ? bond.relationship.charAt(0).toUpperCase() + bond.relationship.slice(1)
       : bond?.status || null;
-  const seen = entity.lastSeen
+  const seen = dead
+    ? null
+    : entity.lastSeen
     ? dateSortValue(entity.lastSeen) >= dateSortValue({ ...db.state.inStoryDate, hour: 0, minute: 0 })
       ? 'Seen today'
       : `Last seen ${formatDayMonth(entity.lastSeen)}`
     : null;
   const details = [
-    { label: 'Mood', value: entity.mood },
+    { label: 'Died', value: dead ? death?.cause : undefined },
+    { label: 'Mood', value: dead ? undefined : entity.mood },
     { label: 'Personality', value: entity.personality },
     { label: 'Speaks', value: entity.speechStyle },
     { label: 'Appearance', value: entity.appearance },
@@ -98,7 +110,7 @@ export default function BondScreen() {
           <View style={styles.identityText}>
             <Text style={type.pageTitle}>{entity.name}</Text>
             <Text style={type.rowBody}>
-              {[age !== undefined ? `Age ${age}` : null, entity.role ?? entity.status]
+              {[deathLabel, !dead && age !== undefined ? `Age ${age}` : null, entity.role ?? entity.status]
                 .filter(Boolean)
                 .join(' · ')}
             </Text>
@@ -126,6 +138,7 @@ export default function BondScreen() {
                 ))}
               </View>
               <View style={styles.chips}>
+                {dead ? <Chip label="Deceased" /> : null}
                 {relationship ? <Chip label={relationship} /> : null}
                 {bond.isMajor ? <Chip accent label="Major bond" /> : null}
                 {bond.attraction && bond.attraction !== 'none' ? (
@@ -181,6 +194,27 @@ export default function BondScreen() {
                 leading={<GitMerge color={colors.textMuted} size={18} strokeWidth={2} />}
                 onPress={() => setMerging(true)}
                 title="Merge with…"
+              />
+            </ListCard>
+
+            <SectionLabel>{dead ? 'Not really dead?' : 'Died in the story?'}</SectionLabel>
+            <ListCard>
+              <ListRow
+                accessibilityLabel={dead ? `Mark ${entity.name} as alive` : `Mark ${entity.name} as dead`}
+                body={
+                  dead
+                    ? 'If the story got this wrong, or they truly came back, bring them back.'
+                    : 'If they died and the story missed it, mark them dead so they stay dead.'
+                }
+                leading={
+                  dead ? (
+                    <HeartPulse color={colors.textMuted} size={18} strokeWidth={2} />
+                  ) : (
+                    <Skull color={colors.textMuted} size={18} strokeWidth={2} />
+                  )
+                }
+                onPress={() => setCharacterDeceased(entity.id, !dead)}
+                title={dead ? 'Mark as alive' : 'Mark as dead'}
               />
             </ListCard>
           </>

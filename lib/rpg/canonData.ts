@@ -62,6 +62,11 @@ export type CanonMilestone = {
   /** Personal beat: offered to the player, never fired automatically. */
   playerDriven?: boolean;
   facts: string[];
+  /**
+   * People this milestone kills, by name. When it fires they are marked dead
+   * on their own record (deaths.ts); anyone the save does not have is skipped.
+   */
+  deaths?: string[];
   encounter?: CanonEncounter;
   attendanceFact?: string;
   opensThreads?: CanonThreadSeed[];
@@ -154,6 +159,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Fire',
     location: 'the Uchiha cemetery outside the Hidden Leaf',
     knowledge: 'village',
+    deaths: ['Izumi Uchiha'],
     facts: ['Izumi Uchiha was buried with the Uchiha clan after the massacre.'],
     encounter: {
       who: 'Hana Inuzuka and Suzume',
@@ -250,6 +256,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Lightning',
     location: 'the border passes of the Land of Lightning',
     knowledge: 'akatsuki',
+    deaths: ['Jūzō Biwa'],
     facts: [
       "Jūzō Biwa, Itachi's first Akatsuki partner, died fighting the Fourth Raikage's squad.",
       'The sentient blade Samehada now belongs to Kisame Hoshigaki.',
@@ -510,6 +517,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 18, month: 4 },
     region: 'Hidden Sand',
     location: 'the desert outside the Hidden Sand Village',
+    deaths: ['Rasa'],
     facts: ['Orochimaru assassinated Rasa, the Fourth Kazekage, and impersonated him.'],
   },
   {
@@ -548,6 +556,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 18, month: 8 },
     region: 'Land of Water',
     location: 'the Land of Waves',
+    deaths: ['Zabuza Momochi', 'Haku'],
     facts: ['Zabuza Momochi and Haku died in the Land of Waves.'],
   },
   {
@@ -605,6 +614,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     canonPoint: 'Gekko Hayate has been murdered before the invasion.',
     from: { year: 18, month: 2 },
     to: { year: 18, month: 10 },
+    deaths: ['Gekko Hayate'],
     facts: ['Gekko Hayate was killed by Baki before the invasion of Hidden Leaf.'],
   },
   {
@@ -618,6 +628,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Leaf',
     location: 'the Hidden Leaf Village',
     major: true,
+    deaths: ['Hiruzen Sarutobi'],
     facts: [
       "Hidden Leaf was invaded by Sand and Sound forces; the Third Hokage, Hiruzen Sarutobi, died sealing Orochimaru's arms.",
     ],
@@ -833,6 +844,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Sand',
     location: 'the Hidden Sand Village',
     major: true,
+    deaths: ['Chiyo'],
     facts: [
       'Deidara and Sasori captured Gaara and extracted the Shukaku.',
       'Chiyo sacrificed her life to revive Gaara after the extraction.',
@@ -849,6 +861,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Wind',
     location: 'an Akatsuki cave lair in the Land of Wind',
     knowledge: 'akatsuki',
+    deaths: ['Sasori'],
     facts: ['Sasori of the Red Sand was killed by Chiyo and Sakura Haruno.'],
   },
   {
@@ -886,6 +899,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Fire',
     location: 'the forests of the Land of Fire',
     major: true,
+    deaths: ['Asuma Sarutobi', 'Kakuzu'],
     facts: [
       'Asuma Sarutobi was killed by Hidan of the Akatsuki.',
       "Hidan was buried alive by Shikamaru Nara and Kakuzu was killed in the Nine-Tails' chakra cloak.",
@@ -949,6 +963,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 22, month: 2 },
     region: 'Land of Earth',
     location: 'the badlands of the Land of Earth',
+    deaths: ['Deidara'],
     facts: ['Deidara killed himself in a suicidal explosion attacking Sasuke.'],
   },
   {
@@ -995,6 +1010,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     location: 'an abandoned Uchiha hideout',
     knowledge: 'witnesses',
     major: true,
+    deaths: ['Itachi Uchiha'],
     facts: [
       'Itachi Uchiha died in battle against Sasuke.',
       'Itachi died still believing the masked man was Madara Uchiha.',
@@ -1078,6 +1094,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Rain',
     location: 'the Hidden Rain Village',
     major: true,
+    deaths: ['Jiraiya'],
     facts: ['Jiraiya died fighting Pain in the Hidden Rain Village.'],
   },
   {
@@ -1091,6 +1108,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Leaf',
     location: 'the Hidden Leaf Village',
     major: true,
+    deaths: ['Nagato'],
     facts: [
       'Pain destroyed Hidden Leaf; Naruto defeated him and Nagato sacrificed his life to revive the dead.',
       'The world now knows Pain is Nagato, working with Konan.',
@@ -1136,6 +1154,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 22, month: 10 },
     region: 'Land of Iron',
     location: 'the Land of Iron',
+    deaths: ['Danzo Shimura'],
     facts: ['Sasuke attacked the Five Kage Summit and killed Danzo Shimura.'],
   },
   {
@@ -1149,6 +1168,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Lightning',
     location: 'the sea off the Land of Lightning',
     knowledge: 'akatsuki',
+    deaths: ['Kisame Hoshigaki'],
     facts: ['Kisame Hoshigaki is dead.'],
   },
   {
@@ -1162,6 +1182,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Rain',
     location: 'the Hidden Rain Village',
     knowledge: 'akatsuki',
+    deaths: ['Konan'],
     facts: ["Konan was killed by the masked man defending Nagato's grave."],
   },
   {
@@ -1323,6 +1344,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     to: { year: 23, month: 10 },
     region: 'Land of Lightning',
     location: 'the Allied headquarters',
+    deaths: ['Shikaku Nara', 'Inoichi Yamanaka'],
     facts: ['Shikaku Nara and Inoichi Yamanaka died when the Ten-Tails destroyed headquarters.'],
   },
   {
@@ -1349,6 +1371,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     region: 'Land of Lightning',
     location: 'the Fourth War front',
     major: true,
+    deaths: ['Neji Hyuga'],
     facts: ['Neji Hyuga died protecting Naruto and Hinata.'],
   },
   {
@@ -1389,6 +1412,7 @@ export const CANON_MILESTONES: CanonMilestone[] = [
     location: 'the Fourth War front',
     knowledge: 'witnesses',
     major: true,
+    deaths: ['Obito Uchiha'],
     facts: ['Obito Uchiha turned against Madara and died defending Kakashi and Naruto.'],
   },
   {

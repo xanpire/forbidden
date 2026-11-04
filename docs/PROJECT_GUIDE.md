@@ -17,6 +17,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `entities.ts` | People/places: `resolveEntity`, identity groups, `resolveCharacterRefs`, `applyEntityDiff`, presence, `mergeDuplicateEntities`, `mergeEntityPair` |
 | `bonds.ts` | `applyBondDiff`: affinity, status, relationship stage, attraction |
 | `facts.ts` | `applyFactDiff`, `applyThreadDiff`, `recordSceneEvent` |
+| `deaths.ts` | Who is dead: `isDeceased`, `kanKnowsDeath`, `markDeceased`, `markDeathsByName` (canon, exact names only), `markAlive`, `normalizeDeaths` (load-time backfill) |
 | `clock.ts` | `applyClockChange` (date/elapsed/clock from the diff, ageing across years), `applyClockTick` (stall counter) |
 | `jutsu.ts` | Chakra natures, grouping, and `applyJutsuDiff` (the permanent jutsu library) |
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
@@ -193,7 +194,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/jutsu/bonds/facts/threads, `TIME BEFORE THIS TURN`, `CANON TRACKING` (active/personal beat ids and unheard news ids with the rule for each), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
-3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), jutsu (`jutsu.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event, duplicate merge, presence, stall counter.
+3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), revivals and deaths (`deaths.ts`), jutsu (`jutsu.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event, duplicate merge, presence, stall counter.
 4. `applyCanonMarks` → `markNewsHeard` → `advanceCanon`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
@@ -233,7 +234,7 @@ The prompt is ordered from never-changing to changing-every-turn, so its front i
    - **STYLE** — plain English, 2–4 paragraphs, no repeats, rare encounters, new characters, Kan's `"speech"` / `*action*` markers.
    - **ROMANCE** (from `romance.ts`): lore-locked vs winnable, adults deflect under 17, explicit intimacy only 18+, rejection persists.
    - **OUTPUT** — prose only, changes legible in the prose.
-2. **Slow context** — `formatCharacterSheet`, `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatJutsu`, `formatThreads`, `formatBonds`. Changes only when a summary lands, a jutsu is used, a thread or bond moves.
+2. **Slow context** — `formatCharacterSheet`, `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatJutsu`, `formatThreads`, `formatBonds`, `formatTheDead` (everyone dead, flagged when Kan does not know yet). Changes only when a summary lands, a jutsu is used, a thread or bond moves.
 
 Each block is sent as a text part with `cache_control` for models that need explicit breakpoints (`anthropic/`, `google/`, `qwen/` — see `toWireMessages` in `lib/openrouter.ts`; Gemini uses only the last one). Other providers (OpenAI, DeepSeek, …) cache a repeated prefix automatically and get plain string content. `OpenRouterMessage.content` is always the full text; `parts` is only the split.
 
@@ -298,6 +299,19 @@ The current action appears **once** (it is excluded from the recent-message bloc
 
 ---
 
+### Deaths (`deaths.ts`)
+
+A death lives on the person's own record (`EntityRecord.deceased: { date?, cause?, known?, canonEventId? }`), not only as a fact, so it is never lost to the 10-fact cap.
+
+- **Canon**: a milestone's `deaths` are marked when it fires (`fireMilestone`), stamped with its event id. Kan *knows* once that news is heard (or he witnessed it); until then the bonds screen shows them as before, so news is never spoiled.
+- **Story**: the state tracker's `deaths[]` (`character_id`, `cause`) marks anyone who dies on screen, whose body Kan sees, or whose death he is told of — known at once. `revived[]` undoes it for a true return to life (never Edo Tensei) and tags the person `revived` so loading never kills them again.
+- **Seeded**: Shisui (known) and Izumi (unknown until told, or until her funeral news arrives).
+- **Prompts**: narrator gets `THE DEAD` every turn plus `[DECEASED]` on scene cards and bonds, with the rule that the dead never appear alive; the state tracker sees `deceased` in `KNOWN CHARACTERS`.
+- **Effects**: the dead never get `lastSeen` stamped; the bonds screen lists known dead under "The dead"; the bond screen has **Mark as dead / Mark as alive** for corrections (`setCharacterDeceased`).
+- `normalizeDeaths` runs in `normalizeDatabase`: older saves get records for canon deaths that already fired.
+
+---
+
 ## 7. Canon (`canonData.ts` + `canon.ts`)
 
 Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the engine and never hard-codes an event.
@@ -313,6 +327,7 @@ Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the e
   bearers?,                        // named confidants, only for secret events
   major?, playerDriven?,
   facts: string[],
+  deaths?: string[],               // people it kills, by exact name/alias (marked dead on their record)
   encounter?: { who, where, context },
   attendanceFact?, opensThreads?, resolvesThreadTitles?
 }

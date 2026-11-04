@@ -6,12 +6,15 @@ import { Search } from 'lucide-react-native';
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
+import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { useGame } from '@/lib/rpg/game';
 import type { BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 
 type BondEntry = {
   entity: EntityRecord;
   bond: BondRecord | null;
+  /** Dead, and the story has told you so. */
+  dead?: boolean;
 };
 
 function dateValue(date: CalendarDate | undefined | null) {
@@ -28,6 +31,12 @@ export function formatAffinity(affinity: number) {
 
 export function bondSubtitle(entry: BondEntry, today: CalendarDate) {
   const { entity, bond } = entry;
+
+  if (entry.dead) {
+    const date = entity.deceased?.date;
+
+    return date ? `Died ${formatDayMonth(date)} · Year ${date.year}` : 'Deceased';
+  }
   const relation =
     bond?.relationship && bond.relationship !== 'stranger'
       ? bond.relationship.charAt(0).toUpperCase() + bond.relationship.slice(1)
@@ -41,9 +50,23 @@ export function bondSubtitle(entry: BondEntry, today: CalendarDate) {
   return seen ? `${relation} · ${seen}` : relation;
 }
 
-export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+export function Avatar({
+  name,
+  size = 40,
+  dimmed = false,
+}: {
+  name: string;
+  size?: number;
+  dimmed?: boolean;
+}) {
   return (
-    <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
+    <View
+      style={[
+        styles.avatar,
+        { width: size, height: size, borderRadius: size / 2 },
+        dimmed && styles.avatarDimmed,
+      ]}
+    >
       <Text style={[styles.avatarText, { fontSize: size * 0.36 }]}>
         {name.trim().charAt(0).toUpperCase() || '?'}
       </Text>
@@ -89,6 +112,7 @@ export function BondsSection() {
       .map((entity) => ({
         entity,
         bond: db.bonds.find((bond) => bond.entityId === entity.id) ?? null,
+        dead: kanKnowsDeath(db, entity),
       }))
       .filter(({ entity, bond }) => {
         if (!term) {
@@ -118,9 +142,31 @@ export function BondsSection() {
       });
   }, [db, query]);
 
+  const living = entries.filter((entry) => !entry.dead);
+  const dead = entries.filter((entry) => entry.dead);
+
   if (!db) {
     return null;
   }
+
+  const renderRow = (entry: BondEntry) => (
+    <ListRow
+      accessibilityLabel={`Open ${entry.entity.name}`}
+      chevron
+      key={entry.entity.id}
+      leading={<Avatar dimmed={entry.dead} name={entry.entity.name} />}
+      meta={bondSubtitle(entry, db.state.inStoryDate)}
+      onPress={() => router.push({ pathname: '/bond/[id]', params: { id: entry.entity.id } })}
+    >
+      <View style={styles.nameRow}>
+        <Text numberOfLines={1} style={[styles.name, entry.dead && styles.nameDead]}>
+          {entry.entity.name}
+        </Text>
+        {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
+      </View>
+      {entry.bond && !entry.dead ? <AffinityBar affinity={entry.bond.affinity} /> : null}
+    </ListRow>
+  );
 
   return (
     <View style={styles.section}>
@@ -138,37 +184,29 @@ export function BondsSection() {
         />
       </View>
 
-      <SectionLabel>{query ? 'Results' : 'Seen recently'}</SectionLabel>
-
       {entries.length === 0 ? (
-        <EmptyRow
-          body={query ? 'Try another name.' : 'People appear here as you meet them.'}
-          title={query ? 'You don’t know anyone by that name' : 'No one yet'}
-        />
-      ) : (
-        <ListCard>
-          {entries.map((entry) => (
-            <ListRow
-              accessibilityLabel={`Open ${entry.entity.name}`}
-              chevron
-              key={entry.entity.id}
-              leading={<Avatar name={entry.entity.name} />}
-              meta={bondSubtitle(entry, db.state.inStoryDate)}
-              onPress={() =>
-                router.push({ pathname: '/bond/[id]', params: { id: entry.entity.id } })
-              }
-            >
-              <View style={styles.nameRow}>
-                <Text numberOfLines={1} style={styles.name}>
-                  {entry.entity.name}
-                </Text>
-                {entry.bond?.isMajor ? <Text style={styles.major}>Major</Text> : null}
-              </View>
-              {entry.bond ? <AffinityBar affinity={entry.bond.affinity} /> : null}
-            </ListRow>
-          ))}
-        </ListCard>
-      )}
+        <>
+          <SectionLabel>{query ? 'Results' : 'Seen recently'}</SectionLabel>
+          <EmptyRow
+            body={query ? 'Try another name.' : 'People appear here as you meet them.'}
+            title={query ? 'You don’t know anyone by that name' : 'No one yet'}
+          />
+        </>
+      ) : null}
+
+      {living.length > 0 ? (
+        <>
+          <SectionLabel>{query ? 'Results' : 'Seen recently'}</SectionLabel>
+          <ListCard>{living.map(renderRow)}</ListCard>
+        </>
+      ) : null}
+
+      {dead.length > 0 ? (
+        <>
+          <SectionLabel>The dead</SectionLabel>
+          <ListCard>{dead.map(renderRow)}</ListCard>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -203,6 +241,9 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceRaised,
   },
+  avatarDimmed: {
+    opacity: 0.45,
+  },
   avatarText: {
     fontFamily: fonts.bold,
     color: colors.accentText,
@@ -218,6 +259,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     color: colors.text,
+  },
+  nameDead: {
+    color: colors.textMuted,
   },
   major: {
     fontFamily: fonts.bold,

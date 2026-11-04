@@ -353,6 +353,26 @@ export function convertStateBlock(
       .filter((item) => item.name.trim().length > 0);
   }
 
+  if (Array.isArray(block.deaths)) {
+    const deaths = block.deaths
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
+        cause: cleanString(item.cause),
+      }))
+      .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan');
+
+    if (deaths.length > 0) {
+      diff.deaths = deaths;
+    }
+  }
+
+  const revived = stringItems(block.revived).map((name) => ({ name }));
+
+  if (revived.length > 0) {
+    diff.revived = revived;
+  }
+
   if (Array.isArray(block.character_updates)) {
     const updates = block.character_updates
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')

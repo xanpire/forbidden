@@ -90,6 +90,8 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       personality: 'Kind, observant, gentle, quietly stubborn.',
       speechStyle: 'Soft and careful, with a warm teasing streak.',
       status: 'Deceased',
+      // Kan learns of it when someone tells him, or when news of her funeral reaches him.
+      deceased: { known: false, canonEventId: 'event_canon_izumi-funeral' },
       notes: 'Kan’s teammate from Team 3. Killed in the Uchiha massacre. She had loved Itachi since the Academy, and Kan knew it.',
       mood: 'Unknown',
       appearance: 'Young Uchiha girl with soft dark hair, gentle eyes, and the quiet posture of someone who always waited for others.',

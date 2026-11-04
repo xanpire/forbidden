@@ -106,6 +106,17 @@ export type EntityRecord = {
   mood?: string;
   appearance?: string;
   lastSeen?: CalendarDate;
+  /**
+   * Set once this person has died in the story (see deaths.ts). `known` is
+   * whether Kan has seen it or been told; a canon death also becomes known
+   * when the news of `canonEventId` reaches him.
+   */
+  deceased?: {
+    date?: CalendarDate;
+    cause?: string;
+    known?: boolean;
+    canonEventId?: string;
+  };
   romanceAccessibility?: 'winnable' | 'lore-locked';
   canonDevotion?: string;
   orientation?: string;
@@ -431,6 +442,10 @@ export type TurnDiff = {
     type?: ThreadType;
     participants?: string[];
   }[];
+  /** People who died this turn, or whose death Kan saw or was told of. */
+  deaths?: { entityId?: string; name: string; cause?: string }[];
+  /** People genuinely brought back to life (never Edo Tensei). */
+  revived?: { entityId?: string; name: string }[];
   canonCompleted?: string[];
   canonEngaged?: string[];
   canonPassed?: string[];

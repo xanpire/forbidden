@@ -34,6 +34,7 @@ import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
+import { isDeceased, kanKnowsDeath, markDeathsByName } from '../lib/rpg/deaths';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
 
 function loadSave(_path?: string): AppDatabase {
@@ -2171,5 +2172,122 @@ describe('canon timing: dates only, combat holds, one news per turn', () => {
     expect(clock.queued.length).toBeGreaterThan(0);
     expect(clock.queued.every((q) => !q.milestone.playerDriven)).toBe(true);
     expect(clock.queued.some((q) => q.milestone.id === 'war-begins')).toBe(true);
+  });
+});
+
+describe('deaths', () => {
+  const jiraiyaOf = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Jiraiya')!;
+  // The world moves on to mid-year 22: Jiraiya's death fires off-screen.
+  const afterJiraiya = (db: AppDatabase) =>
+    advanceCanon({ ...db, state: { ...db.state, inStoryDate: { year: 22, month: 6, day: 1, hour: 8, minute: 0, second: 0 } } }, { inCombat: false });
+
+  test('the seeded dead are recorded; Kan knows Shisui but not Izumi', () => {
+    const db = loadSave();
+    const shisui = db.entities.find((entity) => entity.name === 'Shisui Uchiha')!;
+    const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha')!;
+
+    expect(isDeceased(shisui)).toBe(true);
+    expect(kanKnowsDeath(db, shisui)).toBe(true);
+    expect(isDeceased(izumi)).toBe(true);
+    expect(kanKnowsDeath(db, izumi)).toBe(false);
+  });
+
+  test('a canon death marks the record, and Kan knows only once the news reaches him', () => {
+    let db = loadSave();
+    db = applyCanonMarks(db, ['jiraiya-dies'], []);
+    // completed = witnessed
+    expect(isDeceased(jiraiyaOf(db))).toBe(true);
+    expect(kanKnowsDeath(db, jiraiyaOf(db))).toBe(true);
+
+    let fresh = afterJiraiya(loadSave());
+    expect(isDeceased(jiraiyaOf(fresh))).toBe(true);
+    expect(kanKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(false);
+    fresh = markNewsHeard(fresh, [{ id: 'jiraiya-dies', from: 'Konan' }]);
+    expect(kanKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(true);
+  });
+
+  test('canon deaths use exact names only', () => {
+    let db = loadSave();
+    db = applyEntityDiff(db, { name: 'Ino Yamanaka', isNew: true, role: 'Genin' });
+    db = applyTurnDiff(db, { entities: [{ name: 'Ino Yamanaka', isNew: false }] });
+    db = { ...db, entities: db.entities.map((e) => (e.name === 'Ino Yamanaka' ? { ...e, aliases: ['Yamanaka'] } : e)) };
+    db = markDeathsByName(db, ['Inoichi Yamanaka', 'Shikaku Nara'], {});
+    expect(isDeceased(db.entities.find((e) => e.name === 'Ino Yamanaka')!)).toBe(false);
+    expect(isDeceased(db.entities.find((e) => e.name === 'Shikamaru Nara')!)).toBe(false);
+  });
+
+  test('the state tracker reports a death on screen, including someone new this turn', () => {
+    let db = loadSave();
+    const { diff } = convertStateBlock({
+      new_characters: [{ is_new: true, name: 'Goro the Bandit', age: 30, role: 'Bandit', personality: null, speech_style: null, appearance: null }],
+      deaths: [
+        { character_id: 'Goro the Bandit', cause: 'Cut down by Kan on the road' },
+        { character_id: 'kisame-hoshigaki', cause: null },
+        { character_id: 'kan', cause: null },
+        { character_id: 'nobody-at-all', cause: null },
+      ],
+    });
+
+    db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
+
+    const goro = db.entities.find((entity) => entity.name === 'Goro the Bandit')!;
+    expect(goro.deceased?.known).toBe(true);
+    expect(goro.deceased?.cause).toBe('Cut down by Kan on the road');
+    expect(isDeceased(db.entities.find((e) => e.name === 'Kisame Hoshigaki')!)).toBe(true);
+    expect(isDeceased(db.entities.find((e) => e.name === 'Kan')!)).toBe(false);
+  });
+
+  test('being told of a death makes it known; revived brings them back', () => {
+    let db = loadSave();
+    const izumiId = db.entities.find((entity) => entity.name === 'Izumi Uchiha')!.id;
+    const { diff } = convertStateBlock({ deaths: [{ character_id: 'izumi-uchiha', cause: null }] });
+    db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
+    expect(kanKnowsDeath(db, db.entities.find((e) => e.id === izumiId)!)).toBe(true);
+
+    db = afterJiraiya(db);
+    const back = convertStateBlock({ revived: ['jiraiya'] }).diff;
+    db = applyTurnDiff(db, resolveCharacterRefs(db, back as TurnDiff));
+    expect(isDeceased(jiraiyaOf(db))).toBe(false);
+    // Reloading never kills a revived person again.
+    expect(isDeceased(jiraiyaOf(normalizeDatabase(db)))).toBe(false);
+  });
+
+  test('the dead are not "seen", and loading backfills deaths for older saves', () => {
+    let db = afterJiraiya(loadSave());
+    const before = jiraiyaOf(db).lastSeen;
+    db = applyTurnDiff(db, { scene: { ended: false, entities: ['Jiraiya'] } });
+    expect(jiraiyaOf(db).lastSeen).toEqual(before);
+
+    const old = {
+      ...db,
+      entities: db.entities.map((entity) => {
+        const { deceased: _d, ...rest } = entity;
+        return entity.name === 'Jiraiya' ? rest : entity;
+      }),
+    };
+    expect(isDeceased(jiraiyaOf(normalizeDatabase(old)))).toBe(true);
+  });
+
+  test('every turn the narrator and the state tracker see who is dead', () => {
+    let db = afterJiraiya(loadSave());
+    db = { ...db, facts: [...Array(30)].map((_, index) => ({ ...db.facts[0], id: `f${index}`, text: `Filler fact ${index}` })).concat(db.facts) };
+
+    const narration = buildNarrationPrompt(db, '*Kan waits.*').messages.map((m) => m.content).join('\n');
+    expect(narration).toContain('THE DEAD');
+    expect(narration).toContain('- Jiraiya (Kan does not know yet)');
+    expect(narration).toContain('- Izumi Uchiha (Kan does not know yet)');
+    expect(narration).toContain('- Shisui Uchiha');
+
+    const state = buildExtractionPrompt(db, '*Kan waits.*', 'Rain falls.').messages.map((m) => m.content).join('\n');
+    expect(state).toMatch(/- jiraiya: Jiraiya.*deceased, Kan does not know yet\]/);
+    expect(JSON.stringify(TURN_STATE_SCHEMA)).toContain('"deaths"');
+  });
+
+  test('canon milestones with deaths name people the cast can resolve', () => {
+    const db = loadSave();
+    for (const name of ['Jiraiya', 'Itachi Uchiha', 'Kisame Hoshigaki', 'Nagato', 'Obito Uchiha', 'Jūzō Biwa', 'Hiruzen Sarutobi', 'Danzo Shimura']) {
+      const marked = markDeathsByName(db, [name], {});
+      expect(marked).not.toBe(db);
+    }
   });
 });

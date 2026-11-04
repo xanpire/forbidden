@@ -20,6 +20,7 @@ import {
 import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
+import { isDeceased, kanKnowsDeath } from './deaths';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
   AppDatabase,
@@ -38,6 +39,7 @@ export const NARRATION_SYSTEM = `You narrate an interactive Naruto novel. The pl
 CORE
 - Never speak, act, think, or decide for Kan. Describe the world and the reactions, then stop where Kan must respond. End on a hook: a sound, a question, an NPC line, a threat.
 - ${PLACE_NAME_RULE}
+- The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body, or through a revival or reanimation the canon timeline allows. Where it says Kan does not know yet, never reveal the death through narration; he learns it only through someone who could know.
 - Characters have the age, rank, and knowledge they would have on the current date, and goals of their own: they can refuse, lie, or leave. Canon power levels hold, with no power creep or nerfing. Trust and love are earned.
 - The supplied state, characters, bonds, facts, threads, summaries, and memories are truth, and win over canon where they differ. Characters know only the secrets they learned in this story. Open threads are binding: never change a mission's goal, destination, or allies unless Kan does.
 
@@ -75,6 +77,8 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
 PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, and news_relayed.from. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, and appearance; elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
+
+DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: they die on screen, Kan sees the body, or someone tells Kan they died (also for someone already marked deceased whom Kan did not know about). Never for someone unconscious, missing, faking, or only rumored dead. The dead are never in characters_present or bonds. revived lists ids only for a true return to life (like Chiyo's or Nagato's revival jutsu); an Edo Tensei reanimation is still dead.
 
 JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Keep effect and visual short and consistent with earlier uses.
 
@@ -158,7 +162,8 @@ export function buildNarrationPrompt(
     formatJutsu(db),
     formatThreads(db),
     formatBonds(db),
-  ].join('\n\n');
+    formatTheDead(db),
+  ].filter(Boolean).join('\n\n');
 
   // 3. Everything that moves turn to turn.
   const buildDynamic = (messagesForScene: RawLogEntry[]) =>
@@ -453,7 +458,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${formatLoreProfile(entity.name, db.state.inStoryDate.year)}`
+        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${formatLoreProfile(entity.name, db.state.inStoryDate.year)}`
     ),
   ].join('\n');
 }
@@ -477,7 +482,7 @@ function formatCharacterRoster(db: AppDatabase) {
       const notes = [
         entity.name.toLowerCase() === 'kan' ? 'the player' : null,
         entity.met === false ? 'not met yet' : null,
-        entity.status === 'Deceased' ? 'deceased' : null,
+        isDeceased(entity) ? (kanKnowsDeath(db, entity) ? 'deceased' : 'deceased, Kan does not know yet') : null,
       ].filter(Boolean);
 
       return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}`;
@@ -513,6 +518,10 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
           ? calculateAge(db.state.inStoryDate, entity.birthday, entity.birthYear)
           : entity.age;
       const role = truncate(entity.role ?? '', 40);
+
+      if (isDeceased(entity)) {
+        return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
+      }
 
       return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}`;
     }),
@@ -550,6 +559,11 @@ function formatJutsu(db: AppDatabase) {
 }
 
 function formatBonds(db: AppDatabase) {
+  const deadLabel = new Map(
+    db.entities
+      .filter(isDeceased)
+      .map((entity) => [entity.id, kanKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, Kan does not know yet]'])
+  );
   const bonds = [...db.bonds]
     .filter((bond) => bond.isMajor || Math.abs(bond.affinity) >= 4)
     .sort((a, b) => b.affinity - a.affinity)
@@ -563,8 +577,32 @@ function formatBonds(db: AppDatabase) {
     'BONDS',
     ...bonds.map(
       (bond) =>
-        `- ${bond.characterName} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}`
+        `- ${bond.characterName}${deadLabel.get(bond.entityId) ?? ''} (${bond.affinity}/10): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}`
     ),
+  ].join('\n');
+}
+
+/**
+ * Everyone who has died, always in the prompt, so no one comes back because
+ * their death fact missed the 10-fact cut. Changes only when someone dies or
+ * Kan learns of a death, so it sits in the cached part of the prompt.
+ */
+function formatTheDead(db: AppDatabase) {
+  const dead = db.entities.filter(
+    (entity) => entity.type === 'character' && entity.name.toLowerCase() !== 'kan' && isDeceased(entity)
+  );
+
+  if (dead.length === 0) {
+    return '';
+  }
+
+  return [
+    'THE DEAD',
+    ...dead.map((entity) => {
+      const cause = entity.deceased?.cause ? `: ${truncate(entity.deceased.cause, 60)}` : '';
+
+      return `- ${entity.name}${cause}${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
+    }),
   ].join('\n');
 }
 

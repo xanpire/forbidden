@@ -108,6 +108,22 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     }));
   }
 
+  if (diff.deaths) {
+    next.deaths = diff.deaths.flatMap((death) => {
+      const ref = resolve(death.entityId ?? death.name);
+
+      return ref ? [{ ...death, name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
+  if (diff.revived) {
+    next.revived = diff.revived.flatMap((person) => {
+      const ref = resolve(person.entityId ?? person.name);
+
+      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
   if (diff.newsRelayed) {
     next.newsRelayed = diff.newsRelayed.map((news) => ({ ...news, from: nameOf(news.from) }));
   }
@@ -419,7 +435,7 @@ export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
   return {
     ...db,
     entities: db.entities.map((entity) =>
-      entity.type === 'character' && matched.has(entity.id)
+      entity.type === 'character' && matched.has(entity.id) && !entity.deceased && entity.status !== 'Deceased'
         ? { ...entity, lastSeen: db.state.inStoryDate, met: true }
         : entity
     ),
@@ -616,7 +632,9 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     ...existing,
     aliases: [...existing.aliases, ...extraAlias].slice(0, 10),
     met: true,
-    lastSeen: db.state.inStoryDate,
+    // The dead are not "seen": a memory, a dream or a body must not push them
+    // to the top of the bonds list.
+    lastSeen: existing.deceased || existing.status === 'Deceased' ? existing.lastSeen : db.state.inStoryDate,
     age: nextAge,
     birthYear:
       entity.age !== undefined

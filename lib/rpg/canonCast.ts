@@ -461,6 +461,7 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
     personality: entry.personality,
     speechStyle: entry.speechStyle,
     status: entry.status ?? 'Not yet met',
+    ...(entry.status === 'Deceased' ? { deceased: { known: true } } : {}),
     notes: '',
     mood: 'Unknown',
     appearance: entry.appearance,

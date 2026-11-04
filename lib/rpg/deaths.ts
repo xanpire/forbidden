@@ -1,0 +1,193 @@
+// Who is dead. A death is recorded on the person's own record, so the
+// narrator, the state tracker and the bonds screen all see it every turn —
+// not only as a fact that may or may not make the 10-fact cut.
+//
+// Two ways someone dies during play:
+// - a canon milestone fires (canonData `deaths`), stamped with the milestone's
+//   event, so Kan only "knows" once that news reaches him or he was there;
+// - the state tracker reports `deaths` (someone dies on screen, or Kan sees
+//   the body or is told), which Kan knows at once.
+//
+// What Kan knows matters: the bonds screen never shows a death before the
+// story has told him, so it cannot spoil news that is still on its way.
+
+import { CANON_MILESTONES } from './canonData';
+import type { AppDatabase, CalendarDate, EntityRecord } from './types';
+
+/** Tag left by markAlive, so loading a save never kills them again. */
+const REVIVED_TAG = 'revived';
+
+export type DeathMark = {
+  date?: CalendarDate;
+  cause?: string;
+  /** Kan saw it or was told. */
+  known?: boolean;
+  /** The canon event that killed them; Kan knows once this news is heard. */
+  canonEventId?: string;
+};
+
+/** Dead, whether or not Kan knows it yet. */
+export function isDeceased(entity: Pick<EntityRecord, 'deceased' | 'status'>): boolean {
+  return Boolean(entity.deceased) || entity.status === 'Deceased';
+}
+
+/** Dead, and the story has let Kan know. */
+export function kanKnowsDeath(db: AppDatabase, entity: EntityRecord): boolean {
+  if (!isDeceased(entity)) {
+    return false;
+  }
+
+  const death = entity.deceased;
+
+  if (!death) {
+    // Seeded as deceased with no record (old saves): treat as known.
+    return true;
+  }
+
+  if (death.known) {
+    return true;
+  }
+
+  return Boolean(death.canonEventId && db.state.canonProgress?.heard?.[death.canonEventId]);
+}
+
+export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark): AppDatabase {
+  const index = db.entities.findIndex((entity) => entity.id === entityId);
+
+  if (index === -1) {
+    return db;
+  }
+
+  const entity = db.entities[index];
+
+  if (entity.type !== 'character' || entity.name.toLowerCase() === 'kan') {
+    return db;
+  }
+
+  const previous = entity.deceased;
+  const cause = mark.cause?.trim().slice(0, 120);
+  const deceased = {
+    date: previous?.date ?? mark.date ?? db.state.inStoryDate,
+    ...(previous?.cause || cause ? { cause: previous?.cause || cause } : {}),
+    known: Boolean(previous?.known || mark.known),
+    ...(previous?.canonEventId || mark.canonEventId
+      ? { canonEventId: previous?.canonEventId ?? mark.canonEventId }
+      : {}),
+  };
+
+  if (
+    previous &&
+    previous.known === deceased.known &&
+    previous.canonEventId === deceased.canonEventId &&
+    previous.cause === deceased.cause
+  ) {
+    return db;
+  }
+
+  const entities = [...db.entities];
+  entities[index] = { ...entity, deceased };
+
+  return { ...db, entities };
+}
+
+/**
+ * Canon deaths, by exact name or alias only — never the loose matching the
+ * story text gets, so "Inoichi Yamanaka" can never land on Ino and "Shikaku
+ * Nara" never on Shikamaru. People the save does not have are skipped.
+ */
+export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMark): AppDatabase {
+  let next = db;
+
+  for (const name of names) {
+    const wanted = name.trim().toLowerCase();
+    const entity = next.entities.find(
+      (item) =>
+        item.type === 'character' &&
+        [item.name, ...item.aliases].some((candidate) => candidate.trim().toLowerCase() === wanted)
+    );
+
+    if (entity) {
+      next = markDeceased(next, entity.id, mark);
+    }
+  }
+
+  return next;
+}
+
+/** A genuine return to life (or a death recorded by mistake). */
+export function markAlive(db: AppDatabase, entityId: string): AppDatabase {
+  const index = db.entities.findIndex((entity) => entity.id === entityId);
+
+  if (index === -1 || !isDeceased(db.entities[index])) {
+    return db;
+  }
+
+  const { deceased: _dropped, ...rest } = db.entities[index];
+  const entities = [...db.entities];
+  entities[index] = {
+    ...rest,
+    status: rest.status === 'Deceased' ? 'Alive' : rest.status,
+    tags: rest.tags.includes(REVIVED_TAG) ? rest.tags : [...rest.tags, REVIVED_TAG],
+  };
+
+  return { ...db, entities };
+}
+
+/**
+ * Brings older saves up to date when they load:
+ * - canon milestones that already fired mark their dead (Jiraiya died in
+ *   your save before deaths were recorded, so he is marked now);
+ * - people who started out "Deceased" get a death record. If a milestone
+ *   names them (Izumi and her funeral) Kan knows once that news is heard;
+ *   otherwise he already knows.
+ * Safe to run on every load: nothing changes once the records exist.
+ */
+export function normalizeDeaths(db: AppDatabase): AppDatabase {
+  let next = db;
+  const fired = new Set(next.events.map((event) => event.id));
+  const canonDeathEvent = new Map<string, string>();
+
+  for (const milestone of CANON_MILESTONES) {
+    const eventId = `event_canon_${milestone.id}`;
+
+    for (const name of milestone.deaths ?? []) {
+      canonDeathEvent.set(name.toLowerCase(), eventId);
+    }
+
+    if (!milestone.deaths?.length || !fired.has(eventId)) {
+      continue;
+    }
+
+    const event = next.events.find((item) => item.id === eventId);
+    const living = {
+      ...next,
+      entities: next.entities.filter((entity) => !entity.tags?.includes(REVIVED_TAG)),
+    };
+    const marked = markDeathsByName(living, milestone.deaths, {
+      date: event?.inStoryDate,
+      canonEventId: eventId,
+    });
+
+    if (marked !== living) {
+      const byId = new Map(marked.entities.map((entity) => [entity.id, entity]));
+      next = { ...next, entities: next.entities.map((entity) => byId.get(entity.id) ?? entity) };
+    }
+  }
+
+  const entities = next.entities.map((entity) => {
+    if (entity.deceased || entity.status !== 'Deceased' || entity.type !== 'character') {
+      return entity;
+    }
+
+    const eventId = [entity.name, ...entity.aliases]
+      .map((name) => canonDeathEvent.get(name.toLowerCase()))
+      .find(Boolean);
+
+    return {
+      ...entity,
+      deceased: eventId ? { known: false, canonEventId: eventId } : { known: true },
+    };
+  });
+
+  return entities.some((entity, index) => entity !== next.entities[index]) ? { ...next, entities } : next;
+}

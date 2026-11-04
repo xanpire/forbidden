@@ -6,10 +6,11 @@ import { type ChatRequest, completeChat } from '../openrouter';
 import { applyBondDiff } from './bonds';
 import { daysBetween, formatDate } from './calendar';
 import { applyClockChange, applyClockTick } from './clock';
+import { markAlive, markDeceased } from './deaths';
 import { buildIndices } from './db';
 import { type DebugCallKind, recordDebugCall, recordDebugState } from './debug';
 import { classifyLocation } from './encounters';
-import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs } from './entities';
+import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
 import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
 import { applyJutsuDiff } from './jutsu';
 import { cloneDatabase } from './log';
@@ -33,6 +34,27 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   if (Array.isArray(diff.entities)) {
     for (const entity of diff.entities) {
       next = applyEntityDiff(next, entity);
+    }
+  }
+
+  // After entities, so someone introduced and killed in the same turn exists.
+  if (Array.isArray(diff.revived)) {
+    for (const person of diff.revived) {
+      if (person.entityId) {
+        next = markAlive(next, person.entityId);
+      }
+    }
+  }
+
+  if (Array.isArray(diff.deaths)) {
+    for (const death of diff.deaths) {
+      const entity = death.entityId
+        ? next.entities.find((item) => item.id === death.entityId)
+        : resolveEntity(next, death.name);
+
+      if (entity) {
+        next = markDeceased(next, entity.id, { cause: death.cause, known: true });
+      }
     }
   }
 
