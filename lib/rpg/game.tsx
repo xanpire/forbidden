@@ -560,6 +560,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
             messages: prompt.messages,
             temperature: withUser.settings.temperature,
             maxTokens: withUser.settings.maxTokens,
+            // Medium thinking, kept out of the streamed text. max_tokens is
+            // sized so the thinking can't eat the room for prose + state.
+            reasoning: { effort: 'medium', exclude: true },
             signal: controller.signal,
             onDelta: (delta) => {
               streamed += delta;

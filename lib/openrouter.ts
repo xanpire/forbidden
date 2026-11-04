@@ -54,6 +54,11 @@ export type ChatRequest = {
    * every provider for it) can't do structured output.
    */
   jsonSchema?: { name: string; schema: Record<string, unknown> };
+  /**
+   * OpenRouter reasoning settings. `exclude: true` keeps the thinking out of
+   * the reply text; it still counts against max_tokens.
+   */
+  reasoning?: { effort?: 'low' | 'medium' | 'high'; exclude?: boolean };
 };
 
 export type StreamResult = {
@@ -454,19 +459,24 @@ export async function streamChatCompletion({
   temperature = 0.7,
   maxTokens = 900,
   signal,
+  reasoning,
   onDelta,
 }: ChatRequest & { onDelta: (delta: string) => void }): Promise<StreamResult> {
   if (!apiKey) {
     throw new Error('Add your OpenRouter API key in Settings first.');
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     model,
     messages,
     temperature,
     max_tokens: maxTokens,
     stream: true,
   };
+
+  if (reasoning) {
+    body.reasoning = reasoning;
+  }
 
   const response = await fetch(CHAT_URL, {
     method: 'POST',
