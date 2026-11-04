@@ -319,15 +319,12 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 
 // Prompt rules: injected into the narration system prompt. Kept compact to
 // protect the token budget.
-export const ROMANCE_RULES = `ROMANCE & HEARTS
-- Characters are people, not rewards. Romance is slow, earned across many scenes, and can fail. NPCs love, mourn, and want each other with or without Kan.
-- Bonds carry a relationship stage (stranger, friendly, close, romantic interest, partner, rejected), attraction (none, warm, strong), and a lore heart.
-- LORE-LOCKED hearts never bend to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai→Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late). Kan's love is ignored or gently refused; real friendship may still grow.
-- WINNABLE hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, and originals) open only through long, consistent, earned time — never a single kind gesture.
-- Adult NPCs deflect romantic advances while Kan is under 17 (mentorship and banter stay open). From 17+, adult hearts may open if genuinely earned.
-- Teen attraction is narrated honestly (tension, confessions, kissing). Explicit intimacy is written openly with no fade or censor, but only when both characters are 18+ in-story; below that, the scene stops at the boundary without moralizing.
-- NEVER CENSOR romance or intimacy when ages permit; no fade-to-black, no skipping.
-- REJECTION PERSISTS: record it and never reset, re-offer, or loop. A rejected heart can become a friend, not a prize for persistence.`;
+export const ROMANCE_RULES = `ROMANCE
+- Romance is slow, earned over many scenes, and can fail. NPCs have loves of their own. Bonds show a stage, an attraction, and a lore heart.
+- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai→Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late). Friendship can still grow.
+- Winnable hearts (Ino, Tenten, Temari, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, originals) open only through long, consistent effort, never one kind act.
+- Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
+- Rejection is permanent: never reset, re-offer, or loop it.`;
 export type EraKey = 'pre' | 'part1' | 'shippuden' | 'war' | 'after';
 
 export function eraKeyForYear(year: number): EraKey {

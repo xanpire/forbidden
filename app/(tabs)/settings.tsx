@@ -26,12 +26,14 @@ import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { DebugPanel } from '@/components/settings/DebugPanel';
 import { useToast } from '@/components/Toast';
 import { APP_VERSION } from '@/lib/version';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { testOpenRouterKey } from '@/lib/openrouter';
 import { formatDayMonth } from '@/lib/rpg/calendar';
+import { DEFAULT_SETTINGS, PROMPT_BUDGET_OPTIONS } from '@/lib/rpg/defaults';
 import { downloadJson, pickJsonFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase } from '@/lib/rpg/types';
@@ -360,10 +362,10 @@ export default function SettingsScreen() {
             <ListRow
               accessibilityState={{ expanded: advancedOpen }}
               onPress={() => setAdvancedOpen((open) => !open)}
-              title="Advanced models"
+              title="Advanced"
               trailing={
                 <View style={styles.trailingValue}>
-                  <Text style={styles.valueText}>Summary, memory</Text>
+                  <Text style={styles.valueText}>Summary, memory, context</Text>
                   {advancedOpen ? (
                     <ChevronDown color={colors.textDim} size={16} strokeWidth={2} />
                   ) : (
@@ -387,6 +389,22 @@ export default function SettingsScreen() {
                   onChange={(value) => void updateSettings({ extractionModel: value })}
                   value={db.settings.extractionModel}
                 />
+                <View style={styles.nestedDivider} />
+                <View style={styles.budgetRow}>
+                  <Text style={styles.budgetLabel}>Story context</Text>
+                  <Text style={styles.budgetHint}>
+                    How much the narrator reads each turn, in tokens. More remembers more of the scene; less costs less.
+                  </Text>
+                  <SegmentedControl
+                    accessibilityLabel="Story context size"
+                    onChange={(value) => void updateSettings({ promptTokenBudget: Number(value) })}
+                    options={PROMPT_BUDGET_OPTIONS.map((option) => ({
+                      value: String(option),
+                      label: `${option % 1000 === 0 ? option / 1000 : (option / 1000).toFixed(1)}k`,
+                    }))}
+                    value={String(db.settings.promptTokenBudget ?? DEFAULT_SETTINGS.promptTokenBudget)}
+                  />
+                </View>
               </View>
             ) : null}
           </ListCard>
@@ -675,6 +693,25 @@ const styles = StyleSheet.create({
   nestedDivider: {
     height: 1,
     backgroundColor: colors.divider,
+  },
+  budgetRow: {
+    gap: 6,
+    paddingVertical: 14,
+    paddingLeft: spacing.lg,
+    paddingRight: 14,
+  },
+  budgetLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.text,
+  },
+  budgetHint: {
+    marginBottom: 4,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textDim,
   },
   slotTitle: {
     flexDirection: 'row',

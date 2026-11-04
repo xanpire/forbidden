@@ -448,6 +448,35 @@ async function readErrorMessage(response: Response) {
   }
 }
 
+/**
+ * Model families whose caching only kicks in with explicit cache_control
+ * breakpoints. OpenAI, DeepSeek, Grok, Moonshot and others cache a repeated
+ * prefix on their own, so they get plain string content.
+ */
+function needsCacheBreakpoints(model: string) {
+  return /^(anthropic|google|qwen)\//.test(model);
+}
+
+/** Messages as sent on the wire: cacheable blocks become marked text parts where the model needs them. */
+function toWireMessages(model: string, messages: OpenRouterMessage[]) {
+  const explicit = needsCacheBreakpoints(model);
+
+  return messages.map((message) => {
+    if (!explicit || !message.parts || message.parts.length === 0) {
+      return { role: message.role, content: message.content };
+    }
+
+    return {
+      role: message.role,
+      content: message.parts.map((part) =>
+        part.cache
+          ? { type: 'text', text: part.text, cache_control: { type: 'ephemeral' } }
+          : { type: 'text', text: part.text }
+      ),
+    };
+  });
+}
+
 export async function completeChat({
   apiKey,
   model,
@@ -464,7 +493,7 @@ export async function completeChat({
 
   const body: Record<string, unknown> = {
     model,
-    messages,
+    messages: toWireMessages(model, messages),
     temperature,
     max_tokens: maxTokens,
     stream: false,
@@ -571,7 +600,7 @@ export async function streamChatCompletion({
 
   const body: Record<string, unknown> = {
     model,
-    messages,
+    messages: toWireMessages(model, messages),
     temperature,
     max_tokens: maxTokens,
     stream: true,

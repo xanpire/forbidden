@@ -17,6 +17,7 @@ import {
   locationKindOf,
 } from './encounters';
 import { estimateTokens } from '../openrouter';
+import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import type {
@@ -29,106 +30,59 @@ import type {
   ThreadRecord,
 } from './types';
 
-const PROMPT_TOKEN_BUDGET = 5600;
+const MIN_SCENE_MESSAGES = 4;
+const STORY_CHAPTERS = 3;
 
-export const NARRATION_SYSTEM = `You are the narrator and game master of an interactive Naruto novel. The player plays Kan. You control the world and every other character.
+export const NARRATION_SYSTEM = `You narrate an interactive Naruto novel. The player is Kan; you run the world and everyone else.
 
-EXECUTIVE RULES
+CORE
+- Never speak, act, think, or decide for Kan. Describe the world and the reactions, then stop where Kan must respond. End on a hook: a sound, a question, an NPC line, a threat.
 - ${PLACE_NAME_RULE}
-- You never speak, act, think, emote, or decide for Kan. Describe the world and NPC reactions, then stop the moment Kan must react. End every turn on a sensory hook, unanswered question, NPC line, or looming threat.
-- Respect the in-story date. Characters are the age, rank, and position they would hold then, and know only what they could know at that point. Never reference future events.
-- Canon power levels are real: no power creep, no convenient nerfing. Characters have their own goals and can refuse, lie, disagree, or leave. Trust and love must be earned.
-- Canon happens on its canon timeline unless Kan plausibly changes it; then follow the consequences and record them as facts. If the provided context (facts, lore) contradicts canon, the context wins.
+- Characters have the age, rank, and knowledge they would have on the current date, and goals of their own: they can refuse, lie, or leave. Canon power levels hold, with no power creep or nerfing. Trust and love are earned.
+- The supplied state, characters, bonds, facts, threads, summaries, and memories are truth, and win over canon where they differ. Characters know only the secrets they learned in this story. Open threads are binding: never change a mission's goal, destination, or allies unless Kan does.
 
-TIME IS STRICT
-- The TIME block is the only source of the date. Never write a calendar date or day number yourself ("the fifth of October"). Use relative time: "the next day", "two nights later".
-- Whenever time moves, make it plain in the prose: "a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road". The app reads the clock from your words, so vague drift ("time passes") is not enough.
-- Honest durations: one exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. In a fight Kan controls every move, so never skip time around him.
-- Name an exact hour only when the story fixes one. Never state a clock time that contradicts the TIME block.
+TIME
+- The TIME block is the only date. Never write a calendar date; use relative time ("the next morning", "two nights later"). Name an exact hour only when the story fixes one.
+- Say plainly how long things take ("a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road"); the app reads the clock from your words. Be honest: blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours. Never skip time in a fight; Kan controls each move.
 
-CANON TRUTH
-- Never invent a canon event, funeral, death, battle, exam, summit, or date. If it is not in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts, it has not happened yet.
-- If Kan asks about something not yet listed, answer from the NPC's limited knowledge: it has not happened, they do not know, or they deflect. Never invent that it already occurred.
+CANON
+- Canon happens on schedule unless Kan plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
+- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer and make clear who told him. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+- The masked man, Tobi, Obito, and "the fake Madara" are one person. The Akatsuki know him as Madara; he never unmasks before Itachi or Kan, and Itachi dies believing it. Only those present when his mask breaks in the Fourth War, against Kakashi and Naruto, learn he is Obito. The real Madara is a separate character who appears later.
+- Pain is one entity, Nagato, acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
 
-VOICE & STYLE
-- Write clear, natural English for an ordinary reader: common words, short to medium sentences, one idea at a time. Vivid but not ornate — choose the plain word. Avoid rare or literary vocabulary.
-- Use em dashes and semicolons sparingly; prefer periods.
-- Keep imagery concrete and physical, but vary it every turn: different senses, textures, sounds, and metaphors.
-- Never repeat a description, metaphor, or signature phrase you just used. Ban your own crutches.
-
-WORLD & PACING
-- Second person, immersive, gritty realism: gravity, fatigue, injury, weather, terrain, layout. Show moods through behavior and small choices. Quiet moments are allowed.
-- Responses are 2-4 paragraphs. Do not fast-forward through conversations, combat, or travel unless Kan requests a skip. Compress uneventful travel into one or two paragraphs.
-- Never repeat an NPC gesture, action, or line already used in the recent scene. Every beat must advance the story.
-- Open threads are binding missions: never change a destination, objective, or ally mid-mission unless Kan decides to.
-- Encounters are rare and follow the d20 hint and the ENCOUNTER CONDITIONS, never mentioning the roll. When the hint says no new people, add none — use animals, weather, sounds, tracks, or distant lights. Never put a cheerful stranger in isolated wilderness or an abandoned ruin at night. Never stack encounters or run two in a row.
-
-NEW CHARACTERS
-- Create original villagers, shinobi, merchants, clients, or enemies as needed. Give each a distinct name, age, role, personality, speech style, look, and goals. Keep them within canon power levels.
-
-FORMATTING
-- No meta-text, filler intros, end-of-turn summaries, or out-of-character commentary. Start directly with the narrative. Use clean quotation marks for speech; italics only for NPC thoughts when needed.
-- Kan input markers: text in straight quotation marks is spoken aloud; text in asterisks is an action, gesture, or movement. A message may mix both.
-
-MEMORY & CONTINUITY
-- The supplied state, character cards, jutsu, bonds, facts ledger, threads, summaries, and memories are truth. Never contradict them. Honor bonds: treatment of Kan depends on affinity and history. Respect who-knows-what: characters know only secrets they learned in this story.
-- In summaries, memories, story beats, threads, and the timeline, "you" always means Kan.
-- IDENTITY: "the masked man", "Tobi", "Obito", and "the fake Madara" are ONE person, always the same entity. The REAL Madara Uchiha is a DIFFERENT character who appears only later; never merge them.
-- MASKED MAN: the organization knows him as "Madara Uchiha" and he never shows his face to Itachi or Kan. Itachi dies still believing him to be Madara. The mask only shatters during the Fourth War against Kakashi and Naruto; only those present learn he is Obito. Before that, nobody knows or hints at his identity.
-- PAIN: Pain is the Six Paths of Pain — six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that are ONE entity controlled by Nagato. Never create separate path entities. Nagato is Pain's true identity and knows everything every body has seen or heard. Never merge Pain with the masked man or the real Madara.
-- ZETSU: Black Zetsu and White Zetsu are two halves of one being, treated as one character "Zetsu". White Zetsu clones are expendable copies, not characters.
+STYLE
+- Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
+- 2-4 paragraphs of plain English: common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
+- Play out conversations, fights, and travel unless Kan asks to skip; compress uneventful travel into a paragraph or two.
+- Encounters are rare and follow the ENCOUNTER HINT and CONDITIONS; never mention the roll. When told no new people, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
+- New characters get a distinct name, age, role, personality, voice, look, and goals, within canon power levels.
+- In Kan's input, "quoted text" is spoken and *asterisks* are actions.
 
 ${ROMANCE_RULES}
 
-CANON TIMELINE
-- The world advances even when Kan is elsewhere. Events in the CANON TIMELINE are world truth; never re-narrate a completed event.
-- Kan learns world events through witnesses, reports, gossip, briefings, couriers, or changed behavior. Never narrate omnisciently. The NEWS & RUMORS block lists events Kan has not learned; deliver them through a plausible bearer or channel, and make clear who told him.
-- If an ACTIVE STORY BEAT is listed and Kan's scene reaches it, play it out fully on the page.
-
-
 OUTPUT
-- Write only the story prose the player reads. No JSON, code blocks, lists, headings, labels, state notes, or bookkeeping of any kind. The app tracks state separately from your prose.
-- Make changes legible in the prose itself: where Kan goes, who is present, which jutsu are used and how they look, what someone learns or promises, and when a scene ends.`;
+- Story prose only, starting straight in the scene: no JSON, code, lists, headings, labels, summaries, or out-of-character notes. Speech in quotation marks; italics only for NPC thoughts.
+- The app tracks state from your prose, so make changes clear in it: where Kan goes, who is there, which jutsu are used and how they look, what is learned or promised, and when a scene ends.`;
 
-const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel. The player is Kan. You read the narrator's latest turn and report what changed, as one JSON object that matches the provided schema. You never write story text.
+const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is Kan. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
 
-GENERAL
-- Report only what THIS turn changed. Use null for anything unchanged and [] for empty lists.
-- Report only what the turn actually shows. Never invent events, and never contradict the CURRENT STATE, characters, bonds, facts, or threads below.
-- Player-facing text addresses Kan as "you": world_description, canon_point, thread titles and descriptions, bond status and notes, jutsu effects. Keep the name "Kan" in image_brief, facts, and the jutsu "user" field.
+- Report only what THIS turn shows changed: null when unchanged, [] when empty. Never invent anything or contradict the state below.
+- Player-facing text calls Kan "you" (world_description, canon_point, threads, bond status and notes, jutsu effects). Use "Kan" in image_brief, facts, and the jutsu "user" field.
 
-TIME
-- time.elapsed + time.unit: how much in-story time this turn covered, read from the prose. One exchange of blows is seconds; a conversation is minutes; a battle is minutes to a couple of hours; a nap is 15-60 minutes; a full night's sleep is 8-9 hours; travel can be minutes to days. If a new day begins, the elapsed time must cover it.
-- time.clock_time: "HH:MM" only when the prose fixes an exact hour; otherwise null.
-- scene_pace: combat, chase, conversation, travel, or downtime.
+TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. time.clock_time is "HH:MM" only when the prose fixes an hour. scene_pace: combat, chase, conversation, travel, or downtime.
 
-PLACE & MOOD
-- location: set whenever Kan moves to a new place; always pair it with location_kind.
-- mood: Kan's mood in 1-3 words, only when it changed.
-- world_description: one sentence, only when the wider situation changed.
-- canon_point: one short line, only when Kan's place in the story clearly moved on.
-- inventory_added / inventory_removed: items Kan gained or lost.
+PLACE: location, with location_kind, when Kan moves. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
 
-PEOPLE
-- characters_present: ONLY characters physically in the scene at the end of this turn, never people merely mentioned. [] when Kan is alone.
-- new_characters: every new named character introduced this turn who is not already listed under CHARACTERS. Give age, role, personality, speech style, and appearance from the prose.
-- character_updates: existing characters whose mood or appearance visibly changed.
-- bonds: only important characters whose feelings toward Kan shifted. affinity_change is -10..10. relationship, attraction, and romance_note only when they visibly changed; minor people go in facts instead.
+PEOPLE: characters_present lists only those physically in the scene at the end; [] if Kan is alone. new_characters: every newly named character not under CHARACTERS, with age, role, personality, speech, and appearance. character_updates: visible mood or appearance changes. bonds: only important characters whose feelings toward Kan shifted (affinity_change -10..10; relationship, attraction, romance_note only if changed); minor people go in facts.
 
-JUTSU
-- jutsu_used: every named jutsu used by Kan or anyone else. chakra_nature must be Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown. For a blend, pick the primary nature and describe the blend in effect or visual. Keep effect and visual short and consistent with earlier uses.
+JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Keep effect and visual short and consistent with earlier uses.
 
-MEMORY
-- facts: permanent or long-term truths only (a death, an injury, a secret learned, a membership, an important possession or event). who_knows lists who learned it.
-- threads: promises, debts, grudges, mysteries, quests, or goals. status "open" for a new one, "update" to change one already listed, "resolved" when one is settled. Reuse the existing title when updating or resolving.
-- scene_ended: true only when the scene clearly concluded.
+MEMORY: facts are lasting truths (a death, injury, secret, membership, key item or event) with who_knows. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded.
 
-CANON
-- canon_engaged / canon_completed / canon_passed / news_relayed: copy ids exactly as listed in the CANON TRACKING section, and only when the rule next to that id is met. Otherwise [].
+CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise [].
 
-IMAGE
-- image_brief: for visually striking beats only, one sentence of up to 30 words naming the exact visual action — who does what to whom, and where. Example: "Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens." Otherwise null.
-- image_worthy: true only for visually striking moments, never pure dialogue.`;
+IMAGE: image_worthy is true only for visually striking moments, never pure dialogue. image_brief is then one sentence of up to 30 words naming who does what to whom, and where ("Kan chokes a Stone ninja from behind at the quarry gate; the ninja's face reddens."); otherwise null.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -188,65 +142,85 @@ export function buildNarrationPrompt(
   );
   const facts = relevantFacts(db, matchedEntityIds, entityText);
   const lore = triggeredLore(db, entityText);
-  const arcSummary = getArcSummary(db);
+  const storySoFar = getStorySoFar(db);
+  const shownSummaries = new Set(
+    [storySoFar.arc, ...storySoFar.chapters].filter((text): text is string => Boolean(text))
+  );
+  // A memory saved from a summary that is already shown would only repeat it.
+  const freshMemories = memories.filter((memory) => !shownSummaries.has(memory.summary));
+  const arcSummary = storySoFar.arc ?? storySoFar.chapters[storySoFar.chapters.length - 1] ?? null;
 
-  const stable = [
-    NARRATION_SYSTEM,
+  // Ordered from never-changing to changing-every-turn, so the front of the
+  // prompt is a stable prefix that providers can cache (cache reads cost a
+  // fraction of fresh input).
+  // 1. The rules: identical on every turn of every story.
+  const rules = NARRATION_SYSTEM;
+  // 2. Who Kan is and the long view: changes only when a summary lands, a
+  //    jutsu is learned, a thread opens or closes, or a bond moves.
+  const slow = [
     formatCharacterSheet(db),
-    formatState(db),
-    formatMatchedEntities(db, matchedEntityIds),
+    formatStorySoFar(storySoFar),
     formatJutsu(db),
-    formatBonds(db),
-    formatFacts(facts),
     formatThreads(db),
-    formatLore(lore),
+    formatBonds(db),
   ].join('\n\n');
 
+  // 3. Everything that moves turn to turn.
   const buildDynamic = (messagesForScene: RawLogEntry[]) =>
     [
-      formatArcSummary(arcSummary),
+      formatState(db),
       formatTimeLine(db),
+      formatMatchedEntities(db, matchedEntityIds),
+      formatFacts(facts),
+      formatLore(lore),
       formatNewsBlock(db),
       formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
-      formatMemories(memories),
+      formatMemories(freshMemories),
       formatStyleGuard(db),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       `${formatEncounterConditions(db)}\n${formatGatedEncounterHint(db, d20)}`,
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
-    ].join('\n\n');
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
+  const assemble = (messagesForScene: RawLogEntry[]): OpenRouterMessage[] => {
+    const ruleText = localizePlaceNames(rules);
+    const slowText = localizePlaceNames(slow);
+
+    return [
+      {
+        role: 'system',
+        content: `${ruleText}\n\n${slowText}`,
+        parts: [
+          { text: `${ruleText}\n\n`, cache: true },
+          { text: slowText, cache: true },
+        ],
+      },
+      { role: 'user', content: localizePlaceNames(buildDynamic(messagesForScene)) },
+    ];
+  };
+
+  const budget = db.settings.promptTokenBudget ?? DEFAULT_SETTINGS.promptTokenBudget;
   let sceneMessages = recentMessages;
-  let dynamic = buildDynamic(sceneMessages);
-  let messages: OpenRouterMessage[] = [
-    { role: 'system', content: stable },
-    { role: 'user', content: dynamic },
-  ];
+  let messages = assemble(sceneMessages);
   let estimated = estimateTokens(messages);
 
-  // Hard prompt budget: trim the oldest scene messages rather than let the
-  // prompt creep upward over a long story.
-  while (estimated > PROMPT_TOKEN_BUDGET && sceneMessages.length > 4) {
+  // Prompt budget: drop the oldest scene messages rather than let the prompt
+  // creep upward over a long story.
+  while (estimated > budget && sceneMessages.length > MIN_SCENE_MESSAGES) {
     sceneMessages = sceneMessages.slice(1);
-    dynamic = buildDynamic(sceneMessages);
-    messages = [
-      { role: 'system', content: stable },
-      { role: 'user', content: dynamic },
-    ];
+    messages = assemble(sceneMessages);
     estimated = estimateTokens(messages);
   }
 
-  const localizedMessages: OpenRouterMessage[] = messages.map((message) => ({
-    ...message,
-    content: localizePlaceNames(message.content),
-  }));
-
   return {
-    messages: localizedMessages,
-    estimatedTokens: estimateTokens(localizedMessages),
-    memories,
+    messages,
+    estimatedTokens: estimated,
+    memories: freshMemories,
     recentMessages: sceneMessages,
     arcSummary,
   };
@@ -266,8 +240,6 @@ export function buildExtractionPrompt(
     .find((message) => message.role === 'assistant' && message.content !== assistantMessage);
 
   const stable = [
-    STATE_SYSTEM,
-    formatState(db),
     formatEntities(db),
     formatJutsu(db),
     formatBonds(db),
@@ -276,6 +248,7 @@ export function buildExtractionPrompt(
   ].join('\n\n');
 
   const dynamic = [
+    formatState(db),
     formatTimeLine(db, 'state'),
     formatCanonTracking(db),
     previousBeat
@@ -290,7 +263,11 @@ export function buildExtractionPrompt(
     .join('\n\n');
 
   const messages: OpenRouterMessage[] = [
-    { role: 'system', content: stable },
+    {
+      role: 'system',
+      content: `${STATE_SYSTEM}\n\n${stable}`,
+      parts: [{ text: `${STATE_SYSTEM}\n\n`, cache: true }, { text: stable }],
+    },
     { role: 'user', content: dynamic },
   ];
 
@@ -380,20 +357,44 @@ export function getRecentMessages(db: AppDatabase, limit: number): RawLogEntry[]
     .slice(-limit);
 }
 
-function getArcSummary(db: AppDatabase): string | null {
-  const arc = [...db.summaries]
-    .filter((summary) => summary.level === 'arc')
-    .sort((a, b) => b.createdAt - a.createdAt)[0];
+type StorySoFar = {
+  arc: string | null;
+  /** Newest chapter summaries, oldest first. */
+  chapters: string[];
+};
 
-  if (arc) {
-    return arc.text;
+/**
+ * The latest arc summary plus the last few chapter summaries. Chapters the arc
+ * already covers are skipped, unless that would leave fewer than two.
+ */
+function getStorySoFar(db: AppDatabase): StorySoFar {
+  const byAge = (a: { createdAt: number }, b: { createdAt: number }) => a.createdAt - b.createdAt;
+  const arc = db.summaries.filter((summary) => summary.level === 'arc').sort(byAge).pop() ?? null;
+  const chapters = db.summaries.filter((summary) => summary.level === 'chapter').sort(byAge);
+  const covered = new Set(arc?.sourceSummaryIds ?? []);
+  let picked = chapters.filter((summary) => !covered.has(summary.id)).slice(-STORY_CHAPTERS);
+
+  if (picked.length < 2) {
+    picked = chapters.slice(-2);
   }
 
-  const chapter = [...db.summaries]
-    .filter((summary) => summary.level === 'chapter')
-    .sort((a, b) => b.createdAt - a.createdAt)[0];
+  return { arc: arc?.text ?? null, chapters: picked.map((summary) => summary.text) };
+}
 
-  return chapter?.text ?? null;
+function formatStorySoFar(story: StorySoFar) {
+  if (!story.arc && story.chapters.length === 0) {
+    return 'STORY SO FAR\nThe story is just beginning.';
+  }
+
+  return [
+    'STORY SO FAR',
+    story.arc ? `Arc: ${truncate(story.arc, 1200)}` : '',
+    ...story.chapters.map((text, index) =>
+      `${index === story.chapters.length - 1 ? 'Latest chapter' : 'Chapter'}: ${truncate(text, 1000)}`
+    ),
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function formatCharacterSheet(db: AppDatabase) {
@@ -614,12 +615,12 @@ function formatUpcomingWorldBlock(db: AppDatabase) {
     return '';
   }
 
-  const lines = ["RUMORS OF WHAT'S COMING (planned, NOT yet happened)"];
+  const lines = [
+    "RUMORS OF WHAT'S COMING (planned, NOT yet happened). The world is preparing; NPCs may mention preparations or rumors, never that it happened.",
+  ];
 
   for (const item of upcoming) {
-    lines.push(
-      `- ${item.milestone.title} — about ${item.daysUntil} day(s) away, in ${item.milestone.era}. The world is preparing for it. NPCs may mention preparations or rumors, but must never say it has already happened.`
-    );
+    lines.push(`- ${item.milestone.title}: about ${item.daysUntil} day(s) away (${item.milestone.era}).`);
   }
 
   return lines.join('\n');
@@ -705,7 +706,9 @@ function formatNewsBlock(db: AppDatabase) {
     return '';
   }
 
-  const lines = ['NEWS & RUMORS (events Kan has NOT learned yet)'];
+  const lines = [
+    'NEWS & RUMORS (events Kan has NOT learned yet). When a bearer is present or Kan is where news travels, let it surface in dialogue or a report, and make clear who tells him.',
+  ];
 
   for (const item of news) {
     const urgency =
@@ -720,9 +723,6 @@ function formatNewsBlock(db: AppDatabase) {
 
     lines.push(
       `- ${item.title} (${item.location}, ${item.region}). ${bearerText} Channel: ${item.channel}.${urgency}`
-    );
-    lines.push(
-      '  If a bearer is present or Kan is somewhere news reaches, let it surface naturally in dialogue or a report, and make clear who tells him. Never narrate it omnisciently.'
     );
   }
 
@@ -847,10 +847,6 @@ function truncate(value: string, maxLength: number) {
   return `${value.slice(0, maxLength).trimEnd()}…`;
 }
 
-function formatArcSummary(summary: string | null) {
-  return `CURRENT ARC SUMMARY\n${truncate(summary ?? 'No arc summary yet.', 400)}`;
-}
-
 function formatMemories(memories: EventRecord[]) {
   if (memories.length === 0) {
     return 'RELEVANT MEMORIES\nNone.';
@@ -858,7 +854,7 @@ function formatMemories(memories: EventRecord[]) {
 
   return [
     'RELEVANT MEMORIES',
-    ...memories.map((memory) => `- ${truncate(memory.summary, 120)}`),
+    ...memories.map((memory) => `- ${truncate(memory.summary, 400)}`),
   ].join('\n');
 }
 
@@ -868,6 +864,34 @@ function tail(value: string, maxLength: number) {
   }
 
   return `…${value.slice(-maxLength).trimStart()}`;
+}
+
+/**
+ * Keeps the opening and the ending of a long text and cuts the middle, at
+ * word boundaries: roughly 40% from the start and 60% from the end.
+ */
+export function headAndTail(value: string, maxLength: number) {
+  if (!value || value.length <= maxLength) {
+    return value;
+  }
+
+  const headLength = Math.floor(maxLength * 0.4);
+  const tailLength = maxLength - headLength;
+  let head = value.slice(0, headLength);
+  const headCut = head.lastIndexOf(' ');
+
+  if (headCut > headLength * 0.6) {
+    head = head.slice(0, headCut);
+  }
+
+  let end = value.slice(-tailLength);
+  const tailCut = end.indexOf(' ');
+
+  if (tailCut !== -1 && tailCut < tailLength * 0.4) {
+    end = end.slice(tailCut + 1);
+  }
+
+  return `${head.trimEnd()} […] ${end.trimStart()}`;
 }
 
 function formatRecentMessages(messages: RawLogEntry[]) {
@@ -884,13 +908,16 @@ function formatRecentMessages(messages: RawLogEntry[]) {
     'RECENT SCENE (oldest first)',
     ...messages.map((message, index) => {
       if (message.role === 'user') {
-        return `You (Kan): ${truncate(message.content, 500)}`;
+        return `You (Kan): ${headAndTail(message.content, 500)}`;
       }
 
       const clean = stripNarrationJson(message.content);
-      const cap = index === lastAssistantIndex ? 2200 : 1000;
 
-      return `Narrator: ${tail(clean, cap)}`;
+      // The newest beat is shown nearly whole; older ones keep how they
+      // opened and how they ended, so who arrived and what was set up isn't lost.
+      return index === lastAssistantIndex
+        ? `Narrator: ${tail(clean, 2200)}`
+        : `Narrator: ${headAndTail(clean, 1400)}`;
     }),
   ].join('\n');
 }

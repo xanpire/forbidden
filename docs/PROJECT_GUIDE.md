@@ -193,49 +193,46 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 `buildNarrationPrompt` returns `{ messages, estimatedTokens, memories, recentMessages, arcSummary }`.
 
-### Stable system blocks (in order)
+The prompt is ordered from never-changing to changing-every-turn, so its front is a stable prefix that providers can cache (cache reads cost a fraction of fresh input; see Settings → Debug for cached tokens per call).
 
-1. `NARRATION_SYSTEM` (template literal) containing:
-   - **Executive rules** — never control Kan, canon fidelity, date/rank/knowledge discipline.
-   - **Place-name rule** — always English place names (Hidden Leaf, Hidden Rain, …); Hokage/Kage/genin/jōnin/jinchūriki/Sannin/chakra/Akatsuki stay.
-   - **TIME IS STRICT** — `elapsed` + `unit`, optional `clock_time`, never invent dates, clock comes from the TIME block.
-   - **CANON TRUTH** — never invent canon events/funerals/deaths/dates.
-   - **VOICE & STYLE** — clear plain English, varied imagery.
-   - **WORLD & PACING** — 2–4 paragraphs, no repeated beats, binding threads, rare encounters, travel compression.
-   - **NEW CHARACTERS**, **FORMATTING** (Kan’s `"speech"` and `*action*` markers).
-   - **MEMORY & CONTINUITY** + identity rules:
-     - masked man = Tobi = Obito = fake Madara (one entity); real Madara separate; no face reveal before the war mask-break.
-     - Pain = Six Paths = Nagato (one entity); Nagato remembers everything the bodies saw.
-     - Black/White Zetsu = one being.
-   - **ROMANCE & HEARTS** (from `romance.ts`): lore-locked vs winnable, adult gating at 17+, explicit intimacy only 18+, never censor, rejection persists.
-   - **CANON TIMELINE** — world clock, news delivery, `canon_engaged/completed` reporting.
-   - **STATE OUTPUT** — exact JSON schema.
-2. `formatCharacterSheet`, `formatState`, `formatMatchedEntities` (with lore hearts + era notes), `formatJutsu`, `formatBonds` (relationship/attraction), `formatFacts` (≤10), `formatThreads` (recent 8), `formatLore`.
+### System message (two cacheable blocks)
+
+1. **Rules** — `NARRATION_SYSTEM`, identical on every turn of every story (~1.3k tokens):
+   - **CORE** — never control Kan, place-name rule (English names), date/rank/knowledge discipline, supplied context is truth, binding threads.
+   - **TIME** — TIME block is the only date, relative time only, durations made explicit and honest.
+   - **CANON** — never invent canon; news only through bearers; identity rules (masked man = Tobi = Obito = fake Madara, real Madara separate, mask breaks only in the war; Pain = Nagato's six bodies; Zetsu = one being).
+   - **STYLE** — plain English, 2–4 paragraphs, no repeats, rare encounters, new characters, Kan's `"speech"` / `*action*` markers.
+   - **ROMANCE** (from `romance.ts`): lore-locked vs winnable, adults deflect under 17, explicit intimacy only 18+, rejection persists.
+   - **OUTPUT** — prose only, changes legible in the prose.
+2. **Slow context** — `formatCharacterSheet`, `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatJutsu`, `formatThreads`, `formatBonds`. Changes only when a summary lands, a jutsu is used, a thread or bond moves.
+
+Each block is sent as a text part with `cache_control` for models that need explicit breakpoints (`anthropic/`, `google/`, `qwen/` — see `toWireMessages` in `lib/openrouter.ts`; Gemini uses only the last one). Other providers (OpenAI, DeepSeek, …) cache a repeated prefix automatically and get plain string content. `OpenRouterMessage.content` is always the full text; `parts` is only the split.
 
 ### Dynamic user block (in order)
 
-1. `formatArcSummary` (latest arc/year summary, capped)
+1. `formatState` (date, place, mood, world, inventory, canon point)
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a stall nudge if `turnsWithoutTimeChange > 0`
-3. `formatNewsBlock` — up to 3 unheard events, major first, with location, bearers, courier channel, overdue escalation
-4. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
-5. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
-6. `formatMemories` — retrieved events (≤ retrieval limit)
-7. `formatStyleGuard` — overused words/phrases from the last 6 narrations
-8. `formatRecentMessages` — last `contextMessages` (default 8); assistant messages keep their **tail** (newest 2200 chars, older 1000), player input 500
-9. `formatLastBeat` — final 450 chars of the newest narration
-10. `formatEncounterConditions` + `formatGatedEncounterHint(d20)`
-11. `CONTINUITY` line + location kind
-12. `YOU (KAN) DO OR SAY: <action>`
+3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
+4. `formatNewsBlock` — up to 3 unheard events, major first, with location, bearers, courier channel, overdue escalation
+5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
+6. `formatCanonBlock` — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded
+7. `formatMemories` — retrieved events (≤ retrieval limit, 400 chars each), skipping any that repeat a summary already in STORY SO FAR
+8. `formatStyleGuard` — overused words/phrases from the last 6 narrations
+9. `formatRecentMessages` — last `contextMessages` (default 16). The newest narration keeps its last 2200 chars; older narrations keep their **start and end** (`headAndTail`, 1400 chars: ~40% opening, ~60% ending); player input 500 the same way
+10. `formatLastBeat` — final 450 chars of the newest narration
+11. `formatEncounterConditions` + `formatGatedEncounterHint(d20)`
+12. `CONTINUITY` line + location kind
+13. `YOU (KAN) DO OR SAY: <action>`
 
 The current action appears **once** (it is excluded from the recent-message block).
 
 ### Token budget
 
-`PROMPT_TOKEN_BUDGET = 5600`. After building, the prompt drops the oldest scene messages (never below 4) until `estimateTokens` is under budget. Measured baseline on a fresh save: ~3.6k tokens; flat over long play.
+`settings.promptTokenBudget` (default 9500; Settings → Advanced → Story context offers 6k / 8k / 9.5k / 12k). After building, the prompt drops the oldest scene messages (never below 4) until `estimateTokens` is under budget.
 
 ### State prompt (call 2)
 
-`buildExtractionPrompt` uses `STATE_SYSTEM` (field-by-field rules: time, place, people, jutsu, memory, canon, image) and runs after **every** turn against `TURN_STATE_SCHEMA`. The canon ids the narrator no longer sees are given here in `formatCanonTracking`, each with the rule for marking it. News and canon blocks in the narrator prompt describe events in plain words only.
+`buildExtractionPrompt` puts `STATE_SYSTEM` first as its own cacheable block (field-by-field rules, ~650 tokens: time, place, people, jutsu, memory, canon, image) and runs after **every** turn against `TURN_STATE_SCHEMA`. The canon ids the narrator no longer sees are given here in `formatCanonTracking`, each with the rule for marking it. News and canon blocks in the narrator prompt describe events in plain words only.
 
 ---
 
@@ -249,8 +246,8 @@ The current action appears **once** (it is excluded from the recent-message bloc
   - pinning.
 - `relevantFacts(db, entityIds, text)` returns matched facts (by subject) plus recent ones, capped at **10**.
 - `triggeredLore(db, text)` matches keyword-triggered lore entries, capped at **4**.
-- Events are created by `recordSceneEvent` (on `scene.ended`), time skips, and canon milestones.
-- Summaries: chapter summaries feed the arc summary; arc/year summaries feed the prompt. `storyMessagesSinceLastSummary` is the summarization cadence guard.
+- Events (memories) are created by `recordSceneEvent` (on `scene.ended`), by **every chapter summary** (`saveSummaryMemory` in `memoryJobs.ts`: tagged `summary`, linked to the characters it names, folding in the short scene-end events from the same stretch), time skips, and canon milestones.
+- Summaries: chapter summaries feed the arc summary; the latest arc plus the newest chapters feed the prompt. `storyMessagesSinceLastSummary` is the summarization cadence guard.
 
 ### Entity identity resolution (`services.ts`)
 
@@ -435,7 +432,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 7. **Pain/Nagato** are one entity; six paths are one.
 8. **Unheard canon events are invisible in the Journal** until delivered.
 9. **Personal beats are offers**, never assumed; they only complete when narrated.
-10. **Token ceiling**: prompts over 5600 tokens are trimmed; never add unbounded prompt data.
+10. **Token ceiling**: prompts over `settings.promptTokenBudget` are trimmed; never add unbounded prompt data. Keep the rules and slow blocks first so the cached prefix survives.
 11. **Images only on user action**, with Kan’s face/outfit references and the action brief.
 12. **Version sync**: `package.json` → `app.json` → SW cache (`scripts/generate-sw.js`) → Settings display.
 

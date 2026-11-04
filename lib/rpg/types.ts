@@ -258,6 +258,8 @@ export type Settings = {
   temperature: number;
   maxTokens: number;
   canonProgress: boolean;
+  /** Upper bound on the narrator prompt, in estimated tokens. */
+  promptTokenBudget: number;
 };
 
 export type CanonProgress = {
@@ -438,4 +440,11 @@ export type PromptBundle = {
 export type OpenRouterMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /**
+   * Optional split of `content` into blocks, in order. A block marked `cache`
+   * ends a cacheable prefix: providers that need explicit breakpoints
+   * (Anthropic, Gemini) get a cache_control marker after it. `content` is
+   * always the blocks joined, so token estimates and the debug view stay the same.
+   */
+  parts?: { text: string; cache?: boolean }[];
 };

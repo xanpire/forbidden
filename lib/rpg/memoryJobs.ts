@@ -19,6 +19,7 @@
  */
 import { advanceCanon, applyCanonMarks, markNewsHeard } from './canon';
 import { daysBetween } from './calendar';
+import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
 import {
@@ -46,6 +47,7 @@ const SCENE_MESSAGES = 8;
 const MERGED_SCENE_MESSAGES = 12;
 const ARC_SIZE = 3;
 const YEAR_SIZE = 12;
+const SUMMARY_TAG = 'summary';
 
 // ---------------------------------------------------------------------------
 // Lookups
@@ -531,6 +533,7 @@ export function applySummaryJob(
         sourceLogIds: messages.map((entry) => entry.id),
       };
       next = { ...next, summaries: [...next.summaries, record] };
+      next = saveSummaryMemory(next, record, messages);
 
       // If the job was widened while this one was running, keep the newer
       // messages queued instead of marking them as summarized.
@@ -585,6 +588,81 @@ export function applySummaryJob(
   return { db: removeJob(next, job.id), followUpIds };
 }
 
+/**
+ * Every chapter summary is also saved as a memory, so it can be recalled
+ * later by who and what it mentions. The short "scene ended" memories made
+ * during the same stretch of story are folded into it.
+ */
+function saveSummaryMemory(
+  db: AppDatabase,
+  summary: SummaryRecord,
+  messages: RawLogEntry[]
+): AppDatabase {
+  const first = messages[0];
+  const last = messages[messages.length - 1];
+
+  if (db.events.some((event) => event.tags.includes(SUMMARY_TAG) && event.sourceLogId === last.id)) {
+    return db;
+  }
+
+  const superseded = db.events.filter(
+    (event) =>
+      event.sourceLogId === null &&
+      !event.pinned &&
+      !event.tags.includes('time-skip') &&
+      event.createdAt >= first.createdAt &&
+      event.createdAt <= last.createdAt + 60_000
+  );
+  const supersededIds = new Set(superseded.map((event) => event.id));
+  const text = summary.text.toLowerCase();
+  const mentioned = db.entities.filter(
+    (entity) =>
+      entity.name.toLowerCase() !== 'kan' &&
+      [entity.name, ...entity.aliases].some(
+        (name) => name.length > 2 && text.includes(name.toLowerCase())
+      )
+  );
+
+  const event: EventRecord = {
+    id: makeId('event'),
+    chapter: db.state.chapter,
+    scene: db.state.scene,
+    inStoryDate: last.inStoryDate,
+    summary: summary.text,
+    importance: Math.max(3, ...superseded.map((entry) => entry.importance)) as EventRecord['importance'],
+    tags: [
+      SUMMARY_TAG,
+      ...new Set([
+        ...superseded.flatMap((entry) => entry.tags),
+        ...mentioned.map((entity) => entity.name.split(/\s+/)[0].toLowerCase()),
+      ]),
+    ].slice(0, 10),
+    pinned: false,
+    sourceLogId: last.id,
+    createdAt: summary.createdAt,
+  };
+
+  const links = [
+    ...db.eventEntities
+      .filter((link) => supersededIds.has(link.eventId))
+      .map((link) => ({ ...link, eventId: event.id })),
+    ...mentioned.map((entity) => ({ eventId: event.id, entityId: entity.id, role: 'mentioned' as const })),
+  ].filter(
+    (link, index, all) => all.findIndex((other) => other.entityId === link.entityId) === index
+  );
+
+  const next: AppDatabase = {
+    ...db,
+    events: [...db.events.filter((entry) => !supersededIds.has(entry.id)), event],
+    eventEntities: [
+      ...db.eventEntities.filter((link) => !supersededIds.has(link.eventId)),
+      ...links,
+    ],
+  };
+
+  return { ...next, indices: buildIndices(next) };
+}
+
 // ---------------------------------------------------------------------------
 // Undo / regenerate
 
@@ -619,17 +697,22 @@ export function carryOverMemory(current: AppDatabase, restored: AppDatabase): Ap
   const extraEvents = current.events.filter(
     (event) =>
       !restoredEventIds.has(event.id) &&
-      event.tags.includes('time-skip') &&
+      (event.tags.includes('time-skip') || event.tags.includes(SUMMARY_TAG)) &&
       event.sourceLogId !== null &&
       restoredLogIds.has(event.sourceLogId)
   );
+  const extraEventIds = new Set(extraEvents.map((event) => event.id));
 
   const merged: AppDatabase = {
     ...restored,
     summaries: [...restored.summaries, ...extraSummaries],
     events: [...restored.events, ...extraEvents],
+    eventEntities: [
+      ...restored.eventEntities,
+      ...current.eventEntities.filter((link) => extraEventIds.has(link.eventId)),
+    ],
     memoryJobs: jobsOf(current),
   };
 
-  return pruneJobs(merged);
+  return pruneJobs(extraEvents.length > 0 ? { ...merged, indices: buildIndices(merged) } : merged);
 }

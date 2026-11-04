@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
+import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
 import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canon';
@@ -414,6 +414,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
       canonProgress: true,
+      promptTokenBudget: normalizePromptBudget(db.settings?.promptTokenBudget),
     },
     rawLog: Array.isArray(db.rawLog)
       ? db.rawLog.map((entry) =>

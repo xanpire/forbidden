@@ -244,7 +244,8 @@ export function beginDebugTurn(input: {
     startedAt: Date.now(),
     d20: input.d20,
     narratorModel: input.narratorModel,
-    prompt: input.prompt,
+    // Keep the plain text only; the cache split is rebuilt every turn.
+    prompt: input.prompt.map(({ role, content }) => ({ role, content })),
     promptEstimate: input.promptEstimate,
     calls: [],
     state: null,
