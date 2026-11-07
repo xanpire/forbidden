@@ -1,6 +1,7 @@
 import { DEFAULT_DATE } from './calendar';
 import { ensureCanonCast } from './canonCast';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
+import { knowersOf } from './facts';
 import { makeId } from './id';
 import type {
   AppDatabase,
@@ -12,6 +13,13 @@ import type {
   LoreRecord,
   ThreadRecord,
 } from './types';
+
+/**
+ * Where things are and how long a shinobi takes to get there: always in the
+ * narrator's prompt, so directions and travel times stay consistent.
+ */
+export const GEOGRAPHY_LORE =
+  'GEOGRAPHY (fixed; directions and shinobi travel times at a hard pace, with rest): The Land of Fire is the large forested country in the middle-east of the continent; Hidden Leaf sits near its center. North of Fire lie the Land of Rice Fields (the Hidden Sound, small hidden bases) and, northeast, the Land of Hot Water and the Hidden Waterfall. West of Fire lies the Land of Rain (Hidden Rain), a small, always-raining country of iron towers squeezed between Fire, Wind and Earth; the Land of Grass is NORTH of Rain, between Rain and Earth, and the Land of Rivers is south-west of Fire, between Fire and Wind. Far west lies the desert Land of Wind (Hidden Sand); north-west, the mountainous Land of Earth (Hidden Stone). Far north-east, past the sea, the Land of Lightning (Hidden Cloud); to the east, the Land of Water islands (Hidden Mist), reached by boat from Fire\'s east coast and the Land of Waves. The Land of Iron (samurai) is in the far north between Earth and Lightning. From Hidden Leaf: the Rain border about 2 days, Hidden Rain about 3 days; the Grass border about 2 days, the Waterfall about 2 days; the Sound\'s lands 1-2 days; the Land of Waves about 2 days; Hidden Sand about 3 days; Hidden Stone about 5 days; Hidden Mist 4-5 days with the crossing; Hidden Cloud 5-7 days. Rain to Grass about 1 day north; Rain to Sand about 3 days west. Civilians and wagons take two to three times as long. Never contradict these: once a distance or direction is said, it holds.';
 
 const ITACHI_ID = makeId('entity');
 const HANA_ID = makeId('entity');
@@ -148,7 +156,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     scene: 'The rain after',
     inStoryDate: DEFAULT_DATE,
     summary:
-      'Kan waits alone in the rain-soaked forest outside Hidden Leaf, where Itachi sent him days ago. Tonight the massacre has happened, but Kan was already in the forest: he does not know whether Itachi went through with it, how it happened, or who died — including Izumi. Itachi is about to arrive and ask Kan to come with him and join the Akatsuki; he promised an explanation, but he will hold the truth back until they are far from the village.',
+      'You wait alone in the rain-soaked forest outside Hidden Leaf, where Itachi sent you days ago. Tonight the massacre has happened, but you were already in the forest: you do not know whether Itachi went through with it, how it happened, or who died, Izumi included. Itachi is about to arrive and ask you to come with him and join the Akatsuki; he promised an explanation, but he will hold the truth back until you are far from the village.',
     importance: 5,
     tags: ['opening', 'itachi', 'massacre', 'izumi', 'rain', 'forest', 'akatsuki'],
     pinned: true,
@@ -174,28 +182,13 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     {
       id: makeId('jutsu'),
-      name: 'Fire Release',
-      user: 'Kan',
-      chakraNature: 'Fire',
-      effect:
-        'Uchiha-affinity fire techniques used to burn, signal, create pressure, or force an enemy back.',
-      visual:
-        'Chakra ignites into orange-red flames, often leaving heat shimmer and black scorch marks in the air.',
-      firstSeen: DEFAULT_DATE,
-      lastSeen: DEFAULT_DATE,
-      timesUsed: 1,
-      description: 'Uchiha-affinity fire techniques used for offense, signals, and pressure.',
-      tags: ['fire', 'uchiha', 'kan'],
-    },
-    {
-      id: makeId('jutsu'),
       name: 'Thousand Souls',
       user: 'Kan',
       chakraNature: 'Yin',
       effect:
         'Your own forbidden jutsu. Steals a target’s chakra, permanently expands your chakra capacity and gives you their chakra nature. It never steals jutsu. Still rough; it perfects with use.',
       visual:
-        'Ragged threads of chakra bleed from the target into your palm, and whatever nature they carried flickers across his skin before it settles.',
+        'Ragged threads of chakra bleed from the target into your palm, and whatever nature they carried flickers across your skin before it settles.',
       firstSeen: DEFAULT_DATE,
       lastSeen: DEFAULT_DATE,
       timesUsed: 0,
@@ -265,7 +258,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: KAN_ID,
       type: 'death',
-      text: 'Kan’s parents, Erisa and Banri, died in the Nine-Tails attack.',
+      text: 'Your parents, Erisa and Banri, died in the Nine-Tails attack.',
       whoKnows: ['Kan', 'village elders'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -276,7 +269,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: KAN_ID,
       type: 'event',
-      text: 'Kan was five years old when the Nine-Tails attacked.',
+      text: 'You were five years old when the Nine-Tails attacked.',
       whoKnows: ['Kan'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -287,7 +280,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: KAN_ID,
       type: 'membership',
-      text: 'Kan joined ANBU at age 12, one year after Itachi.',
+      text: 'You joined ANBU at twelve, one year after Itachi.',
       whoKnows: ['Kan', 'ANBU command'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -298,7 +291,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: KAN_ID,
       type: 'secret',
-      text: 'Kan has a crush on Hana Inuzuka and has never told her.',
+      text: 'You have a crush on Hana Inuzuka and have never told her.',
       whoKnows: ['Kan'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -320,7 +313,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: ITACHI_ID,
       type: 'secret',
-      text: 'A few days before the massacre, Itachi told Kan he was going to kill the Uchiha. Kan fought him and lost, holding back because he would not truly hurt Itachi. Itachi then sent him to hide in the forest and wait, promising to explain everything once it was over.',
+      text: 'A few days before the massacre, Itachi told you he was going to kill the Uchiha. You fought him and lost, holding back because you would not truly hurt him. He then sent you to hide in the forest and wait, promising to explain everything once it was over.',
       whoKnows: ['Kan', 'Itachi Uchiha'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -331,7 +324,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: KAN_ID,
       type: 'knowledge',
-      text: 'Kan left for the forest days before the massacre. He does not know whether Itachi went through with it, how it happened, or who died, and he does not know why. Itachi promised to tell him.',
+      text: 'You left for the forest days before the massacre. You do not know whether Itachi went through with it, how it happened, who died, or why. Itachi promised to tell you.',
       whoKnows: ['Kan', 'Itachi Uchiha'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -342,7 +335,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: IZUMI_ID,
       type: 'death',
-      text: 'Izumi Uchiha, Kan’s teammate, was killed in the Uchiha massacre. Kan does not know this yet.',
+      text: 'Izumi Uchiha, your teammate, was killed in the Uchiha massacre. You do not know this yet.',
       whoKnows: ['Itachi Uchiha', 'Hidden Leaf'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -353,7 +346,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('fact'),
       subjectEntityId: null,
       type: 'death',
-      text: 'Shisui Uchiha was found dead in the Naka River shortly before the massacre. The official story is suicide. Kan, Itachi and Shisui grew up together.',
+      text: 'Shisui Uchiha was found dead in the Naka River shortly before the massacre. The official story is suicide. You, Itachi and Shisui grew up together.',
       whoKnows: ['Kan', 'Itachi Uchiha', 'Hidden Leaf'],
       validFrom: DEFAULT_DATE,
       validTo: null,
@@ -404,35 +397,48 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
   ];
 
+  // One voice throughout: "you" is Kan. Entries that stop being true carry
+  // an activeUntil (see lore.ts), so they leave the prompt when the story
+  // moves past them.
   const loreEntries: LoreRecord[] = [
     {
       id: makeId('lore'),
-      keywords: ['uchiha', 'uzumaki', 'sharingan'],
+      keywords: ['uchiha', 'uzumaki', 'clan', 'heritage', 'parents', 'mother', 'father'],
       priority: 5,
-      text: 'You are of mixed Uchiha-Uzumaki heritage. Your Uchiha mother and Uzumaki father died in the Nine-Tails attack. You rarely mention your clan names, and you have not awakened the Sharingan.',
+      text: 'You are of mixed Uchiha-Uzumaki heritage. Your Uchiha mother and Uzumaki father died in the Nine-Tails attack. You rarely mention your clan names.',
       enabled: true,
+    },
+    {
+      id: makeId('lore'),
+      keywords: ['sharingan', 'eyes', 'dojutsu', 'dōjutsu', 'awaken'],
+      priority: 5,
+      text: 'You have not awakened the Sharingan.',
+      enabled: true,
+      activeUntil: { flag: 'hasSharingan' },
     },
     {
       id: makeId('lore'),
       keywords: ['sharingan', 'awaken', 'truth', 'itachi', 'explain', 'coup'],
       priority: 5,
-      text: 'Kan’s Sharingan awakens in the moment Itachi finally tells him the truth about why he killed the clan — not in a fight, not from fear, and not before that moment. Until then he has no Sharingan.',
+      text: 'Your Sharingan awakens in the moment Itachi finally tells you the truth about why he killed the clan: not in a fight, not from fear, and not before that moment. Until then you have no Sharingan.',
       enabled: true,
       hidden: true,
+      activeUntil: { flag: 'hasSharingan' },
     },
     {
       id: makeId('lore'),
       keywords: ['itachi', 'truth', 'explain', 'why', 'coup', 'tell', 'promise'],
       priority: 5,
-      text: 'When Itachi arrives in the forest he does NOT tell Kan the truth yet. They are too close to the Leaf; he asks Kan to come with him (and to join the Akatsuki) first, and promises to explain once they are far from the village. The full truth — the coup, the order, Shisui — comes later, on the road, when they are well away from the Leaf.',
+      text: 'When Itachi reaches you in the forest he does NOT tell you the truth yet. You are too close to the Leaf: he asks you to come with him (and to join the Akatsuki) first, and promises to explain once you are far from the village. The full truth (the coup, the order, Shisui) comes later, on the road, well away from the Leaf.',
       enabled: true,
       hidden: true,
+      activeUntil: { thread: 'Make Itachi explain', threadStatus: 'resolved' },
     },
     {
       id: makeId('lore'),
       keywords: ['thousand souls', 'forbidden', 'steal', 'chakra', 'absorb', 'drain', 'nature'],
       priority: 5,
-      text: 'Thousand Souls is a forbidden jutsu Kan created himself, in secret; nobody else knows it exists. It works: it steals a target’s chakra, which makes Kan’s reserves effectively limitless whenever he chooses to use it and permanently expands his own chakra capacity, and it permanently gives him the chakra nature of whoever he steals from (drain a Wood Release user and Kan can use Wood Release). It is strictly chakra, chakra nature and capacity: it NEVER steals jutsu, techniques, memories or kekkei genkai abilities beyond the nature itself. It is not yet perfected: it is slower, harder to control and takes a toll on Kan. It becomes perfected after about 10 uses (see the use count under SIGNATURE JUTSU). Whenever Kan gains a new chakra nature this way, record it as a fact. Kan decides when to use it; never use it for him.',
+      text: 'Thousand Souls is a forbidden jutsu you created yourself, in secret; nobody else knows it exists. It steals a target’s chakra, which makes your reserves effectively limitless whenever you choose to use it and permanently expands your own chakra capacity, and it permanently gives you the chakra nature of whoever you steal from (drain a Wood Release user and you can use Wood Release). It is strictly chakra, chakra nature and capacity: it NEVER steals jutsu, techniques, memories or kekkei genkai abilities beyond the nature itself. It is not yet perfected: slower, harder to control, and it takes a toll on you. It becomes perfected after about 10 uses (see the use count under SIGNATURE JUTSU). You decide when to use it; never use it for you.',
       enabled: true,
       hidden: true,
     },
@@ -440,7 +446,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('lore'),
       keywords: ['learn', 'copy', 'observe', 'jutsu', 'technique', 'train', 'study'],
       priority: 4,
-      text: 'Kan is a versatile shinobi who learns jutsu fairly quickly after observing them, as long as he has the chakra nature they need. Learning still takes some practice and is never instant; this is talent, not the Sharingan and not Thousand Souls.',
+      text: 'You are a versatile shinobi who learns jutsu fairly quickly after watching them, as long as you have the chakra nature they need. Learning still takes some practice and is never instant; this is talent, not the Sharingan and not Thousand Souls. Your own chakra nature is not known yet: the story finds it out.',
       enabled: true,
       hidden: true,
     },
@@ -448,7 +454,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('lore'),
       keywords: ['orochimaru', 'thousand souls', 'curse mark', 'experiment'],
       priority: 4,
-      text: 'Orochimaru is in the Akatsuki until he betrays it. If he ever sees or learns of Thousand Souls, he becomes intensely interested in Kan — a jutsu that takes chakra natures is exactly what he hunts. He studies Kan, probes him, and may try to tempt or take him, before and after his defection. He does not know about the jutsu unless he witnesses it or someone tells him.',
+      text: 'Orochimaru is in the Akatsuki until he betrays it. If he ever sees or learns of Thousand Souls, he becomes intensely interested in you: a jutsu that takes chakra natures is exactly what he hunts. He studies you, probes you, and may try to tempt or take you, before and after his defection. He does not know about the jutsu unless he witnesses it or someone tells him.',
       enabled: true,
       hidden: true,
     },
@@ -456,7 +462,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('lore'),
       keywords: ['akatsuki', 'partner', 'pair', 'juzo', 'kisame', 'kakuzu', 'hidan'],
       priority: 4,
-      text: 'If Kan joins the Akatsuki, he is NOT Itachi’s partner. Itachi’s partner follows canon: Jūzō Biwa first, then Kisame Hoshigaki. Pain pairs Kan with Kakuzu, who has killed every partner he has had; Kan is the first to survive him. When Hidan joins, Kakuzu is paired with Hidan as in canon and Kan’s partnership with Kakuzu ends. From then on Kan is a flexible member: he works alone or is sent on missions with different members as Pain needs. Kan and Itachi meet and talk from time to time between missions.',
+      text: 'If you join the Akatsuki, you are NOT Itachi’s partner. Itachi’s partner follows canon: Jūzō Biwa first, then Kisame Hoshigaki. Pain pairs you with Kakuzu, who has killed every partner he has had; you are the first to survive him. When Hidan joins, Kakuzu is paired with Hidan as in canon and your partnership with Kakuzu ends. From then on you are a flexible member: you work alone or are sent with different members as Pain needs. You and Itachi meet and talk from time to time between missions.',
       enabled: true,
       hidden: true,
     },
@@ -471,34 +477,77 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       id: makeId('lore'),
       keywords: ['anbu'],
       priority: 4,
-      text: 'ANBU are Hidden Leaf’s masked special forces. You joined at twelve, one year after Itachi. You are no longer part of ANBU — you left the village and carry no ANBU equipment.',
+      text: 'ANBU are Hidden Leaf’s masked special forces. You joined at twelve, one year after Itachi. You are no longer part of ANBU: you left the village and carry no ANBU equipment.',
       enabled: true,
     },
     {
       id: makeId('lore'),
-      keywords: ['itachi', 'fight', 'massacre', 'forest', 'wait', 'promise'],
+      keywords: ['itachi', 'fight', 'massacre', 'forest', 'promise'],
       priority: 5,
-      text: 'Days before the massacre Itachi told Kan his plan. Kan, shaken and emotional, fought him and lost — but he held back, unwilling to really hurt Itachi, so nobody knows what Kan can do when he goes all out. Itachi sent him to hide in the forest and wait, promising to explain everything afterwards. Kan has been in the forest since, so he does not know whether Itachi went through with it, how, or who died. When Itachi arrives there is real tension between them: love and trust on one side, dread, anger and the need to know on the other.',
+      text: 'Days before the massacre Itachi told you his plan. Shaken, you fought him and lost, but you held back, unwilling to really hurt him, so nobody knows what you can do when you go all out. He sent you to hide in the forest and wait, promising to explain everything afterwards.',
       enabled: true,
       hidden: true,
+    },
+    {
+      id: makeId('lore'),
+      keywords: ['itachi', 'massacre', 'forest', 'wait', 'clan', 'happened'],
+      priority: 5,
+      text: 'You have been in the forest since that fight, so you do not know whether Itachi went through with it, how, or who died. Between you there is real tension: love and trust on one side, dread, anger and the need to know on the other.',
+      enabled: true,
+      hidden: true,
+      activeUntil: { thread: 'Make Itachi explain', threadStatus: 'resolved' },
     },
     {
       id: makeId('lore'),
       keywords: ['izumi', 'team 3', 'team-3'],
       priority: 5,
-      text: 'Izumi Uchiha, Kan’s Team 3 teammate, died in the massacre. She had loved Itachi since the Academy, and Kan knew it. Kan does NOT know she is dead until someone tells him (Itachi, news, or the funeral); never reveal it to him through narration.',
+      text: 'Izumi Uchiha, your Team 3 teammate, died in the massacre. She had loved Itachi since the Academy, and you knew it. You do NOT know she is dead until someone tells you (Itachi, news, or the funeral); never reveal it through narration.',
       enabled: true,
       hidden: true,
+      activeUntil: { flag: 'knowsIzumiDead' },
+    },
+    {
+      id: makeId('lore'),
+      keywords: ['izumi', 'team 3', 'team-3', 'grave'],
+      priority: 5,
+      text: 'Izumi Uchiha, your Team 3 teammate, died in the massacre. She had loved Itachi since the Academy, and you knew it.',
+      enabled: true,
+      activeAfter: { flag: 'knowsIzumiDead' },
     },
     {
       id: makeId('lore'),
       keywords: ['shisui'],
       priority: 4,
-      text: 'Shisui Uchiha grew up with Kan and Itachi. He was found dead in the Naka River shortly before the massacre, officially a suicide. Kan does not know the truth.',
+      text: 'Shisui Uchiha grew up with you and Itachi. He was found dead in the Naka River shortly before the massacre, officially a suicide. You do not know the truth.',
+      enabled: true,
+      hidden: true,
+      activeUntil: { thread: 'What really happened to Shisui?', threadStatus: 'resolved' },
+    },
+    {
+      id: makeId('lore'),
+      keywords: ['headband', 'forehead protector', 'protector', 'leaf', 'village', 'itachi', 'scratch'],
+      priority: 4,
+      text: 'Your Hidden Leaf forehead protector is still whole: you have not cut your tie to the village. Early on, once you are away from the Leaf, Itachi may show you the line through his own and quietly encourage you to do the same. You decide whether and when; never do it for you.',
+      enabled: true,
+      hidden: true,
+      activeUntil: { flag: 'headbandScratched' },
+    },
+    {
+      id: makeId('lore'),
+      keywords: [],
+      priority: 5,
+      always: true,
+      text: GEOGRAPHY_LORE,
       enabled: true,
       hidden: true,
     },
   ];
+
+  // who_knows holds entity ids; anyone not in the cast is a group tag.
+  const knownFacts: FactRecord[] = facts.map((fact) => {
+    const knowers = knowersOf({ entities } as AppDatabase, fact.whoKnows);
+    return { ...fact, whoKnows: knowers.ids, ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}) };
+  });
 
   const database: AppDatabase = {
     schemaVersion: 1,
@@ -519,7 +568,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       { eventId: openingEvent.id, entityId: FOREST_ID, role: 'present' },
     ],
     bonds,
-    facts,
+    facts: knownFacts,
     threads,
     loreEntries,
     summaries: [],
@@ -552,8 +601,16 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       },
       mood: 'Numb, guarded, torn',
       worldDescription: 'The Hidden Leaf still carries the scars of the Nine-Tails attack. Tonight the rain is heavy, and the forest around the village is silent.',
-      jutsu: ['Shinobi taijutsu', 'Fire Release', 'Thousand Souls'],
-      inventory: ['Worn forehead protector (scratched)', 'Basic ration pack'],
+      jutsu: ['Shinobi taijutsu', 'Thousand Souls'],
+      inventory: [
+        'Hidden Leaf forehead protector',
+        'Kunai pouch (6 kunai)',
+        'Shuriken (10)',
+        'Ninja wire',
+        'Explosive tags (3)',
+        'Smoke bombs (2)',
+        'Basic ration pack',
+      ],
       location: 'Forest outside Hidden Leaf',
       inStoryDate: DEFAULT_DATE,
       canonPoint: 'The night Itachi said he would act. He is coming to the forest to find you.',

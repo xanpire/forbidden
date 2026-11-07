@@ -1,14 +1,143 @@
 // Permanent facts, plot threads and scene-end memories from a turn.
 
-import { normalizeDate } from './calendar';
+import { dateSortValue, normalizeDate, shiftSeconds } from './calendar';
+import { kanKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import { trimToSentence, uniqueList } from './util';
-import type { AppDatabase, EntityRecord, EventRecord, TurnDiff } from './types';
+import type { AppDatabase, EntityRecord, EventRecord, FactRecord, TurnDiff } from './types';
 
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
 
 type ThreadDiff = NonNullable<TurnDiff['threads']>[number];
+
+/** The short handle the state tracker uses for a fact ("f-3k9x2a"). */
+export function factRef(fact: { id: string }) {
+  return `f-${fact.id.slice(-6)}`;
+}
+
+/** An active fact by its ref or full id. */
+export function findActiveFact(db: AppDatabase, ref: string) {
+  const wanted = ref.trim().toLowerCase();
+
+  return (
+    db.facts.find(
+      (fact) => fact.validTo === null && (fact.id.toLowerCase() === wanted || factRef(fact) === wanted)
+    ) ?? null
+  );
+}
+
+/** Ends active facts (by ref or id) as of now. */
+export function endFacts(db: AppDatabase, refs: string[], replacedBy?: string): AppDatabase {
+  const ids = new Set(
+    refs.map((ref) => findActiveFact(db, ref)?.id).filter((id): id is string => Boolean(id) && id !== replacedBy)
+  );
+
+  if (ids.size === 0) {
+    return db;
+  }
+
+  return {
+    ...db,
+    facts: db.facts.map((fact) => (ids.has(fact.id) ? { ...fact, validTo: db.state.inStoryDate } : fact)),
+  };
+}
+
+function groupTag(name: string) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/^the\s+/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * Who knows a fact: people as entity ids, everyone else as group tags
+ * ("Hidden Leaf leadership" → "hidden-leaf-leadership"). Entity ids already
+ * in the list stay as they are.
+ */
+export function knowersOf(db: AppDatabase, names: string[]): { ids: string[]; groups: string[] } {
+  const ids: string[] = [];
+  const groups: string[] = [];
+
+  for (const raw of names) {
+    const name = raw?.trim();
+
+    if (!name) continue;
+
+    if (db.entities.some((entity) => entity.id === name)) {
+      ids.push(name);
+      continue;
+    }
+
+    const entity = resolveEntity(db, name);
+
+    if (entity) {
+      ids.push(entity.id);
+    } else if (groupTag(name)) {
+      groups.push(groupTag(name));
+    }
+  }
+
+  return { ids: uniqueList(ids), groups: uniqueList(groups) };
+}
+
+/** The names of whoever knows a fact, for prompts and the Journal. */
+export function knowerNames(db: AppDatabase, fact: Pick<FactRecord, 'whoKnows' | 'whoKnowsGroups'>) {
+  const names = fact.whoKnows.map((id) => db.entities.find((entity) => entity.id === id)?.name ?? id);
+  const groups = (fact.whoKnowsGroups ?? []).map((tag) => tag.replace(/-/g, ' '));
+
+  return [...names, ...groups];
+}
+
+function kanEntity(db: AppDatabase) {
+  return db.entities.find((entity) => entity.name.toLowerCase() === 'kan') ?? null;
+}
+
+const NOT_YET = /\b(does not know|doesn't know|do not know|don't know|not yet|has not (?:yet )?(?:learned|heard|been told))\b/i;
+const STOP = new Set(['the', 'a', 'an', 'and', 'of', 'to', 'in', 'on', 'is', 'was', 'that', 'this', 'with', 'for', 'his', 'her', 'their', 'you', 'your', 'kan', 'kan’s', "kan's", 'yet', 'not', 'does', 'know', 'knows', 'now', 'has', 'had', 'been']);
+
+function contentWords(text: string) {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s'’]/gu, ' ')
+      .split(/\s+/)
+      .filter((word) => word.length > 2 && !STOP.has(word))
+  );
+}
+
+/** Whether the new fact turns an old "does not know yet" fact about the same thing into the past. */
+function overtakes(previous: FactRecord, next: { text: string; subjectEntityId: string | null }) {
+  if (previous.subjectEntityId !== next.subjectEntityId || !NOT_YET.test(previous.text) || NOT_YET.test(next.text)) {
+    return false;
+  }
+
+  const before = contentWords(previous.text);
+  const after = contentWords(next.text);
+  const shared = [...after].filter((word) => before.has(word)).length;
+
+  return after.size > 0 && shared / Math.min(before.size, after.size) >= 0.5;
+}
+
+/** Default lifetimes: a passing condition lasts until rest, an injury about a week, a plan a few days. */
+function lifetime(db: AppDatabase, fact: FactDiff): Pick<FactRecord, 'expiresAt' | 'untilRest'> {
+  const lasts = fact.lasts ?? (fact.type === 'condition' ? 'until_rest' : fact.type === 'injury' || fact.type === 'plan' ? 'days' : 'lasting');
+
+  if (lasts === 'until_rest') {
+    return { untilRest: true };
+  }
+
+  if (lasts === 'days') {
+    const days =
+      typeof fact.days === 'number' && fact.days > 0 ? Math.min(fact.days, 365) : fact.type === 'injury' ? 7 : 3;
+    return { expiresAt: shiftSeconds(db.state.inStoryDate, Math.round(days * 86400)) };
+  }
+
+  return {};
+}
 
 export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
   if (!fact?.text || typeof fact.text !== 'string') {
@@ -47,7 +176,8 @@ export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
     };
   }
 
-  const subjectEntity = fact.subject ? resolveEntity(db, fact.subject) : null;
+  // Every fact is about someone: whoever the tracker named, else Kan.
+  const subjectEntity = (fact.subject ? resolveEntity(db, fact.subject) : null) ?? kanEntity(db);
 
   const duplicate = db.facts.find(
     (item) =>
@@ -58,25 +188,75 @@ export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
   );
 
   if (duplicate) {
+    // Saying it again renews a temporary condition.
+    if (duplicate.expiresAt || duplicate.untilRest) {
+      return {
+        ...db,
+        facts: db.facts.map((item) => (item.id === duplicate.id ? { ...item, ...lifetime(db, fact) } : item)),
+      };
+    }
+
     return db;
   }
 
-  const newFact = {
+  const knowers = knowersOf(db, Array.isArray(fact.whoKnows) ? fact.whoKnows : []);
+  const claimant = fact.claimedBy ? resolveEntity(db, fact.claimedBy) : null;
+  const replaced = (fact.supersedes ?? [])
+    .map((ref) => findActiveFact(db, ref))
+    .filter((item): item is FactRecord => Boolean(item));
+  const newFact: FactRecord = {
     id: makeId('fact'),
     subjectEntityId: subjectEntity?.id ?? null,
     type: fact.type ?? 'other',
     text: text.slice(0, 200),
-    whoKnows: Array.isArray(fact.whoKnows) ? fact.whoKnows.filter(Boolean) : [],
+    whoKnows: knowers.ids,
+    ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
     validFrom: currentDate,
     validTo: null,
-    confidence: 'confirmed' as const,
+    confidence: fact.claimedBy ? 'claimed' : 'confirmed',
+    ...(claimant ? { claimedBy: claimant.id } : {}),
+    ...lifetime(db, fact),
+    ...(replaced[0] ? { supersedes: replaced[0].id } : {}),
     sourceEventId: null,
   };
 
-  return {
-    ...db,
-    facts: [...db.facts, newFact],
-  };
+  // What this fact replaces, and any "does not know yet" it overtakes, ends now.
+  const overtaken = db.facts.filter((item) => item.validTo === null && overtakes(item, newFact));
+  let next: AppDatabase = { ...db, facts: [...db.facts, newFact] };
+  next = endFacts(next, [...replaced, ...overtaken].map((item) => item.id), newFact.id);
+
+  return next;
+}
+
+/**
+ * Runs after a turn: temporary conditions run out (their date passed, or a
+ * rest ended them), and a "does not know yet" about someone's death ends once
+ * Kan knows.
+ */
+export function expireFacts(db: AppDatabase, options: { rested: boolean }): AppDatabase {
+  const now = db.state.inStoryDate;
+  const nowValue = dateSortValue(now);
+  let changed = false;
+
+  const facts = db.facts.map((fact) => {
+    if (fact.validTo !== null) {
+      return fact;
+    }
+
+    const subject = fact.subjectEntityId ? db.entities.find((entity) => entity.id === fact.subjectEntityId) : undefined;
+    const ran = fact.expiresAt !== undefined && dateSortValue(fact.expiresAt) <= nowValue;
+    const rested = options.rested && fact.untilRest === true;
+    const learned = subject !== undefined && NOT_YET.test(fact.text) && fact.type === 'death' && kanKnowsDeath(db, subject);
+
+    if (ran || rested || learned) {
+      changed = true;
+      return { ...fact, validTo: now };
+    }
+
+    return fact;
+  });
+
+  return changed ? { ...db, facts } : db;
 }
 
 export function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabase {

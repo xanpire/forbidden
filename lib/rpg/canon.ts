@@ -23,6 +23,9 @@ import {
   type CanonWindow,
 } from './canonData';
 import { markDeathsByName } from './deaths';
+import { knowersOf } from './facts';
+import { resolveEntity } from './entities';
+import { mentionsName } from './characterRefs';
 import { makeId } from './id';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
@@ -107,7 +110,8 @@ function addFactOnce(
   id: string,
   text: string,
   whoKnows: string[],
-  validFrom: CalendarDate = db.state.inStoryDate
+  validFrom: CalendarDate = db.state.inStoryDate,
+  subjectEntityId: string | null = factSubject(db, text)
 ): AppDatabase {
   const lower = text.toLowerCase();
 
@@ -115,12 +119,14 @@ function addFactOnce(
     return db;
   }
 
+  const knowers = knowersOf(db, whoKnows);
   const fact: FactRecord = {
     id,
-    subjectEntityId: null,
+    subjectEntityId,
     type: 'event',
     text: text.slice(0, 200),
-    whoKnows,
+    whoKnows: knowers.ids,
+    ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
     validFrom,
     validTo: null,
     confidence: 'confirmed',
@@ -159,6 +165,41 @@ function resolveThread(db: AppDatabase, titleKey: string): AppDatabase {
   };
 }
 
+/** Who a canon fact is about: you when it says "you", else the first person it names, else you. */
+function factSubject(db: AppDatabase, text: string): string | null {
+  const kan = db.entities.find((entity) => entity.name.toLowerCase() === 'kan');
+
+  if (/\b(you|your)\b/i.test(text)) {
+    return kan?.id ?? null;
+  }
+
+  let first: { id: string; at: number } | null = null;
+
+  for (const entity of db.entities) {
+    if (entity.type !== 'character' || entity === kan) continue;
+
+    for (const name of [entity.name, ...entity.aliases]) {
+      const at = text.toLowerCase().indexOf(name.toLowerCase());
+
+      if (at !== -1 && mentionsName(text, name) && (!first || at < first.at)) {
+        first = { id: entity.id, at };
+      }
+    }
+  }
+
+  return first?.id ?? kan?.id ?? null;
+}
+
+/** Where a personal beat stands: offered to you, accepted (under way), or completed on the page. */
+export function milestoneStage(db: AppDatabase, milestoneId: string): 'offered' | 'accepted' | 'completed' | null {
+  const progress = normalizeProgress(db);
+
+  if (progress.completed.includes(milestoneId)) return 'completed';
+  if (progress.engaged.includes(milestoneId)) return 'accepted';
+  if (upcomingCanonMilestones(db, 99).some((milestone) => milestone.id === milestoneId)) return 'offered';
+  return null;
+}
+
 const hasFired = (db: AppDatabase, milestoneId: string) =>
   db.events.some((event) => event.id === eventIdFor(milestoneId));
 
@@ -166,7 +207,9 @@ const hasFired = (db: AppDatabase, milestoneId: string) =>
 function fireMilestone(
   db: AppDatabase,
   milestone: CanonMilestone,
-  happenedAt: CalendarDate = db.state.inStoryDate
+  happenedAt: CalendarDate = db.state.inStoryDate,
+  /** Who saw it happen (Kan and the scene cast); world events go by how word travels instead. */
+  witnesses?: string[]
 ): AppDatabase {
   if (hasFired(db, milestone.id)) {
     return db;
@@ -191,8 +234,12 @@ function fireMilestone(
     ],
   };
 
+  // Outcome facts carry the real moment, who they are about, and who knows:
+  // the people who were there, or (for world events) the groups word reaches.
+  const knowers = witnesses ?? [`${milestone.knowledge ?? 'public'} knowledge`];
+
   for (const text of milestone.facts) {
-    next = addFactOnce(next, `fact_canon_${milestone.id}_${next.facts.length}`, text, [], happenedAt);
+    next = addFactOnce(next, `fact_canon_${milestone.id}_${next.facts.length}`, text, knowers, happenedAt);
   }
 
   if (milestone.deaths?.length) {
@@ -223,11 +270,14 @@ function fireMilestone(
           title: seed.title,
           description: seed.description,
           status: 'open',
-          openedAt: db.state.inStoryDate,
+          openedAt: happenedAt,
           resolvedAt: null,
           importance: seed.importance ?? 3,
           participants: seed.participants ?? [],
-          sourceEventId: null,
+          participantIds: (seed.participants ?? [])
+            .map((name) => resolveEntity(next, name)?.id)
+            .filter((id): id is string => Boolean(id)),
+          sourceEventId: eventIdFor(milestone.id),
         },
       ],
     };
@@ -282,6 +332,11 @@ function gateOpen(db: AppDatabase, milestone: CanonMilestone): boolean {
   return !milestone.after || hasFired(db, milestone.after);
 }
 
+/** You and whoever is in the scene. */
+function sceneWitnesses(db: AppDatabase): string[] {
+  return ['Kan', ...(db.state.sceneCast ?? [])];
+}
+
 // ---------------------------------------------------------------------------
 // State-tracker marks
 // ---------------------------------------------------------------------------
@@ -308,7 +363,9 @@ export function applyCanonMarks(
     }
 
     if (!progress.completed.includes(id)) {
-      next = fireMilestone(next, milestone);
+      // The state reply confirmed the moment itself: it happens now, seen by
+      // you and whoever is in the scene.
+      next = fireMilestone(next, milestone, next.state.inStoryDate, sceneWitnesses(next));
       progress = { ...progress, completed: [...progress.completed, id] };
     }
 
@@ -334,7 +391,8 @@ export function applyCanonMarks(
       continue;
     }
 
-    next = fireMilestone(next, milestone);
+    // Accepted, not done: nothing it promises is true yet (no facts, no
+    // threads, no canon point) until the state reply marks it completed.
     progress = {
       ...progress,
       active: addId(progress.active, id),
@@ -433,7 +491,6 @@ export function advanceCanon(db: AppDatabase, options: { inCombat?: boolean } = 
 
     if (milestone.playerDriven) {
       if (progress.engaged.includes(id)) {
-        next = fireMilestone(next, milestone);
         progress = { ...progress, active: addId(progress.active, id) };
       } else if (!notClosed) {
         complete(id);
@@ -482,9 +539,12 @@ export function advanceCanon(db: AppDatabase, options: { inCombat?: boolean } = 
     complete(activeId);
     progress = { ...progress, engaged: dropId(progress.engaged, activeId) };
 
-    // A beat that was engaged already happened in-scene; it is not missed.
+    // A beat you accepted is not missed: if the page never showed the moment
+    // itself, it happened off the page by the time its window closed.
     if (!wasEngaged) {
       next = addMissedFact(next, milestone);
+    } else if (!hasFired(next, milestone.id)) {
+      next = fireMilestone(next, milestone, next.state.inStoryDate, sceneWitnesses(next));
     }
   }
 

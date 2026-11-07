@@ -355,8 +355,21 @@ export function convertStateBlock(
     diff.facts = block.facts
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
-        const fact = item as { entity?: unknown; fact?: unknown; type?: unknown; who_knows?: unknown };
+        const fact = item as {
+          entity?: unknown;
+          fact?: unknown;
+          type?: unknown;
+          who_knows?: unknown;
+          supersedes?: unknown;
+          claimed_by?: unknown;
+          lasts?: unknown;
+          days?: unknown;
+        };
         const whoKnows = stringItems(fact.who_knows);
+        const supersedes = stringItems(fact.supersedes);
+        const lasts: 'lasting' | 'until_rest' | 'days' | undefined =
+          fact.lasts === 'lasting' || fact.lasts === 'until_rest' || fact.lasts === 'days' ? fact.lasts : undefined;
+        const claimedBy = cleanString(fact.claimed_by);
 
         return {
           action: 'add' as const,
@@ -364,9 +377,19 @@ export function convertStateBlock(
           text: typeof fact.fact === 'string' ? fact.fact : '',
           subject: cleanString(fact.entity),
           ...(whoKnows.length > 0 ? { whoKnows } : {}),
+          ...(supersedes.length > 0 ? { supersedes } : {}),
+          ...(claimedBy && claimedBy.toLowerCase() !== 'kan' ? { claimedBy } : {}),
+          ...(lasts ? { lasts } : {}),
+          ...(typeof fact.days === 'number' && Number.isFinite(fact.days) && fact.days > 0 ? { days: fact.days } : {}),
         };
       })
       .filter((item) => item.text.trim().length > 0);
+  }
+
+  const factsEnded = stringItems(block.facts_ended);
+
+  if (factsEnded.length > 0) {
+    diff.factsEnded = factsEnded;
   }
 
   if (Array.isArray(block.threads)) {
@@ -528,7 +551,8 @@ function asLocationKind(value: unknown): LocationKind | undefined {
 }
 
 const FACT_TYPE_VALUES: FactType[] = [
-  'death', 'injury', 'secret', 'knowledge', 'membership', 'possession', 'event', 'other',
+  'death', 'injury', 'condition', 'secret', 'knowledge', 'membership', 'possession',
+  'relationship', 'plan', 'figure', 'event', 'other',
 ];
 
 function asFactType(value: unknown): FactType {

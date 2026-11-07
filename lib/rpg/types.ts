@@ -14,13 +14,22 @@ export type EntityType = 'character' | 'place' | 'faction' | 'object';
 
 export type EventEntityRole = 'present' | 'mentioned' | 'participant';
 
+/**
+ * The fixed set of fact types (see FACT_TYPE_RULES in prompt.ts for what each
+ * one is for): a tied headband is not an injury, and "the clan is dead" is an
+ * event, not a death fact about whoever did it.
+ */
 export type FactType =
   | 'death'
   | 'injury'
+  | 'condition'
   | 'secret'
   | 'knowledge'
   | 'membership'
   | 'possession'
+  | 'relationship'
+  | 'plan'
+  | 'figure'
   | 'event'
   | 'other';
 
@@ -48,6 +57,31 @@ export type PlayerSheet = {
   sensei: string;
   personality: string[];
   secretNotes: string[];
+  /** Kan's chakra natures: innate ones, and those taken with Thousand Souls. */
+  natures?: NatureRecord[];
+  /** Dōjutsu and other abilities, each at its current stage. */
+  abilities?: AbilityRecord[];
+};
+
+export type NatureRecord = {
+  /** Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava… */
+  nature: string;
+  source: 'innate' | 'thousand-souls';
+  /** Whose chakra it came from (Thousand Souls). */
+  from?: string;
+  acquiredOn: CalendarDate;
+};
+
+export type AbilityRecord = {
+  /** "Sharingan", "Mangekyō Sharingan", "Susanoo"… */
+  name: string;
+  /** "1 tomoe", "2 tomoe", "3 tomoe", "awakened", "ribcage", "full body"… */
+  stage: string;
+  acquiredOn: CalendarDate;
+  /** When it reached its current stage. */
+  stageOn: CalendarDate;
+  /** Every stage it has had, oldest first. */
+  history?: { stage: string; date: CalendarDate }[];
 };
 
 export type LocationKind = 'settlement' | 'road' | 'wilderness' | 'structure';
@@ -302,14 +336,30 @@ export type BondRecord = {
 
 export type FactRecord = {
   id: string;
+  /** Who the fact is about. Always set for new facts (Kan when nobody else). */
   subjectEntityId: string | null;
   type: FactType;
   text: string;
+  /** Entity ids of the people who know it. */
   whoKnows: string[];
+  /** Groups who know it, as tags ("hidden-leaf-leadership", "anbu-command"). */
+  whoKnowsGroups?: string[];
   validFrom: CalendarDate;
+  /** Set when the fact ended: replaced, contradicted, expired. Only facts without it are active. */
   validTo: CalendarDate | null;
-  confidence: 'confirmed' | 'rumored';
+  /** confirmed: it happened. claimed: someone said so (see claimedBy). */
+  confidence: 'confirmed' | 'rumored' | 'claimed';
+  /** Entity id of whoever claimed it, for confidence "claimed". */
+  claimedBy?: string;
+  /** A temporary condition ends on its own at this date unless renewed. */
+  expiresAt?: CalendarDate;
+  /** A temporary condition that ends at the next sleep or long rest. */
+  untilRest?: boolean;
+  /** The fact this one replaced, if any. */
+  supersedes?: string;
   sourceEventId: string | null;
+  /** The story turn (assistant log entry) that recorded it. */
+  sourceLogId?: string;
 };
 
 export type ThreadRecord = {
@@ -322,7 +372,11 @@ export type ThreadRecord = {
   resolvedAt: CalendarDate | null;
   importance: 1 | 2 | 3 | 4 | 5;
   participants: string[];
+  /** The same people as entity ids. */
+  participantIds?: string[];
   sourceEventId: string | null;
+  /** The story turn (assistant log entry) that opened it. */
+  sourceLogId?: string;
 };
 
 export type LoreRecord = {
@@ -333,7 +387,30 @@ export type LoreRecord = {
   enabled: boolean;
   /** Narrator-only guidance; never shown in the Journal. */
   hidden?: boolean;
+  /** Always in the narrator's prompt, whatever the turn mentions (geography, say). */
+  always?: boolean;
+  /** Only once this holds (see loreActive). */
+  activeAfter?: LoreCondition;
+  /** Only until this holds. */
+  activeUntil?: LoreCondition;
 };
+
+/**
+ * Something the story reaches. Every field given must hold.
+ * - milestone: a canon milestone Kan completed or took part in
+ * - thread / threadStatus: a thread (by title) with that status (default resolved)
+ * - fact: an active fact containing this text
+ * - flag: a state flag the app works out (see LORE_FLAGS in lore.ts)
+ */
+export type LoreCondition = {
+  milestone?: string;
+  thread?: string;
+  threadStatus?: 'open' | 'resolved';
+  fact?: string;
+  flag?: LoreFlag;
+};
+
+export type LoreFlag = 'hasSharingan' | 'hasMangekyo' | 'knowsIzumiDead' | 'headbandScratched' | 'joinedAkatsuki';
 
 export type SummaryRecord = {
   id: string;
@@ -599,7 +676,16 @@ export type TurnDiff = {
     subject?: string;
     whoKnows?: string[];
     validFrom?: CalendarDate;
+    /** Refs ("f-…") or ids of active facts this one replaces. */
+    supersedes?: string[];
+    /** How long it holds: lasting (default), until the next rest, or a number of days. */
+    lasts?: 'lasting' | 'until_rest' | 'days';
+    days?: number;
+    /** Who said it, when it is only a claim. */
+    claimedBy?: string;
   }[];
+  /** Refs or ids of active facts that stopped being true this turn. */
+  factsEnded?: string[];
   threads?: {
     action: 'open' | 'update' | 'resolve';
     title: string;

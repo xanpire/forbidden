@@ -28,6 +28,7 @@ import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { isDeceased, kanKnowsDeath } from './deaths';
 import { companionsOf, daysTogether, formatTogether } from './companions';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
+import { factRef, knowerNames } from './facts';
 import type {
   AppDatabase,
   EntityRecord,
@@ -81,7 +82,7 @@ OUTPUT
 const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is Kan. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
 
 - Report only what THIS turn shows changed: null when unchanged, [] when empty. Never invent anything or contradict the state below.
-- Player-facing text calls Kan "you" (world_description, canon_point, threads, bond status and notes, jutsu effects). Use "Kan" in facts and the jutsu "user" field.
+- Every text you write calls Kan "you", never "Kan", "he" or "him" (facts, threads, world_description, canon_point, bond status and notes, jutsu effects and visuals, scene titles). Only ids and the jutsu "user" field use "kan".
 
 TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. Count only what the narration shows happening: plans or times spoken in dialogue ("walk until nightfall", "we leave at dawn") have not happened and add nothing. time.clock_time stays null unless the narration itself names the hour ("at noon", "by dusk", "3 PM"); never guess it. TIME BEFORE THIS TURN is the clock the turn starts from, so a clock_time must fit it plus time.elapsed. scene_pace: combat, chase, conversation, travel, or downtime.
 
@@ -95,7 +96,7 @@ DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: t
 
 JUTSU: jutsu_used lists every named jutsu, by anyone. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Kan's own jutsu keep the exact name the player wrote ("Fire Style: Hell" stays "Fire Style: Hell", never a generic canon name like "Fire Release"); for a jutsu already on record, reuse its recorded name. "Style" and "Release" mean the same. Keep effect and visual short and consistent with earlier uses.
 
-MEMORY: facts are lasting truths (a death, injury, secret, membership, key item or event) with who_knows. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Ambush at the river ford"), only when this turn starts a new scene (Kan reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null.
+MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "kan" for you), a type, and who_knows (ids of people who know it, or group names like "Hidden Leaf leadership"). Types: death (someone died), injury (a wound to someone's body), condition (a passing state: chakra drain, exhaustion, soaked, a headache, Sharingan active), secret, knowledge (someone learned something), membership (joined or left a group), possession (an item gained, lost or changed: tying or scratching a headband is possession, never injury), relationship, plan (an intention or travel plan), figure (a number stated in the story: a bounty, a price, a distance, a deadline, a travel time, word for word), event (anything else that happened; "the clan is dead" is an event, not a death fact about whoever did it). A boast, rumor or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition that a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT (you learned what you did not know, a plan changed, a wound healed), list that fact's ref in supersedes; list refs that simply stopped being true in facts_ended. threads are promises, debts, grudges, mysteries, quests, or goals: "open" for new, "update" or "resolved" reusing the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Ambush at the river ford"), only when this turn starts a new scene (Kan reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null.
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
@@ -171,14 +172,19 @@ export function buildNarrationPrompt(
       .filter((entity) => mentionsEntity(entityText, entity))
       .map((entity) => entity.id),
   ]);
-  const facts = relevantFacts(db, matchedEntityIds, entityText);
-  const lore = triggeredLore(db, entityText);
+  const allFacts = relevantFacts(db, matchedEntityIds, entityText);
+  const allLore = triggeredLore(db, entityText);
+  // What the prompt budget cuts first (see the loop at the end): older
+  // memories, then the less relevant facts and lore, and only then the
+  // oldest lines of the recent scene.
+  let facts = allFacts;
+  let lore = allLore;
   const storySoFar = getStorySoFar(db);
   const shownSummaries = new Set(
     [storySoFar.arc, ...storySoFar.chapters].filter((text): text is string => Boolean(text))
   );
   // A memory saved from a summary that is already shown would only repeat it.
-  const freshMemories = memories.filter(
+  let freshMemories = memories.filter(
     (memory) =>
       !shownSummaries.has(memory.summary) &&
       !(memory.summaryId && storySoFar.ids.includes(memory.summaryId))
@@ -208,7 +214,7 @@ export function buildNarrationPrompt(
       formatCompanions(db),
       formatTimeLine(db),
       formatMatchedEntities(db, matchedEntityIds),
-      formatFacts(facts),
+      formatFacts(db, facts),
       formatLore(lore),
       formatNewsBlock(db),
       formatLetterBlock(db),
@@ -250,8 +256,25 @@ export function buildNarrationPrompt(
   let messages = assemble(sceneMessages);
   let estimated = estimateTokens(messages);
 
-  // Prompt budget: drop the oldest scene messages rather than let the prompt
-  // creep upward over a long story.
+  // Prompt budget: cut the least important material first — recalled
+  // memories, then the less relevant facts and lore — and the recent scene
+  // last, oldest lines first.
+  const cuts: (() => boolean)[] = [
+    () => (freshMemories.length > 2 ? ((freshMemories = freshMemories.slice(0, 2)), true) : false),
+    () => (facts.length > 6 ? ((facts = facts.slice(0, 6)), true) : false),
+    () => (lore.length > 2 ? ((lore = lore.slice(0, 2)), true) : false),
+    () => (freshMemories.length > 0 ? ((freshMemories = []), true) : false),
+    () => (facts.length > 3 ? ((facts = facts.slice(0, 3)), true) : false),
+  ];
+
+  for (const cut of cuts) {
+    if (estimated <= budget) break;
+    if (cut()) {
+      messages = assemble(sceneMessages);
+      estimated = estimateTokens(messages);
+    }
+  }
+
   while (estimated > budget && sceneMessages.length > MIN_SCENE_MESSAGES) {
     sceneMessages = sceneMessages.slice(1);
     messages = assemble(sceneMessages);
@@ -284,11 +307,13 @@ export function buildExtractionPrompt(
     formatCharacterRoster(db),
     formatJutsu(db),
     formatBonds(db),
-    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
     formatThreads(db),
   ].join('\n\n');
 
   const dynamic = [
+    // Facts move every turn, so they sit outside the cached part, with refs
+    // the tracker can end or replace.
+    formatFacts(db, stateFacts(db, `${userMessage}\n${assistantMessage}`), { refs: true }),
     formatState(db),
     formatCompanionIds(db),
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
@@ -381,7 +406,7 @@ export function buildTimeSkipPrompt(
     TIME_SKIP_SYSTEM,
     formatState(db),
     formatBonds(db),
-    formatFacts(db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
+    formatFacts(db, db.facts.filter((fact) => fact.validTo === null).slice(0, 10)),
   ].join('\n\n');
 
   const user = `TIME SKIP:\nFrom ${from}\nTo ${to}\n\nWrite the "meanwhile" summary now.`;
@@ -701,18 +726,45 @@ function formatTheDead(db: AppDatabase) {
   ].join('\n');
 }
 
-function formatFacts(facts: FactRecord[]) {
-  if (facts.length === 0) {
+function formatFacts(db: AppDatabase, facts: FactRecord[], options: { refs?: boolean } = {}) {
+  const active = facts.filter((fact) => fact.validTo === null);
+
+  if (active.length === 0) {
     return 'PERMANENT FACTS\nNone.';
   }
 
   return [
-    'PERMANENT FACTS',
-    ...facts.map(
-      (fact) =>
-        `- ${truncate(fact.text, 100)}${fact.whoKnows.length > 0 ? ` (known by: ${truncate(fact.whoKnows.join(', '), 40)})` : ''}`
-    ),
+    options.refs ? 'ACTIVE FACTS (ref: fact) — end or replace by ref' : 'PERMANENT FACTS',
+    ...active.map((fact) => {
+      const knowers = knowerNames(db, fact);
+      const claim =
+        fact.confidence === 'claimed'
+          ? ` [claimed by ${db.entities.find((entity) => entity.id === fact.claimedBy)?.name ?? 'someone'}]`
+          : '';
+      const temporary = fact.untilRest ? ' [until rest]' : fact.expiresAt ? ' [temporary]' : '';
+
+      return `- ${options.refs ? `${factRef(fact)}: ` : ''}${truncate(fact.text, 100)}${claim}${temporary}${knowers.length > 0 ? ` (known by: ${truncate(knowers.join(', '), 40)})` : ''}`;
+    }),
   ].join('\n');
+}
+
+/** Facts the state tracker sees: the ones about people in this turn first, then the newest. */
+function stateFacts(db: AppDatabase, turnText: string) {
+  const active = db.facts.filter((fact) => fact.validTo === null);
+  const here = new Set(
+    db.entities
+      .filter((entity) => entity.type === 'character' && mentionsEntity(turnText, entity))
+      .map((entity) => entity.id)
+  );
+  const about = active.filter((fact) => fact.subjectEntityId && here.has(fact.subjectEntityId));
+  const newest = [...active].reverse();
+
+  return uniqueById([...about, ...newest]).slice(0, 14);
+}
+
+function uniqueById<T extends { id: string }>(items: T[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
 }
 
 function formatThreads(db: AppDatabase) {
@@ -747,7 +799,7 @@ function formatLore(lore: AppDatabase['loreEntries']) {
 
   return [
     'RELEVANT LORE',
-    ...lore.map((entry) => `- ${truncate(entry.text, 150)}`),
+    ...lore.map((entry) => `- ${truncate(entry.text, entry.always ? 1400 : 600)}`),
   ].join('\n');
 }
 
@@ -852,14 +904,15 @@ function formatCanonTracking(db: AppDatabase) {
   const lines: string[] = [];
 
   for (const milestone of activeCanonMilestones(db).slice(0, 2)) {
+    const accepted = milestone.playerDriven ? ' You accepted it; it is under way.' : '';
     lines.push(
-      `- ${milestone.id}: ${truncate(milestone.title, 70)} (active story beat). canon_engaged if Kan's scene took part in it this turn; canon_completed if it fully played out on the page; canon_passed if the chance clearly slipped by (Kan left, time moved on).`
+      `- ${milestone.id}: ${truncate(milestone.title, 70)} (active story beat).${accepted} canon_completed only at the moment it fully plays out on the page${milestone.completesWhen ? `: ${milestone.completesWhen}` : ''}; canon_engaged if Kan's scene took part in it this turn; canon_passed if the chance clearly slipped by (Kan left, time moved on).`
     );
   }
 
   for (const beat of upcomingCanonMilestones(db, PERSONAL_OFFERS_PER_TURN)) {
     lines.push(
-      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat). canon_engaged / canon_completed only if Kan actually did it in this turn — never because time passed.`
+      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat, offered). canon_engaged when Kan accepts or starts it this turn; canon_completed only when it actually happens on the page${beat.completesWhen ? `: ${beat.completesWhen}` : ''}. Never because time passed.`
     );
   }
 

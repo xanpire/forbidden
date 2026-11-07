@@ -747,7 +747,7 @@ describe('canon scheduler', () => {
     const narrated = applyCanonMarks(auto, ['kan-joins-akatsuki'], []);
     expect(narrated.state.canonProgress?.completed).toContain('kan-joins-akatsuki');
     expect(narrated.threads.some((t) => t.title === 'Prove yourself to the Akatsuki')).toBe(true);
-    expect(narrated.facts.some((f) => f.text.includes('Kan joined the Akatsuki'))).toBe(true);
+    expect(narrated.facts.some((f) => f.text.includes('You joined the Akatsuki'))).toBe(true);
   });
 
   test('does not run ahead of its date window', () => {

@@ -78,6 +78,12 @@ export type CanonMilestone = {
   priority?: boolean;
   /** Personal beat offered only once this milestone has actually happened. */
   after?: string;
+  /**
+   * The moment on the page that completes this beat, for the state tracker.
+   * Until then it is only accepted (canon_engaged) and none of its facts,
+   * threads or canon point are true yet.
+   */
+  completesWhen?: string;
   /** Jutsu Kan gains when this beat happens (recorded as signature jutsu). */
   grantsJutsu?: CanonJutsuGrant[];
   facts: string[];
@@ -225,18 +231,20 @@ const CORE_MILESTONES: CanonMilestone[] = [
     knowledge: 'akatsuki',
     major: true,
     playerDriven: true,
+    completesWhen:
+      'Pain (or Konan) formally receives you into the Akatsuki on the page, such as handing you the cloak and naming your partner. Agreeing to go with Itachi, travelling to the Rain or waiting to be seen is only canon_engaged.',
     facts: [
-      'Kan joined the Akatsuki together with Itachi Uchiha.',
-      'Kan wears an Akatsuki cloak with red clouds.',
-      "Kan is not Itachi's Akatsuki partner; Itachi is paired with Jūzō Biwa.",
-      'Pain paired Kan with Kakuzu.',
+      'You joined the Akatsuki together with Itachi Uchiha.',
+      'You wear an Akatsuki cloak with red clouds.',
+      "You are not Itachi's Akatsuki partner; Itachi is paired with Jūzō Biwa.",
+      'Pain paired you with Kakuzu.',
     ],
     opensThreads: [
       {
         title: 'Prove yourself to the Akatsuki',
-        description: "Earn your place among the Akatsuki's monsters without giving them a reason to discard you.",
+        description: "Earn your place among the Akatsuki's monsters, and survive Kakuzu, without giving them a reason to discard you.",
         type: 'goal',
-        participants: ['Kan', 'Itachi Uchiha'],
+        participants: ['Kan', 'Kakuzu'],
         importance: 4,
       },
     ],

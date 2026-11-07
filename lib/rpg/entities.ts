@@ -93,6 +93,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     next.facts = diff.facts.map((fact) => ({
       ...fact,
       subject: nameOf(fact.subject),
+      claimedBy: fact.claimedBy ? resolve(fact.claimedBy)?.name : undefined,
       whoKnows: fact.whoKnows ? uniqueList(fact.whoKnows.map((name) => nameOf(name) ?? name)) : fact.whoKnows,
     }));
   }
@@ -466,7 +467,8 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     facts: db.facts.map((fact) => ({
       ...fact,
       subjectEntityId: fact.subjectEntityId === drop.id ? keep.id : fact.subjectEntityId,
-      whoKnows: renameAll(fact.whoKnows),
+      whoKnows: uniqueList(fact.whoKnows.map((id) => (id === drop.id ? keep.id : id))),
+      claimedBy: fact.claimedBy === drop.id ? keep.id : fact.claimedBy,
     })),
     eventEntities: links.filter(
       (link, index) =>

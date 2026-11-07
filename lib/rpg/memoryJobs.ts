@@ -22,7 +22,7 @@ import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './ca
 import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
 import { newsAllowance } from './newsDelivery';
-import { daysBetween, secondsBetween, shiftSeconds } from './calendar';
+import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
@@ -462,8 +462,9 @@ function firstSceneStretch(db: AppDatabase, entries: RawLogEntry[]): { entries: 
 }
 
 /**
- * Sets how much time a past reply took (the "+2 min" chip). The clock, and
- * every later entry's timestamp, shifts by the difference. Pure.
+ * Sets how much time a past reply took (the "+2 min" chip). The clock, every
+ * later entry's timestamp, and every date the turn (or a later one) stamped
+ * on a record shift by the difference. Pure.
  */
 export function correctTurnTime(db: AppDatabase, logId: string, seconds: number): AppDatabase | null {
   const index = db.rawLog.findIndex((entry) => entry.id === logId);
@@ -481,7 +482,26 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
   }
 
   const nextDate = shiftSeconds(db.state.inStoryDate, delta);
-  let next = applyTurnDiff(db, { state: { inStoryDate: nextDate } });
+  // One clock: everything this turn and later turns stamped (facts, bonds,
+  // events, portraits, canon "heard" dates, letters...) moves with it.
+  const { rawLog, snapshots, meta, settings, state, ...records } = db;
+  const shifted = shiftDatesAfter(
+    { ...records, state: { ...state, inStoryDate: undefined } },
+    entry.inStoryDate,
+    delta
+  );
+  let next = applyTurnDiff(
+    {
+      ...db,
+      ...shifted,
+      rawLog,
+      snapshots,
+      meta,
+      settings,
+      state: { ...shifted.state, inStoryDate: state.inStoryDate },
+    } as AppDatabase,
+    { state: { inStoryDate: nextDate } }
+  );
 
   next = {
     ...next,

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizePost } from './letters';
 import { normalizeReputation } from './reputation';
 import { normalizeDeaths } from './deaths';
+import { knowersOf } from './facts';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
@@ -506,10 +507,33 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalized)));
+  const withDeaths = dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized))));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;
+}
+
+/** who_knows holds entity ids (plus group tags); names from older saves and the seed are converted. */
+function normalizeFactKnowers(db: AppDatabase): AppDatabase {
+  const ids = new Set(db.entities.map((entity) => entity.id));
+
+  if (db.facts.every((fact) => fact.whoKnows.every((name) => ids.has(name)))) {
+    return db;
+  }
+
+  return {
+    ...db,
+    facts: db.facts.map((fact) => {
+      if (fact.whoKnows.every((name) => ids.has(name))) {
+        return fact;
+      }
+
+      const knowers = knowersOf(db, fact.whoKnows);
+      const groups = [...new Set([...(fact.whoKnowsGroups ?? []), ...knowers.groups])];
+
+      return { ...fact, whoKnows: knowers.ids, ...(groups.length > 0 ? { whoKnowsGroups: groups } : {}) };
+    }),
+  };
 }
 
 export function buildIndices(db: AppDatabase): MemoryIndex {

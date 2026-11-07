@@ -15,7 +15,7 @@ import { classifyLocation } from './encounters';
 import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
 import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
-import { applyFactDiff, applyThreadDiff, recordSceneEvent } from './facts';
+import { applyFactDiff, applyThreadDiff, endFacts, expireFacts, recordSceneEvent } from './facts';
 import { applyJutsuDiff, isBareNatureName, jutsuKey } from './jutsu';
 import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
@@ -107,6 +107,10 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   next = applyGrudgeChanges(next, diff, { presentIds });
   next = applyReputationChanges(next, diff.reputation, diff.bountySeen);
 
+  if (Array.isArray(diff.factsEnded) && diff.factsEnded.length > 0) {
+    next = endFacts(next, diff.factsEnded);
+  }
+
   if (Array.isArray(diff.facts)) {
     for (const fact of diff.facts) {
       next = applyFactDiff(next, fact);
@@ -152,12 +156,20 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   next = settleNewlyMet(db, next);
 
   next = applyClockTick(next, diff);
+  // Temporary conditions run out; a long stretch of rest ends the "until rest" ones.
+  next = expireFacts(next, { rested: isRest(diff) });
   // After the clock: a bond the story set this turn cannot outlast canon.
   next = applyCanonEndgames(next);
 
   next.indices = buildIndices(next);
 
   return next;
+}
+
+/** A turn that covers a night's sleep or a long rest. */
+function isRest(diff: TurnDiff) {
+  const seconds = diff.state?.elapsedSeconds ?? 0;
+  return seconds >= 5 * 3600 && diff.state?.scenePace !== 'combat' && diff.state?.scenePace !== 'chase';
 }
 
 /** Entity ids of this turn's scene cast (characters_present) and companions. */

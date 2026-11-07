@@ -49,13 +49,18 @@ export const ATTRACTIONS = ['none', 'warm', 'strong'] as const;
 export const FACT_TYPES = [
   'death',
   'injury',
+  'condition',
   'secret',
   'knowledge',
   'membership',
   'possession',
+  'relationship',
+  'plan',
+  'figure',
   'event',
   'other',
 ] as const;
+export const FACT_LASTS = ['lasting', 'until_rest', 'days'] as const;
 export const REPUTATION_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki'] as const;
 export const VILLAGE_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
 export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
@@ -94,12 +99,22 @@ export const TURN_STATE_SCHEMA = object({
     attraction: nullableEnum(ATTRACTIONS),
     romance_note: nullableString,
   }),
+  // entity: who the fact is about (an id; "kan" when it is about Kan).
+  // supersedes: refs of active facts this one replaces. claimed_by: the
+  // speaker, when this is only what someone said. lasts/days: how long a
+  // temporary condition, injury or plan holds.
   facts: list({
-    entity: nullableString,
+    entity: { type: 'string' },
     fact: { type: 'string' },
     type: nullableEnum(FACT_TYPES),
     who_knows: stringList,
+    supersedes: stringList,
+    claimed_by: nullableString,
+    lasts: nullableEnum(FACT_LASTS),
+    days: nullableNumber,
   }),
+  // Refs of active facts that stopped being true this turn.
+  facts_ended: stringList,
   threads: list({
     title: { type: 'string' },
     description: nullableString,

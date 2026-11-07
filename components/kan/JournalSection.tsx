@@ -8,6 +8,7 @@ import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
+import { loreActive } from '@/lib/rpg/lore';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories';
 
@@ -179,7 +180,7 @@ function WorldView({ db }: { db: AppDatabase }) {
       .slice(0, 40);
   }, [db]);
   const heard = db.state.canonProgress?.heard ?? {};
-  const visibleLore = db.loreEntries.filter((lore) => !lore.hidden);
+  const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && loreActive(db, lore));
 
   return (
     <>

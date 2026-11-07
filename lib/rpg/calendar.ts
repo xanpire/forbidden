@@ -353,3 +353,66 @@ function clampSecond(value: number) {
 }
 
 export { SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE };
+
+function isCalendarDate(value: unknown): value is CalendarDate {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const date = value as Record<string, unknown>;
+
+  return (
+    typeof date.year === 'number' &&
+    typeof date.month === 'number' &&
+    typeof date.day === 'number' &&
+    typeof date.hour === 'number' &&
+    typeof date.minute === 'number'
+  );
+}
+
+/**
+ * Moves every in-story date stamped after `after` by `seconds`, anywhere in
+ * the given value (facts, bonds, events, portraits, canon "heard" dates,
+ * letters...). Used when a turn's length is corrected, so everything that
+ * turn and later turns recorded stays on the one corrected clock.
+ */
+export function shiftDatesAfter<T>(value: T, after: CalendarDate, seconds: number): T {
+  if (seconds === 0) {
+    return value;
+  }
+
+  const threshold = dateSortValue(after);
+
+  const walk = (item: unknown): unknown => {
+    if (Array.isArray(item)) {
+      let changed = false;
+      const next = item.map((entry) => {
+        const shifted = walk(entry);
+        changed ||= shifted !== entry;
+        return shifted;
+      });
+      return changed ? next : item;
+    }
+
+    if (isCalendarDate(item)) {
+      return dateSortValue(item) > threshold ? shiftSeconds(item, seconds) : item;
+    }
+
+    if (item && typeof item === 'object') {
+      let changed = false;
+      const next: Record<string, unknown> = {};
+
+      for (const [key, entry] of Object.entries(item as Record<string, unknown>)) {
+        const shifted = walk(entry);
+        changed ||= shifted !== entry;
+        next[key] = shifted;
+      }
+
+      return changed ? next : item;
+    }
+
+    return item;
+  };
+
+  return walk(value) as T;
+}
