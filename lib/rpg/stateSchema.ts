@@ -160,6 +160,7 @@ export const TURN_STATE_SCHEMA = object({
     mood: nullableString,
     appearance: nullableString,
     lasting_appearance: nullableString,
+    whereabouts: nullableString,
   }),
   // A death the prose makes certain this turn — on screen, a body Kan sees,
   // or someone telling Kan — by character id. revived is only a true return

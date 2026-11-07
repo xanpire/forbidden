@@ -207,6 +207,18 @@ export type RawLogEntry = {
   sceneSeq?: number;
   /** Who was in the scene this turn (entity ids, from the scene cast, Kan excluded). */
   sceneCastIds?: string[];
+  /** How the scene image on this entry was made, so drift can be traced and it can be redone. */
+  imageMeta?: SceneImageMeta;
+};
+
+export type SceneImageMeta = {
+  prompt: string;
+  /** The short "who did what to whom" line the image followed. */
+  action: string;
+  /** The references sent, in order: their kind, whose they are, and the stored image when there is one. */
+  references: { kind: string; name?: string; ref?: string }[];
+  model: string;
+  createdAt: number;
 };
 
 export type EntityRecord = {
@@ -235,6 +247,8 @@ export type EntityRecord = {
   currentLook?: string;
   /** The scene (GameState.sceneSeq) currentLook was last set in. */
   currentLookSeq?: number;
+  /** Where the story last said they are or are going, when not with Kan. */
+  whereabouts?: string;
   lastSeen?: CalendarDate;
   /** Where Kan last saw this person (state.location at the time). */
   lastSeenAt?: string;
@@ -692,6 +706,8 @@ export type TurnDiff = {
     appearance?: string;
     /** A real lasting change to their base look (aging, a scar, new clothes for good). */
     lastingAppearance?: string;
+    /** Where the story says they are or are going. */
+    whereabouts?: string;
     gender?: Gender;
     /** A one-scene character (see EntityRecord.tier). */
     minor?: boolean;

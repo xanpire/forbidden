@@ -29,6 +29,7 @@ import {
 } from './db';
 import { makeId } from './id';
 import { externalizeImages, inlineImages, storeImage } from './imageStore';
+import { FACE_IMAGE } from './imageCompress';
 import { buildNarrationPrompt, stripNarrationJson } from './prompt';
 import {
   beginDebugTurn,
@@ -70,10 +71,23 @@ import type {
   EventRecord,
   PortraitSignature,
   CharacterPortraitSignature,
+  SceneImageMeta,
   Settings,
   ThreadRecord,
   TurnDiff,
 } from './types';
+
+/** The save with every image left out: scene images, portraits and face references. */
+function withoutImages(db: AppDatabase): AppDatabase {
+  return {
+    ...db,
+    rawLog: db.rawLog.map((entry) => (entry.image ? { ...entry, image: null } : entry)),
+    portraits: [],
+    characterPortraits: [],
+    characterFaces: [],
+    snapshots: [],
+  };
+}
 
 /** Moves inline images into IndexedDB and saves, so the save only holds references. */
 async function withStoredImages(db: AppDatabase): Promise<AppDatabase> {
@@ -129,7 +143,8 @@ type GameContextValue = {
   deleteSlotById: (slotId: string) => Promise<void>;
   duplicateSlotById: (slotId: string, slotName: string) => Promise<void>;
   renameSlotById: (slotId: string, slotName: string) => Promise<void>;
-  exportActiveSlot: () => Promise<string | null>;
+  /** The save as JSON; without images it is a small file of story and memory only. */
+  exportActiveSlot: (options?: { withImages?: boolean }) => Promise<string | null>;
   importSlot: (json: string, slotName?: string) => Promise<void>;
   updateBond: (bondId: string, patch: Partial<BondRecord>) => Promise<void>;
   /** Folds dropId into keepId: one person, with both histories. */
@@ -149,7 +164,7 @@ type GameContextValue = {
   renameJutsu: (recordId: string, name: string) => Promise<void>;
   /** Hand correction: removes a jutsu record. */
   deleteJutsu: (recordId: string) => Promise<void>;
-  attachImage: (logId: string, image: string) => Promise<void>;
+  attachImage: (logId: string, image: string, meta?: SceneImageMeta) => Promise<void>;
   /** Sets how many in-story seconds a reply took; the clock shifts to match. */
   correctTurnTime: (logId: string, seconds: number) => Promise<void>;
   addPortrait: (image: string, signature: PortraitSignature) => Promise<void>;
@@ -897,9 +912,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb, refreshSlots]
   );
 
-  const exportActiveSlot = useCallback(async () => {
+  const exportActiveSlot = useCallback(async (options: { withImages?: boolean } = {}) => {
     const current = dbRef.current;
-    return current ? exportDatabase(await inlineImages(current)) : null;
+
+    if (!current) {
+      return null;
+    }
+
+    if (options.withImages === false) {
+      return exportDatabase(withoutImages(current));
+    }
+
+    return exportDatabase(await inlineImages(current));
   }, []);
 
   const importSlot = useCallback(
@@ -1113,7 +1137,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const attachImage = useCallback(
-    async (logId: string, image: string) => {
+    async (logId: string, image: string, meta?: SceneImageMeta) => {
       if (backgroundPromiseRef.current) {
         await backgroundPromiseRef.current;
       }
@@ -1127,7 +1151,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const stored = await storeImage(image);
       const latest = dbRef.current ?? current;
       const rawLog = latest.rawLog.map((entry) =>
-        entry.id === logId ? { ...entry, image: stored } : entry
+        entry.id === logId ? { ...entry, image: stored, ...(meta ? { imageMeta: meta } : {}) } : entry
       );
 
       await commitDb({
@@ -1211,7 +1235,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const setCharacterFace = useCallback(
     async (entityId: string, image: string | null) => {
-      const stored = image ? await storeImage(image) : null;
+      const stored = image ? await storeImage(image, FACE_IMAGE) : null;
       const latest = dbRef.current;
 
       if (!latest) {

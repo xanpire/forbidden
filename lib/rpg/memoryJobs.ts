@@ -22,6 +22,7 @@ import { CANON_MILESTONES } from './canonData';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
+import { applyStoryHooks } from './hooks';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
@@ -319,6 +320,8 @@ export function applyStateStep(
   next = deliverLetters(next);
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
+  // The big personal threads open and close as the story reaches them.
+  next = applyStoryHooks(next);
 
   let notice: string | null = null;
 

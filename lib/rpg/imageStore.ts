@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 
 import { makeId } from './id';
+import { compressImage, FACE_IMAGE, SCENE_IMAGE, type CompressOptions } from './imageCompress';
 import type { AppDatabase } from './types';
 
 const DB_NAME = 'kan-images';
@@ -78,21 +79,57 @@ function run<T>(
   );
 }
 
-/** Stores a data URI and returns a reference (or the data URI if storage is unavailable). */
-export async function storeImage(dataUri: string): Promise<string> {
+function dataUriToBlob(dataUri: string): Blob | null {
+  try {
+    const [header, body] = dataUri.split(',', 2);
+    const mime = /data:([^;]+)/.exec(header)?.[1] ?? 'application/octet-stream';
+    const binary = atob(body);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return new Blob([bytes], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+function blobToDataUri(blob: Blob): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Stores an image and returns a reference (or the data URI if storage is
+ * unavailable). It is recompressed first (WebP, see imageCompress.ts) and kept
+ * as binary data, not text, so it takes about a quarter of the room.
+ */
+export async function storeImage(dataUri: string, options: CompressOptions = SCENE_IMAGE): Promise<string> {
   if (!isDataUri(dataUri)) {
     return dataUri;
   }
 
+  const compressed = await compressImage(dataUri, options).catch(() => dataUri);
   const key = makeId('pic');
-  const ok = await run('readwrite', (store) => store.put(dataUri, key));
+  const blob = typeof Blob !== 'undefined' ? dataUriToBlob(compressed) : null;
+  const ok = await run('readwrite', (store) => store.put(blob ?? compressed, key));
 
   if (ok === null) {
-    return dataUri;
+    return compressed;
   }
 
   const ref = `${REF_PREFIX}${key}`;
-  cache.set(ref, dataUri);
+  cache.set(ref, compressed);
   return ref;
 }
 
@@ -112,13 +149,21 @@ export async function loadImage(value: string | null | undefined): Promise<strin
     return cached;
   }
 
-  const stored = await run<string>('readonly', (store) =>
+  const stored = await run<string | Blob>('readonly', (store) =>
     store.get(value.slice(REF_PREFIX.length))
   );
 
-  if (typeof stored === 'string') {
-    cache.set(value, stored);
-    return stored;
+  // Older images were kept as text; newer ones as binary.
+  const uri =
+    typeof stored === 'string'
+      ? stored
+      : typeof Blob !== 'undefined' && stored instanceof Blob
+        ? await blobToDataUri(stored)
+        : null;
+
+  if (uri) {
+    cache.set(value, uri);
+    return uri;
   }
 
   return null;
@@ -196,10 +241,26 @@ export async function externalizeImages(db: AppDatabase): Promise<AppDatabase | 
     ? await Promise.all(db.characterPortraits.map(externalizeOne))
     : db.characterPortraits;
   const characterFaces = db.characterFaces
-    ? await Promise.all(db.characterFaces.map(externalizeOne))
+    ? await Promise.all(
+        db.characterFaces.map(async (face) =>
+          isDataUri(face.image) ? { ...face, image: await storeImage(face.image, FACE_IMAGE) } : face
+        )
+      )
     : db.characterFaces;
 
-  return { ...db, rawLog, portraits, characterPortraits, characterFaces, snapshots: [] };
+  // Snapshots are kept (undo needs them); they never hold inline images.
+  const snapshots = db.snapshots.map((snapshot) => ({
+    ...snapshot,
+    database: {
+      ...snapshot.database,
+      rawLog: snapshot.database.rawLog.map((entry) => (isDataUri(entry.image) ? { ...entry, image: null } : entry)),
+      portraits: undefined,
+      characterPortraits: undefined,
+      characterFaces: undefined,
+    },
+  }));
+
+  return { ...db, rawLog, portraits, characterPortraits, characterFaces, snapshots };
 }
 
 /** Inlines referenced images back into data URIs, for export files. */

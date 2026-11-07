@@ -3273,8 +3273,19 @@ describe('living world timeline', () => {
         canonProgress: { version: CANON_VERSION, baselineDate: baseline, completed: [], active: [], engaged: [] },
       },
     });
-    expect(upcomingCanonMilestones(at(15, 3), 2)[0]?.id).toBe('kan-mangekyo');
-    expect(upcomingCanonMilestones(at(15, 3), 2)).toHaveLength(2);
+    // Not offered while you don't know she is dead; offered first once you do.
+    expect(upcomingCanonMilestones(at(15, 3), 2).map((m) => m.id)).not.toContain('kan-mangekyo');
+    const knowing = (year: number, month: number) => {
+      const base = at(year, month);
+      return {
+        ...base,
+        entities: base.entities.map((entity) =>
+          entity.name === 'Izumi Uchiha' ? { ...entity, deceased: { ...entity.deceased, known: true } } : entity
+        ),
+      };
+    };
+    expect(upcomingCanonMilestones(knowing(15, 3), 2)[0]?.id).toBe('kan-mangekyo');
+    expect(upcomingCanonMilestones(knowing(15, 3), 2)).toHaveLength(2);
     expect(upcomingCanonMilestones(at(17, 9), 2).map((m) => m.id)).not.toContain('kan-mangekyo');
   });
 

@@ -137,8 +137,25 @@ function PlayerText({ text }: { text: string }) {
   );
 }
 
-function SceneImage({ value, onOpen }: { value: string; onOpen: (uri: string) => void }) {
-  const uri = useStoredImage(value);
+/** The newest scene images load straight away; older ones wait for a tap. */
+const EAGER_SCENE_IMAGES = 3;
+
+function SceneImage({ value, onOpen, eager }: { value: string; onOpen: (uri: string) => void; eager: boolean }) {
+  const [wanted, setWanted] = useState(eager);
+  const uri = useStoredImage(wanted || eager ? value : null);
+
+  if (!wanted && !eager) {
+    return (
+      <Pressable
+        accessibilityLabel="Show scene image"
+        accessibilityRole="button"
+        onPress={() => setWanted(true)}
+        style={styles.sceneImageWrap}
+      >
+        <Text style={type.rowBody}>Show image</Text>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -255,6 +272,11 @@ export default function StoryScreen() {
       }));
   }, [db]);
 
+  const eagerImages = useMemo(
+    () => new Set(messages.filter((message) => message.image).slice(-EAGER_SCENE_IMAGES).map((message) => message.id)),
+    [messages]
+  );
+
   const liveParagraphs = useMemo(
     () => (isNarrating ? paragraphsOf(streamingPreview(streamingText)) : []),
     [isNarrating, streamingText]
@@ -366,10 +388,11 @@ export default function StoryScreen() {
     setIsGeneratingImage(true);
 
     try {
-      const [caps, written, recentImages, kanRefs] = await Promise.all([
+      const recentRefs = collectRecentSceneImages(db);
+      const [caps, written, recentLoaded, kanRefs] = await Promise.all([
         ensureImageCaps(db, updateSettings),
         writeImageAction(apiKey, db),
-        loadImages(collectRecentSceneImages(db)),
+        Promise.all(recentRefs.map((ref) => loadImage(ref))),
         loadKanReferenceImages(wearsAkatsukiCloak(db)),
       ]);
 
@@ -384,14 +407,20 @@ export default function StoryScreen() {
 
       const action = written?.action ?? fallbackImageAction(db);
       // People named in the action who have a face reference or a portrait.
+      const sceneRefs = sceneCharacterReferences(db, action);
       const people = await Promise.all(
-        sceneCharacterReferences(db, action).map(async (person) => ({
+        sceneRefs.map(async (person) => ({
           kind: 'character' as const,
           uri: (await loadImage(person.image)) ?? '',
           name: person.name,
           source: person.source,
         }))
       );
+      // Which stored image each sent reference came from, for the image's record.
+      const refOf = new Map<string, string>();
+      people.forEach((person, index) => person.uri && refOf.set(person.uri, sceneRefs[index].image));
+      recentLoaded.forEach((uri, index) => uri && refOf.set(uri, recentRefs[index]));
+      const recentImages = recentLoaded.filter((uri): uri is string => Boolean(uri));
       const plan = planReferences(
         [
           { kind: 'face', uri: kanRefs.face },
@@ -422,7 +451,17 @@ export default function StoryScreen() {
         result.cost,
         Date.now() - startedAt
       );
-      await attachImage(latestAssistant.id, result.dataUri);
+      await attachImage(latestAssistant.id, result.dataUri, {
+        prompt,
+        action,
+        references: plan.references.map((reference) => ({
+          kind: reference.kind,
+          ...('name' in reference && reference.name ? { name: String(reference.name) } : {}),
+          ...(refOf.get(reference.uri) ? { ref: refOf.get(reference.uri) } : {}),
+        })),
+        model: caps.modelId,
+        createdAt: Date.now(),
+      });
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'The scene wouldn’t paint. Try again.';
@@ -602,7 +641,9 @@ export default function StoryScreen() {
                     {paragraph}
                   </Text>
                 ))}
-                {message.image ? <SceneImage onOpen={openImage} value={message.image} /> : null}
+                {message.image ? (
+                  <SceneImage eager={eagerImages.has(message.id)} onOpen={openImage} value={message.image} />
+                ) : null}
                 {message.id === lastAssistantId && !isNarrating ? (
                   <View style={styles.inlineActions}>
                     {message.elapsedSeconds !== undefined ? (

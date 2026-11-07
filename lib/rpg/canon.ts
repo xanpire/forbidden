@@ -28,6 +28,8 @@ import { resolveEntity } from './entities';
 import { mentionsName } from './characterRefs';
 import { makeId } from './id';
 import { secondPerson } from './util';
+import { conditionHolds } from './lore';
+import { applyAbilityChanges } from './abilities';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
@@ -299,6 +301,10 @@ function fireMilestone(
     next = grantJutsu(next, grant, happenedAt);
   }
 
+  if (milestone.grantsAbilities?.length) {
+    next = applyAbilityChanges(next, { abilitiesChanged: milestone.grantsAbilities });
+  }
+
   if (milestone.canonPoint) {
     next = { ...next, state: { ...next.state, canonPoint: milestone.canonPoint.slice(0, 220) } };
   }
@@ -341,7 +347,7 @@ function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate)
 
 /** A gated beat is open only once the beat it follows has actually happened. */
 function gateOpen(db: AppDatabase, milestone: CanonMilestone): boolean {
-  return !milestone.after || hasFired(db, milestone.after);
+  return (!milestone.after || hasFired(db, milestone.after)) && (!milestone.requires || conditionHolds(db, milestone.requires));
 }
 
 /** You and whoever is in the scene. */

@@ -554,9 +554,10 @@ export function buildIndices(db: AppDatabase): MemoryIndex {
   const index = emptyIndex();
 
   for (const event of db.events) {
-    const dateKey = `${event.inStoryDate.year}-${event.inStoryDate.month}-${event.inStoryDate.day}`;
+    // Year-month-day, padded so keys sort ("13-10-01").
+    const dateKey = `${String(event.inStoryDate.year).padStart(2, '0')}-${String(event.inStoryDate.month).padStart(2, '0')}-${String(event.inStoryDate.day).padStart(2, '0')}`;
 
-    pushIndex(index.eventsByTag, dateKey, event.id);
+    pushIndex(index.eventsByDate, dateKey, event.id);
 
     for (const tag of event.tags) {
       pushIndex(index.eventsByTag, tag.toLowerCase(), event.id);

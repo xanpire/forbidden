@@ -11,9 +11,23 @@ export function currentTurn(db: AppDatabase) {
   return db.rawLog.filter((message) => message.kind === 'story').length + 1;
 }
 
+/** Undo keeps this many turns. Snapshots hold no images, so they stay small. */
+export const SNAPSHOT_LIMIT = 5;
+
+const isInline = (value: string | null | undefined) => typeof value === 'string' && value.startsWith('data:');
+
+/**
+ * A lightweight copy of the state before a turn: everything but images.
+ * Image references (img:…) are kept; inline images and the portrait and
+ * face collections are left out, and come back from the live save on undo.
+ */
 export function createSnapshot(db: AppDatabase): TurnSnapshot {
-  const snapshotDatabase = cloneDatabase(db);
-  snapshotDatabase.snapshots = [];
+  const { snapshots: _snapshots, portraits: _portraits, characterPortraits: _cp, characterFaces: _cf, ...rest } = db;
+  const snapshotDatabase = cloneDatabase({
+    ...rest,
+    snapshots: [],
+    rawLog: db.rawLog.map((entry) => (isInline(entry.image) ? { ...entry, image: null } : entry)),
+  } as AppDatabase);
 
   const snapshot: TurnSnapshot = {
     id: makeId('snapshot'),
@@ -25,7 +39,7 @@ export function createSnapshot(db: AppDatabase): TurnSnapshot {
   return snapshot;
 }
 
-export function pushSnapshot(db: AppDatabase, limit = 3): AppDatabase {
+export function pushSnapshot(db: AppDatabase, limit = SNAPSHOT_LIMIT): AppDatabase {
   const snapshot = createSnapshot(db);
   const snapshots = [...db.snapshots, snapshot].slice(-limit);
 
@@ -44,6 +58,14 @@ export function restoreLastSnapshot(db: AppDatabase): AppDatabase | null {
 
   const restored = cloneDatabase(snapshot.database);
   restored.snapshots = db.snapshots.slice(0, -1);
+  // Images are not in snapshots: they come from the live save.
+  const liveImages = new Map(db.rawLog.filter((entry) => entry.image).map((entry) => [entry.id, entry.image]));
+  restored.rawLog = restored.rawLog.map((entry) =>
+    !entry.image && liveImages.has(entry.id) ? { ...entry, image: liveImages.get(entry.id) } : entry
+  );
+  restored.portraits = db.portraits;
+  restored.characterPortraits = db.characterPortraits;
+  restored.characterFaces = db.characterFaces;
 
   return restored;
 }

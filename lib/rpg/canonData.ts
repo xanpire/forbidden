@@ -78,6 +78,10 @@ export type CanonMilestone = {
   priority?: boolean;
   /** Personal beat offered only once this milestone has actually happened. */
   after?: string;
+  /** A personal beat is offered only while this holds (see lore.ts conditions). */
+  requires?: import('./types').LoreCondition;
+  /** Abilities you gain when it completes (recorded on your sheet with a stage). */
+  grantsAbilities?: { name: string; stage: string }[];
   /**
    * The moment on the page that completes this beat, for the state tracker.
    * Until then it is only accepted (canon_engaged) and none of its facts,
@@ -249,6 +253,44 @@ const CORE_MILESTONES: CanonMilestone[] = [
       },
     ],
     resolvesThreadTitles: ['itachi’s offer: join akatsuki', "itachi's offer: join akatsuki"],
+  },
+  {
+    id: 'shisui-truth',
+    era: 'Ashes',
+    title: 'The truth about Shisui',
+    description:
+      "Itachi finally tells you how Shisui died: Danzō took one of his eyes, Shisui gave Itachi the other and asked him to protect the village, then threw himself into the Naka River. It was never the suicide the village called it, and never Itachi's doing.",
+    canonPoint: 'You know how Shisui really died.',
+    from: { year: 13, month: 10, day: 3 },
+    to: { year: 21, month: 3 },
+    region: 'the shinobi world',
+    location: 'wherever you and Itachi talk alone',
+    knowledge: 'secret',
+    bearers: ['Itachi Uchiha'],
+    playerDriven: true,
+    completesWhen: 'Itachi (or someone who truly knows) tells you on the page how Shisui died: the eye Danzō took, the eye he gave Itachi, the river.',
+    facts: [
+      "Danzō Shimura took one of Shisui Uchiha's eyes; Shisui gave the other to Itachi and then drowned himself in the Naka River to protect the village.",
+    ],
+    resolvesThreadTitles: ['what really happened to shisui?'],
+  },
+  {
+    id: 'kan-bingo-book',
+    era: 'Ashes',
+    title: 'Your page in the bingo book',
+    description:
+      'Someone shows you, or tells you, what the Hidden Leaf wrote about you: your name, your rank, the price on your head, next to Itachi\'s.',
+    canonPoint: 'You know you are in the Leaf\'s bingo book.',
+    from: { year: 13, month: 11 },
+    to: { year: 16, month: 12 },
+    region: 'the shinobi world',
+    location: 'a bounty station, a hunter\'s pack, or an Akatsuki briefing',
+    knowledge: 'public',
+    playerDriven: true,
+    after: 'itachi-bingo-book',
+    completesWhen: 'You see your own bingo-book entry on the page, or someone tells you exactly what it says (also report bounty_seen).',
+    facts: ['You know the Hidden Leaf has listed you in its bingo book.'],
+    resolvesThreadTitles: ['your name in the bingo books'],
   },
   {
     id: 'masked-man-audience',
@@ -2352,6 +2394,13 @@ const PERSONAL_BEATS: CanonMilestone[] = [
     location: 'the Uchiha cemetery outside the Hidden Leaf',
     playerDriven: true,
     priority: true,
+    // Only once you know she is dead: you cannot grieve what you don't know.
+    requires: { flag: 'knowsIzumiDead' },
+    grantsAbilities: [
+      { name: 'Mangekyō Sharingan', stage: 'awakened' },
+      { name: 'Susanoo', stage: 'ribs and an arm' },
+    ],
+    completesWhen: "You stand at Izumi's grave, knowing she is dead, and the Mangekyō awakens on the page.",
     facts: [
       "Kan awakened the Mangekyō Sharingan at Izumi Uchiha's grave.",
       'Kan has his own Mangekyō ability, unique to him, and can manifest Susanoo.',

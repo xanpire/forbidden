@@ -191,15 +191,15 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleExport = async () => {
-    const json = await exportActiveSlot();
+  const handleExport = async (withImages: boolean) => {
+    const json = await exportActiveSlot({ withImages });
 
     if (!json) {
       return;
     }
 
-    downloadJson(`kan-story-${db?.meta.slotName ?? 'save'}.json`, json);
-    showToast('Save file downloaded.', 'success');
+    downloadJson(`kan-story-${db?.meta.slotName ?? 'save'}${withImages ? '' : '-no-images'}.json`, json);
+    showToast(withImages ? 'Save file downloaded.' : 'Save file downloaded, without images.', 'success');
   };
 
   const handleImport = async () => {
@@ -526,11 +526,19 @@ export default function SettingsScreen() {
 
           <View style={styles.buttonRow}>
             <AppButton
-              label="Export save"
-              onPress={() => void handleExport()}
+              label="Export with images"
+              onPress={() => void handleExport(true)}
               style={styles.flex}
               variant="secondary"
             />
+            <AppButton
+              label="Export without images"
+              onPress={() => void handleExport(false)}
+              style={styles.flex}
+              variant="secondary"
+            />
+          </View>
+          <View style={styles.buttonRow}>
             <AppButton
               label="Import save"
               onPress={() => void handleImport()}

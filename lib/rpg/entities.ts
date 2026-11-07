@@ -504,7 +504,7 @@ export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
     ...db,
     entities: db.entities.map((entity) =>
       entity.type === 'character' && matched.has(entity.id) && !entity.deceased && entity.status !== 'Deceased'
-        ? { ...entity, lastSeen: db.state.inStoryDate, lastSeenAt: db.state.location || entity.lastSeenAt, met: true }
+        ? { ...entity, lastSeen: db.state.inStoryDate, lastSeenAt: db.state.location || entity.lastSeenAt, met: true, whereabouts: undefined }
         : entity
     ),
   };
@@ -789,6 +789,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     ...(entity.appearance?.trim()
       ? { currentLook: entity.appearance.trim().slice(0, 200), currentLookSeq: undefined }
       : {}),
+    ...(entity.whereabouts?.trim() ? { whereabouts: entity.whereabouts.trim().slice(0, 120) } : {}),
   };
 
   const nextState =

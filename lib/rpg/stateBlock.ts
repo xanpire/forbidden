@@ -521,8 +521,9 @@ export function convertStateBlock(
         mood: cleanString(item.mood),
         appearance: cleanString(item.appearance),
         lastingAppearance: cleanString(item.lasting_appearance),
+        whereabouts: cleanString(item.whereabouts),
       }))
-      .filter((item) => item.name.length > 0 && (item.mood || item.appearance || item.lastingAppearance));
+      .filter((item) => item.name.length > 0 && (item.mood || item.appearance || item.lastingAppearance || item.whereabouts));
 
     if (updates.length > 0) {
       diff.entities = [...(diff.entities ?? []), ...updates];
