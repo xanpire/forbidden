@@ -70,7 +70,7 @@ function NowView({ db }: { db: AppDatabase }) {
       <ListCard>
         <ListRow
           meta={`${formatClock(db.state.inStoryDate)}, ${formatDayMonth(db.state.inStoryDate)} · ${localizePlaceNames(db.state.location)}`}
-          title={`Chapter ${db.state.chapter} · ${db.state.scene}`}
+          title={`Chapter ${db.state.chapter}${db.state.chapterTitle ? `: ${db.state.chapterTitle}` : ""} · ${db.state.scene}`}
         />
       </ListCard>
 

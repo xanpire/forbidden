@@ -5,7 +5,7 @@ import { kanKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import { trimToSentence, uniqueList } from './util';
-import type { AppDatabase, EntityRecord, EventRecord, FactRecord, TurnDiff } from './types';
+import type { AppDatabase, EntityRecord, EventRecord, FactRecord, ThreadRecord, TurnDiff } from './types';
 
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
 
@@ -259,27 +259,76 @@ export function expireFacts(db: AppDatabase, options: { rested: boolean }): AppD
   return changed ? { ...db, facts } : db;
 }
 
-export function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabase {
+/** A thread title reduced to its words: case, quotes and punctuation don't make a new thread. */
+export function threadKey(title: string) {
+  return title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[’‘`']/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+const THREAD_STOP = new Set(['the', 'a', 'an', 'to', 'of', 'and', 'for', 'with', 'your', 'you', 'kan', 'kans', 'his', 'her', 'on', 'in', 'at']);
+
+function threadWords(text: string) {
+  return new Set(threadKey(text).split(' ').filter((word) => word.length > 2 && !THREAD_STOP.has(word)));
+}
+
+/** The existing thread a new one means: same title once normalized, or mostly the same words. */
+function matchingThread(db: AppDatabase, title: string, description?: string) {
+  const key = threadKey(title);
+  const exact = db.threads.findIndex((item) => threadKey(item.title) === key);
+
+  if (exact !== -1) {
+    return exact;
+  }
+
+  const words = threadWords(title);
+  const described = description ? threadWords(description) : new Set<string>();
+
+  return db.threads.findIndex((item) => {
+    if (item.status !== 'open') return false;
+
+    const theirs = threadWords(item.title);
+    const shared = [...words].filter((word) => theirs.has(word)).length;
+    const titleOverlap = words.size > 0 && theirs.size > 0 ? shared / Math.min(words.size, theirs.size) : 0;
+
+    if (titleOverlap >= 0.75 && shared >= 2) return true;
+
+    if (described.size >= 4) {
+      const theirText = threadWords(`${item.title} ${item.description}`);
+      const sharedText = [...described].filter((word) => theirText.has(word)).length;
+      return sharedText / described.size >= 0.7 && titleOverlap >= 0.5;
+    }
+
+    return false;
+  });
+}
+
+/**
+ * Opens, updates or resolves a thread. A thread the story already has (same
+ * title once normalized, or the same goal in other words) is updated rather
+ * than opened twice. Every thread has participants, by name and id: Kan and
+ * whoever is in the scene unless the tracker names them.
+ */
+export function applyThreadDiff(
+  db: AppDatabase,
+  thread: ThreadDiff,
+  options: { presentIds?: ReadonlySet<string> } = {}
+): AppDatabase {
   if (!thread?.title || typeof thread.title !== 'string') {
     return db;
   }
 
-  const title = thread.title.trim().toLowerCase();
+  const title = thread.title.trim().replace(/\s+/g, ' ');
 
   if (!title) {
     return db;
   }
 
-  const descriptionKey = (thread.description?.trim() || title).toLowerCase().slice(0, 40);
-  const existingIndex = db.threads.findIndex(
-    (item) =>
-      item.title.toLowerCase() === title ||
-      (thread.description?.trim() &&
-        item.status === 'open' &&
-        (item.title.toLowerCase().startsWith(descriptionKey) ||
-          item.description.toLowerCase().startsWith(descriptionKey) ||
-          descriptionKey.startsWith(item.title.toLowerCase().slice(0, 40))))
-  );
+  const existingIndex = matchingThread(db, title, thread.description);
 
   if (thread.action === 'resolve') {
     if (existingIndex === -1) {
@@ -300,20 +349,29 @@ export function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabas
     };
   }
 
+  const kan = kanEntity(db);
+  const named = (thread.participants ?? []).map((name) => resolveEntity(db, name)).filter((entity): entity is EntityRecord => Boolean(entity));
+  const present = [...(options.presentIds ?? [])]
+    .map((id) => db.entities.find((entity) => entity.id === id))
+    .filter((entity): entity is EntityRecord => Boolean(entity));
+  const people = uniqueList([...(kan ? [kan.id] : []), ...(named.length > 0 ? named : present).map((entity) => entity.id)]);
+  const names = people.map((id) => db.entities.find((entity) => entity.id === id)?.name ?? id);
+
   if (existingIndex === -1) {
-    const newThread = {
+    const newThread: ThreadRecord = {
       id: makeId('thread'),
       type: thread.type ?? 'other',
-      title,
+      // Keeps the tracker's casing ("Itachi's offer", not "itachi's offer").
+      title: title.charAt(0).toUpperCase() + title.slice(1),
       description: thread.description?.trim() || '',
       status: 'open' as const,
       openedAt: db.state.inStoryDate,
       resolvedAt: null,
       importance: 3 as 1 | 2 | 3 | 4 | 5,
-      participants: Array.isArray(thread.participants)
-        ? thread.participants.filter(Boolean)
-        : [],
-      sourceEventId: null,
+      participants: names,
+      participantIds: people,
+      // The memory this turn is part of; the turn itself is stamped by the state step.
+      sourceEventId: db.events.at(-1)?.id ?? null,
     };
 
     return {
@@ -323,13 +381,15 @@ export function applyThreadDiff(db: AppDatabase, thread: ThreadDiff): AppDatabas
   }
 
   const threads = [...db.threads];
+  const current = threads[existingIndex];
+  const currentIds = current.participantIds ?? current.participants.map((name) => resolveEntity(db, name)?.id).filter((id): id is string => Boolean(id));
+  const mergedIds = uniqueList([...currentIds, ...named.map((entity) => entity.id)]);
   threads[existingIndex] = {
-    ...threads[existingIndex],
-    description: thread.description?.trim() || threads[existingIndex].description,
-    type: thread.type ?? threads[existingIndex].type,
-    participants: Array.isArray(thread.participants)
-      ? uniqueList([...threads[existingIndex].participants, ...thread.participants])
-      : threads[existingIndex].participants,
+    ...current,
+    description: thread.description?.trim() || current.description,
+    type: thread.type ?? current.type,
+    participantIds: mergedIds,
+    participants: uniqueList([...current.participants, ...named.map((entity) => entity.name)]),
   };
 
   return {

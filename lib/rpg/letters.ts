@@ -50,7 +50,7 @@ export const LETTER_BOND_GAIN = 2;
 /** Below this they read it but do not answer. */
 export const LETTER_REPLY_FLOOR = -3;
 
-const CLOSE_STAGES = new Set(['close', 'romantic interest', 'partner']);
+const CLOSE_STAGES = new Set(['close', 'old friend', 'family', 'partner', 'mentor', 'romantic interest', 'lover']);
 
 /** Turns a letter, once offered, may wait before the offer is pressed. */
 const LETTER_LINGER_DAYS = 5;
@@ -212,7 +212,7 @@ export function correspondents(db: AppDatabase): EntityRecord[] {
     .sort((a, b) => {
       const score = (entity: EntityRecord) => {
         const bond = bondOf(db, entity.id)!;
-        const romance = bond.relationship === 'partner' ? 3 : bond.relationship === 'romantic interest' ? 2 : 0;
+        const romance = bond.relationship === 'lover' ? 3 : bond.relationship === 'romantic interest' ? 2 : 0;
 
         return bond.affinity + romance;
       };

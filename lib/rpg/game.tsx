@@ -1163,6 +1163,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const latestBefore = (dbRef.current ?? current).portraits?.at(-1);
+
+      // The same painting landing twice (a double trigger) is kept once.
+      if (
+        latestBefore &&
+        JSON.stringify(latestBefore.signature) === JSON.stringify(signature) &&
+        Date.now() - latestBefore.createdAt < 10 * 60_000
+      ) {
+        return;
+      }
+
       const stored = await storeImage(image);
       const latest = dbRef.current ?? current;
 

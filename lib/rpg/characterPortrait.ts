@@ -180,6 +180,41 @@ export function faceReferenceWarning(model: string) {
 }
 
 /** Adds a painted portrait, keeping the newest few per person. */
+/** A painting's details as one comparable key. */
+export function portraitKey(entityId: string, signature: object, extra = '') {
+  return `${entityId}|${JSON.stringify(signature)}|${extra}`;
+}
+
+/**
+ * Paintings in flight, by entity and details. Each costs money, so a second
+ * tap, a second mounted card or a re-run effect never starts another while
+ * one is running.
+ */
+const paintingNow = new Set<string>();
+
+/** Claims the right to paint; false when the same painting is already under way. */
+export function beginPainting(key: string): boolean {
+  if (paintingNow.has(key)) {
+    return false;
+  }
+
+  paintingNow.add(key);
+  return true;
+}
+
+export function endPainting(key: string) {
+  paintingNow.delete(key);
+}
+
+/** Whether their latest portrait was already painted with exactly these details. */
+export function alreadyPainted(
+  latest: CharacterPortraitRecord | null,
+  signature: CharacterPortraitSignature,
+  usedFace: boolean
+) {
+  return Boolean(latest && JSON.stringify(latest.signature) === JSON.stringify(signature) && latest.usedFace === usedFace);
+}
+
 export function addCharacterPortraitToDb(
   db: AppDatabase,
   entityId: string,
@@ -187,6 +222,13 @@ export function addCharacterPortraitToDb(
   signature: CharacterPortraitSignature,
   usedFace: boolean
 ): AppDatabase {
+  // The same painting landing twice (a double trigger) is kept once.
+  const theirLatest = (db.characterPortraits ?? []).filter((portrait) => portrait.entityId === entityId).at(-1) ?? null;
+
+  if (alreadyPainted(theirLatest, signature, usedFace) && Date.now() - (theirLatest?.createdAt ?? 0) < 10 * 60_000) {
+    return db;
+  }
+
   const all = [
     ...(db.characterPortraits ?? []),
     {

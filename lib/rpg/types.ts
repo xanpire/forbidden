@@ -98,7 +98,14 @@ export type GameState = {
   turnsWithoutTimeChange?: number;
   canonPoint: string;
   canonProgress?: CanonProgress;
+  /** The current chapter: a narrative unit, moved on only by real breaks (see applyChapterBreak). */
   chapter: number;
+  /** The current chapter's title, from its break. */
+  chapterTitle?: string;
+  /** Where the current chapter began: its first turn (story turn number) and in-story date. */
+  chapterStart?: { turn: number; date: CalendarDate };
+  /** Finished chapters, oldest first. */
+  chapters?: { chapter: number; title: string; from: CalendarDate; to: CalendarDate }[];
   scene: string;
   scenePace?: ScenePace;
   sceneCast?: string[];
@@ -231,7 +238,14 @@ export type EntityRecord = {
     known?: boolean;
     canonEventId?: string;
   };
-  romanceAccessibility?: 'winnable' | 'lore-locked';
+  /** male, female, or unknown when the story hasn't said. */
+  gender?: Gender;
+  /**
+   * Whether Kan (straight: only women) could ever win their heart:
+   * winnable, lore-locked (a woman whose heart belongs elsewhere), or
+   * not-applicable (men, and women not attracted to men). Kan has none.
+   */
+  romanceAccessibility?: 'winnable' | 'lore-locked' | 'not-applicable';
   canonDevotion?: string;
   orientation?: string;
   /**
@@ -255,6 +269,8 @@ export type EntityRecord = {
   companion?: Companion;
   tags: string[];
 };
+
+export type Gender = 'male' | 'female' | 'unknown';
 
 export type HiddenAlias = {
   name: string;
@@ -317,14 +333,23 @@ export type EventEntityRecord = {
   role: EventEntityRole;
 };
 
+/** One side of a bond: -10..10 and a short note. */
+export type BondSide = { affinity: number; note: string };
+
 export type BondRecord = {
   id: string;
   entityId: string;
   characterName: string;
+  /** How they feel about Kan: always the same as theirFeelings.affinity. */
   affinity: number;
   status: string;
   lastKeyEventId: string | null;
+  /** Always the same as theirFeelings.note. */
   note: string;
+  /** How they feel about you, from what they could see or hear. */
+  theirFeelings?: BondSide;
+  /** How you feel about them; your inner thoughts move only this side. */
+  yourFeelings?: BondSide;
   isMajor: boolean;
   relationship?: RelationshipStage;
   attraction?: Attraction;
@@ -502,15 +527,8 @@ export type CanonProgress = {
   heldForCombat?: boolean;
 };
 
-export type RelationshipStage =
-  | 'stranger'
-  | 'friendly'
-  | 'close'
-  | 'romantic interest'
-  | 'partner'
-  | 'rejected'
-  /** Was with Kan once; it ended. */
-  | 'ex';
+export type { RelationshipStage } from './romance';
+import type { RelationshipStage } from './romance';
 
 export type Attraction = 'none' | 'warm' | 'strong';
 
@@ -630,6 +648,8 @@ export type TurnDiff = {
   };
   /** The state model judged this beat visually striking (queues a scene summary). */
   imageWorthy?: boolean;
+  /** This turn opens a new chapter with this title (the state model's chapter_title). */
+  chapterTitle?: string;
   /**
    * People the prose seems to show, read by the app when the state reply was
    * unreadable. Only a suggestion: it never marks anyone met or seen, and
@@ -648,6 +668,9 @@ export type TurnDiff = {
     speechStyle?: string;
     mood?: string;
     appearance?: string;
+    gender?: Gender;
+    /** Who they are drawn to: men, women, both, none, or unknown. */
+    attractedTo?: 'men' | 'women' | 'both' | 'none' | 'unknown';
   }[];
   jutsuUsed?: {
     name: string;
@@ -661,9 +684,14 @@ export type TurnDiff = {
     /** Set when the state tracker referred to a known character by ID. */
     entityId?: string;
     character: string;
+    /** Change to how they feel about you (their side). */
     affinityDelta?: number;
     status?: string;
+    /** Their side's note. */
     note?: string;
+    /** Change to how you feel about them (your side). */
+    yourDelta?: number;
+    yourNote?: string;
     isMajor?: boolean;
     relationship?: string;
     attraction?: string;

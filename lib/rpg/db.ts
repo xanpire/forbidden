@@ -11,7 +11,7 @@ import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canonDat
 import { dropBareNatureJutsu, normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
-import { ensureCanonCast } from './canonCast';
+import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import type { AppDatabase, MemoryIndex } from './types';
@@ -449,10 +449,14 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
           appearance:
             entity.appearance ??
             (entity.type === 'character' ? 'Unknown' : undefined),
+          gender: entity.type === 'character' ? (entity.gender ?? genderOf(entity)) : undefined,
+          // Kan is straight: men are never romance options, and he has none himself.
           romanceAccessibility:
-            entity.type === 'character'
-              ? (entity.romanceAccessibility ?? 'winnable')
-              : undefined,
+            entity.type !== 'character' || entity.name.toLowerCase() === 'kan'
+              ? undefined
+              : (entity.gender ?? genderOf(entity)) === 'male'
+                ? 'not-applicable'
+                : entity.romanceAccessibility,
         }))
         : [],
       () => makeId('entity')
@@ -472,6 +476,8 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
                   ? 'rejected'
                   : 'stranger'),
           attraction: bond.attraction ?? 'none',
+          theirFeelings: { affinity: bond.affinity, note: bond.note ?? '' },
+          yourFeelings: bond.yourFeelings ?? { affinity: bond.affinity, note: '' },
         }))
       : [],
     facts: Array.isArray(db.facts) ? db.facts : [],
@@ -511,6 +517,14 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;
+}
+
+/** A saved person's gender when the save doesn't say: the canon cast's, else unknown. */
+function genderOf(entity: { name: string; tags?: string[] }) {
+  if (entity.name.toLowerCase() === 'kan') return 'male' as const;
+  if (FEMALE_CAST.has(entity.name)) return 'female' as const;
+  if (CANON_CAST.some((entry) => entry.name === entity.name)) return 'male' as const;
+  return 'unknown' as const;
 }
 
 /** who_knows holds entity ids (plus group tags); names from older saves and the seed are converted. */
@@ -640,6 +654,11 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
             heard: {},
           },
     chapter: state.chapter ?? seeded.chapter,
+    chapterTitle: typeof state.chapterTitle === 'string' ? state.chapterTitle : undefined,
+    chapterStart: state.chapterStart,
+    chapters: Array.isArray(state.chapters) ? state.chapters : [],
+    sceneSeq: typeof state.sceneSeq === 'number' ? state.sceneSeq : undefined,
+    sceneClosed: state.sceneClosed === true,
     scene: state.scene ?? seeded.scene,
     scenePace:
       state.scenePace === 'combat' ||

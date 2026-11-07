@@ -156,7 +156,14 @@ export default function BondScreen() {
                 ) : null}
                 {seen ? <Chip label={seen} /> : null}
               </View>
-              {bond.note ? <Text style={type.rowBody}>{bond.note}</Text> : null}
+              <View style={styles.sides}>
+                <Text style={type.rowBody}>
+                  {`Them toward you ${formatAffinity(bond.theirFeelings?.affinity ?? affinity)}${(bond.theirFeelings?.note ?? bond.note) ? ` · ${bond.theirFeelings?.note ?? bond.note}` : ''}`}
+                </Text>
+                <Text style={type.rowBody}>
+                  {`You toward them ${formatAffinity(bond.yourFeelings?.affinity ?? affinity)}${bond.yourFeelings?.note ? ` · ${bond.yourFeelings.note}` : ''}`}
+                </Text>
+              </View>
               {bond.romanceNote ? <Text style={type.rowBody}>{bond.romanceNote}</Text> : null}
             </View>
           </ListCard>
@@ -353,6 +360,9 @@ const styles = StyleSheet.create({
     fontFamily: fonts.extrabold,
     fontSize: 22,
     color: colors.text,
+  },
+  sides: {
+    gap: spacing.xs,
   },
   segments: {
     flexDirection: 'row',

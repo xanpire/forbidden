@@ -1,26 +1,51 @@
+/**
+ * The fixed set of relationship labels. "partner" means an Akatsuki (or
+ * mission) partner; a romantic partner is "lover".
+ */
 export type RelationshipStage =
   | 'stranger'
+  | 'acquaintance'
   | 'friendly'
   | 'close'
-  | 'romantic interest'
+  | 'old friend'
+  | 'family'
+  | 'teammate'
   | 'partner'
+  | 'mentor'
+  | 'student'
+  | 'rival'
+  | 'enemy'
+  | 'romantic interest'
+  | 'lover'
   | 'rejected'
   /** Was with Kan once; it ended. Canon-bound hearts land here (canonEndgame). */
   | 'ex';
 
 export type Attraction = 'none' | 'warm' | 'strong';
 
-export type RomanceAccessibility = 'winnable' | 'lore-locked';
+export type RomanceAccessibility = 'winnable' | 'lore-locked' | 'not-applicable';
 
-const RELATIONSHIP_STAGES: RelationshipStage[] = [
+export const RELATIONSHIP_STAGES: RelationshipStage[] = [
   'stranger',
+  'acquaintance',
   'friendly',
   'close',
-  'romantic interest',
+  'old friend',
+  'family',
+  'teammate',
   'partner',
+  'mentor',
+  'student',
+  'rival',
+  'enemy',
+  'romantic interest',
+  'lover',
   'rejected',
   'ex',
 ];
+
+/** The romantic stages, for code that cares whether a bond is a romance. */
+export const ROMANTIC_STAGES = new Set<RelationshipStage>(['romantic interest', 'lover']);
 
 const ATTRACTIONS: Attraction[] = ['none', 'warm', 'strong'];
 
@@ -53,8 +78,44 @@ export function normalizeRelationship(value: string | undefined): RelationshipSt
     return 'rejected';
   }
 
-  if (lower.includes('partner') || lower.includes('lover') || lower.includes('dating')) {
+  if (lower.includes('lover') || lower.includes('dating') || lower.includes('romantic partner') || lower.includes('girlfriend')) {
+    return 'lover';
+  }
+
+  if (lower.includes('partner')) {
     return 'partner';
+  }
+
+  if (lower.includes('old friend') || lower.includes('childhood')) {
+    return 'old friend';
+  }
+
+  if (lower.includes('brother') || lower.includes('sister') || lower.includes('family') || lower.includes('cousin')) {
+    return 'family';
+  }
+
+  if (lower.includes('teammate') || lower.includes('team ')) {
+    return 'teammate';
+  }
+
+  if (lower.includes('sensei') || lower.includes('mentor') || lower.includes('teacher')) {
+    return 'mentor';
+  }
+
+  if (lower.includes('student') || lower.includes('pupil')) {
+    return 'student';
+  }
+
+  if (lower.includes('rival')) {
+    return 'rival';
+  }
+
+  if (lower.includes('enemy') || lower.includes('hostile') || lower.includes('foe')) {
+    return 'enemy';
+  }
+
+  if (lower.includes('acquaint')) {
+    return 'acquaintance';
   }
 
   if (lower.includes('romantic') || lower.includes('interest') || lower.includes('crush')) {
@@ -690,6 +751,25 @@ const LORE_BY_KEY = new Map<string, CharacterLoreProfile>(
   Object.entries(CHARACTER_LORE).map(([name, profile]) => [loreKey(name), profile])
 );
 
+/**
+ * Whether Kan could win someone's heart, from who they are: men never, a
+ * woman by her lore heart, an original woman by whether she is drawn to men.
+ */
+export function romanceFor(
+  gender: 'male' | 'female' | 'unknown' | undefined,
+  options: { lore?: RomanceAccessibility; attractedTo?: string } = {}
+): RomanceAccessibility | undefined {
+  if (gender === 'male') return 'not-applicable';
+  if (gender !== 'female') return undefined;
+  if (options.lore) return options.lore;
+
+  const drawn = options.attractedTo?.toLowerCase();
+
+  if (drawn === 'women' || drawn === 'none') return 'not-applicable';
+  if (drawn === 'men' || drawn === 'both') return 'winnable';
+  return undefined;
+}
+
 export function loreProfileFor(name: string): CharacterLoreProfile | null {
   const key = loreKey(name);
 
@@ -712,8 +792,9 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 // protect the token budget.
 export const ROMANCE_RULES = `ROMANCE
 - Romance is slow, earned over many scenes, and can fail. NPCs have loves of their own. Bonds show a stage, an attraction, and a lore heart.
-- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Jiraiya→Tsunade, Kurenai↔Asuma, Rock Lee→Sakura, Konan→Yahiko, Naruto→Hinata (late), Minato↔Kushina, Haku→Zabuza, Hayate→Yūgao; married elders stay married. Friendship can still grow.
-- Winnable hearts (Tenten, Anko, Shizune, Mei, Kakashi, Kiba, Neji, Shikamaru, Gaara, Killer Bee, Karin, Suigetsu, Hana Inuzuka, Suzume, Sai, Choji, Shino, Kankuro, Darui, Yugito, Fū, Kurotsuchi, Samui, originals) open only through long, consistent effort, never one kind act.
+- Kan is straight: only women can ever be romance options. Men are never romantic interests for him, whatever their bond; friendship, loyalty and brotherhood still grow.
+- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Kurenai↔Asuma, Konan→Yahiko, Kushina↔Minato, Tsunade (grieving Dan), Rin→Kakashi; married women stay married. Friendship can still grow.
+- Winnable hearts (Tenten, Anko, Shizune, Mei, Karin, Hana Inuzuka, Suzume, Yugito, Fū, Kurotsuchi, Samui, Ayame, original women drawn to men) open only through long, consistent effort, never one kind act.
 - Canon-bound hearts (Temari→Shikamaru, Ino→Sai, Karui→Choji) can truly love Kan, but canon wins. As her canon time nears, the story ends it naturally: duty, distance, growing apart, her own choice; never cheating or a sudden change of character. After that Kan is her ex, she is with her canon partner, and she does not go back to Kan.
 - Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
 - A rejection holds by default: the refusal stands, and Kan pushing again only hardens it. It is not forever. Over a long stretch of in-story time and many scenes, someone who turned Kan down can change their mind as they truly come to know him: his real self behind the reserve, what he has done for them or others, or the power he keeps hidden. The change comes from their side, never soon after the refusal, never from repeated asking, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest). Lore-locked hearts and the age rules above still hold.`;

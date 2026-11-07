@@ -6,6 +6,7 @@ import { moveCharacterImages } from './characterPortrait';
 import { characterRefs } from './characterRefs';
 import { makeId } from './id';
 import { isPlaceholderStatus, NEWLY_MET_STATUS, UNMET_STATUS } from './met';
+import { romanceFor } from './romance';
 import { uniqueList } from './util';
 import type { AppDatabase, EntityRecord, TurnDiff } from './types';
 
@@ -740,8 +741,12 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
       notes: '',
       mood: entity.mood?.trim() || 'Unknown',
       appearance: entity.appearance?.trim() || 'Unknown',
+      gender: entity.gender ?? 'unknown',
+      // From who they are, never a default of "winnable".
+      romanceAccessibility: romanceFor(entity.gender, { attractedTo: entity.attractedTo }),
+      ...(entity.attractedTo && entity.attractedTo !== 'unknown' ? { orientation: `Attracted to ${entity.attractedTo}` } : {}),
       tags: [],
-    };
+    } as EntityRecord;
 
     return {
       ...db,

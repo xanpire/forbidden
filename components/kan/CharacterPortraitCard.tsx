@@ -10,8 +10,12 @@ import { formatDayMonth } from '@/lib/rpg/calendar';
 import {
   buildCharacterPortraitPrompt,
   characterFaceOf,
+  alreadyPainted,
+  beginPainting,
   characterPortraitSignature,
   characterPortraitStaleReason,
+  endPainting,
+  portraitKey,
   faceReferenceWarning,
   latestCharacterPortrait,
 } from '@/lib/rpg/characterPortrait';
@@ -77,6 +81,18 @@ export function CharacterPortraitCard({
       return;
     }
 
+    if (alreadyPainted(latest, signature, Boolean(face))) {
+      showToast(`${entity.name}’s portrait already shows them as they are now.`);
+      return;
+    }
+
+    // One painting per person and details at a time, across every mounted card.
+    const lock = portraitKey(entity.id, signature, face ? 'face' : '');
+
+    if (!beginPainting(lock)) {
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -114,6 +130,7 @@ export function CharacterPortraitCard({
         'error'
       );
     } finally {
+      endPainting(lock);
       setBusy(false);
     }
   }, [addCharacterPortrait, apiKey, busy, db, entity, face, latest, showToast, signature, updateSettings]);

@@ -1,4 +1,4 @@
-import { loreProfileFor } from './romance';
+import { loreProfileFor, romanceFor } from './romance';
 import type { EntityRecord, HiddenAlias } from './types';
 
 /**
@@ -1160,6 +1160,14 @@ function namesOf(entity: { name: string; aliases: string[] }) {
   return [entity.name, ...entity.aliases].map(lower);
 }
 
+/** The women of the canon cast; everyone else in it is a man. */
+export const FEMALE_CAST = new Set([
+  'Sakura Haruno', 'Tsunade Senju', 'Konan', 'Hinata Hyuga', 'Anko Mitarashi', 'Kurenai Yuhi',
+  'Shizune', 'Karin', 'Ino Yamanaka', 'Tenten', 'Hanabi Hyuga', 'Tsume Inuzuka', 'Koharu Utatane',
+  'Ayame', 'Kushina Uzumaki', 'Mikoto Uchiha', 'Rin Nohara', 'Temari', 'Chiyo', 'Mei Terumi',
+  'Yugito Nii', 'Karui', 'Samui', 'Kurotsuchi', 'Fū', 'Tayuya',
+]);
+
 /** Cast entries become entities. Existing saves get the people they lack. */
 export function castEntity(entry: CastEntry, id: string): EntityRecord {
   const lore = loreProfileFor(entry.name);
@@ -1180,7 +1188,10 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
     notes: '',
     mood: 'Unknown',
     appearance: entry.appearance,
-    romanceAccessibility: lore?.romanceAccessibility ?? 'winnable',
+    gender: FEMALE_CAST.has(entry.name) ? 'female' : 'male',
+    romanceAccessibility: romanceFor(FEMALE_CAST.has(entry.name) ? 'female' : 'male', {
+      lore: lore?.romanceAccessibility ?? 'winnable',
+    }),
     canonDevotion: lore?.canonDevotion,
     orientation: lore?.orientation,
     met: false,

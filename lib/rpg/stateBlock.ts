@@ -225,6 +225,15 @@ export function convertStateBlock(
     };
   }
 
+  const chapterTitle = cleanString(block.chapter_title)
+    ?.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+
+  if (chapterTitle && chapterTitle.length >= 2) {
+    diff.chapterTitle = chapterTitle.slice(0, 60);
+  }
+
   const sceneTitle = cleanString(block.scene_title)
     ?.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
     .replace(/[.!?]+$/, '')
@@ -332,6 +341,8 @@ export function convertStateBlock(
           relationship?: unknown;
           attraction?: unknown;
           romance_note?: unknown;
+          your_change?: unknown;
+          your_note?: unknown;
         };
 
         return {
@@ -346,6 +357,8 @@ export function convertStateBlock(
           attraction: typeof bond.attraction === 'string' ? bond.attraction : undefined,
           romanceNote:
             typeof bond.romance_note === 'string' ? bond.romance_note : undefined,
+          yourDelta: typeof bond.your_change === 'number' ? bond.your_change : undefined,
+          yourNote: typeof bond.your_note === 'string' ? bond.your_note : undefined,
         };
       })
       .filter((item) => item.character.trim().length > 0);
@@ -396,7 +409,8 @@ export function convertStateBlock(
     diff.threads = block.threads
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
-        const thread = item as { title?: unknown; description?: unknown; status?: unknown };
+        const thread = item as { title?: unknown; description?: unknown; status?: unknown; participants?: unknown };
+        const participants = stringItems(thread.participants).filter((name) => name.toLowerCase() !== 'kan');
         const action: 'open' | 'update' | 'resolve' =
           thread.status === 'resolved' || thread.status === 'resolve'
             ? 'resolve'
@@ -411,6 +425,7 @@ export function convertStateBlock(
           title: title.slice(0, 80),
           description,
           type: 'other' as const,
+          ...(participants.length > 0 ? { participants } : {}),
         };
       })
       .filter((item) => item.title.length > 0);
@@ -431,7 +446,18 @@ export function convertStateBlock(
           speech_style?: unknown;
           appearance?: unknown;
           appearance_block?: unknown;
+          gender?: unknown;
+          attracted_to?: unknown;
         };
+        const gender: 'male' | 'female' | undefined =
+          character.gender === 'male' || character.gender === 'female' ? character.gender : undefined;
+        const attractedTo: 'men' | 'women' | 'both' | 'none' | undefined =
+          character.attracted_to === 'men' ||
+          character.attracted_to === 'women' ||
+          character.attracted_to === 'both' ||
+          character.attracted_to === 'none'
+            ? character.attracted_to
+            : undefined;
 
         return {
           isNew: true,
@@ -448,6 +474,8 @@ export function convertStateBlock(
               : typeof character.appearance_block === 'string'
                 ? character.appearance_block
                 : undefined,
+          ...(gender ? { gender } : {}),
+          ...(attractedTo ? { attractedTo } : {}),
         };
       })
       .filter((item) => item.name.trim().length > 0);

@@ -38,14 +38,25 @@ export const SCENE_PACES = ['combat', 'chase', 'conversation', 'travel', 'downti
 export const LOCATION_KINDS = ['settlement', 'road', 'wilderness', 'structure'] as const;
 export const RELATIONSHIPS = [
   'stranger',
+  'acquaintance',
   'friendly',
   'close',
-  'romantic interest',
+  'old friend',
+  'family',
+  'teammate',
   'partner',
+  'mentor',
+  'student',
+  'rival',
+  'enemy',
+  'romantic interest',
+  'lover',
   'rejected',
   'ex',
 ] as const;
 export const ATTRACTIONS = ['none', 'warm', 'strong'] as const;
+export const GENDERS = ['male', 'female', 'unknown'] as const;
+export const ATTRACTED_TO = ['men', 'women', 'both', 'none', 'unknown'] as const;
 export const FACT_TYPES = [
   'death',
   'injury',
@@ -90,11 +101,16 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People are referred to by their ID from KNOWN CHARACTERS (or, for someone
   // added this turn under new_characters, by that exact name).
+  // Two sides: affinity_change / note are how THEY feel about Kan (only from
+  // what they could see or hear); your_change / your_note are how Kan feels
+  // about them (his inner thoughts move only this side).
   bonds: list({
     character_id: { type: 'string' },
     affinity_change: nullableNumber,
     status: nullableString,
     note: nullableString,
+    your_change: nullableNumber,
+    your_note: nullableString,
     relationship: nullableEnum(RELATIONSHIPS),
     attraction: nullableEnum(ATTRACTIONS),
     romance_note: nullableString,
@@ -115,10 +131,12 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // Refs of active facts that stopped being true this turn.
   facts_ended: stringList,
+  // participants: ids of the people the thread is about (besides Kan).
   threads: list({
     title: { type: 'string' },
     description: nullableString,
     status: { type: 'string', enum: [...THREAD_STATUSES] },
+    participants: stringList,
   }),
   // Only people absent from KNOWN CHARACTERS, each with is_new: true. Entries
   // with is_new: false are dropped, so a known person can never be re-added.
@@ -130,6 +148,8 @@ export const TURN_STATE_SCHEMA = object({
     personality: nullableString,
     speech_style: nullableString,
     appearance: nullableString,
+    gender: nullableEnum(GENDERS),
+    attracted_to: nullableEnum(ATTRACTED_TO),
   }),
   character_updates: list({
     character_id: { type: 'string' },
@@ -159,6 +179,9 @@ export const TURN_STATE_SCHEMA = object({
   scene_ended: { type: 'boolean' },
   // A short name for the scene, only when a new scene starts this turn.
   scene_title: nullableString,
+  // A title for a new chapter, only when this turn opens one (a major story
+  // turn, a big change of place, or a time skip).
+  chapter_title: nullableString,
   canon_engaged: stringList,
   canon_completed: stringList,
   canon_passed: stringList,

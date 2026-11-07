@@ -135,7 +135,7 @@ describe('chapter summaries', () => {
     expect(unsummarizedStory(applied).map((entry) => entry.id)).toEqual(ids.slice(6));
   });
 
-  test('saves the title, the chapter, and a short memory, and moves the chapter on', () => {
+  test('saves the title, the chapter, and a short memory, linked both ways; the chapter stays', () => {
     const db = withStory(6);
     const ids = db.rawLog.filter((entry) => entry.kind === 'story').map((entry) => entry.id);
     const { db: queued, job } = sceneJob(db, ids);
@@ -150,9 +150,11 @@ describe('chapter summaries', () => {
     const summary = next.summaries[next.summaries.length - 1];
     expect(summary.title).toBe('North through the rain');
     expect(summary.chapter).toBe(chapter);
-    expect(next.state.chapter).toBe(chapter + 1);
+    // A summary is compression inside a chapter, never a chapter break.
+    expect(next.state.chapter).toBe(chapter);
 
     const memory = next.events.find((event) => event.summaryId === summary.id)!;
+    expect(summary.eventIds).toEqual([memory.id]);
     expect(memory.title).toBe('North through the rain');
     expect(memory.summary).toBe('You walk north with Itachi and sleep in a ruined shrine.');
   });

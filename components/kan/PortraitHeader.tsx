@@ -14,6 +14,7 @@ import { RefreshCw, X } from 'lucide-react-native';
 import { useToast } from '@/components/Toast';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { generateImage } from '@/lib/openrouter';
+import { beginPainting, endPainting, portraitKey } from '@/lib/rpg/characterPortrait';
 import { recordDebugImage } from '@/lib/rpg/debug';
 import { calculateAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
@@ -103,6 +104,17 @@ export function PortraitHeader() {
       return;
     }
 
+    if (latest && JSON.stringify(latest.signature) === JSON.stringify(signature)) {
+      showToast('Your portrait already shows you as you are now.');
+      return;
+    }
+
+    const lock = portraitKey('kan', signature);
+
+    if (!beginPainting(lock)) {
+      return;
+    }
+
     setBusy(true);
 
     try {
@@ -137,6 +149,7 @@ export function PortraitHeader() {
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'The portrait wouldn’t paint. Try again.', 'error');
     } finally {
+      endPainting(lock);
       setBusy(false);
     }
   }, [addPortrait, apiKey, busy, db, latest, showToast, signature, updateSettings]);

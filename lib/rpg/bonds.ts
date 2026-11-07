@@ -59,8 +59,12 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOpti
   if (existingIndex === -1) {
     const bondEntity = existingEntity;
 
+    const theirs = clamp(typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0, -10, 10);
+    const yours = clamp(typeof bond.yourDelta === 'number' ? bond.yourDelta : 0, -10, 10);
     const newBond = {
       id: makeId('bond'),
+      theirFeelings: { affinity: theirs, note: bond.note?.trim() || '' },
+      yourFeelings: { affinity: yours, note: bond.yourNote?.trim() || '' },
       entityId: bondEntity.id,
       characterName: bondEntity.name,
       affinity: clamp(
@@ -87,17 +91,25 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOpti
   const bonds = [...db.bonds];
   const existing = bonds[existingIndex];
 
+  const affinity = clamp(
+    existing.affinity + (typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0),
+    -10,
+    10
+  );
+  const note = bond.note?.trim() || existing.note;
+  const yourBefore = existing.yourFeelings ?? { affinity: existing.affinity, note: '' };
+
   bonds[existingIndex] = {
     ...existing,
     characterName: existingEntity?.name ?? existing.characterName,
-    affinity: clamp(
-      existing.affinity +
-        (typeof bond.affinityDelta === 'number' ? bond.affinityDelta : 0),
-      -10,
-      10
-    ),
+    affinity,
+    theirFeelings: { affinity, note },
+    yourFeelings: {
+      affinity: clamp(yourBefore.affinity + (typeof bond.yourDelta === 'number' ? bond.yourDelta : 0), -10, 10),
+      note: bond.yourNote?.trim() || yourBefore.note,
+    },
     status: bond.status?.trim() || existing.status,
-    note: bond.note?.trim() || existing.note,
+    note,
     isMajor: typeof bond.isMajor === 'boolean' ? bond.isMajor : existing.isMajor,
     relationship:
       normalizeRelationship(bond.relationship) ?? existing.relationship ?? 'stranger',
@@ -111,4 +123,30 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOpti
     ...db,
     bonds,
   };
+}
+
+/**
+ * Keeps theirFeelings in step with affinity/note (the many places that move
+ * how someone feels about Kan write those), and gives every bond a yours side.
+ */
+export function syncBondSides(db: AppDatabase): AppDatabase {
+  let changed = false;
+
+  const bonds = db.bonds.map((bond) => {
+    const theirs = bond.theirFeelings;
+    const inStep = theirs && theirs.affinity === bond.affinity && theirs.note === bond.note && bond.yourFeelings;
+
+    if (inStep) {
+      return bond;
+    }
+
+    changed = true;
+    return {
+      ...bond,
+      theirFeelings: { affinity: bond.affinity, note: bond.note },
+      yourFeelings: bond.yourFeelings ?? { affinity: bond.affinity, note: '' },
+    };
+  });
+
+  return changed ? { ...db, bonds } : db;
 }

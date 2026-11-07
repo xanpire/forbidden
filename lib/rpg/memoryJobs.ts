@@ -18,6 +18,8 @@
  * to no longer exists (undo, regenerate).
  */
 import { bingoListings, formatRyo } from './reputation';
+import { CANON_MILESTONES } from './canonData';
+import { syncBondSides } from './bonds';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
@@ -276,9 +278,17 @@ export function applyStateStep(
       turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
     },
   };
+  // A real chapter break opens a new chapter with this turn (and a new scene).
+  const chapterBefore = next.state.chapter;
+  next = applyChapterBreak(latest, next, turn.turnLogId, {
+    title: extraction?.chapterTitle,
+    majorCompleted: (extraction?.canonCompleted ?? []).some((id) => CANON_MILESTONES.some((m) => m.id === id && m.major)),
+    elapsedSeconds: clock.elapsedSeconds,
+  });
+
   // Which scene this turn belongs to, and who was in it: memories are cut
   // and shared by this, never by names in their text.
-  next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true);
+  next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true, next.state.chapter !== chapterBefore);
 
   // One piece of news per turn (or one catch-up report); nothing in the
   // world fires mid-fight. The allowance comes from the state the turn's
@@ -305,6 +315,7 @@ export function applyStateStep(
   next = receiveLetters(next, extraction?.lettersReceived);
   next = sendLetters(next, extraction?.lettersSent);
   next = deliverLetters(next);
+  next = syncBondSides(next);
 
   let notice: string | null = null;
 
@@ -372,6 +383,61 @@ export function applyStateStep(
   return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
 }
 
+/** A chapter is long: a break only counts once this much story has passed in it. */
+export const CHAPTER_MIN_TURNS = 6;
+export const CHAPTER_MIN_HOURS = 12;
+/** A chapter that runs this long without a break is closed anyway. */
+export const CHAPTER_MAX_TURNS = 60;
+/** A single turn this long is a time skip, which opens a chapter. */
+const CHAPTER_SKIP_SECONDS = 2 * 86400;
+
+/**
+ * Chapters are narrative units, not summary chunks. A new one opens with
+ * this turn when the state reply marks a chapter break, a major milestone
+ * completes, or a long time skip passes, but only once the current chapter
+ * has run at least CHAPTER_MIN_TURNS turns or CHAPTER_MIN_HOURS in-story
+ * hours; one that reaches CHAPTER_MAX_TURNS closes regardless.
+ */
+export function applyChapterBreak(
+  before: AppDatabase,
+  after: AppDatabase,
+  turnLogId: string,
+  reason: { title?: string; majorCompleted?: boolean; elapsedSeconds?: number }
+): AppDatabase {
+  const chapter = before.state.chapter;
+  const turnsIn = storyLog(before).filter((entry) => entry.role === 'assistant' && entry.chapter === chapter).length;
+  const start = before.state.chapterStart?.date ?? storyLog(before).find((entry) => entry.chapter === chapter)?.inStoryDate ?? before.state.inStoryDate;
+  const hoursIn = secondsBetween(start, before.state.inStoryDate) / 3600;
+  const wanted = Boolean(reason.title) || reason.majorCompleted === true || (reason.elapsedSeconds ?? 0) >= CHAPTER_SKIP_SECONDS;
+  const longEnough = turnsIn >= CHAPTER_MIN_TURNS || hoursIn >= CHAPTER_MIN_HOURS;
+
+  if (!((wanted && longEnough) || turnsIn >= CHAPTER_MAX_TURNS)) {
+    return after;
+  }
+
+  const title = reason.title?.trim() || after.state.scene || `Chapter ${chapter + 1}`;
+  const index = after.rawLog.findIndex((entry) => entry.id === turnLogId);
+  const userIndex = index > 0 && after.rawLog[index - 1].role === 'user' ? index - 1 : -1;
+  const turnNumber = after.rawLog[userIndex !== -1 ? userIndex : index]?.turn ?? 0;
+
+  return {
+    ...after,
+    rawLog: after.rawLog.map((entry, position) =>
+      position === index || position === userIndex ? { ...entry, chapter: chapter + 1 } : entry
+    ),
+    state: {
+      ...after.state,
+      chapter: chapter + 1,
+      chapterTitle: title,
+      chapterStart: { turn: turnNumber, date: before.state.inStoryDate },
+      chapters: [
+        ...(after.state.chapters ?? []),
+        { chapter, title: before.state.chapterTitle ?? `Chapter ${chapter}`, from: start, to: before.state.inStoryDate },
+      ],
+    },
+  };
+}
+
 function placeKey(location: string | undefined) {
   return (location ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
@@ -386,12 +452,14 @@ function stampTurnScene(
   before: AppDatabase,
   after: AppDatabase,
   turnLogId: string,
-  sceneEnded: boolean
+  sceneEnded: boolean,
+  newChapter = false
 ): AppDatabase {
   const moved =
-    !sceneEnded &&
-    placeKey(after.state.location) !== '' &&
-    placeKey(after.state.location) !== placeKey(before.state.location);
+    newChapter ||
+    (!sceneEnded &&
+      placeKey(after.state.location) !== '' &&
+      placeKey(after.state.location) !== placeKey(before.state.location));
   const seq = (before.state.sceneSeq ?? 0) + (before.state.sceneClosed || moved ? 1 : 0);
   const castIds = [
     ...new Set(
@@ -414,6 +482,8 @@ function stampTurnScene(
   }
 
   const knownEvents = new Set(before.events.map((event) => event.id));
+  const knownFacts = new Set(before.facts.map((fact) => fact.id));
+  const knownThreads = new Set(before.threads.map((thread) => thread.id));
 
   return {
     ...after,
@@ -426,6 +496,11 @@ function stampTurnScene(
       !knownEvents.has(event.id) && event.sourceLogId === null && !event.turnLogId
         ? { ...event, turnLogId }
         : event
+    ),
+    // Everything this turn recorded points back at it.
+    facts: after.facts.map((fact) => (!knownFacts.has(fact.id) && !fact.sourceLogId ? { ...fact, sourceLogId: turnLogId } : fact)),
+    threads: after.threads.map((thread) =>
+      !knownThreads.has(thread.id) && !thread.sourceLogId ? { ...thread, sourceLogId: turnLogId } : thread
     ),
     state: { ...after.state, sceneSeq: seq, sceneClosed: sceneEnded },
   };
@@ -775,17 +850,20 @@ export function applySummaryJob(
       }
 
       const title = output.title?.trim() || shortTitle(output.text);
-      const chapter = Math.max(1, next.state.chapter);
+      // A summary is rolling compression inside a chapter; it never ends one
+      // (chapters move on at real breaks, see applyChapterBreak).
+      const chapter = Math.max(1, messages[messages.length - 1].chapter || next.state.chapter);
 
       const first = messages[0];
       const last = messages[messages.length - 1];
-      const lastEvent = next.events[next.events.length - 1];
+      // The memory this summary is saved as, linked both ways.
+      const eventId = makeId('event');
       const record: SummaryRecord = {
         id: makeId('summary'),
         level: 'chapter',
         range: {
-          fromEventId: lastEvent?.id ?? '',
-          toEventId: lastEvent?.id ?? '',
+          fromEventId: eventId,
+          toEventId: eventId,
           from: first.inStoryDate,
           to: last.inStoryDate,
         },
@@ -793,7 +871,7 @@ export function applySummaryJob(
         title,
         chapter,
         tokenCount: Math.ceil(output.text.length / 4),
-        eventIds: lastEvent ? [lastEvent.id] : [],
+        eventIds: [eventId],
         // Stamped just after the last covered message, so a summary that
         // lands late (after a retry) doesn't hide newer, unsummarized turns.
         createdAt: last.createdAt + 1,
@@ -802,10 +880,25 @@ export function applySummaryJob(
       next = {
         ...next,
         summaries: [...next.summaries, record],
-        // The summary closes this chapter; the story moves on to the next.
-        state: { ...next.state, chapter: chapter + 1 },
       };
-      next = saveSummaryMemory(next, record, messages, output.memory);
+      next = saveSummaryMemory(next, record, messages, output.memory, eventId);
+
+      // No memory was saved (one already existed for this stretch): link that one.
+      if (!next.events.some((event) => event.id === eventId)) {
+        const existing = next.events.find((event) => event.tags.includes(SUMMARY_TAG) && event.sourceLogId === last.id);
+        next = {
+          ...next,
+          summaries: next.summaries.map((summary) =>
+            summary.id === record.id
+              ? {
+                  ...summary,
+                  eventIds: existing ? [existing.id] : [],
+                  range: { ...summary.range, fromEventId: existing?.id ?? '', toEventId: existing?.id ?? '' },
+                }
+              : summary
+          ),
+        };
+      }
 
       // If the job was widened while this one was running, keep the newer
       // messages queued instead of marking them as summarized.
@@ -881,7 +974,8 @@ function saveSummaryMemory(
   db: AppDatabase,
   summary: SummaryRecord,
   messages: RawLogEntry[],
-  memory?: string
+  memory?: string,
+  eventId: string = makeId('event')
 ): AppDatabase {
   const last = messages[messages.length - 1];
 
@@ -911,7 +1005,7 @@ function saveSummaryMemory(
   );
 
   const event: EventRecord = {
-    id: makeId('event'),
+    id: eventId,
     chapter: summary.chapter ?? db.state.chapter,
     scene: last.scene || db.state.scene,
     inStoryDate: last.inStoryDate,
@@ -994,14 +1088,8 @@ export function carryOverMemory(current: AppDatabase, restored: AppDatabase): Ap
   );
   const extraEventIds = new Set(extraEvents.map((event) => event.id));
 
-  // A carried-over summary closed its chapter, so the story stays past it.
-  const closed = Math.max(0, ...extraSummaries.map((summary) => summary.chapter ?? 0));
   const merged: AppDatabase = {
     ...restored,
-    state:
-      closed >= restored.state.chapter
-        ? { ...restored.state, chapter: closed + 1 }
-        : restored.state,
     summaries: [...restored.summaries, ...extraSummaries],
     events: [...restored.events, ...extraEvents],
     eventEntities: [

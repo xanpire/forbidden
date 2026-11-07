@@ -3,7 +3,7 @@
 // facts, clock, jutsu, log and stateBlock.
 
 import { type ChatRequest, completeChat } from '../openrouter';
-import { applyBondDiff } from './bonds';
+import { applyBondDiff, syncBondSides } from './bonds';
 import { applyCanonEndgames } from './canonEndgame';
 import { daysBetween, formatDate } from './calendar';
 import { applyClockChange, applyClockTick } from './clock';
@@ -119,7 +119,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   if (Array.isArray(diff.threads)) {
     for (const thread of diff.threads) {
-      next = applyThreadDiff(next, thread);
+      next = applyThreadDiff(next, thread, { presentIds });
     }
   }
 
@@ -155,6 +155,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   // Anyone seen for the first time this turn: "Newly met" and a bond.
   next = settleNewlyMet(db, next);
 
+  next = syncBondSides(next);
   next = applyClockTick(next, diff);
   // Temporary conditions run out; a long stretch of rest ends the "until rest" ones.
   next = expireFacts(next, { rested: isRest(diff) });

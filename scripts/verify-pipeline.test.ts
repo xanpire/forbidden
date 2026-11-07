@@ -28,7 +28,7 @@ import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { CANON_MILESTONES, CANON_VERSION } from '../lib/rpg/canonData';
 import { activeCanonMilestones, upcomingCanonMilestones, advanceCanon, applyCanonMarks, markNewsHeard, milestoneBearers, milestoneChannel, milestoneKnowledge, milestoneLocation, milestoneRegion, unheardCanonNews, worldClock, NEWS_PER_TURN } from '../lib/rpg/canon';
-import { eraNoteFor, loreProfileFor, normalizeRelationship } from '../lib/rpg/romance';
+import { RELATIONSHIP_STAGES, eraNoteFor, loreProfileFor, normalizeRelationship } from '../lib/rpg/romance';
 import { applyCanonEndgames, endgameNote } from '../lib/rpg/canonEndgame';
 import { CANON_CAST } from '../lib/rpg/canonCast';
 import { slug } from '../lib/rpg/id';
@@ -830,15 +830,26 @@ describe('cross-era memory and romance', () => {
     expect(Array.isArray(db.state.canonProgress?.completed)).toBe(true);
 
     for (const bond of db.bonds) {
-      expect(['stranger', 'friendly', 'close', 'romantic interest', 'partner', 'rejected'])
-        .toContain(bond.relationship ?? 'stranger');
+      expect(RELATIONSHIP_STAGES).toContain(bond.relationship ?? 'stranger');
     }
 
-    for (const entity of db.entities.filter((e) => e.type === 'character')) {
-      expect(['winnable', 'lore-locked']).toContain(
-        entity.romanceAccessibility ?? 'winnable'
-      );
+    for (const entity of db.entities.filter((e) => e.type === 'character' && e.name !== 'Kan')) {
+      expect(['winnable', 'lore-locked', 'not-applicable']).toContain(entity.romanceAccessibility ?? 'not-applicable');
+      // Kan is straight: no man is ever a romance option.
+      if (entity.gender === 'male') {
+        expect(entity.romanceAccessibility).toBe('not-applicable');
+      }
     }
+
+    const kan = db.entities.find((e) => e.name === 'Kan')!;
+    expect(kan.romanceAccessibility).toBeUndefined();
+    for (const name of ['Kakashi Hatake', 'Gaara', 'Killer Bee', 'Might Guy', 'Neji Hyuga', 'Shikamaru Nara', 'Sai', 'Itachi Uchiha']) {
+      expect(db.entities.find((e) => e.name === name)?.romanceAccessibility).toBe('not-applicable');
+    }
+    for (const name of ['Temari', 'Ino Yamanaka', 'Karui', 'Hana Inuzuka', 'Suzume']) {
+      expect(db.entities.find((e) => e.name === name)?.romanceAccessibility).toBe('winnable');
+    }
+    expect(db.entities.find((e) => e.name === 'Sakura Haruno')?.romanceAccessibility).toBe('lore-locked');
   });
 
   test('characters met once are remembered across eras', () => {
@@ -1946,12 +1957,28 @@ describe('character portraits', () => {
     const signature = mod.characterPortraitSignature(db, itachi);
     let next = db;
     for (let i = 0; i < mod.PORTRAITS_PER_CHARACTER + 3; i += 1) {
-      next = mod.addCharacterPortraitToDb(next, itachi.id, `img:${i}`, signature, false);
+      next = mod.addCharacterPortraitToDb(next, itachi.id, `img:${i}`, { ...signature, appearance: `${signature.appearance} ${i}` }, false);
     }
     next = mod.addCharacterPortraitToDb(next, 'someone-else', 'img:other', signature, false);
     expect(mod.characterPortraitsOf(next, itachi.id).length).toBe(mod.PORTRAITS_PER_CHARACTER);
     expect(mod.latestCharacterPortrait(next, itachi.id)?.image).toBe(`img:${mod.PORTRAITS_PER_CHARACTER + 2}`);
     expect(mod.latestCharacterPortraitMap(next).get('someone-else')).toBe('img:other');
+  });
+
+  test('the same painting landing twice is kept once, and a second one cannot start while one runs', async () => {
+    const { mod, db, itachi } = await setup();
+    const signature = mod.characterPortraitSignature(db, itachi);
+    let next = mod.addCharacterPortraitToDb(db, itachi.id, 'img:a', signature, false);
+    next = mod.addCharacterPortraitToDb(next, itachi.id, 'img:b', signature, false);
+    expect(mod.characterPortraitsOf(next, itachi.id).map((portrait: { image: string }) => portrait.image)).toEqual(['img:a']);
+    expect(mod.alreadyPainted(mod.latestCharacterPortrait(next, itachi.id), signature, false)).toBe(true);
+
+    const key = mod.portraitKey(itachi.id, signature);
+    expect(mod.beginPainting(key)).toBe(true);
+    expect(mod.beginPainting(key)).toBe(false);
+    mod.endPainting(key);
+    expect(mod.beginPainting(key)).toBe(true);
+    mod.endPainting(key);
   });
 
   test('the prompt uses the face reference when sent, canon design otherwise', async () => {
@@ -3410,9 +3437,9 @@ describe('canon-bound hearts', () => {
   const bondOf = (db: AppDatabase, name: string) => db.bonds.find((bond) => bond.characterName === name)!;
 
   test('Kan can have her until canon says otherwise; then he is her ex', () => {
-    expect(bondOf(applyCanonEndgames(withBond('Temari', 'partner', 22)), 'Temari').relationship).toBe('partner');
+    expect(bondOf(applyCanonEndgames(withBond('Temari', 'lover', 22)), 'Temari').relationship).toBe('lover');
 
-    const settled = applyCanonEndgames(withBond('Temari', 'partner', 24, 10));
+    const settled = applyCanonEndgames(withBond('Temari', 'lover', 24, 10));
     expect(bondOf(settled, 'Temari').relationship).toBe('ex');
     expect(bondOf(settled, 'Temari').attraction).toBe('warm');
     expect(bondOf(settled, 'Temari').affinity).toBe(9);
@@ -3423,26 +3450,26 @@ describe('canon-bound hearts', () => {
   });
 
   test('the story cannot rekindle it after the canon date', () => {
-    const settled = applyCanonEndgames(withBond('Karui', 'partner', 25, 6));
-    const again = applyTurnDiff(settled, { bonds: [{ character: 'Karui', relationship: 'partner' }] });
+    const settled = applyCanonEndgames(withBond('Karui', 'lover', 25, 6));
+    const again = applyTurnDiff(settled, { bonds: [{ character: 'Karui', relationship: 'lover' }] });
 
     expect(bondOf(again, 'Karui').relationship).toBe('ex');
   });
 
   test('if the canon partner is dead, nothing is forced', () => {
-    const db = withBond('Temari', 'partner', 25);
+    const db = withBond('Temari', 'lover', 25);
     const shikamaru = db.entities.find((item) => item.name === 'Shikamaru Nara')!;
     const widowed = markDeceased(db, shikamaru.id, { known: true });
 
-    expect(bondOf(applyCanonEndgames(widowed), 'Temari').relationship).toBe('partner');
+    expect(bondOf(applyCanonEndgames(widowed), 'Temari').relationship).toBe('lover');
     expect(endgameNote(widowed, 'Temari')).toBe('');
   });
 
   test('the narrator is warned as the time nears', () => {
-    expect(endgameNote(withBond('Temari', 'partner', 20), 'Temari')).toContain('ends up with Shikamaru Nara');
-    expect(endgameNote(withBond('Temari', 'partner', 23, 6), 'Temari')).toContain('let it end naturally');
-    expect(endgameNote(withBond('Temari', 'partner', 25), 'Temari')).toContain('her ex');
-    expect(endgameNote(withBond('Tenten', 'partner', 25), 'Tenten')).toBe('');
+    expect(endgameNote(withBond('Temari', 'lover', 20), 'Temari')).toContain('ends up with Shikamaru Nara');
+    expect(endgameNote(withBond('Temari', 'lover', 23, 6), 'Temari')).toContain('let it end naturally');
+    expect(endgameNote(withBond('Temari', 'lover', 25), 'Temari')).toContain('her ex');
+    expect(endgameNote(withBond('Tenten', 'lover', 25), 'Tenten')).toBe('');
     expect(normalizeRelationship('ex')).toBe('ex');
     expect(normalizeRelationship('broke up')).toBe('ex');
   });
