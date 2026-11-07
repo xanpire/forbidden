@@ -3405,9 +3405,11 @@ describe('the wider canon cast', () => {
   test('ages come from the birth year when no birthday is known', () => {
     const db = loadSave();
     const ibiki = db.entities.find((entity) => entity.name === 'Ibiki Morino')!;
+    // Every cast member has a birthday now; a stranger the story adds may not.
+    const stranger = { ...ibiki, birthday: undefined };
 
-    expect(ibiki.birthday).toBeUndefined();
-    expect(entityAge(db.state.inStoryDate, ibiki)).toBe(db.state.inStoryDate.year + 18);
+    expect(ibiki.birthday).toEqual({ month: 3, day: 20 });
+    expect(entityAge(db.state.inStoryDate, stranger)).toBe(db.state.inStoryDate.year + 18);
   });
 
   test('two-letter names count only when capitalized; IDs keep their letters', () => {

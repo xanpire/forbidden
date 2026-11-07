@@ -9,6 +9,7 @@ import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 import { loreActive } from '@/lib/rpg/lore';
+import { todayNotes } from '@/lib/rpg/yearly';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories';
 
@@ -63,6 +64,8 @@ function NowView({ db }: { db: AppDatabase }) {
   const missions = open.filter((thread) => thread.type === 'quest');
   const goals = open.filter((thread) => thread.type === 'goal');
   const other = open.filter((thread) => thread.type !== 'quest' && thread.type !== 'goal');
+  // Birthdays, anniversaries and festivals on today's date, as far as you know.
+  const today = todayNotes(db);
 
   return (
     <>
@@ -72,6 +75,7 @@ function NowView({ db }: { db: AppDatabase }) {
           meta={`${formatClock(db.state.inStoryDate)}, ${formatDayMonth(db.state.inStoryDate)} · ${localizePlaceNames(db.state.location)}`}
           title={`Chapter ${db.state.chapter}${db.state.chapterTitle ? `: ${db.state.chapterTitle}` : ""} · ${db.state.scene}`}
         />
+        {today.length > 0 ? <ListRow body={today.join(' · ')} bodyLines={3} title="Today" /> : null}
       </ListCard>
 
       <SectionLabel>Missions</SectionLabel>

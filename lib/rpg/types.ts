@@ -141,6 +141,16 @@ export type GameState = {
   post?: PostState;
   /** Bingo books and Akatsuki standing (see reputation.ts). */
   reputation?: ReputationState;
+  /** Birthdays, anniversaries and festivals (see yearly.ts). */
+  yearly?: YearlyState;
+};
+
+/** What the yearly calendar remembers (see yearly.ts). */
+export type YearlyState = {
+  /** Entity ids whose birthday you learned in the story (beyond the people you are close to). */
+  knownBirthdays: string[];
+  /** Yearly offers already made: key → the in-story year it was last offered. */
+  offered: Record<string, number>;
 };
 
 export type VillageFaction = 'leaf' | 'sand' | 'mist' | 'cloud' | 'stone';
@@ -251,6 +261,8 @@ export type EntityRecord = {
   type: EntityType;
   aliases: string[];
   birthday?: { month: number; day: number };
+  /** True when canon gives no birthday and the app chose one (see yearly.ts). */
+  birthdayInvented?: boolean;
   birthYear?: number;
   age?: number;
   role?: string;
@@ -490,7 +502,7 @@ export type LoreCondition = {
   flag?: LoreFlag;
 };
 
-export type LoreFlag = 'hasSharingan' | 'hasMangekyo' | 'knowsIzumiDead' | 'headbandScratched' | 'joinedAkatsuki';
+export type LoreFlag = 'hasSharingan' | 'hasMangekyo' | 'knowsIzumiDead' | 'headbandScratched' | 'joinedAkatsuki' | 'inRomance';
 
 export type SummaryRecord = {
   id: string;
@@ -809,6 +821,8 @@ export type TurnDiff = {
   lettersReceived?: { entityId?: string; name: string }[];
   /** What a village or the Akatsuki now has on Kan. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
+  /** People whose birthday Kan learned this turn (they said it, someone told him). */
+  birthdaysLearned?: { entityId?: string; name: string }[];
   /** Villages whose bingo-book entry on Kan he saw or was told of this turn. */
   bountySeen?: VillageFaction[];
   /** Grudges started, acted on, settled or forgiven this turn. */

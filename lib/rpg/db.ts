@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizePost } from './letters';
+import { normalizeYearly } from './yearly';
 import { normalizeReputation } from './reputation';
 import { normalizeDeaths } from './deaths';
 import { knowersOf } from './facts';
@@ -460,7 +461,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
                 : entity.romanceAccessibility,
         }))
         : [],
-      () => makeId('entity')
+      () => makeId('entity'),
+      // People who arrive with a milestone (a birth, a revival) once it has happened.
+      db.state?.canonProgress?.completed ?? []
     ),
     events: Array.isArray(db.events) ? db.events : [],
     eventEntities: Array.isArray(db.eventEntities) ? db.eventEntities : [],
@@ -676,6 +679,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     sceneMode: normalizeSceneMode(state.sceneMode),
     post: normalizePost(state.post),
     reputation: normalizeReputation(state.reputation),
+    yearly: normalizeYearly(state.yearly),
   };
 }
 

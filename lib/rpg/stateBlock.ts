@@ -76,6 +76,17 @@ export function convertStateBlock(
     }
   }
 
+  if (Array.isArray(block.birthdays_learned)) {
+    const learned = block.birthdays_learned
+      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      .slice(0, 3)
+      .map((name) => ({ name: name.trim() }));
+
+    if (learned.length > 0) {
+      diff.birthdaysLearned = learned;
+    }
+  }
+
   if (Array.isArray(block.reputation)) {
     const factions = new Set(['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki']);
     const changes = block.reputation

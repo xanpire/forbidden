@@ -23,6 +23,7 @@ import {
   type CanonWindow,
 } from './canonData';
 import { markDeathsByName } from './deaths';
+import { castAppearingWith, ensureCanonCast } from './canonCast';
 import { knowersOf } from './facts';
 import { resolveEntity } from './entities';
 import { mentionsName } from './characterRefs';
@@ -221,8 +222,18 @@ function fireMilestone(
     return db;
   }
 
+  // A birth, a revival or a return brings its people into the story first,
+  // so the milestone's own facts and deaths can find them.
+  const entities = castAppearingWith(milestone.id).length
+    ? ensureCanonCast(db.entities, () => makeId('entity'), [
+        ...(db.state.canonProgress?.completed ?? []),
+        milestone.id,
+      ])
+    : db.entities;
+
   let next: AppDatabase = {
     ...db,
+    entities,
     events: [
       ...db.events,
       {
@@ -261,6 +272,14 @@ function fireMilestone(
       date: happenedAt,
       canonEventId: eventIdFor(milestone.id),
     });
+  }
+
+  for (const [name, status] of Object.entries(milestone.setsStatus ?? {})) {
+    const entity = resolveEntity(next, name);
+
+    if (entity) {
+      next = { ...next, entities: next.entities.map((item) => (item.id === entity.id ? { ...item, status } : item)) };
+    }
   }
 
   for (const title of milestone.resolvesThreadTitles ?? []) {

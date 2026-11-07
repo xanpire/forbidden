@@ -12,6 +12,7 @@ import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import { latestCharacterPortraitMap } from '@/lib/rpg/characterPortrait';
 import { useStoredImage } from '@/lib/rpg/imageStore';
+import { upcomingBirthdays, type UpcomingBirthday } from '@/lib/rpg/yearly';
 import type { BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 
 type BondEntry = {
@@ -31,6 +32,14 @@ function contactDate(entry: BondEntry) {
 
 export function formatAffinity(affinity: number) {
   return `${affinity > 0 ? '+' : ''}${affinity}`;
+}
+
+/** "Hana · today", "Shisui · in 5 days (remembered)". */
+export function formatUpcomingBirthday(item: UpcomingBirthday) {
+  const when = item.inDays === 0 ? 'today' : item.inDays === 1 ? 'tomorrow' : `in ${item.inDays} days`;
+  const first = item.entity.name.split(' ')[0];
+
+  return `${first} · ${when}${item.dead ? ' (remembered)' : item.turning !== undefined ? `, turns ${item.turning}` : ''}`;
 }
 
 export function bondSubtitle(entry: BondEntry, today: CalendarDate) {
@@ -176,6 +185,9 @@ export function BondsSection() {
     [db]
   );
 
+  // Birthdays you know in the next month (the dead you remember included).
+  const birthdays = useMemo(() => (db ? upcomingBirthdays(db, 30).slice(0, 4) : []), [db]);
+
   // People travelling with you lead the list; everyone else by last contact.
   const travelling = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
   const living = entries.filter((entry) => !entry.dead && !travelling.includes(entry));
@@ -221,6 +233,16 @@ export function BondsSection() {
   return (
     <View style={styles.section}>
       {!query ? <ReputationCard db={db} /> : null}
+
+      {!query && birthdays.length > 0 ? (
+        <ListCard>
+          <ListRow
+            body={birthdays.map(formatUpcomingBirthday).join('   ·   ')}
+            bodyLines={3}
+            title="Upcoming birthdays"
+          />
+        </ListCard>
+      ) : null}
 
       <View style={styles.search}>
         <Search color={colors.textDim} size={16} strokeWidth={2} />

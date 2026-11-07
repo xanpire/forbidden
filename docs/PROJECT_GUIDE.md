@@ -23,18 +23,19 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `jutsu.ts` | Chakra natures, grouping, and `applyJutsuDiff` (the permanent jutsu library) |
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
 | `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
-| `canonData.ts` | **Data only**: the 173 milestones (dates, place, who could know), sorted by opening date on export, canon types, courier tables, era order |
+| `canonData.ts` / `canonDataMore.ts` | **Data only**: the 220 milestones (dates, place, who could know), sorted by opening date on export, canon types, courier tables, era order. `canonDataMore.ts` holds the living-world Stage 2 additions (`STAGE_TWO_WORLD`, `STAGE_TWO_PERSONAL`) |
 | `canon.ts` | **Canon engine**: scheduling (`advanceCanon`), state-tracker marks (`applyCanonMarks`), the unheard-news queue and its escalation (`unheardCanonNews`, `newsUrgency`), world clock |
 | `newsDelivery.ts` | How news reaches Kan this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
 | `reputation.ts` | Bingo books and Akatsuki standing (`state.reputation`): `applyReputationChanges`, `ensureLeafListing`, `bingoListings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
 | `grudges.ts` | Grudges, the dark mirror of romance (`BondRecord.grudge`): `applyGrudgeChanges`, `grudgeStage`, `grudgeHeat`, `grudgeOffer` (SOMEONE WANTS YOU TO PAY), `GRUDGE_RULES` (§10a) |
 | `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit` |
+| `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
 | `sceneMode.ts` | Conversation and fight mode (§8a): `readKanInput`, `resolveTurnMode`, `applySceneBeat`, `setSceneModeOverride`, the SCENE MODE prompt lines |
 | `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
 | `returning.ts` | Characters who come back: the occasional optional `A FAMILIAR FACE` offer |
-| `db.ts` / `slotStore.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration (slots in IndexedDB), new saves, the canon cast |
+| `db.ts` / `slotStore.ts` / `seed.ts` / `canonCast.ts` / `canonCastMore.ts` | Persistence + migration (slots in IndexedDB), new saves, the canon cast (`canonCastMore.ts`: the 67 people added in Stage 2) |
 | `retrieval.ts` | Memory/fact/lore retrieval |
 | `romance.ts` | Hearts, lore locks, era notes |
 | `canonEndgame.ts` | Canon-bound hearts: winnable, then settled with their canon partner (§10) |
@@ -139,8 +140,11 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   scenePace?: 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime'
   sceneCast?: string[]
   sceneMode?: { current, exchangeStreak, partners, lastBeat?, override? }   // §8a
+  yearly?: { knownBirthdays: string[], offered: Record<key, year> }        // §8b
 }
 ```
+
+`EntityRecord.birthdayInvented?: true` marks a birthday the app chose (canon gives none).
 
 `EntityRecord.companion?: { since, sinceLocation?, reason?, sharedScenes, bondPoints }` — set while that person travels with Kan (§6a).
 
@@ -212,6 +216,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
   newsRelayed?: [{ id, from? }],
   lettersSent?: [{ entityId?, name, gist? }], lettersReceived?: [{ entityId?, name }],
+  birthdaysLearned?: [{ entityId?, name }],
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -346,7 +351,7 @@ The current action appears **once** (it is excluded from the recent-message bloc
 
 ### Duplicate characters
 
-- **Canon cast** (`canonCast.ts`): the main canon characters (Sasuke, Kakashi, Kisame, Kakuzu, Pain, Tobi, …) are in every save from the start, each once, with aliases, birthdays and roles as of year 13. They start with `met: false` and stay off the bonds list until they are present in a scene. `ensureCanonCast` runs in `seedDatabase` and `normalizeDatabase`: older saves gain the people they lack, and a person they already have under any name gets the other names as aliases instead of a second entry. The real Madara is deliberately absent (bare "Madara" stays Tobi). Aliases avoid common words ("Guy", "Leader"). The cast (~100 people) covers the Leaf's clans, elders and village life, the dead the story looks back on (Minato, Kushina, Fugaku, Mikoto, Rin, the first two Hokage, Dan, Yahiko — `status: 'Deceased'`), the Sand, Mist, Cloud and Stone (Kage, jonin, the next generation), all nine jinchūriki, Hanzō, Mifune, Fukasaku, Chiriku and Orochimaru's people (Kimimaro, Jūgo, the Sound Four). Everyone named in a milestone's `deaths` is in the cast, so canon deaths always land on someone. Birthdays are left out where the databooks give none; ages then come from the birth year (`entityAge`). A new person (`is_new`) only matches an existing one by an exact name or visible alias ("Hayate Moriya" is not Gekko Hayate).
+- **Canon cast** (`canonCast.ts`): the main canon characters (Sasuke, Kakashi, Kisame, Kakuzu, Pain, Tobi, …) are in every save from the start, each once, with aliases, birthdays and roles as of year 13. They start with `met: false` and stay off the bonds list until they are present in a scene. `ensureCanonCast` runs in `seedDatabase` and `normalizeDatabase`: older saves gain the people they lack, and a person they already have under any name gets the other names as aliases instead of a second entry. Some people enter the save only when a milestone fires (`appearsWith`, added by `fireMilestone` and on load once the milestone is completed): the real Madara (`madara-revived`; until then bare "Madara" stays Tobi), Kaguya (`kaguya-awakens`) and the children born during the story (Mirai, then Boruto, Sarada, Himawari, Shikadai, Inojin, Chōchō, Metal Lee, as small children only). Until then they do not exist for the story. Aliases avoid common words ("Guy", "Leader"). The cast (168 canon people plus the five seeded) covers the Leaf's clans, elders and village life, the dead the story looks back on (Minato, Kushina, Fugaku, Mikoto, Rin, the first two Hokage, Dan, Yahiko — `status: 'Deceased'`), the Sand, Mist, Cloud and Stone (Kage, jonin, the next generation), all nine jinchūriki, Hanzō, Mifune, Fukasaku, Chiriku and Orochimaru's people (Kimimaro, Jūgo, the Sound Four); since Stage 2 also the old Seven Swordsmen, the Uchiha coup plotters, Kagami, Izuna, Mito, the nine tailed beasts (`gender: 'unknown'`, status "Sealed"; Kurama's name is a hidden alias of the Nine-Tails until `naruto-joins-war`), the summons, and supporting people of every village. Everyone named in a milestone's `deaths` is in the cast (or arrives before it fires), so canon deaths always land on someone; `setsStatus` on a milestone changes a status by name (Kaguya "Sealed", the freed beasts "Free"). Every person has a birthday except the beasts and summons; canon dates where the databooks or official columns give one, otherwise an app-chosen date marked `birthdayInvented`. `BIRTHDAY_FIXES` moves older saves off dates that were wrong, and `ensureCanonCast` backfills missing birthdays. A stranger without a birthday gets an age from the birth year (`entityAge`). The state tracker's KNOWN CHARACTERS roster leaves out people in the background (unmet, and long dead, sealed or a summon) to stay short; when a turn names them they appear with their id under CHARACTERS IN THIS TURN. A new person (`is_new`) only matches an existing one by an exact name or visible alias ("Hayate Moriya" is not Gekko Hayate).
 - **IDs for the state tracker** (`characterRefs.ts`): the extraction prompt lists `KNOWN CHARACTERS` as `- kisame-hoshigaki: Kisame Hoshigaki (Kisame, Hoshigaki Kisame) [not met yet]` (cached part), plus `CHARACTERS IN THIS TURN` details (dynamic part). IDs are slugs of the current name, `-2` on collisions. The schema uses `bonds[].character_id`, `character_updates[].character_id`, and IDs in `characters_present`, `facts.entity/who_knows`, `jutsu_used.user`, `news_relayed.from`.
 - **Only `is_new: true` adds someone**: `new_characters[]` entries need `is_new: true`; `false` is dropped. `resolveCharacterRefs` (run in `extractTurnDiff`) maps each reference to a person: known ID → exact new name from this turn → name/alias fallback → otherwise dropped (a bond or update for an unknown ID never creates a person). A "new" person whose name resolves to someone known becomes an update.
 - **Name mentions** (`mentionsName` / `mentionsEntity`): whole-word, Unicode-aware; "Pain" must be capitalized. Used for narrator scene cards, retrieval, the image cast fallback and memory tags (never memory links), so "asleep" no longer finds Lee and "Sarutobi" no longer finds Tobi.
@@ -393,6 +398,7 @@ Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the e
   major?, playerDriven?,
   facts: string[],
   deaths?: string[],               // people it kills, by exact name/alias (marked dead on their record)
+  setsStatus?: {name: status},     // status changes by exact name ("Sealed", "Free")
   encounter?: { who, where, context },
   attendanceFact?, opensThreads?, resolvesThreadTitles?
 }
@@ -400,7 +406,7 @@ Data and logic are separate. `canonData.ts` holds only data; `canon.ts` is the e
 
 Everything about one event — when, where, who could know — sits in its one record. The courier tables (`BEARERS_BY_KNOWLEDGE`, `CHANNEL_BY_KNOWLEDGE`, `REGION_CHANNEL`) are also in `canonData.ts`.
 
-- **173 milestones** from the Uchiha massacre aftermath to Naruto's years as Hokage: the core spine plus Kan’s own beats (Thousand Souls, the Uzumaki blood, the Mangekyō at Izumi’s grave with his own ability and Susanoo, its cost to his eyes, Itachi, the Root hunter Nagi, Akatsuki bonds, Team 3 in every era, and endings) and a living-world layer (village news, the Mist's civil war, every beast hunt with an offer for Kan to join, the four-day Fourth War, and the births and weddings after).
+- **220 milestones** (123 world events, 97 personal beats) from the Uchiha massacre aftermath to Naruto's years as Hokage: the core spine plus Kan’s own beats (Thousand Souls, the Uzumaki blood, the Mangekyō at Izumi’s grave with his own ability and Susanoo, its cost to his eyes, Itachi, the Root hunter Nagi, Akatsuki bonds, Team 3 in every era, and endings) and a living-world layer (village news, the Mist's civil war, every beast hunt with an offer for Kan to join, the four-day Fourth War, and the births and weddings after). Stage 2 added the missing canon events (Kimimaro's illness, Root's last test for Sai, Orochimaru's stopgap body, Jiraiya's reports, Hashirama's history lesson, the post-war Hiden stories, every birth the cast needs), personal beats for the long gaps (the Akatsuki years, the Karin arc, Kan's eyes failing in stages, peacetime, romance and family beats behind the `inRomance` flag) and the canon threads (the Naka Shrine tablet, Shisui's other eye, the Uzumaki masks and Uzushio, the Seven Swordsmen's blades).
 - Timeline spine: Kan/Itachi 13 at the massacre; Part 1 at 17–18; Shippuden 20–21; war 22–23.
 - `playerDriven` = **personal beat** (join Akatsuki, missions, Team 3 reunions, war side, Edo Itachi, epilogue…). These **never auto-fire**; they fire when the narrator marks them.
 - World milestones fire on the **in-story date + prerequisites only** — never on turn counts. There is no per-turn cap: a long time skip fires everything that came due, each stamped with the day it happened (clamped to the save's baseline), not the day the clock caught up.
@@ -525,6 +531,18 @@ Living-world Stage 1. The narrator writes a turn in one of three modes: normal p
 - **Chip override** (`setSceneModeOverride`, `useGame().setSceneMode`): Automatic / Conversation / Fight / Normal narration. Forced conversation lasts through travel and ends when a fight starts; forced fight ends when the fight does; normal holds until the current talk or fight is over, then automatic resumes.
 - **UI** (Story): a mode chip above the composer, read live from what you are typing (Narration / Conversation / Fight, "· set by you", who it's with, "Talk is building"); tap → sheet with the four choices. While a fight goes on, the reply's fight options show as buttons above the composer; a tap sends `*<move>.*`. Narration renders `*…*` in italics.
 - Tests: `scripts/scene-mode.test.ts`.
+
+## 8b. Birthdays, anniversaries and festivals (`lib/rpg/yearly.ts`)
+
+Living-world Stage 2. The narrator gets at most one `THE DAY` line per turn, never in a fight, and each offer at most once a year (`state.yearly.offered`: key → year, set by `applyYearly` in `applyStateStep` from the offer the turn's prompt was built on).
+
+- **Order** (`yearlyCandidates`): Kan's own days first (the massacre anniversary on Oct 1, the Nine-Tails night on Oct 10 that took his parents, Itachi's death, joining the Akatsuki, Kan's own birthday with who might remember it), then a birthday of someone in the scene, then remembrance days of the dead he was close to, then festivals and New Year where he is, then (some years, by hash) a close person's birthday far away.
+- **Who Kan knows** (`knowsBirthday`): the people he grew up with (Itachi, Izumi, Shisui, Hana, Suzume), anyone with affinity ≥ 6 or a close relationship, and anyone in `state.yearly.knownBirthdays` (the tracker's `birthdays_learned`). Only those are given as his own knowledge; a stranger whose `BIRTHDAY_HABITS` kind is `announces` or `ritual` can let it slip.
+- **Habits** (`yearlyData.ts`): how each notable person treats their birthday (announces, hides, hates, ritual, quiet), including the Akatsuki (Kisame finds it funny, Deidara wants a bang, Sasori doesn't age, Kakuzu asks what it costs, Hidan makes it a ritual).
+- **Bonds**: the tracker gets a `THE DAY` line for a present birthday: +1 for remembering it, +2 for a real gift, -1 for letting it pass beside them.
+- **Festivals** (`FESTIVALS`): canon (the Leaf's winter Rinne Festival) plus a couple invented per village (`invented`), matched to Kan's location; the Mist keeps its quietly until Mei is Mizukage, Paper Flower Day starts with the Rain stronghold. A leap-day birthday (Kabuto) is kept on Feb 28 in other years.
+- **UI**: an "Upcoming birthdays" card on the bonds list (next 30 days) and a "Today" row on the Journal's Now view (`todayNotes`).
+- Tests: `scripts/living-world-stage2.test.ts`.
 
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
@@ -665,7 +683,7 @@ How the fixes from the save-analysis list work, and where they live. Tests: `scr
 Add an object to `CORE_MILESTONES` or `WORLD_EXPANSION` in `canonData.ts` (the exported `CANON_MILESTONES` is sorted by opening date, which is the prerequisite order; give same-day events distinct days when one must come first), with a real date window, `region`/`location`, `knowledge` (+ `bearers` if secret), facts, optional encounter, and `playerDriven` if it depends on Kan. Personal beats can set `priority` (always offered while open), `after` (offered only once another beat has happened) and `grantsJutsu` (signature jutsu Kan gains when it happens). No engine change is needed. Add a test that it opens on the right day.
 
 ### Add a canon cast member
-Add an entry to `CANON_CAST` in `canonCast.ts` (name, aliases without common words or another person's names, birthday only if canon gives one, birthYear counted from Kan's birth — 17 minus their Part I age — role at year 13, `status: 'Deceased'` if dead by then) and a matching `CHARACTER_LORE` entry in `romance.ts` (the tests require both). Existing saves pick them up on next load.
+Add an entry to `BASE_CAST` in `canonCast.ts` or `CAST_ADDITIONS` in `canonCastMore.ts` (name, aliases without common words or another person's names, a birthday — canon, or a chosen one with `birthdayInvented: true` — birthYear counted from Kan's birth — 17 minus their Part I age — role at year 13, `status: 'Deceased'` if dead by then, `appearsWith` if they only enter the story with a milestone, and their name in `FEMALE_CAST` if she is a woman) and a matching `CHARACTER_LORE` entry in `romance.ts` (the tests require both). Existing saves pick them up on next load.
 
 ### Add a character’s lore/heart
 Add to `CHARACTER_LORE` (devotion, accessibility, orientation) and optionally `ERA_NOTES`.
@@ -720,6 +738,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Reputation & grudges (`scripts/enemies.test.ts`): Leaf listing timing, heat → rank/bounty, per-turn clamp, cooling floor, `bounty_seen`, territory lines, empty places, Akatsuki standing, hunter cadence; grudges from soured bonds and `wronged`, stewing, canon hunt cap, due/pressed/combat/in-scene offers, `struck`, let go / settled / death, schema and reload
 - Token stability over 60 turns
 - Scene modes (`scripts/scene-mode.test.ts`): input reading, instruction never flips it, lean then settle, small actions stay in, remark carries, leaving ends with a transition, group talk, 20 s conversation turns, attack → fight with options, ambush → fight, options cleared when it ends, overrides and their clearing, reload, prompt and schema
+- Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

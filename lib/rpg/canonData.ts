@@ -12,6 +12,7 @@
 // The Fourth War runs on its canon clock: four days, 23/1/10 to 23/1/13.
 
 import type { CalendarDate, ThreadType } from './types';
+import { STAGE_TWO_PERSONAL, STAGE_TWO_WORLD } from './canonDataMore';
 
 export type CanonProgress = {
   version?: number;
@@ -96,6 +97,8 @@ export type CanonMilestone = {
    * on their own record (deaths.ts); anyone the save does not have is skipped.
    */
   deaths?: string[];
+  /** People whose status this milestone changes, by exact name ("Sealed", "Free"). */
+  setsStatus?: Record<string, string>;
   encounter?: CanonEncounter;
   attendanceFact?: string;
   opensThreads?: CanonThreadSeed[];
@@ -723,7 +726,8 @@ const CORE_MILESTONES: CanonMilestone[] = [
     region: 'Hidden Leaf',
     location: 'the Hidden Leaf Village',
     major: true,
-    deaths: ['Hiruzen Sarutobi'],
+    // Zaku and Kin are the sacrifices Orochimaru spends on Edo Tensei.
+    deaths: ['Hiruzen Sarutobi', 'Zaku Abumi', 'Kin Tsuchi'],
     facts: [
       "Hidden Leaf was invaded by Sand and Sound forces; the Third Hokage, Hiruzen Sarutobi, died sealing Orochimaru's arms.",
     ],
@@ -1062,7 +1066,8 @@ const CORE_MILESTONES: CanonMilestone[] = [
     to: { year: 22, month: 2 },
     region: 'Land of Earth',
     location: 'the badlands of the Land of Earth',
-    deaths: ['Deidara'],
+    // Sasuke shields himself with Manda from the blast.
+    deaths: ['Deidara', 'Manda'],
     facts: ['Deidara killed himself in a suicidal explosion attacking Sasuke.'],
   },
   {
@@ -1256,8 +1261,12 @@ const CORE_MILESTONES: CanonMilestone[] = [
     to: { year: 22, month: 9 },
     region: 'Land of Iron',
     location: 'the Land of Iron',
-    deaths: ['Danzo Shimura'],
-    facts: ['Sasuke attacked the Five Kage Summit and killed Danzo Shimura.'],
+    // The masked man spends Fū to bring Torune back, then kills them both.
+    deaths: ['Danzo Shimura', 'Torune Aburame', 'Fū Yamanaka'],
+    facts: [
+      'Sasuke attacked the Five Kage Summit and killed Danzo Shimura.',
+      "Danzo's Root bodyguards, Torune Aburame and Fū Yamanaka, died in the Land of Iron.",
+    ],
   },
   {
     id: 'kisame-dies',
@@ -1446,8 +1455,8 @@ const CORE_MILESTONES: CanonMilestone[] = [
     to: { year: 23, month: 1, day: 14 },
     region: 'Land of Lightning',
     location: 'the Allied headquarters',
-    deaths: ['Shikaku Nara', 'Inoichi Yamanaka'],
-    facts: ['Shikaku Nara and Inoichi Yamanaka died when the Ten-Tails destroyed headquarters.'],
+    deaths: ['Shikaku Nara', 'Inoichi Yamanaka', 'Mabui'],
+    facts: ['Shikaku Nara, Inoichi Yamanaka and the Raikage’s assistant Mabui died when the Ten-Tails destroyed headquarters.'],
   },
   {
     id: 'obito-jinchuriki',
@@ -1523,6 +1532,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'The infinite dream ends',
     description: 'Team 7 seals Kaguya and ends the infinite dream.',
     canonPoint: 'Kaguya has been sealed by Team 7.',
+    setsStatus: { 'Kaguya Ōtsutsuki': 'Sealed' },
     from: { year: 23, month: 1, day: 13 },
     to: { year: 23, month: 1, day: 14 },
     region: 'Land of Lightning',
@@ -1542,6 +1552,18 @@ const CORE_MILESTONES: CanonMilestone[] = [
     location: 'the Fourth War front',
     major: true,
     deaths: ['Madara Uchiha'],
+    // Torn out of Madara, the beasts go free; Kurama and Gyūki stay with Naruto and Bee.
+    setsStatus: {
+      Shukaku: 'Free',
+      Matatabi: 'Free',
+      Isobu: 'Free',
+      'Son Gokū': 'Free',
+      Kokuō: 'Free',
+      Saiken: 'Free',
+      Chōmei: 'Free',
+      'Nine-Tails': 'Sealed in Naruto',
+      Gyūki: 'Sealed in Killer Bee',
+    },
     facts: [
       'The Fourth Shinobi World War ended after four days with Kaguya sealed.',
       'Madara Uchiha died after the tailed beasts were torn out of him, with Hashirama at his side.',
@@ -1675,6 +1697,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     knowledge: 'village',
     facts: [
       'Naruto Uzumaki graduated the Academy after stopping the traitor Mizuki.',
+      'Mizuki was arrested and imprisoned for trying to steal the Scroll of Seals.',
       'Naruto Uzumaki can make hundreds of shadow clones.',
     ],
   },
@@ -2365,7 +2388,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     era: 'After',
     title: "Naruto's daughter",
     description: 'Naruto and Hinata have a daughter, Himawari Uzumaki.',
-    from: { year: 30, month: 3 },
+    from: { year: 30, month: 3, day: 21 },
     to: { year: 30, month: 9 },
     region: 'Hidden Leaf',
     location: 'the Hidden Leaf Village',
@@ -2692,7 +2715,7 @@ const PERSONAL_BEATS: CanonMilestone[] = [
     era: 'Shippuden',
     title: "Karin's eyes",
     description:
-      "Hebi's sensor stares at you too long. Karin can feel chakra like a temperature, and yours feels like her own blood: Uzumaki.",
+      "Hebi's sensor stares at you too long. Karin feels chakra like a temperature, and yours feels like her own blood: Uzumaki. If you knew her as a child in the Grass, she knows exactly who you are.",
     canonPoint: 'Karin sensed Uzumaki chakra in you.',
     from: { year: 21, month: 7, day: 10 },
     to: { year: 21, month: 12 },
@@ -2702,7 +2725,7 @@ const PERSONAL_BEATS: CanonMilestone[] = [
       who: 'Karin, with Sasuke and Hebi',
       where: 'wherever Hebi crosses an Akatsuki trail',
       context:
-        "Karin is sharp, flustered around Sasuke, and an Uzumaki without a clan. She knows what Kan is before he says a word, and may tell Sasuke, or keep it for herself.",
+        "Karin is sharp, flustered around Sasuke, and an Uzumaki without a clan. If Kan trained her in the Land of Grass (see the memories), she is grown and changed and still remembers him: the lessons, the parting, maybe the hurt. If not, she knows what Kan is before he says a word. Either way she may tell Sasuke, or keep it for herself. Never romance; her heart is Sasuke's.",
     },
     attendanceFact: 'Karin sensed that Kan carries Uzumaki chakra.',
   },
@@ -3137,7 +3160,9 @@ function openingKey(milestone: CanonMilestone): number {
 export const CANON_MILESTONES: CanonMilestone[] = [
   ...CORE_MILESTONES,
   ...WORLD_EXPANSION,
+  ...STAGE_TWO_WORLD,
   ...PERSONAL_BEATS,
+  ...STAGE_TWO_PERSONAL,
 ].sort(
   (a, b) => openingKey(a) - openingKey(b)
 );

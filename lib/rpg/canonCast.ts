@@ -1,5 +1,6 @@
+import { CAST_ADDITIONS } from './canonCastMore';
 import { loreProfileFor, romanceFor } from './romance';
-import type { EntityRecord, HiddenAlias } from './types';
+import type { EntityRecord, Gender, HiddenAlias } from './types';
 
 /**
  * The canon cast, loaded into every save from the start: the main players,
@@ -23,28 +24,41 @@ import type { EntityRecord, HiddenAlias } from './types';
  * as whole words inside longer names, and "the guy with the scar" must not
  * become Might Guy.
  *
- * The real Madara Uchiha is deliberately absent: until he appears, a bare
- * "Madara" belongs to the masked man, who claims that name.
+ * Some people only enter the save when a milestone fires (`appearsWith`):
+ * the real Madara Uchiha (revived in the war; until then a bare "Madara"
+ * belongs to the masked man, who claims that name), Kaguya (sealed in the
+ * moon until she returns), and the children born after the story begins.
+ * Until then they do not exist for the story: nobody can meet them, write to
+ * them or mention them as alive. More people live in canonCastMore.ts.
  */
-type CastEntry = {
+export type CastEntry = {
   name: string;
   aliases: string[];
   /** Spoiler names: never matched, shown or sent until revealed (see HiddenAlias). */
   hiddenAliases?: HiddenAlias[];
-  /** Left out when the databooks give none: no invented birthdays. */
+  /** Every person has one; `birthdayInvented` marks the few canon never gives. */
   birthday?: { month: number; day: number };
-  /** Left out for those who do not age like people (Fukasaku). */
+  birthdayInvented?: boolean;
+  /** Left out for those who do not age like people (Fukasaku, the tailed beasts). */
   birthYear?: number;
   role: string;
   personality: string;
   speechStyle: string;
   appearance: string;
-  /** Status at the start of the story, when it is not simply alive. */
+  /**
+   * Status at the start of the story, when it is not simply alive:
+   * "Deceased", "Sealed" (Kaguya, a tailed beast inside its host), or
+   * "Not yet born" (with `appearsWith` set to the birth milestone).
+   */
   status?: string;
+  /** The milestone that brings this person into the story (a birth, a revival, a return). */
+  appearsWith?: string;
+  /** For the genderless (the tailed beasts); otherwise FEMALE_CAST decides. */
+  gender?: Gender;
   tags: string[];
 };
 
-export const CANON_CAST: CastEntry[] = [
+const BASE_CAST: CastEntry[] = [
   {
     name: 'Sasuke Uchiha',
     aliases: ['Sasuke', 'Uchiha Sasuke'],
@@ -103,7 +117,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Danzo Shimura',
     aliases: ['Danzo', 'Shimura Danzo'],
-    birthday: { month: 1, day: 3 },
+    birthday: { month: 1, day: 6 },
     birthYear: -50,
     role: 'Leaf elder · head of Root',
     personality: 'Ruthless, cold, convinced the village survives only through darkness.',
@@ -270,6 +284,7 @@ export const CANON_CAST: CastEntry[] = [
     name: 'Zetsu',
     aliases: ['Black Zetsu', 'White Zetsu'],
     birthday: { month: 1, day: 1 },
+    birthdayInvented: true,
     birthYear: -30,
     role: 'Akatsuki · spy',
     personality: 'Two voices in one body: one cheerful, one cold.',
@@ -291,7 +306,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Killer Bee',
     aliases: ['Killer B'],
-    birthday: { month: 6, day: 23 },
+    birthday: { month: 5, day: 15 },
     birthYear: -18,
     role: 'Cloud shinobi · Eight-Tails jinchuriki',
     personality: 'Carefree, confident, fiercely loyal to his brother.',
@@ -368,7 +383,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Anko Mitarashi',
     aliases: ['Anko'],
-    birthday: { month: 10, day: 27 },
+    birthday: { month: 10, day: 24 },
     birthYear: -11,
     role: 'Leaf special jonin · Orochimaru’s former student',
     personality: 'Bold, wild, scarred by her old master.',
@@ -446,6 +461,7 @@ export const CANON_CAST: CastEntry[] = [
     name: 'Jūzō Biwa',
     aliases: ['Juzo Biwa', 'Juzo', 'Jūzō'],
     birthday: { month: 4, day: 10 },
+    birthdayInvented: true,
     birthYear: -18,
     role: 'Akatsuki · former Mist swordsman',
     personality: 'Calm, deadly, a man of few words.',
@@ -567,6 +583,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Inoichi Yamanaka',
     aliases: ['Inoichi', 'Yamanaka Inoichi'],
+    birthday: { month: 1, day: 24 },
     birthYear: -21,
     role: 'Yamanaka clan head · intelligence division',
     personality: 'Calm, perceptive, a devoted father.',
@@ -577,6 +594,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Choza Akimichi',
     aliases: ['Choza', 'Chōza', 'Chōza Akimichi', 'Akimichi Choza'],
+    birthday: { month: 4, day: 22 },
     birthYear: -22,
     role: 'Akimichi clan head',
     personality: 'Big-hearted, jovial, fiercely protective.',
@@ -587,6 +605,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Tsume Inuzuka',
     aliases: ['Tsume', 'Inuzuka Tsume'],
+    birthday: { month: 8, day: 12 },
     birthYear: -20,
     role: 'Inuzuka clan head · Hana and Kiba’s mother',
     personality: 'Wild, fierce, loud; loyal as a pack wolf.',
@@ -597,6 +616,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Ibiki Morino',
     aliases: ['Ibiki', 'Morino Ibiki'],
+    birthday: { month: 3, day: 20 },
     birthYear: -18,
     role: 'Head of Torture and Interrogation',
     personality: 'Cold, methodical, knows where every mind breaks.',
@@ -607,6 +627,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Genma Shiranui',
     aliases: ['Genma', 'Shiranui Genma'],
+    birthday: { month: 7, day: 17 },
     birthYear: -12,
     role: 'Leaf special jonin',
     personality: 'Cool, laid-back, quietly capable.',
@@ -617,6 +638,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Gekko Hayate',
     aliases: ['Hayate', 'Hayate Gekko', 'Gekkō Hayate'],
+    birthday: { month: 11, day: 2 },
     birthYear: -5,
     role: 'Leaf special jonin · swordsman',
     personality: 'Sickly, quiet, deadly with a blade.',
@@ -627,6 +649,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Kotetsu Hagane',
     aliases: ['Kotetsu', 'Hagane Kotetsu'],
+    birthday: { month: 7, day: 21 },
     birthYear: -7,
     role: 'Leaf chunin · gate guard',
     personality: 'Easygoing, a little lazy, dependable.',
@@ -637,6 +660,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Izumo Kamizuki',
     aliases: ['Izumo', 'Kamizuki Izumo'],
+    birthday: { month: 11, day: 25 },
     birthYear: -7,
     role: 'Leaf chunin · gate guard',
     personality: 'Calm, dutiful, Kotetsu’s steady partner.',
@@ -647,6 +671,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Homura Mitokado',
     aliases: ['Homura', 'Mitokado Homura'],
+    birthday: { month: 5, day: 8 },
     birthYear: -51,
     role: 'Leaf elder · village council',
     personality: 'Rigid, cautious, values the village over people.',
@@ -657,6 +682,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Koharu Utatane',
     aliases: ['Koharu', 'Utatane Koharu'],
+    birthday: { month: 9, day: 1 },
     birthYear: -51,
     role: 'Leaf elder · village council',
     personality: 'Shrewd, conservative, quietly hard.',
@@ -667,6 +693,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Teuchi',
     aliases: ['Old Man Teuchi', 'Ichiraku Teuchi'],
+    birthday: { month: 8, day: 10 },
     birthYear: -30,
     role: 'Owner of Ichiraku Ramen',
     personality: 'Kind, generous, proud of his broth.',
@@ -677,6 +704,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Ayame',
     aliases: ['Ichiraku Ayame'],
+    birthday: { month: 2, day: 14 },
     birthYear: -2,
     role: 'Ichiraku Ramen · Teuchi’s daughter',
     personality: 'Sunny, kind, fond of her regulars.',
@@ -713,6 +741,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Fugaku Uchiha',
     aliases: ['Fugaku', 'Uchiha Fugaku'],
+    birthday: { month: 8, day: 16 },
     birthYear: -27,
     role: 'Uchiha clan head · Itachi’s father',
     personality: 'Proud, stern, cornered into planning a coup.',
@@ -724,6 +753,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Mikoto Uchiha',
     aliases: ['Mikoto', 'Uchiha Mikoto'],
+    birthday: { month: 6, day: 1 },
     birthYear: -24,
     role: 'Itachi and Sasuke’s mother',
     personality: 'Kind, perceptive, steel beneath the warmth.',
@@ -771,6 +801,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Dan Katō',
     aliases: ['Dan Kato'],
+    birthday: { month: 12, day: 4 },
     birthYear: -33,
     role: 'Tsunade’s late love',
     personality: 'Idealistic and gentle; dreamed of being Hokage.',
@@ -806,6 +837,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Chiyo',
     aliases: ['Lady Chiyo', 'Granny Chiyo'],
+    birthday: { month: 10, day: 15 },
     birthYear: -52,
     role: 'Sand elder · retired puppet master',
     personality: 'Bitter, cunning, guilty over her grandson Sasori.',
@@ -816,6 +848,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Rasa',
     aliases: ['Fourth Kazekage'],
+    birthday: { month: 3, day: 29 },
     birthYear: -25,
     role: 'Fourth Kazekage · Gaara’s father',
     personality: 'Cold, calculating, sees Gaara as a weapon.',
@@ -826,6 +859,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Baki',
     aliases: ['Baki of the Sand'],
+    birthday: { month: 7, day: 4 },
     birthYear: -15,
     role: 'Sand jonin · sensei to Gaara’s siblings',
     personality: 'Disciplined, ruthless, loyal to his village.',
@@ -860,6 +894,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Yagura',
     aliases: ['Yagura Karatachi', 'Fourth Mizukage'],
+    birthday: { month: 4, day: 3 },
     birthYear: -10,
     role: 'Fourth Mizukage · Three-Tails jinchuriki',
     personality: 'Cold and merciless; secretly held by genjutsu.',
@@ -870,6 +905,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Mei Terumi',
     aliases: ['Mei', 'Mei Terumī', 'Fifth Mizukage'],
+    birthday: { month: 5, day: 21 },
     birthYear: -10,
     role: 'Mist kunoichi · leader of the rebels',
     personality: 'Charming, ruthless, touchy about being unmarried.',
@@ -880,6 +916,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Ao',
     aliases: ['Ao of the Mist'],
+    birthday: { month: 8, day: 1 },
     birthYear: -21,
     role: 'Mist sensor · Byakugan thief',
     personality: 'Stern veteran, suspicious, old-fashioned.',
@@ -890,6 +927,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Chojuro',
     aliases: ['Chōjūrō'],
+    birthday: { month: 11, day: 1 },
     birthYear: 3,
     role: 'Mist student · swordsman in training',
     personality: 'Timid, polite, braver than he thinks.',
@@ -900,6 +938,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Utakata',
     aliases: ['Utakata of the Mist'],
+    birthday: { month: 6, day: 16 },
     birthYear: 0,
     role: 'Mist · Six-Tails jinchuriki',
     personality: 'Aloof, melancholy, distrusts teachers.',
@@ -914,6 +953,7 @@ export const CANON_CAST: CastEntry[] = [
     // carry him.
     name: 'A',
     aliases: ['Fourth Raikage', 'Raikage A', 'Lord Raikage'],
+    birthday: { month: 6, day: 1 },
     birthYear: -27,
     role: 'Fourth Raikage · Killer Bee’s brother',
     personality: 'Hot-tempered, proud, loves his brother fiercely.',
@@ -924,6 +964,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Darui',
     aliases: ['Darui of the Cloud'],
+    birthday: { month: 1, day: 6 },
     birthYear: -8,
     role: 'Cloud jonin · the Raikage’s right hand',
     personality: 'Laid-back, loyal, lethal with Storm Release.',
@@ -934,6 +975,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Yugito Nii',
     aliases: ['Yugito', 'Nii Yugito'],
+    birthday: { month: 7, day: 24 },
     birthYear: -5,
     role: 'Cloud · Two-Tails jinchuriki',
     personality: 'Composed, proud, deadly serious about duty.',
@@ -944,6 +986,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Omoi',
     aliases: ['Omoi of the Cloud'],
+    birthday: { month: 12, day: 26 },
     birthYear: 6,
     role: 'Cloud student · swordsman',
     personality: 'Anxious overthinker who spirals into worst cases.',
@@ -954,6 +997,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Karui',
     aliases: ['Karui of the Cloud'],
+    birthday: { month: 2, day: 14 },
     birthYear: 6,
     role: 'Cloud student · kunoichi',
     personality: 'Hot-headed, blunt, quick to punch.',
@@ -964,6 +1008,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Samui',
     aliases: ['Samui of the Cloud'],
+    birthday: { month: 1, day: 7 },
     birthYear: 3,
     role: 'Cloud kunoichi',
     personality: 'Cool, sensible, unimpressed by everything.',
@@ -976,6 +1021,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Onoki',
     aliases: ['Ōnoki', 'Third Tsuchikage', 'Lord Tsuchikage'],
+    birthday: { month: 10, day: 8 },
     birthYear: -56,
     role: 'Third Tsuchikage',
     personality: 'Stubborn, cynical, cranky about his back.',
@@ -986,6 +1032,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Kurotsuchi',
     aliases: ['Kurotsuchi of the Stone'],
+    birthday: { month: 9, day: 6 },
     birthYear: 3,
     role: 'Stone kunoichi · Ōnoki’s granddaughter',
     personality: 'Bold, sarcastic, loyal to her grandfather.',
@@ -996,6 +1043,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Roshi',
     aliases: ['Rōshi', 'Rōshi of the Stone'],
+    birthday: { month: 6, day: 4 },
     birthYear: -39,
     role: 'Stone · Four-Tails jinchuriki',
     personality: 'Grizzled loner who left his village behind.',
@@ -1006,6 +1054,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Han',
     aliases: ['Han of the Stone'],
+    birthday: { month: 5, day: 10 },
     birthYear: -19,
     role: 'Stone · Five-Tails jinchuriki',
     personality: 'Silent and steady; kind to those who earn it.',
@@ -1018,6 +1067,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Fū',
     aliases: ['Fu', 'Fū of the Waterfall'],
+    birthday: { month: 8, day: 8 },
     birthYear: 5,
     role: 'Waterfall · Seven-Tails jinchuriki',
     personality: 'Cheerful and lonely; wants a hundred friends.',
@@ -1028,6 +1078,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Hanzō',
     aliases: ['Hanzo', 'Hanzo the Salamander', 'Hanzō the Salamander'],
+    birthday: { month: 2, day: 12 },
     birthYear: -45,
     role: 'Leader of the Hidden Rain',
     personality: 'Paranoid tyrant, once a legend.',
@@ -1038,6 +1089,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Yahiko',
     aliases: ['Yahiko of the Rain'],
+    birthday: { month: 2, day: 20 },
     birthYear: -15,
     role: 'Founder of the Akatsuki',
     personality: 'Bright idealist who dreamed of peace.',
@@ -1049,6 +1101,8 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Chiriku',
     aliases: ['Monk Chiriku', 'Chiriku of the Fire Temple'],
+    birthday: { month: 9, day: 30 },
+    birthdayInvented: true,
     birthYear: -16,
     role: 'Head monk of the Fire Temple · former Guardian Ninja',
     personality: 'Serene, disciplined, compassionate.',
@@ -1059,6 +1113,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Mifune',
     aliases: ['General Mifune'],
+    birthday: { month: 4, day: 1 },
     birthYear: -39,
     role: 'General of the Land of Iron samurai',
     personality: 'Honorable, neutral, wise.',
@@ -1070,6 +1125,7 @@ export const CANON_CAST: CastEntry[] = [
     // A toad: his age is not counted in human years.
     name: 'Fukasaku',
     aliases: ['Lord Fukasaku', 'Great Toad Sage Fukasaku'],
+    birthday: { month: 5, day: 9 },
     role: 'Toad sage of Mount Myōboku',
     personality: 'Wise, cranky, endlessly patient teacher.',
     speechStyle: 'Croaky old-man scolding.',
@@ -1081,7 +1137,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Kimimaro',
     aliases: ['Kimimaro Kaguya', 'Kaguya Kimimaro'],
-    birthday: { month: 6, day: 2 },
+    birthday: { month: 6, day: 15 },
     birthYear: 2,
     role: 'Orochimaru’s devoted servant · Kaguya clan',
     personality: 'Serene; loyal to Orochimaru unto death.',
@@ -1103,6 +1159,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Tayuya',
     aliases: ['Tayuya of the Sound'],
+    birthday: { month: 2, day: 15 },
     birthYear: 3,
     role: 'Sound Four · Orochimaru’s guard',
     personality: 'Foul-mouthed, vicious, proud.',
@@ -1113,6 +1170,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Sakon',
     aliases: ['Sakon of the Sound'],
+    birthday: { month: 6, day: 20 },
     birthYear: 3,
     role: 'Sound Four leader · Ukon’s twin',
     personality: 'Arrogant, sadistic, cool under pressure.',
@@ -1123,6 +1181,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Ukon',
     aliases: ['Ukon of the Sound'],
+    birthday: { month: 6, day: 20 },
     birthYear: 3,
     role: 'Sound Four · Sakon’s twin',
     personality: 'A cruder, crueler echo of his brother.',
@@ -1133,6 +1192,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Jirobo',
     aliases: ['Jirōbō'],
+    birthday: { month: 6, day: 26 },
     birthYear: 3,
     role: 'Sound Four · Orochimaru’s guard',
     personality: 'Polite on the surface, gluttonous, resentful.',
@@ -1143,6 +1203,7 @@ export const CANON_CAST: CastEntry[] = [
   {
     name: 'Kidomaru',
     aliases: ['Kidōmaru'],
+    birthday: { month: 12, day: 16 },
     birthYear: 3,
     role: 'Sound Four · Orochimaru’s guard',
     personality: 'Treats every fight like a game.',
@@ -1151,6 +1212,8 @@ export const CANON_CAST: CastEntry[] = [
     tags: ['canon', 'sound'],
   },
 ];
+
+export const CANON_CAST: CastEntry[] = [...BASE_CAST, ...CAST_ADDITIONS];
 
 function lower(value: string) {
   return value.trim().toLowerCase();
@@ -1166,11 +1229,54 @@ export const FEMALE_CAST = new Set([
   'Shizune', 'Karin', 'Ino Yamanaka', 'Tenten', 'Hanabi Hyuga', 'Tsume Inuzuka', 'Koharu Utatane',
   'Ayame', 'Kushina Uzumaki', 'Mikoto Uchiha', 'Rin Nohara', 'Temari', 'Chiyo', 'Mei Terumi',
   'Yugito Nii', 'Karui', 'Samui', 'Kurotsuchi', 'Fū', 'Tayuya',
+  'Kaguya Ōtsutsuki', 'Sarada Uchiha', 'Himawari Uzumaki', 'Chōchō Akimichi', 'Mirai Sarutobi',
+  'Ameyuri Ringo', 'Mito Uzumaki', 'Moegi Kazamatsuri', 'Yūgao Uzuki', 'Mebuki Haruno', 'Pakura',
+  'Mabui', 'Kin Tsuchi', 'Katsuyu', 'Shima',
 ]);
+
+/**
+ * Birthdays older saves carry that were wrong: a person still on the old
+ * date is moved to the right one (see section 6 of the living-world notes).
+ */
+const BIRTHDAY_FIXES: Record<string, { from: { month: number; day: number }; to: { month: number; day: number } }> = {
+  'Hana Inuzuka': { from: { month: 4, day: 12 }, to: { month: 4, day: 13 } },
+  Suzume: { from: { month: 11, day: 3 }, to: { month: 10, day: 19 } },
+  'Danzo Shimura': { from: { month: 1, day: 3 }, to: { month: 1, day: 6 } },
+  'Anko Mitarashi': { from: { month: 10, day: 27 }, to: { month: 10, day: 24 } },
+  Kimimaro: { from: { month: 6, day: 2 }, to: { month: 6, day: 15 } },
+  'Killer Bee': { from: { month: 6, day: 23 }, to: { month: 5, day: 15 } },
+};
+
+/** Birthdays the app chose because canon gives none (the seed's people included). */
+const INVENTED_BIRTHDAYS = new Set(['Izumi Uchiha']);
+
+function fixBirthday(entity: EntityRecord): EntityRecord {
+  const fix = BIRTHDAY_FIXES[entity.name];
+
+  if (fix && entity.birthday && entity.birthday.month === fix.from.month && entity.birthday.day === fix.from.day) {
+    return { ...entity, birthday: { ...fix.to } };
+  }
+
+  return entity;
+}
+
+/** The cast members a milestone brings into the story (births, revivals, returns). */
+export function castAppearingWith(milestoneId: string): CastEntry[] {
+  return CANON_CAST.filter((entry) => entry.appearsWith === milestoneId);
+}
+
+/** Whether this cast member is in the story yet (see `appearsWith`). */
+export function castMemberPresent(entry: CastEntry, completed: ReadonlySet<string>) {
+  return !entry.appearsWith || completed.has(entry.appearsWith);
+}
 
 /** Cast entries become entities. Existing saves get the people they lack. */
 export function castEntity(entry: CastEntry, id: string): EntityRecord {
   const lore = loreProfileFor(entry.name);
+  const gender: Gender = entry.gender ?? (FEMALE_CAST.has(entry.name) ? 'female' : 'male');
+  // Someone who arrives with a milestone (a birth, Kaguya's return) enters
+  // the save alive and not yet met; the revived dead stay dead.
+  const status = entry.appearsWith && entry.status !== 'Deceased' ? undefined : entry.status;
 
   return {
     id,
@@ -1178,20 +1284,23 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
     type: 'character',
     aliases: [...entry.aliases],
     ...(entry.hiddenAliases?.length ? { hiddenAliases: entry.hiddenAliases.map((alias) => ({ ...alias })) } : {}),
-    ...(entry.birthday ? { birthday: entry.birthday } : {}),
+    ...(entry.birthday ? { birthday: { ...entry.birthday } } : {}),
+    ...(entry.birthdayInvented ? { birthdayInvented: true } : {}),
     ...(entry.birthYear !== undefined ? { birthYear: entry.birthYear } : {}),
     role: entry.role,
     personality: entry.personality,
     speechStyle: entry.speechStyle,
-    status: entry.status ?? 'Not yet met',
-    ...(entry.status === 'Deceased' ? { deceased: { known: true } } : {}),
+    status: status ?? 'Not yet met',
+    ...(status === 'Deceased' ? { deceased: { known: true } } : {}),
     notes: '',
     mood: 'Unknown',
     appearance: entry.appearance,
-    gender: FEMALE_CAST.has(entry.name) ? 'female' : 'male',
-    romanceAccessibility: romanceFor(FEMALE_CAST.has(entry.name) ? 'female' : 'male', {
-      lore: lore?.romanceAccessibility ?? 'winnable',
-    }),
+    gender,
+    // The genderless (tailed beasts) are never romance options.
+    romanceAccessibility:
+      gender === 'unknown'
+        ? 'not-applicable'
+        : romanceFor(gender, { lore: lore?.romanceAccessibility ?? 'winnable' }),
     canonDevotion: lore?.canonDevotion,
     orientation: lore?.orientation,
     met: false,
@@ -1202,14 +1311,25 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
 /**
  * Adds missing canon cast members to a save. A cast member who already exists
  * under any of their names gets the missing names added as aliases, so the
- * state tracker can find them however the story calls them. Never touches
- * anyone's story details, and never adds someone the save already has.
+ * state tracker can find them however the story calls them, and a birthday
+ * or birth year they lack (or a birthday older saves had wrong). Never
+ * touches anyone's story details, and never adds someone the save already
+ * has. People who enter the story with a milestone (`appearsWith`) are only
+ * added once that milestone is in `completed`.
  */
 export function ensureCanonCast(
   entities: EntityRecord[],
-  makeEntityId: () => string
+  makeEntityId: () => string,
+  completed: Iterable<string> = []
 ): EntityRecord[] {
-  const next = [...entities];
+  const done = new Set(completed);
+  const next = entities.map((entity) => {
+    const fixed = entity.type === 'character' ? fixBirthday(entity) : entity;
+
+    return INVENTED_BIRTHDAYS.has(fixed.name) && fixed.birthday && !fixed.birthdayInvented
+      ? { ...fixed, birthdayInvented: true }
+      : fixed;
+  });
 
   for (const entry of CANON_CAST) {
     const entryNames = namesOf(entry);
@@ -1220,19 +1340,24 @@ export function ensureCanonCast(
     );
 
     if (index === -1) {
-      next.push(castEntity(entry, makeEntityId()));
+      if (castMemberPresent(entry, done)) {
+        next.push(castEntity(entry, makeEntityId()));
+      }
       continue;
     }
 
     const existing = next[index];
     const known = new Set(namesOf(existing));
     const missing = [entry.name, ...entry.aliases].filter((name) => !known.has(lower(name)));
+    const needsBirthday = !existing.birthday && entry.birthday;
+    const needsYear = existing.birthYear === undefined && entry.birthYear !== undefined;
 
-    if (missing.length > 0) {
+    if (missing.length > 0 || needsBirthday || needsYear) {
       next[index] = {
         ...existing,
-        aliases: [...existing.aliases, ...missing].slice(0, 10),
-        birthday: existing.birthday ?? entry.birthday,
+        aliases: missing.length > 0 ? [...existing.aliases, ...missing].slice(0, 10) : existing.aliases,
+        birthday: existing.birthday ?? (entry.birthday ? { ...entry.birthday } : undefined),
+        ...(needsBirthday && entry.birthdayInvented ? { birthdayInvented: true } : {}),
         birthYear: existing.birthYear ?? entry.birthYear,
       };
     }

@@ -167,6 +167,14 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
+  if (diff.birthdaysLearned) {
+    next.birthdaysLearned = diff.birthdaysLearned.flatMap((item) => {
+      const ref = resolve(item.entityId ?? item.name);
+
+      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
   if (diff.lettersReceived) {
     next.lettersReceived = diff.lettersReceived.flatMap((letter) => {
       const ref = resolve(letter.entityId ?? letter.name);

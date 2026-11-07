@@ -21,6 +21,7 @@ import {
   locationKindOf,
 } from './encounters';
 import { formatReturningCharacter } from './returning';
+import { formatYearlyBlock, yearlyOffer, yearlyTrackingLines } from './yearly';
 import { GRUDGE_RULES, formatGrudgeOffer, grudgeOffer, grudgeStage, grudgeTrackingLines } from './grudges';
 import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTrackingLines } from './reputation';
 import { estimateTokens } from '../openrouter';
@@ -115,7 +116,7 @@ MEMORY: facts are what actually happened or is now true, never what someone mere
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
-LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise [].
+LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
 
 NAME & ENEMIES: reputation, bounty_seen, and grudges follow the rules under REPUTATION & GRUDGES; otherwise [].
 
@@ -239,6 +240,7 @@ export function buildNarrationPrompt(
       formatLore(lore),
       formatNewsBlock(db),
       formatLetterBlock(db),
+      formatYearlyBlock(yearlyOffer(db)),
       formatUpcomingWorldBlock(db),
       formatCanonBlock(db),
       formatMemories(db, freshMemories),
@@ -349,6 +351,7 @@ export function buildExtractionPrompt(
     ),
     formatCanonTracking(db),
     formatLetterTracking(db),
+    formatYearlyTracking(db),
     formatEnemyTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
@@ -620,15 +623,31 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
  * (it only changes when someone is added, merged or renamed), so it sits in
  * the cached part of the prompt.
  */
+/**
+ * People in the background: never met, and long dead before the story (no
+ * date of death), sealed, or a summoned animal. They stay out of the roster
+ * to keep it short; when a turn names them they are listed with their id
+ * under CHARACTERS IN THIS TURN. Anyone who dies during the story stays.
+ */
+function inBackground(entity: EntityRecord) {
+  const longDead = isDeceased(entity) && !entity.deceased?.date && !entity.deceased?.canonEventId;
+
+  return (
+    entity.met === false &&
+    !entity.companion &&
+    (longDead || entity.status === 'Sealed' || entity.tags.includes('summon') || entity.tags.includes('tailed-beast'))
+  );
+}
+
 function formatCharacterRoster(db: AppDatabase) {
-  const refs = [...characterRefs(db)];
+  const refs = [...characterRefs(db)].filter(([, entity]) => !inBackground(entity));
 
   if (refs.length === 0) {
     return 'KNOWN CHARACTERS\nNone.';
   }
 
   return [
-    'KNOWN CHARACTERS (id: name, other names) — refer to people by id; anyone listed already exists',
+    'KNOWN CHARACTERS (id: name, other names) — refer to people by id; anyone listed here or under CHARACTERS IN THIS TURN already exists',
     ...refs.map(([ref, entity]) => {
       const others = entity.aliases.filter((alias) => alias.toLowerCase() !== entity.name.toLowerCase()).slice(0, 4);
       const notes = [
@@ -982,6 +1001,14 @@ function formatLetterTracking(db: AppDatabase) {
     'LETTERS',
     ...letterTrackingLines(turnLetterOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name),
   ].join('\n');
+}
+
+/** Today's birthday, for the state tracker (bond moves and birthdays_learned). */
+function formatYearlyTracking(db: AppDatabase) {
+  const refByEntity = refByEntityId(db);
+  const lines = yearlyTrackingLines(yearlyOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name);
+
+  return lines.length ? ['THE DAY', ...lines.map((line) => `- ${line}`)].join('\n') : '';
 }
 
 function formatLoreProfile(db: AppDatabase, name: string) {

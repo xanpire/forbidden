@@ -40,7 +40,7 @@ export function refByEntityId(db: AppDatabase): Map<string, string> {
 
 // Names that are also everyday words only count when capitalized ("Pain",
 // not "the pain in your side").
-const COMMON_WORD_NAMES = new Set(['pain']);
+const COMMON_WORD_NAMES = new Set(['pain', 'kin']);
 
 function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

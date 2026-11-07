@@ -23,6 +23,13 @@ export const LORE_FLAGS: Record<LoreFlag, (db: AppDatabase) => boolean> = {
     const progress = db.state.canonProgress;
     return Boolean(progress?.completed.includes('kan-joins-akatsuki'));
   },
+  // Someone living is your romantic interest or lover.
+  inRomance: (db) =>
+    db.bonds.some((bond) => {
+      if (bond.relationship !== 'lover' && bond.relationship !== 'romantic interest') return false;
+      const entity = db.entities.find((item) => item.id === bond.entityId);
+      return Boolean(entity && !entity.deceased);
+    }),
 };
 
 export function conditionHolds(db: AppDatabase, condition: LoreCondition): boolean {

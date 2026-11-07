@@ -26,6 +26,7 @@ import { applyStoryHooks } from './hooks';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
+import { applyYearly, yearlyOffer } from './yearly';
 import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
@@ -336,6 +337,9 @@ export function applyStateStep(
   next = receiveLetters(next, extraction?.lettersReceived);
   next = sendLetters(next, extraction?.lettersSent);
   next = deliverLetters(next);
+  // The day's birthday or anniversary was offered (once a year), and any
+  // birthday Kan learned is kept.
+  next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
   // The big personal threads open and close as the story reaches them.

@@ -218,6 +218,8 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People whose letter actually reached Kan on the page this turn.
   letters_received: stringList,
+  // People whose birthday Kan learned on the page this turn.
+  birthdays_learned: stringList,
   // What a village (or the Akatsuki) now has on Kan, from deeds its people
   // saw or survived this turn; and villages whose entry on him he learned of.
   reputation: list({

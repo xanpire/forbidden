@@ -714,6 +714,343 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     romanceAccessibility: 'lore-locked',
     orientation: 'Not interested',
   },
+
+  // --- Cast additions (Nov 2026) ---
+  'Madara Uchiha': {
+    canonDevotion: 'His heart died with Izuna and his dream; the one bond he still feels is his rivalry with Hashirama.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kaguya Ōtsutsuki': {
+    canonDevotion: 'A goddess who sees every human as chakra to take back; she loved no one but her sons.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a being beyond humans)',
+  },
+  'Toneri Ōtsutsuki': {
+    canonDevotion: 'Has loved Hinata since childhood, then lives alone on the moon in penance.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Hinata)',
+  },
+  'Mizuki': {
+    canonDevotion: 'Loves only power and himself.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Boruto Uzumaki': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Sarada Uchiha': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Himawari Uzumaki': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Shikadai Nara': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Inojin Yamanaka': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Chōchō Akimichi': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Metal Lee': {
+    canonDevotion: 'A small child.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Fuguki Suikazan': {
+    canonDevotion: 'Loved secrets more than comrades.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Mangetsu Hōzuki': {
+    canonDevotion: 'A swordsman who lived for the blades.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Jinpachi Munashi': {
+    canonDevotion: 'Loves killing, and bickering with Kushimaru.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kushimaru Kuriarare': {
+    canonDevotion: 'Loves killing; nothing else.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Jinin Akebino': {
+    canonDevotion: 'A boastful killer.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ameyuri Ringo': {
+    canonDevotion: 'Dead before the story begins; met only as a memory or an Edo Tensei in the war.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men',
+  },
+  'Raiga Kurosuki': {
+    canonDevotion: 'Cares only for the boy Ranmaru.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kagami Uchiha': {
+    canonDevotion: 'Dead long before the story; lived for clan and village.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Izuna Uchiha': {
+    canonDevotion: 'Devoted to his brother.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Yashiro Uchiha': {
+    canonDevotion: 'Married to the coup.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Inabi Uchiha': {
+    canonDevotion: 'Clan pride before everything.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Tekka Uchiha': {
+    canonDevotion: 'Follows Yashiro.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Mito Uzumaki': {
+    canonDevotion: 'Married to Hashirama Senju; dead before the story.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Hashirama)',
+  },
+  'Nine-Tails': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Shukaku': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Matatabi': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Isobu': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Son Gokū': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Kokuō': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Saiken': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Chōmei': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Gyūki': {
+    canonDevotion: 'A tailed beast.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a tailed beast)',
+  },
+  'Gamabunta': {
+    canonDevotion: 'A giant toad.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a toad)',
+  },
+  'Shima': {
+    canonDevotion: 'An ancient toad, married to Fukasaku.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a toad)',
+  },
+  'Manda': {
+    canonDevotion: 'A giant snake.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a snake)',
+  },
+  'Katsuyu': {
+    canonDevotion: 'A giant slug.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a slug)',
+  },
+  'Pakkun': {
+    canonDevotion: 'A ninken.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a dog)',
+  },
+  'Akamaru': {
+    canonDevotion: 'A ninken.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a dog)',
+  },
+  'Hizashi Hyuga': {
+    canonDevotion: 'Dead before the story; his heart was with his son and his brother.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ebisu': {
+    canonDevotion: 'Pompous, with a hopeless weakness for pretty women.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women',
+  },
+  'Udon Ise': {
+    canonDevotion: 'A child for most of the story.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Moegi Kazamatsuri': {
+    canonDevotion: 'A child for most of the story; her crush is on Konohamaru.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Raido Namiashi': {
+    canonDevotion: 'Married to duty.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Aoba Yamashiro': {
+    canonDevotion: 'Too cool to admit to anything.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Yūgao Uzuki': {
+    canonDevotion: 'Devoted to Gekko Hayate, and to his memory after he dies.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Hayate)',
+  },
+  'Kizashi Haruno': {
+    canonDevotion: 'Married to Mebuki.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to women (Mebuki)',
+  },
+  'Mebuki Haruno': {
+    canonDevotion: 'Married to Kizashi.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men (Kizashi)',
+  },
+  'Torune Aburame': {
+    canonDevotion: 'Root emptied him of everything but duty.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Fū Yamanaka': {
+    canonDevotion: 'Root emptied him of everything but duty.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Mirai Sarutobi': {
+    canonDevotion: 'A child or young teen for the whole story.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
+  'Yashamaru': {
+    canonDevotion: 'Dead before the story; his heart was with his sister and her son.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ebizō': {
+    canonDevotion: 'An old man content with his memories.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Pakura': {
+    canonDevotion: 'Dead before the story; met only as a memory or an Edo Tensei in the war.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Attracted to men',
+  },
+  'Mabui': {
+    canonDevotion: 'Calm and devoted to her work; a heart that opens slowly.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'C': {
+    canonDevotion: 'Serious and devoted to his duty.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Atsui': {
+    canonDevotion: 'Hot-headed and loud.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kinkaku': {
+    canonDevotion: 'Loves only his brother.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Ginkaku': {
+    canonDevotion: 'Loves only his brother.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kitsuchi': {
+    canonDevotion: 'A father and a soldier.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Akatsuchi': {
+    canonDevotion: 'Cheerful and devoted to the Tsuchikage.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Mū': {
+    canonDevotion: 'Cold and ruthless; long dead.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Dosu Kinuta': {
+    canonDevotion: 'Lives only for revenge on Orochimaru.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Zaku Abumi': {
+    canonDevotion: 'Cocky and self-absorbed.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Kin Tsuchi': {
+    canonDevotion: 'Overconfident and scornful; softness is rare.',
+    romanceAccessibility: 'winnable',
+    orientation: 'Attracted to men',
+  },
+  'Tazuna': {
+    canonDevotion: 'An old man devoted to his bridge and his grandson.',
+    romanceAccessibility: 'lore-locked',
+    orientation: 'Not interested',
+  },
+  'Inari': {
+    canonDevotion: 'A child for most of the story.',
+    romanceAccessibility: 'not-applicable',
+    orientation: 'Not applicable (a child)',
+  },
 };
 
 function loreKey(name: string) {
@@ -793,7 +1130,7 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 export const ROMANCE_RULES = `ROMANCE
 - Romance is slow, earned over many scenes, and can fail. NPCs have loves of their own. Bonds show a stage, an attraction, and a lore heart.
 - Kan is straight: only women can ever be romance options. Men are never romantic interests for him, whatever their bond; friendship, loyalty and brotherhood still grow.
-- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Kurenai↔Asuma, Konan→Yahiko, Kushina↔Minato, Tsunade (grieving Dan), Rin→Kakashi; married women stay married. Friendship can still grow.
+- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Kurenai↔Asuma, Konan→Yahiko, Kushina↔Minato, Yūgao→Hayate, Tsunade (grieving Dan), Rin→Kakashi; married women stay married. Friendship can still grow.
 - Winnable hearts (Tenten, Anko, Shizune, Mei, Karin, Hana Inuzuka, Suzume, Yugito, Fū, Kurotsuchi, Samui, Ayame, original women drawn to men) open only through long, consistent effort, never one kind act.
 - Canon-bound hearts (Temari→Shikamaru, Ino→Sai, Karui→Choji) can truly love Kan, but canon wins. As her canon time nears, the story ends it naturally: duty, distance, growing apart, her own choice; never cheating or a sudden change of character. After that Kan is her ex, she is with her canon partner, and she does not go back to Kan.
 - Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
