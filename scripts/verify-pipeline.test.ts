@@ -775,7 +775,7 @@ describe('canon scheduler', () => {
     };
 
     const completed = applyCanonMarks(db, ['masked-man-audience'], []);
-    expect(completed.facts.some((f) => f.text.includes('Kan attended'))).toBe(true);
+    expect(completed.facts.some((f) => f.text.includes('You attended'))).toBe(true);
     expect(completed.state.canonProgress?.completed).toContain('masked-man-audience');
 
     const engaged = applyCanonMarks(db, [], ['itachi-hunt-naruto']);
@@ -2758,7 +2758,7 @@ describe('companions', () => {
     expect(companionsOf(db).map((entity) => entity.id)).toEqual([id]);
     expect(itachiOf(db).companion?.reason).toBe('leaving the Leaf together');
     expect(bondOf(db, id)).toBeDefined();
-    expect(db.facts.some((fact) => fact.text.startsWith('Itachi Uchiha began travelling with Kan'))).toBe(true);
+    expect(db.facts.some((fact) => fact.text.startsWith('Itachi Uchiha began travelling with you'))).toBe(true);
 
     const later = applyTurnDiff(db, {
       state: { sceneCast: ['Kisame Hoshigaki'], elapsedSeconds: 3600 },
@@ -2830,7 +2830,7 @@ describe('companions', () => {
 
     expect(companionsOf(parted)).toHaveLength(0);
     expect(parted.state.sceneCast ?? []).not.toContain('Itachi Uchiha');
-    expect(parted.facts.some((fact) => fact.text.startsWith('Itachi Uchiha parted ways with Kan'))).toBe(true);
+    expect(parted.facts.some((fact) => fact.text.startsWith('Itachi Uchiha parted ways with you'))).toBe(true);
 
     const died = applyTurnDiff(db, { deaths: [{ entityId: id, name: 'Itachi Uchiha', cause: 'illness' }] });
     expect(companionsOf(died)).toHaveLength(0);
@@ -3090,7 +3090,7 @@ describe('personal letters', () => {
 
     db = deliverLetters(later(db, LETTER_MAX_DAYS));
     expect(affinity(db, hana.id)).toBe(Math.min(10, before + LETTER_BOND_GAIN));
-    expect(db.facts.some((fact) => fact.text.includes('Hana Inuzuka received a letter from Kan'))).toBe(true);
+    expect(db.facts.some((fact) => fact.text.includes('Hana Inuzuka received a letter from you'))).toBe(true);
 
     const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-kan')!;
     expect(reply.status).toBe('travelling');

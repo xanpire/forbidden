@@ -75,7 +75,8 @@ export function markMet(db: AppDatabase, entityIds: Iterable<string>): AppDataba
       changed = true;
     }
 
-    if (!bonded.has(entity.id)) {
+    // A one-scene character gets no bond card unless they come back.
+    if (!bonded.has(entity.id) && entity.tier !== 'minor') {
       bonds.push(newBond(db, next));
       bonded.add(entity.id);
       changed = true;

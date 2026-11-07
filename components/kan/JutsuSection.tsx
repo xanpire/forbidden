@@ -67,9 +67,43 @@ export function JutsuSection() {
     return null;
   }
 
+  const natures = db.state.player.natures ?? [];
+  const abilities = db.state.player.abilities ?? [];
+  // Your eyes, other abilities and chakra natures, above the jutsu.
+  const abilityCard = (
+    <View style={styles.section}>
+      <SectionLabel>Abilities & natures</SectionLabel>
+      <ListCard>
+        {abilities.length === 0 ? (
+          <ListRow body="Your dōjutsu and other abilities appear here when they awaken." title="No abilities awakened yet" />
+        ) : (
+          abilities.map((ability) => (
+            <ListRow
+              body={ability.stage}
+              key={ability.name}
+              meta={`Since ${formatDayMonth(ability.acquiredOn)}, year ${ability.acquiredOn.year}`}
+              title={ability.name}
+            />
+          ))
+        )}
+        <ListRow
+          body={
+            natures.length === 0
+              ? 'Your own chakra nature is not known yet.'
+              : natures
+                  .map((item) => `${item.nature}${item.source === 'innate' ? ' (yours)' : ` (Thousand Souls${item.from ? `, from ${item.from}` : ''})`}`)
+                  .join(' · ')
+          }
+          title="Chakra natures"
+        />
+      </ListCard>
+    </View>
+  );
+
   if (groups.length === 0) {
     return (
       <View style={styles.section}>
+        {abilityCard}
         <SectionLabel>Jutsu</SectionLabel>
         <EmptyRow
           body="Every technique you use or see is kept here for good."
@@ -81,6 +115,7 @@ export function JutsuSection() {
 
   return (
     <View style={styles.section}>
+      {abilityCard}
       {groups.map((group) => (
         <View key={group.nature} style={styles.group}>
           <SectionLabel>

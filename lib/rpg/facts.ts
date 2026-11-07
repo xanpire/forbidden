@@ -4,7 +4,7 @@ import { dateSortValue, normalizeDate, shiftSeconds } from './calendar';
 import { kanKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
-import { trimToSentence, uniqueList } from './util';
+import { secondPerson, trimToSentence, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, EventRecord, FactRecord, ThreadRecord, TurnDiff } from './types';
 
 type FactDiff = NonNullable<TurnDiff['facts']>[number];
@@ -208,7 +208,7 @@ export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
     id: makeId('fact'),
     subjectEntityId: subjectEntity?.id ?? null,
     type: fact.type ?? 'other',
-    text: text.slice(0, 200),
+    text: secondPerson(text).slice(0, 200),
     whoKnows: knowers.ids,
     ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
     validFrom: currentDate,
@@ -363,7 +363,7 @@ export function applyThreadDiff(
       type: thread.type ?? 'other',
       // Keeps the tracker's casing ("Itachi's offer", not "itachi's offer").
       title: title.charAt(0).toUpperCase() + title.slice(1),
-      description: thread.description?.trim() || '',
+      description: secondPerson(thread.description?.trim() || ''),
       status: 'open' as const,
       openedAt: db.state.inStoryDate,
       resolvedAt: null,
@@ -386,7 +386,7 @@ export function applyThreadDiff(
   const mergedIds = uniqueList([...currentIds, ...named.map((entity) => entity.id)]);
   threads[existingIndex] = {
     ...current,
-    description: thread.description?.trim() || current.description,
+    description: thread.description?.trim() ? secondPerson(thread.description.trim()) : current.description,
     type: thread.type ?? current.type,
     participantIds: mergedIds,
     participants: uniqueList([...current.participants, ...named.map((entity) => entity.name)]),

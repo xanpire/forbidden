@@ -169,3 +169,37 @@ export function parseTitledSummary(raw: string): TitledSummary | null {
     summary,
   };
 }
+
+const KAN_VERB_BE: Record<string, string> = { is: 'are', was: 'were', has: 'have', does: 'do', "isn't": "aren't", "wasn't": "weren't", "hasn't": "haven't", "doesn't": "don't" };
+
+/** "watches" → "watch", "carries" → "carry", "knows" → "know". */
+function baseVerb(verb: string) {
+  if (/ies$/.test(verb)) return verb.replace(/ies$/, 'y');
+  if (/(ches|shes|sses|xes|zes)$/.test(verb)) return verb.replace(/es$/, '');
+  if (/s$/.test(verb) && !/ss$/.test(verb)) return verb.replace(/s$/, '');
+  return verb;
+}
+
+/**
+ * Text that reaches the player calls Kan "you". Rewrites the common shapes
+ * ("Kan's", "Kan is", "Kan knows", "with Kan") so app-written and canon text
+ * reads in second person; ids and the jutsu user field never go through it.
+ */
+export function secondPerson(text: string): string {
+  if (!/\bKan\b/.test(text)) {
+    return text;
+  }
+
+  let out = text
+    .replace(/\bKan[’']s\b/g, 'your')
+    .replace(/\bKan (is|was|has|does|isn't|wasn't|hasn't|doesn't)\b/g, (_, verb: string) => `you ${KAN_VERB_BE[verb] ?? verb}`)
+    .replace(/\bKan ([a-z]+s)\b/g, (match, verb: string) =>
+      /^(?:and|as|thus|plus|always|perhaps|has|is|was)$/.test(verb) ? match : `you ${baseVerb(verb)}`
+    )
+    .replace(/\bKan\b/g, 'you');
+
+  // Sentence starts: "you" → "You", "your" → "Your".
+  out = out.replace(/(^|[.!?]\s+|["“]\s*)(you|your)\b/g, (_, lead: string, word: string) => `${lead}${word.charAt(0).toUpperCase()}${word.slice(1)}`);
+
+  return out;
+}

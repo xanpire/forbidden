@@ -39,7 +39,6 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       aliases: ['Uchiha-Uzumaki Kan'],
       birthday: { month: 6, day: 30 },
       birthYear: 0,
-      age: 13,
       role: 'Missing-nin (former ANBU)',
       personality: 'Reserved, watchful, hard to read. Smart and versatile, hides his feelings. A trace of the timid, quiet child he was at the Academy still shows when he is caught off guard.',
       speechStyle: 'Short, restrained, rarely volunteers more than necessary.',
@@ -48,6 +47,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       mood: 'Numb, guarded, torn',
       appearance: 'Lean teenage shinobi with black hair, dark watchful eyes, wearing a plain black high-collared shinobi outfit with bandage-wrapped forearms. No ANBU gear.',
       gender: 'male',
+      met: true,
       tags: ['player', 'uchiha', 'uzumaki', 'anbu'],
     },
     {
@@ -55,15 +55,19 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       name: 'Itachi Uchiha',
       type: 'character',
       aliases: ['Itachi'],
+      birthday: { month: 6, day: 9 },
       birthYear: 0,
-      age: 13,
+      met: true,
+      lastSeen: { year: 13, month: 9, day: 28, hour: 21, minute: 0 },
+      lastSeenAt: 'Forest outside Hidden Leaf',
       role: 'Missing-nin · Akatsuki',
       personality: 'Calm, perceptive, self-sacrificing, gentle beneath a controlled surface.',
       speechStyle: 'Quiet, precise, polite, often speaking in gentle observations.',
       status: 'Missing-nin, Akatsuki',
       notes: 'Kan’s closest friend, like an older brother; with Shisui, the three grew up together. Joined ANBU one year before Kan. A few days before the massacre he told Kan what he was going to do, beat him in the fight that followed, and sent him to hide in the forest and wait — promising to explain everything afterwards. He wants Kan beside him in the Akatsuki, the two of them spying on it together.',
       mood: 'Burdened, controlled, grieving beneath the calm',
-      appearance: 'Slim young man with long black hair tied back, sharp dark eyes, tear troughs, and a black cloak patterned with red clouds.',
+      // His look at thirteen, the night he leaves; the Akatsuki cloak comes later.
+      appearance: 'Slim thirteen-year-old with long black hair tied low at the nape, sharp dark eyes and faint tear-trough lines; dark high-collared shirt, ANBU-issue arm guards, dark trousers, and a Hidden Leaf forehead protector.',
       gender: 'male',
       romanceAccessibility: 'not-applicable',
       canonDevotion: 'His heart belongs to his brother and the village; love is a luxury he denied himself.',
@@ -75,8 +79,11 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       name: 'Hana Inuzuka',
       type: 'character',
       aliases: ['Hana'],
+      birthday: { month: 4, day: 12 },
       birthYear: 0,
-      age: 13,
+      met: true,
+      lastSeen: { year: 13, month: 9, day: 27, hour: 18, minute: 0 },
+      lastSeenAt: 'Hidden Leaf',
       role: 'Hidden Leaf shinobi · Team 3',
       personality: 'Loud, loyal, instinctive, protective, quick to act.',
       speechStyle: 'Direct, blunt, teasing, with little patience for hesitation.',
@@ -95,8 +102,11 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       name: 'Izumi Uchiha',
       type: 'character',
       aliases: ['Izumi'],
+      birthday: { month: 8, day: 14 },
       birthYear: 0,
-      age: 13,
+      met: true,
+      lastSeen: { year: 13, month: 9, day: 27, hour: 18, minute: 0 },
+      lastSeenAt: 'Hidden Leaf',
       role: 'Hidden Leaf shinobi · Team 3',
       personality: 'Kind, observant, gentle, quietly stubborn.',
       speechStyle: 'Soft and careful, with a warm teasing streak.',
@@ -117,8 +127,11 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       name: 'Suzume',
       type: 'character',
       aliases: ['Suzume-sensei'],
+      birthday: { month: 11, day: 3 },
       birthYear: -16,
-      age: 29,
+      met: true,
+      lastSeen: { year: 13, month: 9, day: 25, hour: 9, minute: 0 },
+      lastSeenAt: 'Hidden Leaf training grounds',
       role: 'Hidden Leaf jonin · Team 3 sensei',
       personality: 'Patient, sharp, protective, demanding in the field.',
       speechStyle: 'Dry, measured, with occasional warmth.',
@@ -202,6 +215,18 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
   ];
 
+  // Shisui comes from the canon cast (dead before the story starts); you grew up with him.
+  const shisui = entities.find((entity) => entity.name === 'Shisui Uchiha');
+
+  if (shisui) {
+    Object.assign(shisui, {
+      met: true,
+      status: 'Deceased',
+      lastSeen: { year: 13, month: 9, day: 20, hour: 20, minute: 0 },
+      lastSeenAt: 'Hidden Leaf',
+    });
+  }
+
   const bonds: BondRecord[] = [
     {
       id: makeId('bond'),
@@ -268,6 +293,24 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       updatedInStoryDate: DEFAULT_DATE,
     },
   ];
+
+  if (shisui) {
+    bonds.push({
+      id: makeId('bond'),
+      entityId: shisui.id,
+      characterName: shisui.name,
+      affinity: 9,
+      status: 'Deceased · Childhood friend',
+      lastKeyEventId: null,
+      note: 'He was the third of you, with Itachi: the one who made you laugh.',
+      theirFeelings: { affinity: 9, note: 'He was the third of you, with Itachi: the one who made you laugh.' },
+      yourFeelings: { affinity: 9, note: 'You never believed he would take his own life.' },
+      isMajor: true,
+      relationship: 'old friend',
+      attraction: 'none',
+      updatedInStoryDate: DEFAULT_DATE,
+    });
+  }
 
   const facts: FactRecord[] = [
     {
@@ -562,7 +605,14 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
   // who_knows holds entity ids; anyone not in the cast is a group tag.
   const knownFacts: FactRecord[] = facts.map((fact) => {
     const knowers = knowersOf({ entities } as AppDatabase, fact.whoKnows);
-    return { ...fact, whoKnows: knowers.ids, ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}) };
+    return {
+      ...fact,
+      whoKnows: knowers.ids,
+      ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
+      // Everything you know at the start comes with the opening memory.
+      sourceEventId: fact.sourceEventId ?? openingEvent.id,
+      subjectEntityId: fact.subjectEntityId ?? (fact.text.startsWith('Shisui') ? (entities.find((e) => e.name === 'Shisui Uchiha')?.id ?? KAN_ID) : KAN_ID),
+    };
   });
 
   const database: AppDatabase = {

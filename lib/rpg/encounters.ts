@@ -63,6 +63,33 @@ export function classifyLocation(text: string): LocationKind {
   return groups.sort((a, b) => a.index - b.index)[0].kind;
 }
 
+const WORDS_BY_KIND: Record<LocationKind, string[]> = {
+  structure: STRUCTURE_WORDS,
+  settlement: SETTLEMENT_WORDS,
+  road: ROAD_WORDS,
+  wilderness: WILDERNESS_WORDS,
+};
+
+/**
+ * Checks the state model's location kind against the place's own name: when
+ * the name says one kind ("a ravine") and nothing in it fits the kind given
+ * ("settlement"), the name wins.
+ */
+export function validateLocationKind(location: string, given: LocationKind | undefined): LocationKind {
+  const lower = location.toLowerCase();
+
+  if (!given) {
+    return classifyLocation(location);
+  }
+
+  const fitsGiven = earliestMatch(lower, WORDS_BY_KIND[given]) !== -1;
+  const named = (Object.keys(WORDS_BY_KIND) as LocationKind[]).some(
+    (kind) => earliestMatch(lower, WORDS_BY_KIND[kind]) !== -1
+  );
+
+  return !fitsGiven && named ? classifyLocation(location) : given;
+}
+
 export function locationKindOf(db: AppDatabase): LocationKind {
   const kind = db.state.locationKind;
 

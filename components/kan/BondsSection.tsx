@@ -133,9 +133,10 @@ export function BondsSection() {
     const term = query.trim().toLowerCase();
 
     return db.entities
-      // Canon cast members you have not met yet stay off the list.
+      // People you have not met, and one-scene characters, stay off the list.
       .filter(
-        (entity) => entity.type === 'character' && entity.name !== 'Kan' && entity.met !== false
+        (entity) =>
+          entity.type === 'character' && entity.name !== 'Kan' && entity.met !== false && entity.tier !== 'minor'
       )
       .map((entity) => ({
         entity,

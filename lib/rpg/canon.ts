@@ -27,6 +27,7 @@ import { knowersOf } from './facts';
 import { resolveEntity } from './entities';
 import { mentionsName } from './characterRefs';
 import { makeId } from './id';
+import { secondPerson } from './util';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
@@ -111,8 +112,11 @@ function addFactOnce(
   text: string,
   whoKnows: string[],
   validFrom: CalendarDate = db.state.inStoryDate,
-  subjectEntityId: string | null = factSubject(db, text)
+  subjectEntityId: string | null = factSubject(db, text),
+  sourceEventId: string | null = null
 ): AppDatabase {
+  // Canon data says "Kan"; what you read says "you".
+  text = secondPerson(text);
   const lower = text.toLowerCase();
 
   if (db.facts.some((fact) => fact.validTo === null && fact.text.toLowerCase() === lower)) {
@@ -130,7 +134,7 @@ function addFactOnce(
     validFrom,
     validTo: null,
     confidence: 'confirmed',
-    sourceEventId: null,
+    sourceEventId,
   };
 
   return { ...db, facts: [...db.facts, fact] };
@@ -146,7 +150,7 @@ function addMissedFact(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
   return addFactOnce(
     db,
     `fact_missed_${milestone.id}`,
-    `Kan never crossed paths with ${who} before this window closed.`,
+    `You never crossed paths with ${who} before this window closed.`,
     ['Kan']
   );
 }
@@ -239,7 +243,15 @@ function fireMilestone(
   const knowers = witnesses ?? [`${milestone.knowledge ?? 'public'} knowledge`];
 
   for (const text of milestone.facts) {
-    next = addFactOnce(next, `fact_canon_${milestone.id}_${next.facts.length}`, text, knowers, happenedAt);
+    next = addFactOnce(
+      next,
+      `fact_canon_${milestone.id}_${next.facts.length}`,
+      text,
+      knowers,
+      happenedAt,
+      factSubject(next, text),
+      eventIdFor(milestone.id)
+    );
   }
 
   if (milestone.deaths?.length) {
@@ -268,7 +280,7 @@ function fireMilestone(
           id: `thread_canon_${milestone.id}_${next.threads.length}`,
           type: seed.type,
           title: seed.title,
-          description: seed.description,
+          description: secondPerson(seed.description),
           status: 'open',
           openedAt: happenedAt,
           resolvedAt: null,

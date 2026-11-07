@@ -456,7 +456,7 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
     next = applyFactDiff(next, {
       action: 'add',
       type: 'event',
-      text: `${entity.name} received a letter from Kan${letter.gist ? `: ${letter.gist}` : ''}.`,
+      text: `${entity.name} received a letter from you${letter.gist ? `: ${letter.gist}` : ''}.`,
       subject: entity.name,
       whoKnows: [entity.name],
       validFrom: letter.arrivesOn,

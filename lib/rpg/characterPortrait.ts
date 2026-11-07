@@ -25,9 +25,13 @@ import type {
 /** Portraits kept per person: the newest is shown, the one before guides style. */
 export const PORTRAITS_PER_CHARACTER = 4;
 
+/** Their base look, plus how they look right now when that is known. */
 function cleanAppearance(entity: EntityRecord) {
   const text = entity.appearance?.trim() ?? '';
-  return text && text !== 'Unknown' ? text : '';
+  const base = text && text !== 'Unknown' ? text : '';
+  const now = entity.currentLook?.trim();
+
+  return now ? [base, `Right now: ${now}`].filter(Boolean).join(' ') : base;
 }
 
 /** Age at death for the dead, so their portrait does not keep ageing. */

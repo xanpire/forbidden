@@ -195,3 +195,25 @@ export function normalizeDeaths(db: AppDatabase): AppDatabase {
 
   return entities.some((entity, index) => entity !== next.entities[index]) ? { ...next, entities } : next;
 }
+
+/**
+ * Once you know someone died, their bond says so ("Deceased · Teammate"),
+ * instead of reading as if they were still alive. Before you know, nothing
+ * changes, so the bonds screen never spoils a death.
+ */
+export function markKnownDeathsOnBonds(db: AppDatabase): AppDatabase {
+  let changed = false;
+
+  const bonds = db.bonds.map((bond) => {
+    const entity = db.entities.find((item) => item.id === bond.entityId);
+
+    if (!entity || !kanKnowsDeath(db, entity) || /^deceased\b/i.test(bond.status)) {
+      return bond;
+    }
+
+    changed = true;
+    return { ...bond, status: `Deceased · ${bond.status || 'Gone'}`.slice(0, 80) };
+  });
+
+  return changed ? { ...db, bonds } : db;
+}

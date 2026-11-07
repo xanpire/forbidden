@@ -210,7 +210,7 @@ export function convertStateBlock(
 
   const charactersPresent = Array.isArray(block.characters_present)
     ? block.characters_present
-        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0 && name.trim().toLowerCase() !== 'kan')
         .slice(0, 8)
     : [];
 
@@ -476,6 +476,7 @@ export function convertStateBlock(
                 : undefined,
           ...(gender ? { gender } : {}),
           ...(attractedTo ? { attractedTo } : {}),
+          ...((item as { minor?: unknown }).minor === true ? { minor: true } : {}),
         };
       })
       .filter((item) => item.name.trim().length > 0);
@@ -519,11 +520,39 @@ export function convertStateBlock(
         name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
         mood: cleanString(item.mood),
         appearance: cleanString(item.appearance),
+        lastingAppearance: cleanString(item.lasting_appearance),
       }))
-      .filter((item) => item.name.length > 0 && (item.mood || item.appearance));
+      .filter((item) => item.name.length > 0 && (item.mood || item.appearance || item.lastingAppearance));
 
     if (updates.length > 0) {
       diff.entities = [...(diff.entities ?? []), ...updates];
+    }
+  }
+
+  if (Array.isArray(block.natures_gained)) {
+    const natures = block.natures_gained
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        nature: cleanString(item.nature) ?? '',
+        source: (item.source === 'thousand-souls' ? 'thousand-souls' : 'innate') as 'innate' | 'thousand-souls',
+        from: cleanString(item.from),
+      }))
+      .filter((item) => item.nature.length > 0)
+      .map((item) => (item.from ? item : { nature: item.nature, source: item.source }));
+
+    if (natures.length > 0) {
+      diff.naturesGained = natures;
+    }
+  }
+
+  if (Array.isArray(block.abilities_changed)) {
+    const abilities = block.abilities_changed
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({ name: cleanString(item.name) ?? '', stage: cleanString(item.stage) }))
+      .filter((item) => item.name.length > 0);
+
+    if (abilities.length > 0) {
+      diff.abilitiesChanged = abilities;
     }
   }
 

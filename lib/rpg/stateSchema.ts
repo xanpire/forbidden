@@ -150,11 +150,16 @@ export const TURN_STATE_SCHEMA = object({
     appearance: nullableString,
     gender: nullableEnum(GENDERS),
     attracted_to: nullableEnum(ATTRACTED_TO),
+    // A one-scene character: a target, a guard, a shopkeeper.
+    minor: { type: 'boolean' },
   }),
+  // appearance: how they look right now (clothes, wet, bloodied, Sharingan
+  // active). lasting_appearance: only a real lasting change to their base look.
   character_updates: list({
     character_id: { type: 'string' },
     mood: nullableString,
     appearance: nullableString,
+    lasting_appearance: nullableString,
   }),
   // A death the prose makes certain this turn — on screen, a body Kan sees,
   // or someone telling Kan — by character id. revived is only a true return
@@ -174,6 +179,16 @@ export const TURN_STATE_SCHEMA = object({
   companions_left: list({
     character_id: { type: 'string' },
     reason: nullableString,
+  }),
+  // Kan's own chakra natures and abilities, when this turn changes them.
+  natures_gained: list({
+    nature: { type: 'string' },
+    source: { type: 'string', enum: ['innate', 'thousand-souls'] },
+    from: nullableString,
+  }),
+  abilities_changed: list({
+    name: { type: 'string' },
+    stage: nullableString,
   }),
   image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },

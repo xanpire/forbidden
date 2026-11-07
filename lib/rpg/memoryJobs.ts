@@ -20,6 +20,8 @@
 import { bingoListings, formatRyo } from './reputation';
 import { CANON_MILESTONES } from './canonData';
 import { syncBondSides } from './bonds';
+import { markKnownDeathsOnBonds } from './deaths';
+import { markMet } from './met';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { applyCanonEndgames } from './canonEndgame';
 import { deliverLetters, receiveLetters, sendLetters } from './letters';
@@ -28,7 +30,7 @@ import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './ca
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
-import { inferScenePace, resolveTurnClock } from './pacing';
+import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
 import { resolveEntity, revealHiddenAliases } from './entities';
 import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
@@ -239,7 +241,7 @@ export function applyStateStep(
   const beforeDate = latest.state.inStoryDate;
   const parsedTime = detectNarrationTime(turn.narration, beforeDate);
   const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
-  const pace = extraction?.state?.scenePace ?? inferScenePace(turn.narration);
+  const pace = validateScenePace(extraction?.state?.scenePace, turn.narration) ?? inferScenePace(turn.narration);
   const sceneEnded = extraction?.scene?.ended ?? false;
   const clock = resolveTurnClock({
     reportedSeconds,
@@ -256,7 +258,7 @@ export function applyStateStep(
   merged.state = {
     ...(merged.state ?? {}),
     elapsedSeconds: clock.elapsedSeconds,
-    scenePace: merged.state?.scenePace ?? pace,
+    scenePace: pace,
     clockTime: undefined,
     inStoryDate: undefined,
   };
@@ -316,6 +318,7 @@ export function applyStateStep(
   next = sendLetters(next, extraction?.lettersSent);
   next = deliverLetters(next);
   next = syncBondSides(next);
+  next = markKnownDeathsOnBonds(next);
 
   let notice: string | null = null;
 
@@ -480,6 +483,49 @@ function stampTurnScene(
     if (entry.role === 'user' && entry.sceneSeq === undefined) userIndex = position;
     break;
   }
+
+  // A one-scene character seen in a second scene is one no longer: they
+  // become an ordinary character, with a bond card.
+  const minorsHere = castIds.filter((id) => after.entities.find((entity) => entity.id === id)?.tier === 'minor');
+  const promoted = new Set(
+    minorsHere.filter((id) => {
+      const scenes = new Set(
+        after.rawLog.filter((entry) => entry.sceneCastIds?.includes(id) && entry.sceneSeq !== undefined).map((entry) => entry.sceneSeq)
+      );
+      scenes.add(seq);
+      return scenes.size >= 2;
+    })
+  );
+
+  if (promoted.size > 0) {
+    after = markMet(
+      {
+        ...after,
+        entities: after.entities.map((entity) => {
+          if (!promoted.has(entity.id)) return entity;
+          const next = { ...entity };
+          delete next.tier;
+          return next;
+        }),
+      },
+      promoted
+    );
+  }
+
+  // A look of the moment lasts its scene: set this turn, it belongs to this
+  // scene; from an earlier scene, it is gone.
+  after = {
+    ...after,
+    entities: after.entities.map((entity) => {
+      if (!entity.currentLook) return entity;
+      if (entity.currentLookSeq === undefined) return { ...entity, currentLookSeq: seq };
+      if (entity.currentLookSeq === seq) return entity;
+      const cleared = { ...entity };
+      delete cleared.currentLook;
+      delete cleared.currentLookSeq;
+      return cleared;
+    }),
+  };
 
   const knownEvents = new Set(before.events.map((event) => event.id));
   const knownFacts = new Set(before.facts.map((fact) => fact.id));

@@ -223,7 +223,18 @@ export type EntityRecord = {
   status?: string;
   notes?: string;
   mood?: string;
+  /**
+   * Their base appearance: the lasting look (canon or original design), changed
+   * only by real lasting changes like aging, scars or new clothing.
+   */
   appearance?: string;
+  /**
+   * How they look right now: what they are wearing, wet, bloodied, Sharingan
+   * active. Cleared when the scene changes or after rest, unless renewed.
+   */
+  currentLook?: string;
+  /** The scene (GameState.sceneSeq) currentLook was last set in. */
+  currentLookSeq?: number;
   lastSeen?: CalendarDate;
   /** Where Kan last saw this person (state.location at the time). */
   lastSeenAt?: string;
@@ -261,6 +272,12 @@ export type EntityRecord = {
    * moves into `aliases`.
    */
   hiddenAliases?: HiddenAlias[];
+  /**
+   * "minor": a one-scene character (a bounty target, a shopkeeper). No bond
+   * card and no portrait unless they come back in a second scene, which
+   * makes them an ordinary character.
+   */
+  tier?: 'minor';
   /**
    * Set while this person travels with Kan (see companions.ts): they are in
    * every scene until the story shows them leave, and the scenes they share
@@ -650,6 +667,10 @@ export type TurnDiff = {
   imageWorthy?: boolean;
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
+  /** Chakra natures Kan gained this turn: found innate, or taken with Thousand Souls. */
+  naturesGained?: { nature: string; source: 'innate' | 'thousand-souls'; from?: string }[];
+  /** Abilities Kan gained or that changed stage this turn (Sharingan 2 tomoe, Mangekyō...). */
+  abilitiesChanged?: { name: string; stage?: string }[];
   /**
    * People the prose seems to show, read by the app when the state reply was
    * unreadable. Only a suggestion: it never marks anyone met or seen, and
@@ -667,8 +688,13 @@ export type TurnDiff = {
     personality?: string;
     speechStyle?: string;
     mood?: string;
+    /** New characters: their base look. Updates: their look right now (currentLook). */
     appearance?: string;
+    /** A real lasting change to their base look (aging, a scar, new clothes for good). */
+    lastingAppearance?: string;
     gender?: Gender;
+    /** A one-scene character (see EntityRecord.tier). */
+    minor?: boolean;
     /** Who they are drawn to: men, women, both, none, or unknown. */
     attractedTo?: 'men' | 'women' | 'both' | 'none' | 'unknown';
   }[];

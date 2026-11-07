@@ -729,7 +729,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
         entity.age !== undefined
           ? db.state.inStoryDate.year - entity.age
           : undefined,
-      age: entity.age,
+      // Age comes from birthYear (and birthday) on the in-story date, never a stored number.
       role: entity.role?.trim() || 'Unknown',
       personality: entity.personality?.trim() || 'Unknown',
       speechStyle: entity.speechStyle?.trim() || 'Unknown',
@@ -742,6 +742,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
       mood: entity.mood?.trim() || 'Unknown',
       appearance: entity.appearance?.trim() || 'Unknown',
       gender: entity.gender ?? 'unknown',
+      ...(entity.minor ? { tier: 'minor' as const } : {}),
       // From who they are, never a default of "winnable".
       romanceAccessibility: romanceFor(entity.gender, { attractedTo: entity.attractedTo }),
       ...(entity.attractedTo && entity.attractedTo !== 'unknown' ? { orientation: `Attracted to ${entity.attractedTo}` } : {}),
@@ -758,7 +759,6 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   const existingIndex = entities.findIndex((item) => item.id === existing.id);
 
   const nextMood = entity.mood?.trim() || existing.mood;
-  const nextAge = entity.age !== undefined ? entity.age : existing.age;
 
   const hidden = new Set((existing.hiddenAliases ?? []).map((alias) => alias.name.toLowerCase()));
   const extraAlias =
@@ -774,7 +774,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   entities[existingIndex] = {
     ...existing,
     aliases: [...existing.aliases, ...extraAlias].slice(0, 10),
-    age: nextAge,
+    age: undefined,
     birthYear:
       entity.age !== undefined
         ? db.state.inStoryDate.year - entity.age
@@ -783,7 +783,12 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     personality: entity.personality?.trim() || existing.personality,
     speechStyle: entity.speechStyle?.trim() || existing.speechStyle,
     mood: nextMood,
-    appearance: entity.appearance?.trim() || existing.appearance,
+    // An update only says how they look right now; the base look changes
+    // only for a real lasting change.
+    appearance: entity.lastingAppearance?.trim() || existing.appearance,
+    ...(entity.appearance?.trim()
+      ? { currentLook: entity.appearance.trim().slice(0, 200), currentLookSeq: undefined }
+      : {}),
   };
 
   const nextState =

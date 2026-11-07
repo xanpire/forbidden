@@ -153,7 +153,7 @@ function startGrudge(db: AppDatabase, entity: EntityRecord, heat: number, reason
   next = applyFactDiff(next, {
     action: 'add',
     type: 'other',
-    text: `${entity.name} holds a grudge against Kan: ${grudge.reason}`,
+    text: `${entity.name} holds a grudge against you: ${grudge.reason}`,
     subject: entity.name,
     whoKnows: [entity.name],
   });

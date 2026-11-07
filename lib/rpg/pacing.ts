@@ -7,6 +7,22 @@ const TRAVEL = /\b(travel|traveled|travelling|traveling|road|ride|rode|riding|ma
 const DOWNTIME = /\b(sleep|sleeps|sleeping|slept|rest|rests|rested|resting|camp|camps|camped|recover|recovers|recovering|recovered|train|trains|trained|training|nap|naps|napped|dosed off|wake|wakes|woke|woken|morning)\b/i;
 const CONVERSATION = /\b(says|said|asks|asked|replies|replied|answers|answered|speaks|spoke|talks|talked|whispers|whispered|mutters|muttered|silence|stares|looks)\b/i;
 
+const FIGHTING = /\b(ambush(?:es|ed)?|attack(?:s|ed)?|strikes?|struck|lunges?|lunged|parr(?:y|ies|ied)|dodges?|dodged|clash(?:es|ed)?|fight(?:s|ing)?|slashe?s?|slashed|stabs?|stabbed)\b/gi;
+
+/**
+ * Checks the state model's pace against the prose: a turn that reads as a
+ * fight (several fighting words) is combat, whatever calmer pace was given.
+ * Only ever moves toward combat, so a fight is never skipped as travel.
+ */
+export function validateScenePace(given: ScenePace | undefined, narration: string): ScenePace | undefined {
+  if (!given || given === 'combat' || given === 'chase') {
+    return given;
+  }
+
+  const hits = narration.match(FIGHTING)?.length ?? 0;
+  return hits >= 2 ? 'combat' : given;
+}
+
 // Fallback when the narrator forgets scene_pace. Order matters: combat and
 // chase beat travel/rest, because an action scene must never be skipped.
 export function inferScenePace(text: string): ScenePace {

@@ -3,6 +3,7 @@
 // facts, clock, jutsu, log and stateBlock.
 
 import { type ChatRequest, completeChat } from '../openrouter';
+import { applyAbilityChanges } from './abilities';
 import { applyBondDiff, syncBondSides } from './bonds';
 import { applyCanonEndgames } from './canonEndgame';
 import { daysBetween, formatDate } from './calendar';
@@ -11,7 +12,7 @@ import { applyCompanionChanges, applySharedScene, castWithCompanions } from './c
 import { markAlive, markDeceased } from './deaths';
 import { buildIndices } from './db';
 import { type DebugCallKind, recordDebugCall, recordDebugState } from './debug';
-import { classifyLocation } from './encounters';
+import { validateLocationKind } from './encounters';
 import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
 import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
@@ -42,6 +43,21 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   if (diff.state) {
     next = applyStateDiff(next, diff.state);
+  }
+
+  // A night's rest clears everyone's look of the moment (wet, bloodied,
+  // Sharingan active); this turn's updates then say how they look after it.
+  if (isRest(diff)) {
+    next = {
+      ...next,
+      entities: next.entities.map((entity) => {
+        if (!entity.currentLook) return entity;
+        const cleared = { ...entity };
+        delete cleared.currentLook;
+        delete cleared.currentLookSeq;
+        return cleared;
+      }),
+    };
   }
 
   if (Array.isArray(diff.entities)) {
@@ -76,6 +92,8 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
       next = applyJutsuDiff(next, jutsu);
     }
   }
+
+  next = applyAbilityChanges(next, diff);
 
   // Who the scene cast puts in the room this turn. Only they can be met: a
   // bond, grudge or join for someone unmet who isn't here changes nothing.
@@ -234,13 +252,14 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   if (typeof state.location === 'string' && state.location.trim()) {
     next.state.location = state.location.trim().slice(0, 100);
-    next.state.locationKind = state.locationKind ?? classifyLocation(next.state.location);
+    next.state.locationKind = validateLocationKind(next.state.location, state.locationKind);
   } else if (state.locationKind) {
     next.state.locationKind = state.locationKind;
   }
 
+  // You are never in your own scene cast.
   if (Array.isArray(state.sceneCast)) {
-    next.state.sceneCast = state.sceneCast.filter(Boolean).slice(0, 6);
+    next.state.sceneCast = state.sceneCast.filter((name) => name && name.trim().toLowerCase() !== 'kan').slice(0, 6);
   }
 
   if (
