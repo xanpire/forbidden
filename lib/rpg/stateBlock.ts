@@ -197,6 +197,34 @@ export function convertStateBlock(
     diff.state = { ...diff.state, scenePace: block.scene_pace };
   }
 
+  const beatKinds = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'] as const;
+  const beatKind = beatKinds.find((kind) => kind === block.beat);
+
+  if (beatKind) {
+    diff.beat = {
+      kind: beatKind,
+      with: Array.isArray(block.beat_with)
+        ? block.beat_with
+            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && id.trim().toLowerCase() !== 'kan')
+            .map((id) => id.trim())
+            .slice(0, 6)
+        : [],
+    };
+  }
+
+  if (Array.isArray(block.fight_options)) {
+    const options = block.fight_options
+      .filter((option): option is string => typeof option === 'string')
+      .map((option) => option.replace(/^[\s*"“”-]+|[\s*"“”]+$/g, '').replace(/\s+/g, ' ').trim())
+      .filter((option) => option.length >= 3)
+      .map((option) => option.slice(0, 90))
+      .slice(0, 4);
+
+    if (options.length > 0) {
+      diff.fightOptions = options;
+    }
+  }
+
   if (typeof block.mood === 'string' && block.mood.trim()) {
     diff.state = { ...diff.state, mood: block.mood.trim().slice(0, 60) };
   }

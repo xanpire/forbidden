@@ -68,6 +68,8 @@ import {
 import { wearsAkatsukiCloak } from '@/lib/rpg/portrait';
 import { generateImage } from '@/lib/openrouter';
 import { recordDebugImage, recordDebugSideCall } from '@/lib/rpg/debug';
+import { fightOptionInput, resolveTurnMode } from '@/lib/rpg/sceneMode';
+import type { SceneModeName } from '@/lib/rpg/types';
 
 type StoryMessage = {
   id: string;
@@ -75,7 +77,21 @@ type StoryMessage = {
   content: string;
   image: string | null;
   elapsedSeconds?: number;
+  fightOptions?: string[];
 };
+
+const MODE_LABEL: Record<SceneModeName, string> = {
+  normal: 'Narration',
+  conversation: 'Conversation',
+  fight: 'Fight',
+};
+
+const MODE_CHOICES: { value: SceneModeName | null; title: string; body: string }[] = [
+  { value: null, title: 'Automatic', body: 'Talk turns into a conversation and an attack into a fight on their own.' },
+  { value: 'conversation', title: 'Conversation', body: 'Mostly speech, even while you walk or travel. Ends if a fight starts.' },
+  { value: 'fight', title: 'Fight', body: 'Short exchanges: their move, then yours. Ends when the fight is over.' },
+  { value: 'normal', title: 'Normal narration', body: 'Full prose until this conversation or fight is over.' },
+];
 
 const TIME_PRESETS: { value: string; label: string; seconds: number }[] = [
   { value: '15', label: '15 s', seconds: 15 },
@@ -116,6 +132,29 @@ function paragraphsOf(text: string) {
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+/** A narration paragraph: *action lines* and thoughts in italics. */
+function NarrationParagraph({ text }: { text: string }) {
+  const parts = text.split(/(\*[^*\n]+\*)/g).filter(Boolean);
+
+  if (parts.length === 1) {
+    return <Text style={type.prose}>{text}</Text>;
+  }
+
+  return (
+    <Text style={type.prose}>
+      {parts.map((part, index) =>
+        part.startsWith('*') && part.endsWith('*') && part.length > 2 ? (
+          <Text key={index} style={styles.narrationAction}>
+            {part.slice(1, -1)}
+          </Text>
+        ) : (
+          <Text key={index}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
 }
 
 /** Renders Kan's turn with *actions* in italics and everything else plain. */
@@ -231,6 +270,7 @@ export default function StoryScreen() {
     attachImage,
     correctTurnTime,
     updateSettings,
+    setSceneMode,
   } = useGame();
   const { showToast } = useToast();
 
@@ -241,6 +281,7 @@ export default function StoryScreen() {
   const [timeTarget, setTimeTarget] = useState<{ id: string; seconds: number } | null>(null);
   const [customAmount, setCustomAmount] = useState('');
   const [customUnit, setCustomUnit] = useState<TimeUnit>('min');
+  const [modeOpen, setModeOpen] = useState(false);
   const imageScale = useSharedValue(1);
   const imageTranslateX = useSharedValue(0);
   const imageTranslateY = useSharedValue(0);
@@ -269,8 +310,12 @@ export default function StoryScreen() {
             : message.content,
         image: message.image ?? null,
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
+        fightOptions: message.role === 'assistant' ? message.fightOptions : undefined,
       }));
   }, [db]);
+
+  // The mode the next turn will be narrated in, read live from what you type.
+  const turnMode = useMemo(() => (db ? resolveTurnMode(db, input) : null), [db, input]);
 
   const eagerImages = useMemo(
     () => new Set(messages.filter((message) => message.image).slice(-EAGER_SCENE_IMAGES).map((message) => message.id)),
@@ -548,6 +593,18 @@ export default function StoryScreen() {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
   const night = ['night', 'evening'].includes(timeOfDayOf(state.inStoryDate));
   const canSend = Boolean(input.trim()) && !isNarrating;
+  const override = state.sceneMode?.override ?? null;
+  const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
+  const latestFightOptions =
+    shownMode === 'fight' && !isNarrating
+      ? messages.find((message) => message.id === lastAssistantId)?.fightOptions ?? []
+      : [];
+  const modeHint =
+    shownMode === 'normal' && turnMode?.lean && !override
+      ? 'Talk is building'
+      : turnMode?.with.length && shownMode !== 'normal'
+        ? turnMode.with.slice(0, 2).join(', ')
+        : null;
   const location = localizePlaceNames(state.location);
 
   return (
@@ -637,9 +694,7 @@ export default function StoryScreen() {
             ) : (
               <View key={message.id} style={styles.narration}>
                 {paragraphsOf(message.content).map((paragraph, index) => (
-                  <Text key={index} style={type.prose}>
-                    {paragraph}
-                  </Text>
+                  <NarrationParagraph key={index} text={paragraph} />
                 ))}
                 {message.image ? (
                   <SceneImage eager={eagerImages.has(message.id)} onOpen={openImage} value={message.image} />
@@ -691,9 +746,7 @@ export default function StoryScreen() {
           {isNarrating ? (
             <View style={styles.narration}>
               {liveParagraphs.map((paragraph, index) => (
-                <Text key={index} style={type.prose}>
-                  {paragraph}
-                </Text>
+                <NarrationParagraph key={index} text={paragraph} />
               ))}
               {liveParagraphs.length === 0 ? (
                 <View style={styles.typingRow}>
@@ -775,6 +828,63 @@ export default function StoryScreen() {
               </Pressable>
             </View>
           ) : null}
+          {latestFightOptions.length > 0 ? (
+            <ScrollView
+              contentContainerStyle={styles.fightOptions}
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+            >
+              {latestFightOptions.map((option) => (
+                <Pressable
+                  accessibilityLabel={`Fight move: ${option}`}
+                  accessibilityRole="button"
+                  disabled={isNarrating}
+                  key={option}
+                  onPress={() => void submit(fightOptionInput(option))}
+                  style={({ pressed }) => [styles.fightOption, pressed && styles.pressed]}
+                >
+                  <Text numberOfLines={2} style={styles.fightOptionLabel}>
+                    {option}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+          {storyStarted ? (
+            <View style={styles.modeRow}>
+              <Pressable
+                accessibilityLabel={`Scene mode: ${MODE_LABEL[shownMode]}${override ? ', set by you' : ', automatic'}. Change it`}
+                accessibilityRole="button"
+                hitSlop={6}
+                onPress={() => setModeOpen(true)}
+                style={({ pressed }) => [
+                  styles.modeChip,
+                  shownMode === 'conversation' && styles.modeChipTalk,
+                  shownMode === 'fight' && styles.modeChipFight,
+                  pressed && styles.pressed,
+                ]}
+              >
+                {shownMode !== 'normal' ? (
+                  <View style={[styles.modeDot, shownMode === 'fight' && styles.modeDotFight]} />
+                ) : null}
+                <Text
+                  style={[
+                    styles.modeChipLabel,
+                    shownMode !== 'normal' && styles.modeChipLabelOn,
+                  ]}
+                >
+                  {MODE_LABEL[shownMode]}
+                  {override ? ' · set by you' : ''}
+                </Text>
+              </Pressable>
+              {modeHint ? (
+                <Text numberOfLines={1} style={styles.modeHint}>
+                  {modeHint}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.composer}>
             <Pressable
               accessibilityLabel="Insert speech marks"
@@ -835,6 +945,50 @@ export default function StoryScreen() {
           </View>
         </View>
       </SafeAreaView>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setModeOpen(false)}
+        transparent
+        visible={modeOpen}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            accessibilityLabel="Close scene mode"
+            onPress={() => setModeOpen(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <SectionLabel first>How scenes play</SectionLabel>
+            <ListCard>
+              {MODE_CHOICES.map((choice) => {
+                const selected = (override ?? null) === choice.value;
+
+                return (
+                  <ListRow
+                    body={choice.body}
+                    key={choice.title}
+                    onPress={() => {
+                      setModeOpen(false);
+                      void setSceneMode(choice.value);
+                    }}
+                    title={choice.title}
+                    trailing={
+                      selected ? <View style={[styles.modeDot, styles.modeDotSelected]} /> : undefined
+                    }
+                  />
+                );
+              })}
+            </ListCard>
+            <AppButton
+              label="Close"
+              onPress={() => setModeOpen(false)}
+              style={styles.sheetClose}
+              variant="secondary"
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="fade"
@@ -1160,6 +1314,82 @@ const styles = StyleSheet.create({
   playerAction: {
     fontStyle: 'italic',
     color: '#C8C8C8',
+  },
+  narrationAction: {
+    fontStyle: 'italic',
+    color: colors.textMuted,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  modeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modeChipTalk: {
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surfaceRaised,
+  },
+  modeChipFight: {
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  modeChipLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  modeChipLabelOn: {
+    color: colors.text,
+  },
+  modeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textMuted,
+  },
+  modeDotFight: {
+    backgroundColor: colors.accentBright,
+  },
+  modeDotSelected: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  modeHint: {
+    ...type.rowMeta,
+    flexShrink: 1,
+  },
+  fightOptions: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  fightOption: {
+    maxWidth: 220,
+    minHeight: 40,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  fightOptionLabel: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    lineHeight: 17,
+    color: colors.text,
   },
   sceneImageWrap: {
     width: '100%',

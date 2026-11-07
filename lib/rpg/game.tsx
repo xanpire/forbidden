@@ -49,6 +49,7 @@ import { mergeEntityPair } from './entities';
 import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortrait';
 import { deleteJutsuRecord, renameJutsuRecord } from './jutsu';
 import { trimToSentence } from './util';
+import { setSceneModeOverride } from './sceneMode';
 import {
   applyStateStep,
   applySummaryJob,
@@ -72,6 +73,7 @@ import type {
   PortraitSignature,
   CharacterPortraitSignature,
   SceneImageMeta,
+  SceneModeName,
   Settings,
   ThreadRecord,
   TurnDiff,
@@ -153,6 +155,8 @@ type GameContextValue = {
   setCharacterDeceased: (entityId: string, deceased: boolean) => Promise<void>;
   /** Hand correction: starts or ends someone travelling with Kan. */
   setTravelling: (entityId: string, travelling: boolean) => Promise<void>;
+  /** The mode chip: force conversation, fight or normal narration, or null for automatic. */
+  setSceneMode: (mode: SceneModeName | null) => Promise<void>;
   updateThread: (threadId: string, patch: Partial<ThreadRecord>) => Promise<void>;
   toggleMemoryPin: (eventId: string) => Promise<void>;
   editMemory: (
@@ -702,6 +706,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
             completionTokens
           );
           turnLogId = withReply.rawLog[withReply.rawLog.length - 1].id;
+          // Which mode the reply was written in: the state step reads it for
+          // the clock and the conversation streak.
+          withReply.rawLog[withReply.rawLog.length - 1] = {
+            ...withReply.rawLog[withReply.rawLog.length - 1],
+            sceneMode: prompt.sceneMode.mode,
+          };
           // Clear the live text in the same tick the saved reply appears, so
           // the turn never shows twice.
           setStreamingText('');
@@ -1013,6 +1023,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
 
       await commitDb(next);
+    },
+    [commitDb]
+  );
+
+  const setSceneMode = useCallback(
+    async (mode: SceneModeName | null) => {
+      const current = dbRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      await commitDb(setSceneModeOverride(current, mode));
     },
     [commitDb]
   );
@@ -1333,6 +1356,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       mergeCharacters,
       setCharacterDeceased,
       setTravelling,
+      setSceneMode,
       updateThread,
       toggleMemoryPin,
       editMemory,
@@ -1386,6 +1410,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       mergeCharacters,
       setCharacterDeceased,
       setTravelling,
+      setSceneMode,
       updateSettings,
       updateThread,
     ]

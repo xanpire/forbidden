@@ -161,10 +161,12 @@ export function resolveTurnClock(options: {
   pace: ScenePace | undefined;
   sceneEnded: boolean;
   current: CalendarDate;
+  /** Replaces the pace minimum (a conversation-mode turn is a line or two). */
+  minimumSeconds?: number;
 }) {
   const { current, pace, sceneEnded } = options;
   const frozen = (pace === 'combat' || pace === 'chase') && !sceneEnded;
-  const minimumSeconds = paceMinimumSeconds(pace);
+  const minimumSeconds = options.minimumSeconds ?? paceMinimumSeconds(pace);
   const storySeconds = resolveElapsedSeconds({
     reportedSeconds: options.reportedSeconds,
     detectedSeconds: options.detected.elapsedSeconds,

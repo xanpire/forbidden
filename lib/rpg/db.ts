@@ -14,6 +14,7 @@ import { seedDatabase } from './seed';
 import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
+import { normalizeSceneMode } from './sceneMode';
 import type { AppDatabase, MemoryIndex } from './types';
 
 const META_KEY = 'kan.meta.v1';
@@ -672,6 +673,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     sceneCast: Array.isArray(state.sceneCast)
       ? state.sceneCast.filter(Boolean).slice(0, 6)
       : [],
+    sceneMode: normalizeSceneMode(state.sceneMode),
     post: normalizePost(state.post),
     reputation: normalizeReputation(state.reputation),
   };

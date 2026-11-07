@@ -35,6 +35,7 @@ function list(properties: Record<string, unknown>) {
 
 export const TIME_UNITS = ['seconds', 'minutes', 'hours', 'days'] as const;
 export const SCENE_PACES = ['combat', 'chase', 'conversation', 'travel', 'downtime'] as const;
+export const SCENE_BEATS = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'] as const;
 export const LOCATION_KINDS = ['settlement', 'road', 'wilderness', 'structure'] as const;
 export const RELATIONSHIPS = [
   'stranger',
@@ -84,6 +85,11 @@ export const TURN_STATE_SCHEMA = object({
     clock_time: nullableString,
   }),
   scene_pace: nullableEnum(SCENE_PACES),
+  // How this turn played (Kan's input and the reply together), who Kan was
+  // talking with, and, while a fight goes on, a few moves he could make next.
+  beat: nullableEnum(SCENE_BEATS),
+  beat_with: stringList,
+  fight_options: stringList,
   location: nullableString,
   location_kind: nullableEnum(LOCATION_KINDS),
   mood: nullableString,

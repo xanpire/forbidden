@@ -32,6 +32,7 @@ import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
+import { CONVERSATION_MODE_MINIMUM_SECONDS, applySceneBeat, cleanFightOptions } from './sceneMode';
 import { resolveEntity, revealHiddenAliases } from './entities';
 import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
@@ -244,6 +245,8 @@ export function applyStateStep(
   const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
   const pace = validateScenePace(extraction?.state?.scenePace, turn.narration) ?? inferScenePace(turn.narration);
   const sceneEnded = extraction?.scene?.ended ?? false;
+  // The mode the reply was narrated in (set when it was saved).
+  const modeUsed = latest.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneMode;
   const clock = resolveTurnClock({
     reportedSeconds,
     reportedClock: extraction?.state?.clockTime,
@@ -251,6 +254,8 @@ export function applyStateStep(
     pace,
     sceneEnded,
     current: beforeDate,
+    // A line or two of real conversation takes seconds, not minutes.
+    minimumSeconds: modeUsed === 'conversation' && pace === 'conversation' ? CONVERSATION_MODE_MINIMUM_SECONDS : undefined,
   });
 
   // The clock always moves: resolveTurnClock folds the reported time, the
@@ -269,11 +274,15 @@ export function applyStateStep(
   const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
   const stalled = latest.state.turnsWithoutTimeChange ?? 0;
 
+  // Fight moves to offer under the reply, only while the fight goes on.
+  const fightGoesOn = !sceneEnded && (pace === 'combat' || extraction?.beat?.kind === 'combat');
+  const fightOptions = fightGoesOn ? cleanFightOptions(extraction?.fightOptions) : undefined;
+
   next = {
     ...next,
     // The chip under the reply shows this, and tapping it corrects it.
     rawLog: next.rawLog.map((entry) =>
-      entry.id === turn.turnLogId ? { ...entry, elapsedSeconds: appliedSeconds } : entry
+      entry.id === turn.turnLogId ? { ...entry, elapsedSeconds: appliedSeconds, fightOptions } : entry
     ),
     state: {
       ...next.state,
@@ -281,6 +290,15 @@ export function applyStateStep(
       turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
     },
   };
+  // How the turn played: the conversation streak, the mode, the chip choice.
+  next = applySceneBeat(next, {
+    beat: extraction?.beat,
+    modeUsed,
+    input: turn.userMessage,
+    narration: turn.narration,
+    pace,
+    sceneEnded,
+  });
   // A real chapter break opens a new chapter with this turn (and a new scene).
   const chapterBefore = next.state.chapter;
   next = applyChapterBreak(latest, next, turn.turnLogId, {

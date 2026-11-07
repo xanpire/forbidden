@@ -31,6 +31,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
+| `sceneMode.ts` | Conversation and fight mode (§8a): `readKanInput`, `resolveTurnMode`, `applySceneBeat`, `setSceneModeOverride`, the SCENE MODE prompt lines |
 | `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
 | `returning.ts` | Characters who come back: the occasional optional `A FAMILIAR FACE` offer |
 | `db.ts` / `slotStore.ts` / `seed.ts` / `canonCast.ts` | Persistence + migration (slots in IndexedDB), new saves, the canon cast |
@@ -137,6 +138,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   scene: string
   scenePace?: 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime'
   sceneCast?: string[]
+  sceneMode?: { current, exchangeStreak, partners, lastBeat?, override? }   // §8a
 }
 ```
 
@@ -200,6 +202,8 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
     scenePace?, canonPoint?, chapter?, scene?, sceneCast?
   },
   imageWorthy?: boolean,
+  beat?: { kind: 'exchange'|'instruction'|'remark'|'action'|'travel'|'combat', with: string[] },
+  fightOptions?: string[],
   entities?: [{ entityId?, isNew?, name, age?, role?, personality?, speechStyle?, mood?, appearance? }],
   jutsuUsed?: [{ name, user, chakraNature?, effect?, visual? }],
   bonds?: [{ entityId?, character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
@@ -300,6 +304,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 10. `formatEncounterConditions` — place kind, hour and how crowded it is
 11. `formatReturningCharacter` — occasionally, “A FAMILIAR FACE (optional)”: one original character Kan has not seen in a while who fits the current place (see §9)
 12. `CONTINUITY` line + location kind
+12a. `formatSceneModeLine` — `SCENE MODE: …` (conversation with whom / talk is building / the conversation ends / fight, with Kan's current wounds and conditions / normal narration chosen by the player). Absent on plain normal turns. See §8a.
 13. `YOU (KAN) DO OR SAY: <action>`
 
 There is no dice roll and no repeated-word list. Encounter frequency comes from the STYLE rule (rare, must fit the conditions, never two in a row) plus `ENCOUNTER CONDITIONS`; freshness comes from the STYLE rule against reusing descriptions and the `CONTINUITY` line. (Both blocks were removed: the roll added random events that fought canon pacing, and listing overused words put those words back in front of the model.)
@@ -508,6 +513,19 @@ Each turn, time passed = the largest of: what the narrator reports, what the tex
 
 ---
 
+## 8a. Conversation and fight mode (`lib/rpg/sceneMode.ts`)
+
+Living-world Stage 1. The narrator writes a turn in one of three modes: normal prose, **conversation** (mostly speech, short `*action*` lines, length follows the talk, several voices) or **fight** (what Kan's move does, then the opponent's one specific next move, stopping before it lands; aftermath in normal prose when the fight ends). The rules for each live in `NARRATION_SYSTEM` (SCENE MODES, cached); each turn only gets one `SCENE MODE:` line.
+
+- **Deciding the mode** (`resolveTurnMode(db, input)`, run inside `buildNarrationPrompt`, pure): Kan's input is read by `readKanInput` (speech in quotes, an attack, a fight-back move, a scene-changing move like leaving, following, travelling, sleeping; negated attacks and words inside quotes don't count). Order: chip override `fight`/`normal` → a fight going on (`scenePace` combat or last beat combat, scene not closed) or Kan attacking → override `conversation` → Kan's scene-changing move (normal, with `ending: 'conversation'` for a short transition if a talk was on) → conversation once `exchangeStreak >= 2`, or `>= 1` and Kan answers in speech → otherwise normal, **leaning** spoken when a talk has started or Kan speaks to someone present.
+- **The beat** (state tracker, BEAT rule): `beat` = exchange (talk, including small moves in place and silences), instruction ("follow me"), remark (a passing line), action (a scene-changing move), travel, combat; `beat_with` = ids of who Kan talks with; `fight_options` = 3-4 short moves (verb first, no pronouns) while the fight goes on. The tracker also sees `SCENE MODE THIS TURN`.
+- **After the turn** (`applySceneBeat`, in `applyStateStep`): exchange with overlapping people → streak +1 (people joining make it a group); different people → 1; instruction/remark break an unsettled talk but not a settled one; action/travel/combat/scene end → 0. Without a beat, `fallbackBeat` reads pace, input and quotes. `current` = the mode the reply used.
+- **Saved on the reply**: `rawLog[].sceneMode` (set by `game.tsx` when the reply is saved) and `rawLog[].fightOptions` (only while the fight goes on).
+- **Clock**: a conversation-mode turn at conversation pace has a 20 s minimum (`CONVERSATION_MODE_MINIMUM_SECONDS`, passed as `minimumSeconds` to `resolveTurnClock`) instead of 2 min. Fights keep the combat rules (15 s, no day skips, nothing fires mid-fight).
+- **Chip override** (`setSceneModeOverride`, `useGame().setSceneMode`): Automatic / Conversation / Fight / Normal narration. Forced conversation lasts through travel and ends when a fight starts; forced fight ends when the fight does; normal holds until the current talk or fight is over, then automatic resumes.
+- **UI** (Story): a mode chip above the composer, read live from what you are typing (Narration / Conversation / Fight, "· set by you", who it's with, "Talk is building"); tap → sheet with the four choices. While a fight goes on, the reply's fight options show as buttons above the composer; a tap sends `*<move>.*`. Narration renders `*…*` in italics.
+- Tests: `scripts/scene-mode.test.ts`.
+
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
 - `classifyLocation(text)` uses first-mentioned place word → `settlement | road | wilderness | structure`.
@@ -612,7 +630,7 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 1. **Never control Kan.** The narrator stops when the player must act.
 2. **The narrator writes prose only.** Never add JSON, field names or canon ids to the narrator prompt; state comes from the separate structured state call. `stripNarrationJson` / `streamingPreview` remain as safety nets. JSON must never appear in the chat.
 3. **Canon truth**: no invented canon event, funeral, death or date; only milestones/news/facts count.
-4. **Time always moves, by the largest of** the narrator’s report, the narration parser, or the scene-type minimum (combat 15 s, chase 1 min, conversation 2 min, downtime 10 min, travel 30 min). Every advance goes through `resolveTurnClock`, never forward-only hacks elsewhere; the player can correct any turn from its time chip.
+4. **Time always moves, by the largest of** the narrator’s report, the narration parser, or the scene-type minimum (combat 15 s, chase 1 min, conversation 2 min — 20 s in conversation mode, downtime 10 min, travel 30 min). Every advance goes through `resolveTurnClock`, never forward-only hacks elsewhere; the player can correct any turn from its time chip.
 5. **Combat cannot skip days** around the player; the cap is enforced in `resolveTurnClock`.
 6. **Tobi's identity** (hidden aliases) stays hidden until the war mask-break; real Madara is separate.
 7. **Pain/Nagato** are one entity; six paths are one.
@@ -701,6 +719,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Characters who come back (original-only pool, place fit, travellers, cadence, no offers in fights or empty places, `lastSeenAt` recording)
 - Reputation & grudges (`scripts/enemies.test.ts`): Leaf listing timing, heat → rank/bounty, per-turn clamp, cooling floor, `bounty_seen`, territory lines, empty places, Akatsuki standing, hunter cadence; grudges from soured bonds and `wronged`, stewing, canon hunt cap, due/pressed/combat/in-scene offers, `struck`, let go / settled / death, schema and reload
 - Token stability over 60 turns
+- Scene modes (`scripts/scene-mode.test.ts`): input reading, instruction never flips it, lean then settle, small actions stay in, remark carries, leaving ends with a transition, group talk, 20 s conversation turns, attack → fight with options, ambush → fight, options cleared when it ends, overrides and their clearing, reload, prompt and schema
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

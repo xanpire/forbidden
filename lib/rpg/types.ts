@@ -1,6 +1,24 @@
 import type { ImageModelCaps } from '../openrouter';
 export type ScenePace = 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime';
 
+/** How a turn played, tagged by the state tracker (see sceneMode.ts). */
+export type SceneBeat = 'exchange' | 'instruction' | 'remark' | 'action' | 'travel' | 'combat';
+
+/** How the narrator writes a turn: normal prose, conversation, or fight exchanges. */
+export type SceneModeName = 'normal' | 'conversation' | 'fight';
+
+export type SceneModeState = {
+  /** The mode the last turn was narrated in. */
+  current: SceneModeName;
+  /** Exchange beats in a row with the same person or group. */
+  exchangeStreak: number;
+  /** Who Kan is talking with: entity ids (or lowercased names for people not on record). */
+  partners: string[];
+  lastBeat?: SceneBeat;
+  /** The player's choice from the mode chip; cleared once it no longer applies. */
+  override?: SceneModeName;
+};
+
 export type CalendarDate = {
   year: number;
   month: number;
@@ -109,6 +127,8 @@ export type GameState = {
   scene: string;
   scenePace?: ScenePace;
   sceneCast?: string[];
+  /** Conversation and fight mode (see sceneMode.ts). */
+  sceneMode?: SceneModeState;
   /**
    * Counts scenes, so each story turn can be tied to one (RawLogEntry.sceneSeq)
    * and a memory never spans two. Moves on when a scene ends, the place
@@ -209,6 +229,10 @@ export type RawLogEntry = {
   sceneCastIds?: string[];
   /** How the scene image on this entry was made, so drift can be traced and it can be redone. */
   imageMeta?: SceneImageMeta;
+  /** The scene mode this reply was narrated in (assistant story turns). */
+  sceneMode?: SceneModeName;
+  /** Quick moves offered under a fight reply (written by the state tracker). */
+  fightOptions?: string[];
 };
 
 export type SceneImageMeta = {
@@ -679,6 +703,10 @@ export type TurnDiff = {
   };
   /** The state model judged this beat visually striking (queues a scene summary). */
   imageWorthy?: boolean;
+  /** How this turn played, and who Kan was talking with (ids from the tracker). */
+  beat?: { kind: SceneBeat; with: string[] };
+  /** Moves Kan could make next while a fight goes on. */
+  fightOptions?: string[];
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
   /** Chakra natures Kan gained this turn: found innate, or taken with Thousand Souls. */

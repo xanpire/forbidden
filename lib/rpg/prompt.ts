@@ -32,6 +32,7 @@ import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
 import { formatAbilities } from './abilities';
 import { formatVarietyBlock } from './variety';
+import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
   AppDatabase,
   EntityRecord,
@@ -39,6 +40,7 @@ import type {
   FactRecord,
   OpenRouterMessage,
   RawLogEntry,
+  SceneModeName,
 } from './types';
 
 const MIN_SCENE_MESSAGES = 4;
@@ -70,18 +72,24 @@ CANON
 
 STYLE
 - Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
-- 2-4 paragraphs of plain English: common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
+- 2-4 paragraphs of plain English (unless SCENE MODE says otherwise): common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
 - Play out conversations, fights, and travel unless Kan asks to skip; compress uneventful travel into a paragraph or two.
 - Encounters are rare and must fit the ENCOUNTER CONDITIONS (place, hour, how crowded). Most turns bring no new people; when a place is isolated, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
 - New characters get a distinct name, age, role, personality, voice, look, and goals, within canon power levels.
 - In Kan's input, "quoted text" is spoken and *asterisks* are actions.
+
+SCENE MODES (the turn's SCENE MODE line says which applies; with none, write as above)
+- Conversation: mostly speech, like talking to them directly. Length follows the talk: one line or a longer speech; someone can ask one question and stop. Between lines, only short action lines in asterisks (*Sasuke looks away.*), no scenery. Several people can speak, each in their own voice. Kan's small moves in place (a look, a touch, sitting, stepping closer, pouring tea, a flash of the Sharingan) and his silences are part of the talk; answer them the same way. Seconds to a minute or two pass.
+- Talk is building: shorter and more spoken than usual.
+- The conversation ends: a short transition in normal prose, then carry on normally.
+- Fight: short exchanges. Show honestly what Kan's move does, by canon power levels and his real jutsu, chakra and wounds (a bad call hurts), then give the opponent's one specific next move ("Kakuzu's arm launches on threads, straight at your throat") and stop there, before it lands. One or two short paragraphs, a few seconds of fight time; wounds, chakra and positions carry over; short taunts are fine. If this exchange ends the fight, close with a short paragraph of aftermath in normal prose instead.
 
 ${ROMANCE_RULES}
 
 ${GRUDGE_RULES}
 
 OUTPUT
-- Story prose only, starting straight in the scene: no JSON, code, lists, headings, labels, summaries, or out-of-character notes. Speech in quotation marks; italics only for NPC thoughts.
+- Story prose only, starting straight in the scene: no JSON, code, lists, headings, labels, summaries, or out-of-character notes. Speech in quotation marks; *asterisks* only for NPC thoughts and the short action lines of a conversation.
 - The app tracks state from your prose, so make changes clear in it: where Kan goes, who is there, which jutsu are used and how they look, what is learned or promised, and when a scene ends.`;
 
 const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is Kan. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
@@ -110,6 +118,8 @@ CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exa
 LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise [].
 
 NAME & ENEMIES: reputation, bounty_seen, and grudges follow the rules under REPUTATION & GRUDGES; otherwise [].
+
+BEAT: beat tags how this turn played, from Kan's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring tea, a flash of the Sharingan), instruction (someone tells Kan to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, a jutsu that changes the situation, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people Kan is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves Kan could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the threads and close in"), fitting the moment and what he can really do (dodge, block, counter, and at least one jutsu he knows); otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.`;
 
@@ -197,6 +207,8 @@ export function buildNarrationPrompt(
       !(memory.summaryId && storySoFar.ids.includes(memory.summaryId))
   );
   const arcSummary = storySoFar.arc ?? storySoFar.chapters[storySoFar.chapters.length - 1] ?? null;
+  // Conversation, fight, or normal narration, from the scene so far and Kan's input.
+  const sceneMode = resolveTurnMode(db, userMessage);
 
   // Ordered from never-changing to changing-every-turn, so the front of the
   // prompt is a stable prefix that providers can cache (cache reads cost a
@@ -219,7 +231,7 @@ export function buildNarrationPrompt(
     [
       formatState(db),
       formatCompanions(db),
-      formatTimeLine(db),
+      formatTimeLine(db, 'narrator', sceneMode.mode),
       formatMatchedEntities(db, matchedEntityIds),
       formatFacts(db, facts),
       formatFigures(db),
@@ -239,6 +251,7 @@ export function buildNarrationPrompt(
       // bounty hunter, then a familiar face.
       formatPressure(db, entityText),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
+      formatSceneModeLine(db, sceneMode),
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
     ]
       .filter(Boolean)
@@ -297,6 +310,7 @@ export function buildNarrationPrompt(
     memories: freshMemories,
     recentMessages: sceneMessages,
     arcSummary,
+    sceneMode,
   };
 }
 
@@ -329,6 +343,10 @@ export function buildExtractionPrompt(
     `YOUR ABILITIES\n${formatAbilities(db)}`,
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
     formatTimeLine(db, 'state'),
+    formatSceneModeTracking(
+      null,
+      [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.content === assistantMessage)?.sceneMode
+    ),
     formatCanonTracking(db),
     formatLetterTracking(db),
     formatEnemyTracking(db),
@@ -1089,7 +1107,7 @@ function formatLastBeat(messages: RawLogEntry[]) {
   return `LAST NARRATED BEAT (continue directly from here)\n${tail(clean, 450)}`;
 }
 
-function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narrator') {
+function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narrator', mode?: SceneModeName) {
   const stalled = db.state.turnsWithoutTimeChange ?? 0;
   const nudge =
     audience === 'narrator' && stalled >= 2
@@ -1105,7 +1123,10 @@ function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narra
   // The exact time now and the earliest this reply can end, so any hour the
   // narrator names matches the clock.
   const pace = db.state.scenePace ?? 'conversation';
-  const ends = advanceSeconds(db.state.inStoryDate, paceMinimumSeconds(pace));
+  const ends = advanceSeconds(
+    db.state.inStoryDate,
+    mode === 'conversation' ? CONVERSATION_MODE_MINIMUM_SECONDS : mode === 'fight' ? paceMinimumSeconds('combat') : paceMinimumSeconds(pace)
+  );
 
   return `${label}\n${formatDate(db.state.inStoryDate)} (exactly ${formatClock(db.state.inStoryDate)}; at this pace this reply ends no earlier than ${formatClock(ends)})${nudge}`;
 }
