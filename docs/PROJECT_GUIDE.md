@@ -624,6 +624,23 @@ Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `
 
 ---
 
+## 13b. Save-analysis fixes (Nov 2026)
+
+How the fixes from the save-analysis list work, and where they live. Tests: `scripts/fixlist-memory.test.ts` (5–8), `fixlist-people.test.ts` (10–14), `fixlist-world.test.ts` (15–21), `fixlist-story.test.ts` (22–28), `met-and-memories.test.ts` (1–4).
+
+- **One clock** (`correctTurnTime`, `shiftDatesAfter` in calendar.ts): correcting a turn's length shifts every in-story date stamped after the turn began, anywhere in the save.
+- **Fact lifecycle** (facts.ts): the state tracker sees `ACTIVE FACTS` with refs (`f-xxxxxx`) and can `supersedes` / `facts_ended` them; a new fact overtakes a matching "does not know yet"; `lasts` gives conditions `untilRest` and injuries/plans an `expiresAt`; `expireFacts` runs every turn (rest = 5+ hours outside a fight). `whoKnows` holds entity ids, `whoKnowsGroups` group tags; claims are `confidence: 'claimed'` with `claimedBy`; every fact has a subject and a `sourceEventId` or `sourceLogId`. The prompt budget cuts memories, then facts and lore, before recent story.
+- **Lore conditions** (lore.ts): `activeAfter` / `activeUntil` with a milestone, thread status, fact text or flag (`hasSharingan`, `knowsIzumiDead`, `headbandScratched`…); `always` entries (geography) are always sent. Seed lore is in second person.
+- **Milestone stages** (canon.ts): offered → accepted (`canon_engaged`, nothing written) → completed (`canon_completed`, the moment in `completesWhen`): only completion writes facts (real date, subject, who was there), opens threads and grants jutsu/abilities. `requires` gates a beat (the Mangekyō waits until you know Izumi died).
+- **Chapters** (`applyChapterBreak` in memoryJobs.ts): summaries never end chapters. A chapter opens on `chapter_title`, a completed major milestone or a 2+ day skip, once the chapter has 6 turns or 12 hours (60 turns closes one anyway). `state.chapterTitle`, `chapterStart`, `chapters`.
+- **People**: `gender` on everyone; men are `romanceAccessibility: 'not-applicable'`, Kan has none; new people from `gender` + `attracted_to`. `tier: 'minor'` people get no bond until a second scene. `appearance` is the lasting base look, `currentLook` the look of the moment (cleared by a new scene or rest), `whereabouts` where someone absent is.
+- **Bonds**: `theirFeelings` (mirrors `affinity`/`note`, kept in step by `syncBondSides`) and `yourFeelings` (`your_change`, `your_note`). Relationship labels are fixed; `partner` is an Akatsuki partner, romance is `lover`. A bond reads "Deceased · …" once you know of the death.
+- **Kan's sheet**: `player.natures` (innate / Thousand Souls) and `player.abilities` (stage + history), from `natures_gained` / `abilities_changed`; shown on the Kan tab.
+- **Threads**: matched on normalized titles and wording before opening; casing kept; `participantIds`, `sourceEventId`, `sourceLogId`. Story hooks (hooks.ts) open and close Izumi's grave, Survive Kakuzu and the bingo-book thread by condition.
+- **Narrator**: exact time and earliest end time, FIGURES ALREADY SAID, ELSEWHERE, VARIETY (question endings, repeated motifs, settled decisions), geography, inventory rule.
+- **Images**: WebP recompression (imageCompress.ts) and binary IndexedDB storage; `imageMeta` on scene images; export with or without images; older chat images load on tap; portrait painting lock (`beginPainting`) and duplicate guard.
+- **Undo**: snapshots (last 5) survive saves and hold no images; restore takes images from the live save.
+
 ## 14. How to extend safely
 
 ### Add a canon milestone
