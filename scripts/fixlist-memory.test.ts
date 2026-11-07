@@ -196,7 +196,4 @@ describe('8. canon milestones complete at the right moment', () => {
     expect(thread.participantIds).toContain(person(db, 'Kakuzu').id);
     expect(dateSortValue(thread.openedAt)).toBe(dateSortValue(db.state.inStoryDate));
   });
-
-    expect(next.state.mood).toBe('tired');
-  });
 });
