@@ -56,9 +56,9 @@ describe('15. the starting cast', () => {
 
   test('a bond shows a death once you know of it, not before', () => {
     let db = seed();
-    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Teammate');
+    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Former teammate');
     db = play(db, 'Itachi tells you Izumi died.', { characters_present: ['itachi-uchiha'], deaths: [{ character_id: 'izumi-uchiha', cause: 'the massacre' }] });
-    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Deceased · Teammate');
+    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Deceased · Former teammate');
   });
 });
 

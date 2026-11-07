@@ -513,8 +513,8 @@ function formatCharacterSheet(db: AppDatabase) {
     `Birth year: ${player.birthYear}`,
     `Age: ${calculateAge(db.state.inStoryDate, player.birthday, player.birthYear)}`,
     `Rank/Role: ${player.rank} / ${player.role}`,
-    `Team: ${player.team.join(', ')}`,
-    `Sensei: ${player.sensei}`,
+    `Former team (Team 3, left on joining ANBU at 12): ${player.team.join(', ')}`,
+    `Former sensei: ${player.sensei}`,
     `Personality: ${player.personality.join(', ')}`,
     formatAbilities(db),
     player.secretNotes.length > 0
