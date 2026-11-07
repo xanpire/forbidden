@@ -122,7 +122,7 @@ export const BEARERS_BY_KNOWLEDGE: Record<CanonKnowledge, string[]> = {
     'Sasori',
     'Deidara',
     'Zetsu',
-    'Masked man',
+    'Tobi',
   ],
   village: ['Hana Inuzuka', 'Suzume', 'Itachi Uchiha'],
   public: ['Itachi Uchiha', 'Hana Inuzuka', 'Suzume', 'a traveling merchant', 'a bounty-station keeper'],
@@ -1082,7 +1082,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     region: 'Land of Fire',
     location: 'the Uchiha hideout',
     knowledge: 'secret',
-    bearers: ['Sasuke Uchiha', 'the masked man'],
+    bearers: ['Sasuke Uchiha', 'Tobi'],
     major: true,
     facts: [
       "The masked man told Sasuke that Hidden Leaf's leadership ordered the Uchiha massacre.",
@@ -1793,7 +1793,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     region: 'Hidden Mist',
     location: 'the Hidden Mist Village',
     knowledge: 'secret',
-    bearers: ['the masked man', 'Kisame Hoshigaki'],
+    bearers: ['Tobi', 'Kisame Hoshigaki'],
     facts: [],
   },
   {
@@ -2083,7 +2083,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     region: 'Land of Fire',
     location: "the masked man's hidden lair",
     knowledge: 'secret',
-    bearers: ['the masked man', 'Sasuke Uchiha'],
+    bearers: ['Tobi', 'Sasuke Uchiha'],
     facts: [],
   },
   {

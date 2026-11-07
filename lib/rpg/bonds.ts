@@ -8,7 +8,21 @@ import type { AppDatabase, TurnDiff } from './types';
 
 type BondDiff = NonNullable<TurnDiff['bonds']>[number];
 
-export function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
+export type BondOptions = {
+  /**
+   * The turn's scene cast. Given for bonds from the state tracker: someone
+   * unmet who isn't here gets no bond. Left out by the app's own callers
+   * (letters, companions), which only touch people Kan already knows.
+   */
+  presentIds?: ReadonlySet<string>;
+};
+
+/**
+ * A bond change. Never marks anyone met (only the scene cast does, and the
+ * first-meeting step gives them their first bond), and never creates a
+ * person: the tracker adds people through new_characters.
+ */
+export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOptions = {}): AppDatabase {
   if (!bond?.character || typeof bond.character !== 'string') {
     return db;
   }
@@ -33,32 +47,17 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
           (item) => item.characterName.toLowerCase() === characterName.toLowerCase()
         );
 
-  // A bond means you know them now: canon cast members join the bonds list.
-  if (existingEntity && existingEntity.met === false) {
-    db = {
-      ...db,
-      entities: db.entities.map((item) =>
-        item.id === existingEntity.id ? { ...item, met: true } : item
-      ),
-    };
+  if (!existingEntity) {
+    return db;
+  }
+
+  // Talked about, not met: no bond until they are in a scene with Kan.
+  if (existingEntity.met === false && options.presentIds && !options.presentIds.has(existingEntity.id)) {
+    return db;
   }
 
   if (existingIndex === -1) {
-    let bondEntity = existingEntity;
-
-    if (!bondEntity) {
-      bondEntity = {
-        id: makeId('entity'),
-        name: characterName,
-        type: 'character' as const,
-        aliases: [],
-        status: 'Newly met',
-        notes: '',
-        mood: 'Unknown',
-        appearance: 'Unknown',
-        tags: [],
-      };
-    }
+    const bondEntity = existingEntity;
 
     const newBond = {
       id: makeId('bond'),
@@ -79,13 +78,8 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff): AppDatabase {
       updatedInStoryDate: db.state.inStoryDate,
     };
 
-    const entities = bondEntity && !db.entities.some((item) => item.id === bondEntity.id)
-      ? [...db.entities, bondEntity]
-      : db.entities;
-
     return {
       ...db,
-      entities,
       bonds: [...db.bonds, newBond],
     };
   }

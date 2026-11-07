@@ -68,6 +68,14 @@ export type GameState = {
   scene: string;
   scenePace?: ScenePace;
   sceneCast?: string[];
+  /**
+   * Counts scenes, so each story turn can be tied to one (RawLogEntry.sceneSeq)
+   * and a memory never spans two. Moves on when a scene ends, the place
+   * changes or a new scene title starts.
+   */
+  sceneSeq?: number;
+  /** The last applied turn ended its scene: the next turn opens a new one. */
+  sceneClosed?: boolean;
   /** Personal letters to and from Kan (see letters.ts). */
   post?: PostState;
   /** Bingo books and Akatsuki standing (see reputation.ts). */
@@ -154,6 +162,10 @@ export type RawLogEntry = {
   elapsedSeconds?: number;
   /** True once the player corrected elapsedSeconds by hand. */
   timeCorrected?: boolean;
+  /** Which scene this turn belongs to (GameState.sceneSeq when it was applied). */
+  sceneSeq?: number;
+  /** Who was in the scene this turn (entity ids, from the scene cast, Kan excluded). */
+  sceneCastIds?: string[];
 };
 
 export type EntityRecord = {
@@ -195,12 +207,25 @@ export type EntityRecord = {
    */
   met?: boolean;
   /**
+   * Spoiler names (Obito for the masked man, Nagato for Pain). Kept apart
+   * from `aliases`, so they are never matched in story text, never shown and
+   * never sent to a model. Once revealed (see `revealHiddenAliases`), a name
+   * moves into `aliases`.
+   */
+  hiddenAliases?: HiddenAlias[];
+  /**
    * Set while this person travels with Kan (see companions.ts): they are in
    * every scene until the story shows them leave, and the scenes they share
    * move their bond.
    */
   companion?: Companion;
   tags: string[];
+};
+
+export type HiddenAlias = {
+  name: string;
+  /** Canon milestone whose news (or engagement) reveals this name to Kan. */
+  revealedBy?: string;
 };
 
 export type Companion = {
@@ -230,6 +255,11 @@ export type EventRecord = {
   tags: string[];
   pinned: boolean;
   sourceLogId: string | null;
+  /**
+   * For a scene-end memory (sourceLogId null): the story turn it was made
+   * on, so the chapter summary built from that turn takes it in.
+   */
+  turnLogId?: string;
   createdAt: number;
 };
 
@@ -523,6 +553,12 @@ export type TurnDiff = {
   };
   /** The state model judged this beat visually striking (queues a scene summary). */
   imageWorthy?: boolean;
+  /**
+   * People the prose seems to show, read by the app when the state reply was
+   * unreadable. Only a suggestion: it never marks anyone met or seen, and
+   * never changes the scene cast (only characters_present does).
+   */
+  suggestedCast?: string[];
   entities?: {
     /** Set when the state tracker referred to a known character by ID. */
     entityId?: string;

@@ -77,6 +77,8 @@ function addRonin(db: AppDatabase): AppDatabase {
       { is_new: true, name: 'Goro Tsuda', age: 30, role: 'Ronin swordsman', personality: 'proud', speech_style: 'clipped', appearance: 'scarred' },
     ],
     bonds: [{ character_id: 'Goro Tsuda', affinity_change: -2, status: 'Wary', note: 'You beat him in front of his men', relationship: null, attraction: null, romance_note: null }],
+    // He is there: only the scene cast makes someone met and gives them a bond.
+    characters_present: ['Goro Tsuda'],
   });
 }
 
@@ -191,6 +193,7 @@ describe('grudges: the dark mirror of romance', () => {
 
     let canon = turn(later(fresh(), 3), {
       grudges: [{ character_id: 'kisame-hoshigaki', event: 'wronged', reason: 'You humiliated him before Itachi' }],
+      characters_present: ['kisame-hoshigaki'],
     });
     canon = turn(canon, { grudges: [{ character_id: 'kisame-hoshigaki', event: 'wronged', reason: 'again' }] });
     const hana = canon.bonds.find((bond) => bond.characterName === 'Kisame Hoshigaki')!;

@@ -27,6 +27,7 @@ import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
+import { resolveEntity, revealHiddenAliases } from './entities';
 import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
   applyTurnDiff,
@@ -275,6 +276,10 @@ export function applyStateStep(
       turnsWithoutTimeChange: clock.storyTimed ? 0 : Math.min(stalled + 1, 9),
     },
   };
+  // Which scene this turn belongs to, and who was in it: memories are cut
+  // and shared by this, never by names in their text.
+  next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true);
+
   // One piece of news per turn (or one catch-up report); nothing in the
   // world fires mid-fight. The allowance comes from the state the turn's
   // prompt was built on.
@@ -290,6 +295,8 @@ export function applyStateStep(
   );
   next = markNewsHeard(next, relays, allowance);
   next = advanceCanon(next, { inCombat });
+  // A spoiler name Kan has now learned becomes an ordinary alias.
+  next = revealHiddenAliases(next);
   // Canon-bound hearts whose time has come go to their canon partners.
   next = applyCanonEndgames(next);
 
@@ -365,6 +372,95 @@ export function applyStateStep(
   return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
 }
 
+function placeKey(location: string | undefined) {
+  return (location ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+/**
+ * Ties this turn's story entries to a scene (GameState.sceneSeq) and records
+ * the scene cast on them. A new scene starts on the turn after one ended, or
+ * on a turn that moves Kan somewhere else. Scene-end memories made this turn
+ * remember the turn they came from.
+ */
+function stampTurnScene(
+  before: AppDatabase,
+  after: AppDatabase,
+  turnLogId: string,
+  sceneEnded: boolean
+): AppDatabase {
+  const moved =
+    !sceneEnded &&
+    placeKey(after.state.location) !== '' &&
+    placeKey(after.state.location) !== placeKey(before.state.location);
+  const seq = (before.state.sceneSeq ?? 0) + (before.state.sceneClosed || moved ? 1 : 0);
+  const castIds = [
+    ...new Set(
+      (after.state.sceneCast ?? [])
+        .map((name) => resolveEntity(after, name))
+        .filter((entity) => entity && entity.name.toLowerCase() !== 'kan')
+        .map((entity) => entity!.id)
+    ),
+  ];
+
+  const index = after.rawLog.findIndex((entry) => entry.id === turnLogId);
+  let userIndex = -1;
+
+  for (let position = index - 1; position >= 0; position -= 1) {
+    const entry = after.rawLog[position];
+
+    if (entry.kind !== 'story') continue;
+    if (entry.role === 'user' && entry.sceneSeq === undefined) userIndex = position;
+    break;
+  }
+
+  const knownEvents = new Set(before.events.map((event) => event.id));
+
+  return {
+    ...after,
+    rawLog: after.rawLog.map((entry, position) =>
+      position === index || position === userIndex
+        ? { ...entry, sceneSeq: seq, sceneCastIds: castIds }
+        : entry
+    ),
+    events: after.events.map((event) =>
+      !knownEvents.has(event.id) && event.sourceLogId === null && !event.turnLogId
+        ? { ...event, turnLogId }
+        : event
+    ),
+    state: { ...after.state, sceneSeq: seq, sceneClosed: sceneEnded },
+  };
+}
+
+/**
+ * The oldest unsummarized stretch that stays inside one scene, and whether
+ * that scene is over. Entries from before scenes were tracked join the
+ * stretch they sit in. A finished scene of a single entry (a reply with no
+ * message, say) rides along with the next one rather than blocking it.
+ */
+function firstSceneStretch(db: AppDatabase, entries: RawLogEntry[]): { entries: RawLogEntry[]; closed: boolean } {
+  const out: RawLogEntry[] = [];
+  let key: number | undefined;
+
+  for (const entry of entries) {
+    if (entry.sceneSeq !== undefined) {
+      if (key === undefined) {
+        key = entry.sceneSeq;
+      } else if (entry.sceneSeq !== key) {
+        if (out.length >= 2) {
+          return { entries: out, closed: true };
+        }
+
+        key = entry.sceneSeq;
+      }
+    }
+
+    out.push(entry);
+  }
+
+  const closed = key !== undefined && db.state.sceneClosed === true && key === db.state.sceneSeq;
+  return { entries: out, closed };
+}
+
 /**
  * Sets how much time a past reply took (the "+2 min" chip). The clock, and
  * every later entry's timestamp, shifts by the difference. Pure.
@@ -410,7 +506,8 @@ function queueSceneJob(
   db: AppDatabase,
   turnLogId: string,
   activeIds: ReadonlySet<string>,
-  minMessages: number
+  minMessages: number,
+  options: { onlyClosed?: boolean } = {}
 ): { db: AppDatabase; jobId: string | null } {
   // Messages a running job is already writing about are left to it.
   const running = new Set(
@@ -419,9 +516,12 @@ function queueSceneJob(
       .flatMap((job) => job.logIds ?? [])
   );
   const fresh = unsummarizedStory(db).filter((entry) => !running.has(entry.id));
-  const logIds = fresh.slice(0, MAX_SCENE_MESSAGES).map((entry) => entry.id);
+  // One memory never spans two scenes: only the oldest scene's stretch.
+  const stretch = firstSceneStretch(db, fresh);
+  const logIds = stretch.entries.slice(0, MAX_SCENE_MESSAGES).map((entry) => entry.id);
 
-  if (logIds.length < Math.max(2, minMessages)) {
+  // A finished scene is summed up however short it was.
+  if (logIds.length < (stretch.closed ? 2 : Math.max(2, minMessages)) || (options.onlyClosed && !stretch.closed)) {
     return { db, jobId: null };
   }
 
@@ -701,6 +801,16 @@ export function applySummaryJob(
         followUpIds.push(job.id);
       } else {
         next = removeJob(next, job.id);
+
+        // A finished scene waiting behind this one is summed up next.
+        if (!jobsOf(next).some((entry) => entry.kind === 'scene')) {
+          const queued = queueSceneJob(next, job.turnLogId, new Set(), MIN_SCENE_MESSAGES, { onlyClosed: true });
+          next = queued.db;
+
+          if (queued.jobId) {
+            followUpIds.push(queued.jobId);
+          }
+        }
       }
 
       const rollups = queueRollups(next, job.turnLogId);
@@ -742,9 +852,10 @@ export function applySummaryJob(
 }
 
 /**
- * Every chapter summary is also saved as a memory, so it can be recalled
- * later by who and what it mentions. The short "scene ended" memories made
- * during the same stretch of story are folded into it.
+ * Every chapter summary is also saved as a memory, shared by everyone in the
+ * scene cast on the turns it was written from (one scene: see
+ * firstSceneStretch). The short "scene ended" memories made on those same
+ * turns are folded into it.
  */
 function saveSummaryMemory(
   db: AppDatabase,
@@ -752,24 +863,31 @@ function saveSummaryMemory(
   messages: RawLogEntry[],
   memory?: string
 ): AppDatabase {
-  const first = messages[0];
   const last = messages[messages.length - 1];
 
   if (db.events.some((event) => event.tags.includes(SUMMARY_TAG) && event.sourceLogId === last.id)) {
     return db;
   }
 
+  // The scene-end memories made on the very turns this summary was written
+  // from — matched by turn, never by time, so a neighbouring scene stays out.
+  const turnIds = new Set(messages.map((entry) => entry.id));
   const superseded = db.events.filter(
     (event) =>
       event.sourceLogId === null &&
       !event.pinned &&
       !event.tags.includes('time-skip') &&
-      event.createdAt >= first.createdAt &&
-      event.createdAt <= last.createdAt + 60_000
+      event.turnLogId !== undefined &&
+      turnIds.has(event.turnLogId)
   );
   const supersededIds = new Set(superseded.map((event) => event.id));
+  // Everyone in the scene cast on those turns was there and shares it,
+  // named in the text or not. Being named in it links no one.
+  const presentIds = new Set(messages.flatMap((entry) => entry.sceneCastIds ?? []));
+  const present = db.entities.filter((entity) => presentIds.has(entity.id));
+  // Names in the text still help recall the memory later (tags only).
   const mentioned = db.entities.filter(
-    (entity) => entity.name.toLowerCase() !== 'kan' && mentionsEntity(summary.text, entity)
+    (entity) => entity.type === 'character' && entity.name.toLowerCase() !== 'kan' && mentionsEntity(summary.text, entity)
   );
 
   const event: EventRecord = {
@@ -787,7 +905,7 @@ function saveSummaryMemory(
       SUMMARY_TAG,
       ...new Set([
         ...superseded.flatMap((entry) => entry.tags),
-        ...mentioned.map((entity) => entity.name.split(/\s+/)[0].toLowerCase()),
+        ...[...present, ...mentioned].map((entity) => entity.name.split(/\s+/)[0].toLowerCase()),
       ]),
     ].slice(0, 10),
     pinned: false,
@@ -796,10 +914,10 @@ function saveSummaryMemory(
   };
 
   const links = [
+    ...present.map((entity) => ({ eventId: event.id, entityId: entity.id, role: 'present' as const })),
     ...db.eventEntities
-      .filter((link) => supersededIds.has(link.eventId))
+      .filter((link) => supersededIds.has(link.eventId) && link.role !== 'mentioned')
       .map((link) => ({ ...link, eventId: event.id })),
-    ...mentioned.map((entity) => ({ eventId: event.id, entityId: entity.id, role: 'mentioned' as const })),
   ].filter(
     (link, index, all) => all.findIndex((other) => other.entityId === link.entityId) === index
   );

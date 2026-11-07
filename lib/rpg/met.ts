@@ -1,7 +1,7 @@
-// Meeting someone: the moment a person first shows up in Kan's story they
-// lose the canon cast's "Not yet met" placeholder and get a bond to grow, so
-// the bonds screen never shows a met person as unmet — even on turns where
-// the state model failed and only the prose fallback saw who was there.
+// Meeting someone: the moment a person is first in the scene cast
+// (characters_present) they lose the "Not yet met" placeholder and get a bond
+// to grow. Nothing else meets them: being named, a bond or grudge change, a
+// fact or a character update leaves someone unmet.
 
 import { makeId } from './id';
 import type { AppDatabase, BondRecord, EntityRecord } from './types';

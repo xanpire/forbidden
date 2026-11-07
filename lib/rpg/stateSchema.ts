@@ -123,7 +123,7 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // A death the prose makes certain this turn — on screen, a body Kan sees,
   // or someone telling Kan — by character id. revived is only a true return
-  // to life (Chiyo's or Nagato's jutsu), never an Edo Tensei reanimation.
+  // to life (Chiyo's jutsu, say), never an Edo Tensei reanimation.
   deaths: list({
     character_id: { type: 'string' },
     cause: nullableString,

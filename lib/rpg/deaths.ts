@@ -91,8 +91,8 @@ export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark)
 }
 
 /**
- * Canon deaths, by exact name or alias only — never the loose matching the
- * story text gets, so "Inoichi Yamanaka" can never land on Ino and "Shikaku
+ * Canon deaths, by exact name or alias only (hidden spoiler names included,
+ * since this is the app's own canon data) — so "Inoichi Yamanaka" can never land on Ino and "Shikaku
  * Nara" never on Shikamaru. People the save does not have are skipped.
  */
 export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMark): AppDatabase {
@@ -103,7 +103,11 @@ export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMa
     const entity = next.entities.find(
       (item) =>
         item.type === 'character' &&
-        [item.name, ...item.aliases].some((candidate) => candidate.trim().toLowerCase() === wanted)
+        // Canon data, not story text: a spoiler name still finds its person
+        // ("Nagato" is Pain), without revealing it anywhere.
+        [item.name, ...item.aliases, ...(item.hiddenAliases ?? []).map((alias) => alias.name)].some(
+          (candidate) => candidate.trim().toLowerCase() === wanted
+        )
     );
 
     if (entity) {
@@ -179,7 +183,7 @@ export function normalizeDeaths(db: AppDatabase): AppDatabase {
       return entity;
     }
 
-    const eventId = [entity.name, ...entity.aliases]
+    const eventId = [entity.name, ...entity.aliases, ...(entity.hiddenAliases ?? []).map((alias) => alias.name)]
       .map((name) => canonDeathEvent.get(name.toLowerCase()))
       .find(Boolean);
 

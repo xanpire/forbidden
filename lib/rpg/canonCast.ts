@@ -1,5 +1,5 @@
 import { loreProfileFor } from './romance';
-import type { EntityRecord } from './types';
+import type { EntityRecord, HiddenAlias } from './types';
 
 /**
  * The canon cast, loaded into every save from the start: the main players,
@@ -29,6 +29,8 @@ import type { EntityRecord } from './types';
 type CastEntry = {
   name: string;
   aliases: string[];
+  /** Spoiler names: never matched, shown or sent until revealed (see HiddenAlias). */
+  hiddenAliases?: HiddenAlias[];
   /** Left out when the databooks give none: no invented birthdays. */
   birthday?: { month: number; day: number };
   /** Left out for those who do not age like people (Fukasaku). */
@@ -226,14 +228,19 @@ export const CANON_CAST: CastEntry[] = [
     birthday: { month: 2, day: 20 },
     birthYear: -15,
     role: 'Akatsuki · Pain’s partner',
-    personality: 'Calm, distant, devoted to Nagato.',
+    personality: 'Calm, distant, devoted to Pain.',
     speechStyle: 'Quiet and economical.',
     appearance: 'Short blue hair with a paper flower, amber eyes, a lip piercing.',
     tags: ['canon', 'akatsuki', 'rain'],
   },
   {
     name: 'Pain',
-    aliases: ['Nagato', 'Nagato Uzumaki', 'Six Paths of Pain'],
+    aliases: ['Six Paths of Pain', 'Deva Path', 'Asura Path', 'Animal Path', 'Human Path', 'Preta Path', 'Naraka Path'],
+    // The Leaf learns who is behind the six bodies when Pain falls there.
+    hiddenAliases: [
+      { name: 'Nagato', revealedBy: 'pain-assault' },
+      { name: 'Nagato Uzumaki', revealedBy: 'pain-assault' },
+    ],
     birthday: { month: 9, day: 19 },
     birthYear: -15,
     role: 'Akatsuki leader',
@@ -243,8 +250,14 @@ export const CANON_CAST: CastEntry[] = [
     tags: ['canon', 'akatsuki', 'rain'],
   },
   {
-    name: 'Masked man',
-    aliases: ['Tobi', 'Obito Uchiha', 'Obito'],
+    // Named Tobi, not "Masked man": "the masked man" is ordinary description
+    // (Kakuzu wears a mask too) and must never land on him.
+    name: 'Tobi',
+    aliases: [],
+    hiddenAliases: [
+      { name: 'Obito Uchiha', revealedBy: 'obito-unmasked' },
+      { name: 'Obito', revealedBy: 'obito-unmasked' },
+    ],
     birthday: { month: 2, day: 10 },
     birthYear: -9,
     role: 'Akatsuki’s hidden hand',
@@ -1156,6 +1169,7 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
     name: entry.name,
     type: 'character',
     aliases: [...entry.aliases],
+    ...(entry.hiddenAliases?.length ? { hiddenAliases: entry.hiddenAliases.map((alias) => ({ ...alias })) } : {}),
     ...(entry.birthday ? { birthday: entry.birthday } : {}),
     ...(entry.birthYear !== undefined ? { birthYear: entry.birthYear } : {}),
     role: entry.role,
@@ -1210,6 +1224,15 @@ export function ensureCanonCast(
         birthday: existing.birthday ?? entry.birthday,
         birthYear: existing.birthYear ?? entry.birthYear,
       };
+    }
+
+    if (entry.hiddenAliases?.length && !next[index].hiddenAliases) {
+      const shown = new Set(namesOf(next[index]));
+      const hidden = entry.hiddenAliases.filter((alias) => !shown.has(lower(alias.name)));
+
+      if (hidden.length > 0) {
+        next[index] = { ...next[index], hiddenAliases: hidden.map((alias) => ({ ...alias })) };
+      }
     }
   }
 

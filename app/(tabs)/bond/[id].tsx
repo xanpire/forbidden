@@ -8,6 +8,7 @@ import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { formatAffinity } from '@/components/kan/BondsSection';
 import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
 import { memoryTitle } from '@/components/kan/JournalSection';
+import { sharedMemories } from '@/lib/rpg/sharedMemories';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
@@ -33,20 +34,8 @@ export default function BondScreen() {
   const entity = db?.entities.find((item) => item.id === id) ?? null;
   const bond = db?.bonds.find((item) => item.entityId === id) ?? null;
 
-  const shared = useMemo(() => {
-    if (!db || !id) {
-      return [];
-    }
-
-    const eventIds = new Set(
-      db.eventEntities.filter((link) => link.entityId === id).map((link) => link.eventId)
-    );
-
-    return db.events
-      .filter((event) => eventIds.has(event.id) && !event.tags.includes('canon'))
-      .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
-      .slice(0, 12);
-  }, [db, id]);
+  // Only memories you shared: they were there. Being named in one isn't enough.
+  const shared = useMemo(() => (db && id ? sharedMemories(db, id) : []), [db, id]);
 
   // Tabs' back() falls through to the first tab (Story), so go to Kan explicitly.
   const back = () => router.navigate('/(tabs)/kan');

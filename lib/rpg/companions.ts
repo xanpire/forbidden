@@ -167,7 +167,11 @@ function refId(db: AppDatabase, ref: { entityId?: string; name: string }) {
  * The turn's joins and partings, after people (and deaths) are applied so
  * someone introduced this turn can join and someone who died is let go.
  */
-export function applyCompanionChanges(db: AppDatabase, diff: TurnDiff): AppDatabase {
+export function applyCompanionChanges(
+  db: AppDatabase,
+  diff: TurnDiff,
+  options: { presentIds?: ReadonlySet<string> } = {}
+): AppDatabase {
   let next = db;
 
   for (const entity of next.entities) {
@@ -186,6 +190,13 @@ export function applyCompanionChanges(db: AppDatabase, diff: TurnDiff): AppDatab
 
   for (const joining of diff.companionsJoined ?? []) {
     const id = refId(next, joining);
+    const entity = id ? next.entities.find((item) => item.id === id) : undefined;
+
+    // Someone unmet only joins from inside the scene cast: joining never
+    // stands in for meeting them.
+    if (entity?.met === false && options.presentIds && !options.presentIds.has(entity.id)) {
+      continue;
+    }
 
     if (id) {
       next = startCompanion(next, id, joining.reason);

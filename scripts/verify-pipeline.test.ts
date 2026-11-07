@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
-import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity } from '../lib/rpg/entities';
+import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity, revealHiddenAliases } from '../lib/rpg/entities';
 import { appendStoryMessage, cloneDatabase, storyMessagesSinceLastSummary } from '../lib/rpg/log';
 import { trimToSentence } from '../lib/rpg/util';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
@@ -489,42 +489,78 @@ describe('presence tracking and bonds ordering', () => {
 });
 
 
-describe('masked man identity resolution', () => {
-  test('all masked-man names resolve to one entity', () => {
+function hearCanon(db: AppDatabase, milestoneId: string): AppDatabase {
+  const progress = db.state.canonProgress ?? { completed: [], active: [], engaged: [] };
+
+  return revealHiddenAliases({
+    ...db,
+    state: {
+      ...db.state,
+      canonProgress: {
+        ...progress,
+        heard: { ...(progress.heard ?? {}), [`event_canon_${milestoneId}`]: { from: 'a rumor', date: db.state.inStoryDate } },
+      },
+    },
+  });
+}
+
+describe('Tobi identity resolution', () => {
+  test('Tobi and a bare "Madara" are one entity; descriptions match no one', () => {
     let db = loadSave();
 
-    const names = ['Masked Man', 'Tobi', 'Obito', 'Masked Man (Madara)'];
+    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
+    db = applyEntityDiff(db, { name: 'Madara', role: 'Mystery' });
 
-    for (const name of names) {
-      db = applyEntityDiff(db, { name, role: 'Mystery' });
+    const tobiId = resolveEntity(db, 'Tobi')?.id;
+
+    expect(tobiId).toBeDefined();
+    expect(resolveEntity(db, 'Madara')?.id).toBe(tobiId);
+    expect(db.entities.filter((entity) => /\btobi\b/i.test(entity.name)).length).toBe(1);
+
+    // "The masked man" is how anyone in a mask is described.
+    for (const description of ['Masked Man', 'the masked man', 'The leader', 'the woman', 'a hooded figure']) {
+      expect(resolveEntity(db, description)).toBeNull();
     }
 
-    const maskedEntities = db.entities.filter((entity) =>
-      ['masked man', 'tobi', 'obito'].some((hint) =>
-        [entity.name, ...entity.aliases].some((alias) =>
-          new RegExp(`\\b${hint}\\b`).test(alias.toLowerCase())
-        )
-      )
-    );
-
-    expect(maskedEntities.length).toBe(1);
-    expect(resolveEntity(db, 'Tobi')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
-    expect(resolveEntity(db, 'Obito')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
-    expect(resolveEntity(db, 'Masked Man (Madara)')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
+    db = applyEntityDiff(db, { isNew: true, name: 'the masked man', role: 'Bounty hunter' });
+    expect(db.entities.some((entity) => entity.name.toLowerCase() === 'the masked man')).toBe(false);
   });
 
-  test('the real Madara is a separate character from the masked man', () => {
+  test('Obito is a hidden name until the mask breaks', () => {
     let db = loadSave();
+    const tobi = db.entities.find((entity) => entity.name === 'Tobi')!;
 
-    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
-    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
+    expect(tobi.aliases.map((alias) => alias.toLowerCase())).not.toContain('obito');
+    expect(tobi.hiddenAliases?.map((alias) => alias.name)).toContain('Obito Uchiha');
+    expect(resolveEntity(db, 'Obito')).toBeNull();
+    expect(resolveEntity(db, 'Obito Uchiha')).toBeNull();
 
-    const maskedId = resolveEntity(db, 'Masked Man')?.id;
+    // Never sent to a model before the reveal.
+    const prompts = [
+      buildNarrationPrompt(db, '*Tobi watches you.*'),
+      buildExtractionPrompt(db, '*Tobi watches you.*', 'Pain and Tobi watch.'),
+    ].flatMap((prompt) => prompt.messages.map((message) => message.content)).join('\n');
+    expect(prompts).not.toContain('Obito');
+    expect(prompts).not.toContain('Nagato');
 
-    // Bare "Madara" is the masked man's claimed name while the real Madara
-    // has not appeared yet.
-    db = applyEntityDiff(db, { name: 'Madara', role: 'Mystery' });
-    expect(resolveEntity(db, 'Madara')?.id).toBe(maskedId);
+    // Kakashi's dead teammate, named in the story, is someone else for now.
+    db = applyEntityDiff(db, { isNew: true, name: 'Obito Uchiha', role: "Kakashi's fallen teammate" });
+    const teammate = resolveEntity(db, 'Obito Uchiha')!;
+    expect(teammate.id).not.toBe(tobi.id);
+    expect(teammate.met).toBe(false);
+
+    const revealed = hearCanon(loadSave(), 'obito-unmasked');
+    const after = revealed.entities.find((entity) => entity.name === 'Tobi')!;
+    expect(after.aliases).toContain('Obito Uchiha');
+    expect(after.hiddenAliases).toBeUndefined();
+    expect(resolveEntity(revealed, 'Obito')?.id).toBe(after.id);
+  });
+
+  test('the real Madara is a separate character from Tobi', () => {
+    let db = loadSave();
+    const tobiId = resolveEntity(db, 'Tobi')?.id;
+
+    expect(resolveEntity(db, 'Madara')?.id).toBe(tobiId);
 
     // The real Madara Uchiha appears much later and stays a separate entity.
     db = applyEntityDiff(db, { name: 'Madara Uchiha', role: 'Legend', age: 40 });
@@ -532,39 +568,35 @@ describe('masked man identity resolution', () => {
     const madaraId = resolveEntity(db, 'Madara Uchiha')?.id;
 
     expect(madaraId).toBeDefined();
-    expect(madaraId).not.toBe(maskedId);
-    expect(resolveEntity(db, 'Masked Man')?.id).toBe(maskedId);
+    expect(madaraId).not.toBe(tobiId);
+    expect(resolveEntity(db, 'Tobi')?.id).toBe(tobiId);
     expect(resolveEntity(db, 'Madara')?.id).toBe(madaraId);
   });
 
-  test('Pain, Nagato, and the six paths are one character', () => {
+  test('Pain and the six paths are one character; Nagato stays hidden until the Leaf learns it', () => {
     let db = loadSave();
 
     db = applyEntityDiff(db, { name: 'Pain', role: 'Akatsuki leader' });
-    db = applyEntityDiff(db, { name: 'Nagato', role: 'Akatsuki leader' });
     db = applyEntityDiff(db, { name: 'Deva Path', role: 'Akatsuki' });
 
     const painId = resolveEntity(db, 'Pain')?.id;
 
-    expect(resolveEntity(db, 'Nagato')?.id).toBe(painId);
     expect(resolveEntity(db, 'Deva Path')?.id).toBe(painId);
+    expect(resolveEntity(db, 'Nagato')).toBeNull();
+    expect(db.entities.filter((entity) => entityGroup(entityHints(entity)) === 'pain').length).toBe(1);
+
+    db = hearCanon(db, 'pain-assault');
+    expect(resolveEntity(db, 'Nagato')?.id).toBe(painId);
     expect(resolveEntity(db, 'Nagato')?.name).toBe('Pain');
-
-    const painEntities = db.entities.filter((entity) =>
-      entityGroup(entityHints(entity)) === 'pain'
-    );
-
-    expect(painEntities.length).toBe(1);
   });
 
-  test('Pain never merges with the masked man or the real Madara', () => {
+  test('Pain never merges with Tobi or the real Madara', () => {
     let db = loadSave();
 
-    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Madara Uchiha', role: 'Legend', age: 40 });
     db = applyEntityDiff(db, { name: 'Pain', role: 'Akatsuki leader' });
 
-    expect(resolveEntity(db, 'Pain')?.id).not.toBe(resolveEntity(db, 'Masked Man')?.id);
+    expect(resolveEntity(db, 'Pain')?.id).not.toBe(resolveEntity(db, 'Tobi')?.id);
     expect(resolveEntity(db, 'Pain')?.id).not.toBe(resolveEntity(db, 'Madara Uchiha')?.id);
   });
 
@@ -578,15 +610,6 @@ describe('masked man identity resolution', () => {
 
     expect(resolveEntity(db, 'White Zetsu')?.id).toBe(zetsuId);
     expect(db.entities.filter((entity) => entity.name.toLowerCase().includes('zetsu')).length).toBe(1);
-  });
-
-  test('existing masked man and Tobi entities merge on any turn', () => {
-    let db = loadSave();
-
-    db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
-    db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
-
-    expect(resolveEntity(db, 'Tobi')?.id).toBe(resolveEntity(db, 'Masked Man')?.id);
   });
 });
 
@@ -617,14 +640,12 @@ describe('encounter frequency and image cast', () => {
     expect(prompt).toContain('Only the people named in the ACTION may appear');
   });
 
-  test('masked man aliases stay one entity', () => {
+  test('Tobi stays one entity and no "masked man" entity appears', () => {
     let db = loadSave();
     db = applyEntityDiff(db, { name: 'Masked Man', role: 'Mystery' });
     db = applyEntityDiff(db, { name: 'Tobi', role: 'Mystery' });
 
-    const matches = db.entities.filter((entity) => /masked man|\btobi\b/i.test(entity.name));
-    expect(matches.length).toBe(1);
-    expect(matches[0]?.aliases.map((a) => a.toLowerCase())).toContain('tobi');
+    expect(db.entities.filter((entity) => /masked man|\btobi\b/i.test(entity.name)).map((entity) => entity.name)).toEqual(['Tobi']);
   });
 });
 
@@ -2141,7 +2162,7 @@ describe('duplicate characters', () => {
     // Itachi comes from the story seed, not the cast list, and is not doubled.
     expect(db.entities.filter((entity) => /\bitachi\b/i.test(entity.name)).length).toBe(1);
     // The real Madara is not pre-loaded: bare "Madara" still means the masked man.
-    expect(resolveEntity(db, 'Madara')?.name).toBe('Masked man');
+    expect(resolveEntity(db, 'Madara')?.name).toBe('Tobi');
   });
 
   test('older saves gain the cast without doubling people they already have', () => {
@@ -2217,7 +2238,11 @@ describe('duplicate characters', () => {
   test('merging folds one person into another', () => {
     let db = loadSave();
     db = applyEntityDiff(db, { name: 'Shark-faced man', isNew: true, role: 'Swordsman' });
-    db = applyTurnDiff(db, { bonds: [{ character: 'Shark-faced man', affinityDelta: 3, status: 'Respect' }] });
+    // Met in a scene: the scene cast is what makes him met and gives him a bond.
+    db = applyTurnDiff(db, {
+      scene: { ended: false, entities: ['Shark-faced man'] },
+      bonds: [{ character: 'Shark-faced man', affinityDelta: 3, status: 'Respect' }],
+    });
 
     const shark = db.entities.find((entity) => entity.name === 'Shark-faced man')!;
     const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki')!;
@@ -2790,6 +2815,7 @@ describe('companions', () => {
     const raw = convertStateBlock({
       new_characters: [{ is_new: true, name: 'Rokuro Tanabe', age: 30, role: 'Ferryman', personality: null, speech_style: null, appearance: null }],
       companions_joined: [{ character_id: 'Rokuro Tanabe', reason: 'hired as a guide' }],
+      characters_present: ['Rokuro Tanabe'],
     }).diff!;
     const next = applyTurnDiff(db, resolveCharacterRefs(db, raw));
 
@@ -2869,10 +2895,10 @@ describe('news delivery: bearers, styles, escalation, catch-up', () => {
   };
   const akatsukiNews = (db: AppDatabase) => unheardCanonNews(db, 99).find((item) => item.knowledge === 'akatsuki');
 
-  test('Kakuzu, Hidan and the masked man can carry Akatsuki news; the dead cannot', () => {
+  test('Kakuzu, Hidan and Tobi can carry Akatsuki news; the dead cannot', () => {
     const db = fired(lateDate, lateDate);
     const item = akatsukiNews(db)!;
-    expect(item.bearers).toEqual(expect.arrayContaining(['Kakuzu', 'Hidan', 'Masked man']));
+    expect(item.bearers).toEqual(expect.arrayContaining(['Kakuzu', 'Hidan', 'Tobi']));
 
     const kisame = db.entities.find((entity) => entity.name === 'Kisame Hoshigaki')!;
     const dead = { ...db, entities: db.entities.map((entity) => (entity.id === kisame.id ? { ...entity, deceased: { known: true } } : entity)) };
@@ -3156,7 +3182,7 @@ describe('living world timeline', () => {
     ] as const) {
       expect(byId(id).from.year).toBe(year);
     }
-    expect(byId('yagura-puppet').bearers).toContain('the masked man');
+    expect(byId('yagura-puppet').bearers).toContain('Tobi');
     expect(byId('kan-hunt-seven-tails').encounter?.who).toContain('Kakuzu');
   });
 
@@ -3276,7 +3302,11 @@ describe('the Mangekyō and gated beats', () => {
 describe('the wider canon cast', () => {
   test('everyone named in a canon death is in a new save (the real Madara aside)', () => {
     const db = loadSave();
-    const names = new Set(db.entities.flatMap((entity) => [entity.name, ...entity.aliases]).map((name) => name.toLowerCase()));
+    const names = new Set(
+      db.entities
+        .flatMap((entity) => [entity.name, ...entity.aliases, ...(entity.hiddenAliases ?? []).map((alias) => alias.name)])
+        .map((name) => name.toLowerCase())
+    );
     const missing = CANON_MILESTONES.flatMap((milestone) => milestone.deaths ?? []).filter(
       (name) => !names.has(name.toLowerCase())
     );

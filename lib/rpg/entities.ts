@@ -5,7 +5,7 @@ import { dateSortValue } from './calendar';
 import { moveCharacterImages } from './characterPortrait';
 import { characterRefs } from './characterRefs';
 import { makeId } from './id';
-import { isPlaceholderStatus, NEWLY_MET_STATUS } from './met';
+import { isPlaceholderStatus, NEWLY_MET_STATUS, UNMET_STATUS } from './met';
 import { uniqueList } from './util';
 import type { AppDatabase, EntityRecord, TurnDiff } from './types';
 
@@ -178,19 +178,19 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
 
 // Shared-identity clusters (Naruto lore): characters known by many names, or
 // bodies controlled by one mind. Members of the same group are ONE character:
-// - The masked man is known as Tobi, Obito, "fake Madara".
+// - Tobi, the man in the orange mask, also claims the name Madara.
 // - The REAL Madara Uchiha is a separate person who appears later.
 // - Pain is the Six Paths of Pain — six bodies (Deva, Asura, Animal, Human,
-//   Preta, Naraka) controlled by Nagato Uzumaki, who is Pain's true identity.
-//   Nagato knows everything every Pain body has seen or heard.
+//   Preta, Naraka) controlled by one hidden mind.
 // - Zetsu is one being split into Black Zetsu and White Zetsu halves.
-const FAKE_HINTS = ['tobi', 'obito', 'masked man', 'fake madara'];
+// Only names count, never descriptions ("the masked man" is how anyone in a
+// mask is described), and never a spoiler name kept in hiddenAliases.
+const FAKE_HINTS = ['tobi', 'fake madara'];
 
 const REAL_MADARA_HINTS = ['madara'];
 
 const PAIN_HINTS = [
   'pain',
-  'nagato',
   'six paths of pain',
   'deva path',
   'asura path',
@@ -374,6 +374,16 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     ...drop,
     ...keep,
     aliases,
+    ...(keep.hiddenAliases || drop.hiddenAliases
+      ? {
+          hiddenAliases: [...(keep.hiddenAliases ?? []), ...(drop.hiddenAliases ?? [])].filter(
+            (alias, index, list) =>
+              !aliases.some((shown) => shown.toLowerCase() === alias.name.toLowerCase()) &&
+              alias.name.toLowerCase() !== keep.name.toLowerCase() &&
+              list.findIndex((item) => item.name.toLowerCase() === alias.name.toLowerCase()) === index
+          ),
+        }
+      : {}),
     age: keep.age ?? drop.age,
     birthday: keep.birthday ?? drop.birthday,
     birthYear: keep.birthYear ?? drop.birthYear,
@@ -476,6 +486,10 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
   }, keep.id, drop.id);
 }
 
+/**
+ * The scene cast (characters_present, plus companions) is the one thing
+ * that marks people met and stamps when and where Kan last saw them.
+ */
 export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
   const matched = new Set(names.map((name) => resolveEntity(db, name)?.id).filter(Boolean) as string[]);
 
@@ -530,37 +544,95 @@ const DESCRIPTOR_WORDS = new Set([
   'mister', 'miss', 'man', 'woman', 'boy', 'girl', 'kid',
 ]);
 
-/**
- * "Hayate Moriya" is someone else's full name, not a way of saying "Hayate":
- * a one-word name only counts inside a longer one when the extra words
- * describe the person instead of naming them.
- */
-function isOtherFullName(candidate: string, name: string) {
-  if (countWords(name) !== 1) {
-    return false;
+// Words that describe someone instead of naming them. A name made only of
+// these ("the masked man", "the leader", "the woman", "an old man") is a
+// description and never matches anyone.
+const GENERIC_WORDS = new Set([
+  ...DESCRIPTOR_WORDS,
+  'masked', 'mask', 'hooded', 'cloaked', 'tall', 'short', 'stranger', 'leader',
+  'person', 'figure', 'someone', 'shinobi', 'ninja', 'guard', 'man\'s', 'men',
+  'women', 'other', 'one', 'that', 'this', 'his', 'her', 'their', 'your',
+  'partner', 'boss', 'traveler', 'merchant', 'hunter', 'stitched', 'scarred',
+  'red-haired', 'dark-haired', 'blond', 'hidden', 'cloak', 'orange',
+]);
+
+const SINGLE_GENERIC_WORDS = new Set([
+  'man', 'woman', 'boy', 'girl', 'kid', 'stranger', 'leader', 'person', 'figure',
+  'someone', 'guard', 'shinobi', 'ninja', 'partner', 'boss', 'traveler', 'merchant',
+  'hunter', 'masked', 'mask', 'elder', 'captain', 'sensei', 'master', 'lord', 'lady',
+]);
+
+/** True for a description ("the masked man") rather than a name. */
+export function isGenericDescription(rawName: string) {
+  const words = rawName
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}'-]/gu, ''))
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return true;
   }
 
-  const words = candidate.toLowerCase().split(/\s+/).filter(Boolean);
+  // One word is only a description when it is a plain noun ("Stranger"):
+  // a lone "A" is the Fourth Raikage, not an article.
+  if (words.length === 1) {
+    return SINGLE_GENERIC_WORDS.has(words[0]);
+  }
 
-  return words.length >= 2 && words.every((word) => !DESCRIPTOR_WORDS.has(word.replace(/[^\p{L}]/gu, '')));
+  return words.every((word) => GENERIC_WORDS.has(word));
+}
+
+const LEADING_TITLES = /^(?:the|lady|lord|sir|master|granny|grandpa|elder|captain|mister|miss)\s+/i;
+const TRAILING_HONORIFICS = /(?:\s*-\s*|\s+)(?:sama|san|kun|chan|sensei|senpai|dono)$/i;
+
+/** The ways a written name can be the same exact name: "Lady Tsunade", "Itachi-san". */
+function exactCandidates(rawName: string) {
+  const out = new Set<string>();
+
+  for (const candidate of nameCandidates(rawName)) {
+    let value = candidate.toLowerCase().trim();
+    out.add(value);
+
+    for (let i = 0; i < 3; i += 1) {
+      const stripped = value.replace(LEADING_TITLES, '').replace(TRAILING_HONORIFICS, '').trim();
+
+      if (stripped === value || !stripped) {
+        break;
+      }
+
+      value = stripped;
+      out.add(value);
+    }
+  }
+
+  return [...out].filter((candidate) => candidate.length > 0 && !isGenericDescription(candidate));
+}
+
+/** Names this person can be matched by: their name and visible aliases (never hidden ones). */
+function matchNames(entity: EntityRecord) {
+  return [entity.name, ...entity.aliases]
+    .map((name) => name.toLowerCase().trim())
+    .filter((name) => name && !isGenericDescription(name));
 }
 
 /**
- * Finds the person a name refers to: exact names and aliases first, then
- * looser whole-word matches ("Tsunade" for "Tsunade Senju"). `exactOnly`
- * skips the loose pass, for someone the state tracker says is new: only a
- * name they already go by makes them a known person.
+ * Finds the person a name refers to: only an exact name or visible alias,
+ * allowing for titles and honorifics ("Lady Tsunade", "Itachi-san").
+ * Descriptions ("the masked man") and hidden spoiler names never match. The
+ * one group rule left is a bare "Madara": Tobi until the real Madara exists.
+ * `exactOnly` is kept for callers; every lookup is exact now.
  */
 export function resolveEntity(
   db: AppDatabase,
   rawName: string,
-  options: { exactOnly?: boolean } = {}
+  _options: { exactOnly?: boolean } = {}
 ): EntityRecord | null {
   if (!rawName || typeof rawName !== 'string') {
     return null;
   }
 
-  const candidates = nameCandidates(rawName).map((candidate) => candidate.toLowerCase());
+  const candidates = exactCandidates(rawName);
 
   if (candidates.length === 0) {
     return null;
@@ -576,56 +648,20 @@ export function resolveEntity(
     }
 
     // Once the real Madara exists, "Madara" (and any real-Madara name) refers
-    // to him — never to the masked man, even via the masked man's aliases.
+    // to him — never to Tobi, even via Tobi's aliases.
     if (isRealMadara && realMadaraExists && entityIsFake(entity)) {
       continue;
     }
 
-    const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
+    const names = matchNames(entity);
 
     if (candidates.some((candidate) => names.includes(candidate))) {
       return entity;
     }
   }
 
-  if (options.exactOnly) {
-    return null;
-  }
-
-  for (const entity of db.entities) {
-    if (entity.type !== 'character') {
-      continue;
-    }
-
-    // A real-Madara reference must never fall back to the masked man entity,
-    // even when the real Madara has not been registered yet.
-    if (isRealMadara && entityIsFake(entity)) {
-      continue;
-    }
-
-    const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
-
-    if (
-      candidates.some((candidate) =>
-        names.some(
-          (name) =>
-            containsWord(name, candidate) ||
-            (containsWord(candidate, name) && !isOtherFullName(candidate, name))
-        )
-      )
-    ) {
-      return entity;
-    }
-  }
-
-  // Group fallback: shared-identity names resolve to their one entity even
-  // without a direct name match. "Nagato" resolves to the Pain entity, "Tobi"
-  // to the masked man, "Black Zetsu" to the Zetsu entity. Once the real
-  // Madara exists, an unqualified "Madara" refers to him; before that, it
-  // refers to the masked man (who claims that name).
-  const group = entityGroup(hints);
-
-  if (group === 'real-madara') {
+  // A bare "Madara" before the real one appears is Tobi, who claims the name.
+  if (entityGroup(hints) === 'real-madara') {
     const realMadara = findEntityByGroup(db, 'real-madara');
 
     if (realMadara) {
@@ -633,10 +669,6 @@ export function resolveEntity(
     }
 
     return isBareMadara(rawName) ? findEntityByGroup(db, 'masked-man') : null;
-  }
-
-  if (group) {
-    return findEntityByGroup(db, group);
   }
 
   return null;
@@ -664,9 +696,8 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     existing = findRealMadara(db);
   }
 
-  // Shared-identity aliases always resolve to their one entity, never a new
-  // character: masked-man names (Tobi, Obito, ...), Pain/Nagato and the six
-  // paths, and Zetsu halves.
+  // Shared-identity names always resolve to their one entity, never a new
+  // character: Tobi, Pain and the six paths, Zetsu halves (visible names only).
   if (!byId && !existing && group) {
     existing = findEntityByGroup(db, group);
 
@@ -680,7 +711,8 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   // Only someone the tracker flagged as new may be created; an update for a
   // person who cannot be found is dropped instead of becoming a duplicate.
-  if (!existing && entity.isNew === false) {
+  // A description ("the masked man") is never a new person either.
+  if (!existing && (entity.isNew === false || isGenericDescription(name))) {
     return db;
   }
 
@@ -698,7 +730,11 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
       role: entity.role?.trim() || 'Unknown',
       personality: entity.personality?.trim() || 'Unknown',
       speechStyle: entity.speechStyle?.trim() || 'Unknown',
-      status: 'Newly met',
+      // Being named in the story is not meeting them: only the scene cast
+      // (characters_present) makes someone met (settleNewlyMet). The state
+      // tracker still knows who they are.
+      status: UNMET_STATUS,
+      met: false,
       notes: '',
       mood: entity.mood?.trim() || 'Unknown',
       appearance: entity.appearance?.trim() || 'Unknown',
@@ -717,20 +753,20 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   const nextMood = entity.mood?.trim() || existing.mood;
   const nextAge = entity.age !== undefined ? entity.age : existing.age;
 
+  const hidden = new Set((existing.hiddenAliases ?? []).map((alias) => alias.name.toLowerCase()));
   const extraAlias =
     name.toLowerCase() !== existing.name.toLowerCase() &&
+    !isGenericDescription(name) &&
+    !hidden.has(name.toLowerCase()) &&
     !existing.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
       ? [name]
       : [];
 
+  // An update changes what is known about them; it never marks them met or
+  // seen. Only the scene cast does that (recordPresence).
   entities[existingIndex] = {
     ...existing,
     aliases: [...existing.aliases, ...extraAlias].slice(0, 10),
-    met: true,
-    // The dead are not "seen": a memory, a dream or a body must not push them
-    // to the top of the bonds list.
-    lastSeen: existing.deceased || existing.status === 'Deceased' ? existing.lastSeen : db.state.inStoryDate,
-    lastSeenAt: existing.deceased || existing.status === 'Deceased' ? existing.lastSeenAt : db.state.location || existing.lastSeenAt,
     age: nextAge,
     birthYear:
       entity.age !== undefined
@@ -753,4 +789,58 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     state: nextState,
     entities,
   };
+}
+
+/** Whether Kan has learned what a canon milestone reveals: its news reached him, or he was part of it. */
+function milestoneKnown(db: AppDatabase, milestoneId: string) {
+  const progress = db.state.canonProgress;
+
+  return Boolean(
+    progress?.heard?.[`event_canon_${milestoneId}`] ||
+      progress?.heard?.[milestoneId] ||
+      progress?.engaged?.includes(milestoneId)
+  );
+}
+
+/**
+ * A spoiler name becomes an ordinary alias once its identity is revealed to
+ * Kan (the milestone in `revealedBy`). Until then it is never matched in
+ * story text, never shown and never sent to a model, because nothing reads
+ * `hiddenAliases` except this.
+ */
+export function revealHiddenAliases(db: AppDatabase): AppDatabase {
+  let changed = false;
+
+  const entities = db.entities.map((entity) => {
+    const hidden = entity.hiddenAliases;
+
+    if (!hidden?.length) {
+      return entity;
+    }
+
+    const revealed = hidden.filter((alias) => alias.revealedBy && milestoneKnown(db, alias.revealedBy));
+
+    if (revealed.length === 0) {
+      return entity;
+    }
+
+    changed = true;
+    const shown = new Set([entity.name, ...entity.aliases].map((name) => name.toLowerCase()));
+    const next: EntityRecord = {
+      ...entity,
+      aliases: [
+        ...entity.aliases,
+        ...revealed.map((alias) => alias.name).filter((name) => !shown.has(name.toLowerCase())),
+      ].slice(0, 12),
+      hiddenAliases: hidden.filter((alias) => !revealed.includes(alias)),
+    };
+
+    if (next.hiddenAliases?.length === 0) {
+      delete next.hiddenAliases;
+    }
+
+    return next;
+  });
+
+  return changed ? { ...db, entities } : db;
 }

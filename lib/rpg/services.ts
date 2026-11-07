@@ -77,16 +77,20 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
     }
   }
 
+  // Who the scene cast puts in the room this turn. Only they can be met: a
+  // bond, grudge or join for someone unmet who isn't here changes nothing.
+  const presentIds = presentEntityIds(next, diff);
+
   // Joins and partings: after people and deaths, before bonds, so a bond
   // the story gives a new companion lands on the bond they start with.
-  next = applyCompanionChanges(next, diff);
+  next = applyCompanionChanges(next, diff, { presentIds });
 
   // Whose bond the story itself moved this turn (shared time adds nothing on top).
   const storyMovedBond = new Set<string>();
 
   if (Array.isArray(diff.bonds)) {
     for (const bond of diff.bonds) {
-      next = applyBondDiff(next, bond);
+      next = applyBondDiff(next, bond, { presentIds });
 
       if (typeof bond.affinityDelta === 'number' && bond.affinityDelta !== 0) {
         const id = bond.entityId ?? resolveEntity(next, bond.character)?.id;
@@ -100,7 +104,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   // After bonds and deaths: a soured bond can turn into a grudge, and the
   // dead let theirs go.
-  next = applyGrudgeChanges(next, diff);
+  next = applyGrudgeChanges(next, diff, { presentIds });
   next = applyReputationChanges(next, diff.reputation, diff.bountySeen);
 
   if (Array.isArray(diff.facts)) {
@@ -154,6 +158,15 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   next.indices = buildIndices(next);
 
   return next;
+}
+
+/** Entity ids of this turn's scene cast (characters_present) and companions. */
+function presentEntityIds(db: AppDatabase, diff: TurnDiff): Set<string> {
+  const names = castWithCompanions(db, diff.scene?.entities ?? diff.state?.sceneCast ?? []);
+
+  return new Set(
+    names.map((name) => resolveEntity(db, name)?.id).filter((id): id is string => Boolean(id))
+  );
 }
 
 type StateDiff = NonNullable<TurnDiff['state']>;

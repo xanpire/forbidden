@@ -1,7 +1,7 @@
 // What a turn can still record when the state model's reply was unreadable.
 // The clock and pace are read from the prose elsewhere (timeparse, pacing);
-// this adds who was there and which jutsu Kan used, so a failed state call
-// doesn't leave presence and the jutsu list blank for that turn.
+// this adds which jutsu Kan used, and suggests who the prose shows (never
+// applied: only the state reply's characters_present can say who is there).
 
 import { mentionsEntity, mentionsName } from './characterRefs';
 import { isCompanion } from './companions';
@@ -269,8 +269,10 @@ export function fallbackDiffFromProse(
 
   const diff: TurnDiff = {};
 
+  // Only a suggestion: reading names in prose never marks anyone met or
+  // seen, and never changes the scene cast (the last one carries on).
   if (present.length > 0) {
-    diff.scene = { ended: false, entities: present };
+    diff.suggestedCast = present;
   }
 
   if (jutsu.length > 0) {

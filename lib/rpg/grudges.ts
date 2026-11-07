@@ -206,7 +206,11 @@ function bondFor(db: AppDatabase, entityId: string) {
  * (or start one), the tracker's grudge events start, mark or end one, and the
  * dead let go of theirs.
  */
-export function applyGrudgeChanges(db: AppDatabase, diff: TurnDiff): AppDatabase {
+export function applyGrudgeChanges(
+  db: AppDatabase,
+  diff: TurnDiff,
+  options: { presentIds?: ReadonlySet<string> } = {}
+): AppDatabase {
   let next = db;
   const now = next.state.inStoryDate;
   const touched = new Set<string>();
@@ -223,9 +227,10 @@ export function applyGrudgeChanges(db: AppDatabase, diff: TurnDiff): AppDatabase
     touched.add(entity.id);
 
     if (event.event === 'wronged') {
-      // Wronging someone means you have met them.
-      if (entity.met === false) {
-        next = { ...next, entities: next.entities.map((item) => (item.id === entity.id ? { ...item, met: true } : item)) };
+      // Someone unmet who isn't here only hears of it: no grudge, no bond,
+      // and they stay unmet. Only the scene cast makes someone met.
+      if (entity.met === false && !options.presentIds?.has(entity.id)) {
+        continue;
       }
 
       if (!bond) {

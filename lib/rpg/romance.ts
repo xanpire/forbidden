@@ -187,12 +187,12 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     orientation: 'Not interested',
   },
   'Konan': {
-    canonDevotion: 'Her heart died with Yahiko; she guards Nagato\'s dream instead.',
+    canonDevotion: 'Her heart died with Yahiko; she guards Pain\'s dream instead.',
     romanceAccessibility: 'lore-locked',
     orientation: 'Attracted to men (Yahiko, past)',
   },
   'Pain': {
-    canonDevotion: 'Nagato is a god who mourns Yahiko; romance does not exist for him.',
+    canonDevotion: 'A self-made god who mourns Yahiko; romance does not exist for him.',
     romanceAccessibility: 'lore-locked',
     orientation: 'Not interested',
   },
@@ -216,7 +216,7 @@ export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
     romanceAccessibility: 'lore-locked',
     orientation: 'Not interested',
   },
-  'The masked man': {
+  'Tobi': {
     canonDevotion: 'His heart broke with Rin decades ago; obsession replaced love.',
     romanceAccessibility: 'lore-locked',
     orientation: 'Attracted to women (Rin, past)',
@@ -667,7 +667,7 @@ function loreKey(name: string) {
 
 /**
  * Loose lookup for names the story shortens or extends ("Ino" for "Ino
- * Yamanaka", "the masked man" for "Masked man"): one name must appear in the
+ * Yamanaka", "Kisame" for "Kisame Hoshigaki"): one name must appear in the
  * other as whole words, so "Han" never picks up Hana Inuzuka's heart.
  */
 function sameNameLoosely(a: string, b: string) {
@@ -788,7 +788,7 @@ const ERA_NOTES: Record<string, Partial<Record<EraKey, string>>> = {
     war: 'Dead; his will lives on in Konan.',
   },
   'Konan': {
-    shippuden: 'Quiet guardian of Nagato\'s dream.',
+    shippuden: 'Quiet guardian of Pain\'s dream.',
     war: 'Defending his grave with her life.',
   },
   'Orochimaru': {
@@ -796,12 +796,7 @@ const ERA_NOTES: Record<string, Partial<Record<EraKey, string>>> = {
     shippuden: 'Weakened, then absorbed by Sasuke.',
     war: 'Reborn: cold, curious, strangely cooperative.',
   },
-  'Obito Uchiha': {
-    pre: 'A masked manipulator borrowing Madara\'s name.',
-    shippuden: 'Cheerful "Tobi" mask over bottomless grief.',
-    war: 'The mask cracks; the boy beneath is furious and broken.',
-  },
-  'The masked man': {
+  'Tobi': {
     pre: 'A masked manipulator borrowing Madara\'s name.',
     shippuden: 'Cheerful "Tobi" mask over bottomless grief.',
     war: 'The mask cracks; the boy beneath is furious and broken.',

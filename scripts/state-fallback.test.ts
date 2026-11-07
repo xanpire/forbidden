@@ -72,7 +72,7 @@ describe('prose fallback', () => {
     expect(kanJutsuFromMessage(db, 'I nod and keep walking.')).toEqual([]);
   });
 
-  test('an unreadable turn still records presence and jutsu', () => {
+  test('an unreadable turn still records jutsu; who the prose shows is only a suggestion', () => {
     const db = seed();
     const turnLogId = db.rawLog.filter((entry) => entry.role === 'assistant').at(-1)?.id ?? 'log_x';
     const turn = {
@@ -84,8 +84,12 @@ describe('prose fallback', () => {
 
     const result = applyStateStep(db, null, turn, new Set());
     expect(result.db.jutsuRecords.some((r) => r.name === 'Shadow Clone Jutsu' && r.user === 'Kan')).toBe(true);
+    expect(result.appliedDiff?.suggestedCast).toContain('Itachi Uchiha');
+    // Only the state reply's characters_present stamps who was seen.
+    const before = db.entities.find((e) => e.name === 'Itachi Uchiha');
     const itachi = result.db.entities.find((e) => e.name === 'Itachi Uchiha');
-    expect(itachi?.lastSeen).toEqual(result.db.state.inStoryDate);
+    expect(itachi?.lastSeen).toEqual(before?.lastSeen);
+    expect(result.db.state.sceneCast ?? []).toEqual(db.state.sceneCast ?? []);
   });
 });
 
@@ -184,7 +188,7 @@ describe('meeting someone', () => {
     expect(next.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
   });
 
-  test('a failed state turn still meets who the prose shows', () => {
+  test('a failed state turn meets no one, even someone the prose names', () => {
     const db = seed();
     const person = unmet(db);
     const first = person.name.split(' ')[0];
@@ -196,8 +200,9 @@ describe('meeting someone', () => {
       new Set()
     );
     const after = result.db.entities.find((entity) => entity.id === person.id)!;
-    expect(after.status).toBe('Newly met');
-    expect(result.db.bonds.some((bond) => bond.entityId === person.id)).toBe(true);
+    expect(after.met).toBe(false);
+    expect(after.status).toBe('Not yet met');
+    expect(result.db.bonds.some((bond) => bond.entityId === person.id)).toBe(false);
   });
 
   test('old saves with a met person stuck on "Not yet met" are repaired', () => {
