@@ -29,7 +29,6 @@ const RANK_NOTE: Record<string, string> = {
 export function ReputationCard({ db }: { db: AppDatabase }) {
   const listings = bingoListings(db);
   const known = listings.filter((listing) => listing.known);
-  const hidden = listings.length - known.length;
   const member = isAkatsukiMember(db);
   const standing = reputationOf(db).akatsuki?.standing ?? 0;
 
@@ -39,11 +38,7 @@ export function ReputationCard({ db }: { db: AppDatabase }) {
       <ListCard>
         {known.length === 0 ? (
           <ListRow
-            body={
-              hidden > 0
-                ? 'Someone has written about you, but you haven’t seen it yet. A bounty poster or a hunter naming your price would tell you.'
-                : 'No village has a price on your head.'
-            }
+            body="As far as you know, no village has put a price on your head. A bounty poster or a hunter naming your price would tell you."
             title="No bingo book you know of"
           />
         ) : (
@@ -62,9 +57,6 @@ export function ReputationCard({ db }: { db: AppDatabase }) {
             </ListRow>
           ))
         )}
-        {known.length > 0 && hidden > 0 ? (
-          <ListRow body="There may be more you haven’t seen." title={`${hidden} more`} />
-        ) : null}
         {member ? (
           <ListRow
             body={reputationOf(db).akatsuki?.lastReason ?? 'How Pain, Konan and your partners regard you.'}

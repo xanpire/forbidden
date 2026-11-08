@@ -1,5 +1,6 @@
 import { entityAge } from './calendar';
 import { localizePlaceNames } from './glossary';
+import { shownField } from './disclosure';
 import { makeId } from './id';
 import { expressionFromMood } from './portrait';
 import type { PlannedReference } from './referencePlan';
@@ -26,8 +27,9 @@ import type {
 export const PORTRAITS_PER_CHARACTER = 4;
 
 /** Their base look, plus how they look right now when that is known. */
-function cleanAppearance(entity: EntityRecord) {
-  const text = entity.appearance?.trim() ?? '';
+function cleanAppearance(db: AppDatabase, entity: EntityRecord) {
+  // As Kan has seen them: no canon secret painted before he knows it.
+  const text = shownField(db, entity, 'appearance')?.trim() ?? '';
   const base = text && text !== 'Unknown' ? text : '';
   const now = entity.currentLook?.trim();
 
@@ -47,7 +49,7 @@ export function characterPortraitSignature(
   return {
     age: portraitAge(db, entity),
     expression: expressionFromMood(entity.mood ?? ''),
-    appearance: cleanAppearance(entity),
+    appearance: cleanAppearance(db, entity),
   };
 }
 
@@ -160,8 +162,10 @@ export function buildCharacterPortraitPrompt(
     lines.push(`Appearance: ${signature.appearance}`);
   }
 
-  if (entity.role) {
-    lines.push(`Who they are: ${entity.role}.`);
+  const role = shownField(db, entity, 'role');
+
+  if (role) {
+    lines.push(`Who they are: ${role}.`);
   }
 
   if (signature.age !== null) {

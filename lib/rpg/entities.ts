@@ -837,7 +837,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 }
 
 /** Whether Kan has learned what a canon milestone reveals: its news reached him, or he was part of it. */
-function milestoneKnown(db: AppDatabase, milestoneId: string) {
+export function milestoneKnown(db: AppDatabase, milestoneId: string) {
   const progress = db.state.canonProgress;
 
   return Boolean(

@@ -10,6 +10,7 @@ import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 import { loreActive } from '@/lib/rpg/lore';
 import { todayNotes } from '@/lib/rpg/yearly';
+import { grudgeKnown } from '@/lib/rpg/disclosure';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
 import { ScrapbookView } from '@/components/kan/ScrapbookView';
@@ -64,8 +65,20 @@ function ThreadRows({ threads }: { threads: ThreadRecord[] }) {
   );
 }
 
+function hiddenGrudge(db: AppDatabase, thread: ThreadRecord) {
+  if (thread.type !== 'grudge') return false;
+
+  const ids = new Set(thread.participantIds ?? []);
+  const bond = db.bonds.find(
+    (item) => item.grudge && (ids.has(item.entityId) || thread.participants?.includes(item.characterName))
+  );
+
+  return !bond || !grudgeKnown(bond.grudge);
+}
+
 function NowView({ db }: { db: AppDatabase }) {
-  const open = db.threads.filter((thread) => thread.status === 'open');
+  // A grudge stays off the page until they have acted on it.
+  const open = db.threads.filter((thread) => thread.status === 'open' && !hiddenGrudge(db, thread));
   const missions = open.filter((thread) => thread.type === 'quest');
   const goals = open.filter((thread) => thread.type === 'goal');
   const other = open.filter((thread) => thread.type !== 'quest' && thread.type !== 'goal');

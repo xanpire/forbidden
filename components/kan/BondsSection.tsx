@@ -8,12 +8,13 @@ import { ReputationCard } from '@/components/kan/ReputationCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
+import { grudgeKnown, shownField } from '@/lib/rpg/disclosure';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import { latestCharacterPortraitMap } from '@/lib/rpg/characterPortrait';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { upcomingBirthdays, type UpcomingBirthday } from '@/lib/rpg/yearly';
-import type { BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
+import type { AppDatabase, BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 
 type BondEntry = {
   entity: EntityRecord;
@@ -42,8 +43,9 @@ export function formatUpcomingBirthday(item: UpcomingBirthday) {
   return `${first} · ${when}${item.dead ? ' (remembered)' : item.turning !== undefined ? `, turns ${item.turning}` : ''}`;
 }
 
-export function bondSubtitle(entry: BondEntry, today: CalendarDate) {
+export function bondSubtitle(entry: BondEntry, db: AppDatabase) {
   const { entity, bond } = entry;
+  const today = db.state.inStoryDate;
 
   if (entry.dead) {
     const date = entity.deceased?.date;
@@ -53,7 +55,7 @@ export function bondSubtitle(entry: BondEntry, today: CalendarDate) {
   const relation =
     bond?.relationship && bond.relationship !== 'stranger'
       ? bond.relationship.charAt(0).toUpperCase() + bond.relationship.slice(1)
-      : bond?.status || entity.status || entity.role || 'Unknown';
+      : bond?.status || entity.status || shownField(db, entity, 'role') || 'Unknown';
   const seen = entity.lastSeen
     ? dateValue(entity.lastSeen) === dateValue(today)
       ? 'seen today'
@@ -209,7 +211,7 @@ export function BondsSection() {
           name={entry.entity.name}
         />
       }
-      meta={bondSubtitle(entry, db.state.inStoryDate)}
+      meta={bondSubtitle(entry, db)}
       onPress={() => router.push({ pathname: '/bond/[id]', params: { id: entry.entity.id } })}
     >
       <View style={styles.nameRow}>
@@ -218,16 +220,16 @@ export function BondsSection() {
         </Text>
         {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
         {entry.entity.companion && !entry.dead && query ? <Text style={styles.major}>With you</Text> : null}
-        {entry.bond?.grudge && !entry.dead ? (
+        {entry.bond?.grudge && grudgeKnown(entry.bond.grudge) && !entry.dead ? (
           <Text style={styles.grudge}>{STAGE_LABEL[grudgeStage(db, entry.bond) ?? 'resentful']}</Text>
         ) : null}
       </View>
-      {entry.bond && !entry.dead ? <AffinityBar affinity={entry.bond.affinity} /> : null}
+      {entry.bond && !entry.dead ? <AffinityBar affinity={entry.bond.yourFeelings?.affinity ?? entry.bond.affinity} /> : null}
     </ListRow>
   );
 
   // People who want you to pay, hottest first, under their own heading.
-  const enemies = query ? [] : living.filter((entry) => entry.bond?.grudge);
+  const enemies = query ? [] : living.filter((entry) => grudgeKnown(entry.bond?.grudge));
   const others = living.filter((entry) => !enemies.includes(entry));
 
   return (

@@ -10,11 +10,12 @@ import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
 import { memoryTitle } from '@/components/kan/JournalSection';
 import { sharedMemories } from '@/lib/rpg/sharedMemories';
 import { knownLife } from '@/lib/rpg/lives';
-import { povOf } from '@/lib/rpg/povMemories';
+import { grudgeKnown, howTheySeem, shownProfile } from '@/lib/rpg/disclosure';
+import { resolveEntity } from '@/lib/rpg/entities';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
-import { MAX_COMPANIONS, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
+import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
@@ -67,7 +68,15 @@ export default function BondScreen() {
       ? `Died ${formatDayMonth(death.date)} · Year ${death.date.year}`
       : 'Deceased'
     : null;
-  const affinity = bond?.affinity ?? 0;
+  // Your own feelings you know exactly; theirs only as they seem to you.
+  const affinity = bond?.yourFeelings?.affinity ?? bond?.affinity ?? 0;
+  const theySeem = howTheySeem(bond?.theirFeelings?.affinity ?? bond?.affinity ?? 0);
+  // What Kan can know of them: no canon secret before the story tells him.
+  const profile = shownProfile(db, entity);
+  // Their mood now only if they are here; otherwise how they were when you last saw them.
+  const hereNow =
+    Boolean(entity.companion) ||
+    castWithCompanions(db, db.state.sceneCast ?? []).some((name) => resolveEntity(db, name)?.id === entity.id);
   const relationship =
     bond?.relationship && bond.relationship !== 'stranger'
       ? bond.relationship.charAt(0).toUpperCase() + bond.relationship.slice(1)
@@ -86,7 +95,8 @@ export default function BondScreen() {
       ? 'Joined you today'
       : `Together ${formatTogether(together)}`
     : null;
-  const grudge = !dead && bond?.grudge ? bond.grudge : null;
+  // A grudge shows once they have acted on it; until then it stews where you can't see it.
+  const grudge = !dead && bond?.grudge && grudgeKnown(bond.grudge) ? bond.grudge : null;
   const stage = grudge && bond ? grudgeStage(db, bond) : null;
   const STAGE_TEXT = {
     resentful: 'They resent you, and left alone it will only grow.',
@@ -96,7 +106,7 @@ export default function BondScreen() {
   const grudgeMeta = grudge
     ? [
         `Since ${formatDayMonth(grudge.since)}, Year ${grudge.since.year}`,
-        grudge.strikes > 0 ? `struck ${grudge.strikes === 1 ? 'once' : `${grudge.strikes} times`}` : 'hasn’t acted yet',
+        `struck ${grudge.strikes === 1 ? 'once' : `${grudge.strikes} times`}`,
         grudge.lastStrike ? `last ${formatDayMonth(grudge.lastStrike)}` : null,
       ]
         .filter(Boolean)
@@ -105,10 +115,17 @@ export default function BondScreen() {
   const partyFull = !companion && companionsOf(db).length >= MAX_COMPANIONS;
   const details = [
     { label: 'Died', value: dead ? death?.cause : undefined },
-    { label: 'Mood', value: dead ? undefined : entity.mood },
-    { label: 'Personality', value: entity.personality },
-    { label: 'Speaks', value: entity.speechStyle },
-    { label: 'Appearance', value: entity.appearance },
+    { label: 'Mood', value: dead || !hereNow ? undefined : entity.mood },
+    {
+      label: 'Last you saw them',
+      value:
+        dead || hereNow || !entity.mood || entity.mood === 'Unknown'
+          ? undefined
+          : `${entity.mood}${entity.lastSeen ? ` (${formatDayMonth(entity.lastSeen)}, year ${entity.lastSeen.year})` : ''}`,
+    },
+    { label: 'Personality', value: profile.personality },
+    { label: 'Speaks', value: profile.speechStyle },
+    { label: 'Appearance', value: profile.appearance },
   ].filter((item) => item.value && item.value !== 'Unknown');
 
   return (
@@ -129,7 +146,7 @@ export default function BondScreen() {
         <CharacterPortraitCard
           dead={dead}
           entity={entity}
-          subtitle={[deathLabel, !dead && age !== undefined ? `Age ${age}` : null, entity.role ?? entity.status]
+          subtitle={[deathLabel, !dead && age !== undefined ? `Age ${age}` : null, profile.role ?? entity.status]
             .filter(Boolean)
             .join(' · ')}
         />
@@ -159,20 +176,16 @@ export default function BondScreen() {
                 {companion ? <Chip accent label="Travelling with you" /> : null}
                 {relationship ? <Chip label={relationship} /> : null}
                 {bond.isMajor ? <Chip accent label="Major bond" /> : null}
-                {bond.attraction && bond.attraction !== 'none' ? (
-                  <Chip label={`Attraction ${bond.attraction}`} />
-                ) : null}
                 {seen ? <Chip label={seen} /> : null}
               </View>
               <View style={styles.sides}>
                 <Text style={type.rowBody}>
-                  {`Them toward you ${formatAffinity(bond.theirFeelings?.affinity ?? affinity)}${(bond.theirFeelings?.note ?? bond.note) ? ` · ${bond.theirFeelings?.note ?? bond.note}` : ''}`}
+                  {`Toward you they seem ${theySeem}`}
                 </Text>
                 <Text style={type.rowBody}>
-                  {`You toward them ${formatAffinity(bond.yourFeelings?.affinity ?? affinity)}${bond.yourFeelings?.note ? ` · ${bond.yourFeelings.note}` : ''}`}
+                  {`You toward them ${formatAffinity(affinity)}${bond.yourFeelings?.note ? ` · ${bond.yourFeelings.note}` : ''}`}
                 </Text>
               </View>
-              {bond.romanceNote ? <Text style={type.rowBody}>{bond.romanceNote}</Text> : null}
             </View>
           </ListCard>
         ) : null}
@@ -224,8 +237,6 @@ export default function BondScreen() {
           <ListCard>
             {shared.map((event) => {
               const { title, body } = memoryTitle(event);
-              // How they remember it, when it mattered to them.
-              const theirs = povOf(event, entity.id);
 
               return (
                 <ListRow
@@ -233,9 +244,7 @@ export default function BondScreen() {
                   key={event.id}
                   meta={`${formatDayMonth(event.inStoryDate)} · ${event.scene}`}
                   title={title}
-                >
-                  {theirs ? <Text style={styles.pov}>{`Their side: “${theirs}”`}</Text> : null}
-                </ListRow>
+                />
               );
             })}
           </ListCard>
@@ -344,12 +353,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  pov: {
-    ...type.rowBody,
-    fontStyle: 'italic',
-    color: colors.textSoft,
-    marginTop: 4,
   },
   pressed: {
     opacity: 0.65,
