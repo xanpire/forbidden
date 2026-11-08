@@ -402,20 +402,6 @@ export function applyStateStep(
     }
   }
 
-  // A choice landed with someone who matters: they will remember it.
-  if (!notice) {
-    const swung = (extraction?.bonds ?? []).find(
-      (bond) =>
-        Math.abs(bond.affinityDelta ?? 0) >= 3 &&
-        next.bonds.some((item) => item.isMajor && (item.entityId === bond.entityId || item.characterName === bond.character))
-    );
-    const who = planted.remembered ?? swung?.character;
-
-    if (who) {
-      notice = `${who.split(' ')[0]} will remember that.`;
-    }
-  }
-
   // The state step is done; any earlier state job for this turn is settled.
   next = withJobs(
     next,

@@ -122,8 +122,7 @@ export function plantSeed(db: AppDatabase, seed: NewSeed): AppDatabase {
 
 /**
  * The tracker's consequences: plant each, unless the same thing is already
- * waiting. Returns who will remember it (the first important person), for
- * the "they will remember that" notice.
+ * waiting. Characters remember it through the seed; nothing is shown to you.
  */
 export function applyConsequences(
   db: AppDatabase,

@@ -611,7 +611,7 @@ Five systems that build on each other. Each only reaches the narrator when it ma
 - **Seeds**: the tracker's `consequences` (spared, lie, helped, witness, betrayal, humiliated, promise, debt; who, what, want, witnesses, faction, when) plus interceptions. `when` sets when it can first return: weeks (14–41 days), months (45–164, the default), years (300–899); it fades `max(120, 3 × that)` days later.
 - **Coming back** (`canReturn`): only once the window opens, only if the person is alive, and only where it is realistic: lies, betrayals, promises and debts face to face (the person in the scene); spared or humiliated people on a road or in a town within 2.5 days of where they are; help repaid in the same region; an Akatsuki interception with an Akatsuki member present. A **witness** doesn't need to find Kan: when the time comes, they talk and that village's heat rises (`advanceConsequences`). Seeds fade when the window closes or the person dies.
 - **Offer**: one optional SOMETHING COMES BACK line (`turnConsequenceOffer`), never in a fight, pressed after 90 days eligible; canon figures carry "they stay on their canon path; this changes only how they see you". The tracker marks it `consequences_returned`.
-- **Notice**: "Hana will remember that." when a seed lands with someone important (`isImportant`) or a major bond swings by 3+.
+- **No notice**: nothing tells you a choice landed; the people involved simply remember it (the seed, the bond, their point-of-view memory).
 - UI: a "Could come back" list on the hidden world-clock screen.
 
 **Point-of-view memories** (`povMemories.ts`, section 12, fix 29)

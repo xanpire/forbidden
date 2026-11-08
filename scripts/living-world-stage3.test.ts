@@ -512,7 +512,7 @@ describe('delayed consequences', () => {
     expect(seedsOf(db)[0].status).toBe('faded');
   });
 
-  test('offered to the narrator softly, marked returned by the tracker, and someone important will remember', () => {
+  test('offered to the narrator softly, marked returned by the tracker, and no "will remember that" notice', () => {
     let db = { ...seed(), state: { ...seed().state, location: 'a road in the Land of Fire', locationKind: 'road' as const, sceneCast: [] } };
     db = applyConsequences(db, [{ kind: 'spared', who: 'the hunter-nin you let go', what: 'You let a Leaf hunter-nin go', when: 'weeks' }], [], null).db;
     db = later(db, 150, { locationKind: 'road', scenePace: 'travel', inStoryDate: { ...shiftDate(db.state.inStoryDate, 150), hour: 13 } });
@@ -533,7 +533,8 @@ describe('delayed consequences', () => {
       consequences: [{ kind: 'promise', character_id: 'itachi-uchiha', who: 'Itachi', what: 'You promised Itachi you would not go back to the Leaf', want: null, witnesses: [], faction: null, when: 'months' }],
     });
     expect(seedsOf(result.db).find((item) => item.id === offered!.id)?.status).toBe('returned');
-    expect(result.notice).toBe('Itachi will remember that.');
+    expect(result.notice).toBeNull();
+    expect(seedsOf(result.db).some((item) => item.kind === 'promise' && item.status === 'waiting')).toBe(true);
   });
 });
 
