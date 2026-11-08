@@ -422,12 +422,46 @@ export default function SettingsScreen() {
               {imageCapsNote}
             </Text>
             <ListRow
+              accessibilityLabel="Check images"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: db.settings.imageCheck !== false }}
+              meta="Looks at each scene image for swapped roles and paints it again once if they are. A small extra cost."
+              onPress={() => void updateSettings({ imageCheck: db.settings.imageCheck === false })}
+              title="Check images"
+              trailing={
+                <Switch
+                  onValueChange={(imageCheck) => void updateSettings({ imageCheck })}
+                  thumbColor={colors.text}
+                  trackColor={{ false: colors.surfaceSoft, true: colors.accent }}
+                  value={db.settings.imageCheck !== false}
+                  {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})}
+                />
+              }
+            />
+            <ListRow
+              accessibilityLabel="Two takes"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: Boolean(db.settings.imageTwoTakes) }}
+              meta="Paints two of every scene and lets you keep one. Costs double."
+              onPress={() => void updateSettings({ imageTwoTakes: !db.settings.imageTwoTakes })}
+              title="Two takes"
+              trailing={
+                <Switch
+                  onValueChange={(imageTwoTakes) => void updateSettings({ imageTwoTakes })}
+                  thumbColor={colors.text}
+                  trackColor={{ false: colors.surfaceSoft, true: colors.accent }}
+                  value={Boolean(db.settings.imageTwoTakes)}
+                  {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})}
+                />
+              }
+            />
+            <ListRow
               accessibilityState={{ expanded: advancedOpen }}
               onPress={() => setAdvancedOpen((open) => !open)}
               title="Advanced"
               trailing={
                 <View style={styles.trailingValue}>
-                  <Text style={styles.valueText}>Summary, memory, context</Text>
+                  <Text style={styles.valueText}>Summary, images, memory, context</Text>
                   {advancedOpen ? (
                     <ChevronDown color={colors.textDim} size={16} strokeWidth={2} />
                   ) : (
@@ -443,6 +477,13 @@ export default function SettingsScreen() {
                   label="Summaries"
                   onChange={(value) => void updateSettings({ summaryModel: value })}
                   value={db.settings.summaryModel}
+                />
+                <View style={styles.nestedDivider} />
+                <ModelSelect
+                  hint="Frames each scene image like a storyboard artist and checks it afterwards. Starts as the story model; it needs to see images."
+                  label="Image director"
+                  onChange={(value) => void updateSettings({ imageDirectorModel: value })}
+                  value={db.settings.imageDirectorModel?.trim() || db.settings.narrationModel}
                 />
                 <View style={styles.nestedDivider} />
                 <ModelSelect

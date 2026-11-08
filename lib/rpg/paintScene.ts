@@ -1,0 +1,269 @@
+// Painting a scene image, start to finish: the director frames it, the
+// references are planned (with cast sheets for big scenes), the image is
+// made (one or two takes), and the swapped-roles check runs and retries
+// once. Also the quick retouch. The Story screen only shows the results.
+
+import { generateImage, type ImageModelCaps } from '../openrouter';
+import { packPeopleReferences } from './castSheet';
+import { recordDebugImage, recordDebugSideCall } from './debug';
+import {
+  buildRetouchPrompt,
+  buildSceneImagePrompt,
+  collectRecentSceneImages,
+  fallbackImageAction,
+  personReferenceSlots,
+  sceneCharacterReferences,
+  usePreviousForStyle,
+  writeImageAction,
+  ENSEMBLE_CAST_LIMIT,
+  SCENE_CAST_LIMIT,
+} from './image';
+import { checkSceneImage, imageCheckEnabled, sharperActorRule, type ImageCheck } from './imageCheck';
+import { wantsEnsemble, type ShotChip } from './imageDirection';
+import { loadImage } from './imageStore';
+import { wearsAkatsukiCloak } from './portrait';
+import { faceDroppedWarning, loadKanReferenceImages, planReferences, type PlannedReference } from './referenceImages';
+import type { AppDatabase, SceneImageMeta } from './types';
+
+export type PaintedTake = { dataUri: string; meta: SceneImageMeta };
+
+function recordCheck(turnId: string, apiKey: string, check: ImageCheck | null) {
+  if (check) {
+    recordDebugSideCall(turnId, { kind: 'imageCheck', model: check.model, usage: check.usage, apiKey });
+  }
+}
+
+/** Paints the latest reply. Two takes when asked; each comes back with its record. */
+export async function paintScene({
+  apiKey,
+  db,
+  caps,
+  chip,
+  takes = 1,
+  onWarning,
+}: {
+  apiKey: string;
+  db: AppDatabase;
+  caps: ImageModelCaps;
+  chip?: ShotChip;
+  takes?: 1 | 2;
+  onWarning?: (message: string) => void;
+}): Promise<{ turnId: string; takes: PaintedTake[] }> {
+  const latestAssistant = [...db.rawLog]
+    .reverse()
+    .find((message) => message.kind === 'story' && message.role === 'assistant');
+
+  if (!latestAssistant) {
+    throw new Error('Start the story first — there’s nothing to paint yet.');
+  }
+
+  const turnId = latestAssistant.id;
+  const recentRefs = collectRecentSceneImages(db);
+  const [written, recentLoaded, kanRefs] = await Promise.all([
+    writeImageAction(apiKey, db, undefined, { chip }),
+    Promise.all(recentRefs.map((ref) => loadImage(ref))),
+    loadKanReferenceImages(wearsAkatsukiCloak(db)),
+  ]);
+
+  if (written) {
+    recordDebugSideCall(turnId, { kind: 'imageAction', model: written.model, usage: written.usage, apiKey });
+  }
+
+  const action = written?.action ?? fallbackImageAction(db);
+  const shot = written?.shot;
+  const shotType = written?.shotType ?? null;
+  const ensemble = wantsEnsemble(chip, shotType);
+  // A memory: Kan is a child there, so his present outfits stay out.
+  const inMemory = Boolean(latestAssistant.flashback);
+
+  // People named in the action with a face reference or a portrait; original
+  // characters first, since the model already knows the canon cast.
+  const sceneRefs = sceneCharacterReferences(db, action, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT, true);
+  const loaded = await Promise.all(
+    sceneRefs.map(async (person) => ({
+      name: person.name,
+      uri: (await loadImage(person.image)) ?? '',
+      source: person.source,
+      ref: person.image,
+    }))
+  );
+  const people = await packPeopleReferences(loaded, personReferenceSlots(caps.maxReferences, !inMemory));
+
+  // Which stored image each sent reference came from, for the image's record.
+  const refOf = new Map<string, string>();
+  loaded.forEach((person) => person.uri && refOf.set(person.uri, person.ref));
+  recentLoaded.forEach((uri, index) => uri && refOf.set(uri, recentRefs[index]));
+  // The last image guides rendering style only when it was framed the same way.
+  const recentImages = usePreviousForStyle(db, shotType)
+    ? recentLoaded.filter((uri): uri is string => Boolean(uri))
+    : [];
+
+  const plan = planReferences(
+    [
+      { kind: 'face', uri: kanRefs.face },
+      ...(inMemory ? [] : [{ kind: 'outfit' as const, uri: kanRefs.outfit }]),
+      ...people,
+      ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
+      ...(inMemory ? [] : [{ kind: 'alternate' as const, uri: kanRefs.alternate }]),
+    ],
+    caps.maxReferences
+  );
+
+  if (plan.faceDropped) {
+    onWarning?.(faceDroppedWarning(plan.faceDropped, caps.modelId));
+  }
+
+  const prompt = buildSceneImagePrompt(db, plan.references, action, { shot, shotType });
+  const inputReferences = plan.references.map((reference) => reference.uri);
+
+  const makeOne = async (text: string) => {
+    const startedAt = Date.now();
+    const result = await generateImage({ apiKey, caps, prompt: text, inputReferences });
+    recordDebugImage(turnId, 'image', caps.modelId, result.cost, Date.now() - startedAt);
+    return result.dataUri;
+  };
+
+  const metaFor = (text: string, mightBeOff: boolean): SceneImageMeta => ({
+    prompt: text,
+    action,
+    ...(written?.caption ? { caption: written.caption } : {}),
+    ...(shot ? { shot } : {}),
+    ...(shotType ? { shotType } : {}),
+    ...(mightBeOff ? { mightBeOff: true } : {}),
+    references: plan.references.map((reference) => referenceRecord(reference, refOf)),
+    model: caps.modelId,
+    createdAt: Date.now(),
+  });
+
+  const check = imageCheckEnabled(db);
+
+  if (takes === 2) {
+    const images = await Promise.all([makeOne(prompt), makeOne(prompt)]);
+    const checks = check
+      ? await Promise.all(images.map((image) => checkSceneImage(apiKey, db, image, action)))
+      : [null, null];
+    checks.forEach((result) => recordCheck(turnId, apiKey, result));
+
+    return {
+      turnId,
+      takes: images.map((image, index) => ({
+        dataUri: image,
+        meta: metaFor(prompt, Boolean(checks[index] && (!checks[index]!.rolesOk || checks[index]!.extraPeople))),
+      })),
+    };
+  }
+
+  const first = await makeOne(prompt);
+
+  if (!check) {
+    return { turnId, takes: [{ dataUri: first, meta: metaFor(prompt, false) }] };
+  }
+
+  const firstCheck = await checkSceneImage(apiKey, db, first, action);
+  recordCheck(turnId, apiKey, firstCheck);
+
+  // Only reversed roles are worth a second image; extra people are flagged.
+  if (!firstCheck || firstCheck.rolesOk) {
+    return {
+      turnId,
+      takes: [{ dataUri: first, meta: metaFor(prompt, Boolean(firstCheck?.extraPeople)) }],
+    };
+  }
+
+  const retryPrompt = `${prompt}\n${sharperActorRule(action, firstCheck)}`;
+
+  try {
+    const second = await makeOne(retryPrompt);
+    const secondCheck = await checkSceneImage(apiKey, db, second, action);
+    recordCheck(turnId, apiKey, secondCheck);
+
+    if (!secondCheck || secondCheck.rolesOk) {
+      return {
+        turnId,
+        takes: [{ dataUri: second, meta: metaFor(retryPrompt, Boolean(secondCheck?.extraPeople)) }],
+      };
+    }
+
+    // Both wrong: keep the one with fewer problems, flagged.
+    const keepSecond = !secondCheck.extraPeople && firstCheck.extraPeople;
+    return {
+      turnId,
+      takes: [
+        keepSecond
+          ? { dataUri: second, meta: metaFor(retryPrompt, true) }
+          : { dataUri: first, meta: metaFor(prompt, true) },
+      ],
+    };
+  } catch {
+    return { turnId, takes: [{ dataUri: first, meta: metaFor(prompt, true) }] };
+  }
+}
+
+function referenceRecord(reference: PlannedReference, refOf: Map<string, string>) {
+  const name = reference.kind === 'cast' ? reference.names?.join(', ') : reference.name;
+
+  return {
+    kind: reference.kind,
+    ...(name ? { name: String(name) } : {}),
+    ...(refOf.get(reference.uri) ? { ref: refOf.get(reference.uri) } : {}),
+  };
+}
+
+/**
+ * The quick retouch (#12): edits an existing scene image with a short tweak
+ * instead of painting a new one. Sends the image and Kan's face.
+ */
+export async function retouchSceneImage({
+  apiKey,
+  db,
+  caps,
+  logId,
+  image,
+  tweak,
+}: {
+  apiKey: string;
+  db: AppDatabase;
+  caps: ImageModelCaps;
+  logId: string;
+  /** The image as shown (a data URI). */
+  image: string;
+  tweak: string;
+}): Promise<PaintedTake> {
+  if (caps.maxReferences === 0) {
+    throw new Error(`${caps.modelId} can’t take an image to edit. Pick a reference-capable image model in Settings.`);
+  }
+
+  const entry = db.rawLog.find((item) => item.id === logId);
+  const kanRefs = await loadKanReferenceImages(wearsAkatsukiCloak(db));
+  const plan = planReferences(
+    [
+      { kind: 'edit', uri: image },
+      { kind: 'face', uri: kanRefs.face },
+    ],
+    caps.maxReferences
+  );
+  const prompt = buildRetouchPrompt(tweak, plan.references);
+  const startedAt = Date.now();
+  const result = await generateImage({
+    apiKey,
+    caps,
+    prompt,
+    inputReferences: plan.references.map((reference) => reference.uri),
+  });
+  recordDebugImage(logId, 'image', caps.modelId, result.cost, Date.now() - startedAt);
+
+  const old = entry?.imageMeta;
+
+  return {
+    dataUri: result.dataUri,
+    meta: {
+      ...(old ?? { action: '', references: [] }),
+      prompt,
+      tweak: tweak.trim().slice(0, 200),
+      ...(entry?.image ? { previous: entry.image } : {}),
+      mightBeOff: undefined,
+      model: caps.modelId,
+      createdAt: Date.now(),
+    },
+  };
+}

@@ -646,7 +646,7 @@ export function applyFlashbackTurn(
     ...latest,
     rawLog: latest.rawLog.map((item, index) =>
       (index === stampIndex || (index === stampIndex - 1 && item.role === 'user')) && item.flashback
-        ? { ...item, sceneCastIds: updated.castIds, ...(index === stampIndex ? { fightOptions } : {}) }
+        ? { ...item, sceneCastIds: updated.castIds, ...(index === stampIndex ? { fightOptions, ...(extraction?.imageWorthy ? { imageWorthy: true } : {}) } : {}) }
         : item
     ),
     state: {

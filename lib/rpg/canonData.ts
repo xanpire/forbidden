@@ -63,6 +63,11 @@ export type CanonMilestone = {
   description: string;
   /** World-state line written to `state.canonPoint` when this fires. */
   canonPoint?: string;
+  /**
+   * A fixed visual hint for scene images painted at (or just after) this
+   * moment, so its pictures always land (see imageDirection.ts).
+   */
+  artDirection?: string;
   from: CanonWindow;
   to?: CanonWindow;
   /** Where it happens. Defaults: region "the shinobi world", location = region. */
@@ -941,6 +946,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'Gaara captured',
     description: 'Deidara and Sasori capture Gaara of the Sand. The Shukaku is extracted, and Gaara dies — until Chiyo buys his life with her own.',
     canonPoint: "Gaara was captured; the Shukaku was extracted; Chiyo's sacrifice revived him.",
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 21, month: 1 },
     to: { year: 21, month: 7 },
     region: 'Hidden Sand',
@@ -1040,6 +1046,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'The Two-Tails captured',
     description: 'Yugito Nii of the Hidden Cloud falls to Hidan and Kakuzu, and the Two-Tails is sealed into the statue over three days and nights. Yugito does not survive the extraction.',
     canonPoint: 'Yugito Nii and the Two-Tails have been captured by the Akatsuki.',
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 21, month: 3, day: 10 },
     to: { year: 21, month: 6 },
     region: 'Land of Lightning',
@@ -1054,6 +1061,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'The Three-Tails captured',
     description: 'The masked man and Deidara capture the Three-Tails, working side by side for the first time.',
     canonPoint: 'The Three-Tails has been captured by the masked man and Deidara.',
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 21, month: 6 },
     to: { year: 21, month: 12 },
     region: 'Land of Water',
@@ -1130,6 +1138,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'Itachi falls',
     description: "Itachi dies at Sasuke's hand in their final battle, his last touch pushing Sasuke out of the rain. His truth dies with him — for now.",
     canonPoint: 'Itachi Uchiha is dead, killed by Sasuke in their final battle.',
+    artDirection: 'storm clouds boiling overhead, a ruined Uchiha hall open to the sky, the ghostly glow of Susanoo light, rain starting to fall',
     from: { year: 21, month: 9, day: 12 },
     to: { year: 22, month: 2 },
     region: 'Land of Fire',
@@ -1229,6 +1238,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: "Pain's assault on Hidden Leaf",
     description: 'Six bodies flatten Hidden Leaf. Naruto defeats Pain and meets Nagato, whose sacrifice revives the dead of the village.',
     canonPoint: 'Pain destroyed and was repelled from Hidden Leaf; Nagato sacrificed himself to revive the dead.',
+    artDirection: 'Pain floating high above a flattened crater, Hidden Leaf a ring of rubble below, a cold, empty blue sky',
     from: { year: 22, month: 1 },
     to: { year: 22, month: 6 },
     region: 'Hidden Leaf',
@@ -1350,6 +1360,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     title: 'The Fourth Shinobi World War begins',
     description: "The masked man's army of a hundred thousand white Zetsu and Kabuto's reanimated dead march on the Allied Shinobi Forces. The war will last four days.",
     canonPoint: 'The Fourth Shinobi World War has begun.',
+    artDirection: 'an endless battlefield, armies as tiny figures, columns of smoke, a giant silhouette on the horizon',
     from: { year: 23, month: 1, day: 10 },
     to: { year: 23, month: 1, day: 14 },
     region: 'Land of Lightning',
@@ -1828,6 +1839,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     description:
       "Han and the Five-Tails are taken and sealed into the statue over three days and nights. Every member is summoned by Pain's phantom technique to lend chakra. Han does not survive the extraction.",
     canonPoint: "The Five-Tails is sealed in the Akatsuki's statue.",
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 19, month: 10 },
     to: { year: 20, month: 1 },
     region: 'Land of Earth',
@@ -1914,6 +1926,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     description:
       "Kakuzu and Hidan bring Fū in, and the Seven-Tails is sealed into the statue. Fū does not survive the extraction. Kakuzu collects on the side.",
     canonPoint: "The Seven-Tails is sealed in the Akatsuki's statue.",
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 20, month: 6 },
     to: { year: 20, month: 9 },
     region: 'Land of Waterfalls',
@@ -2086,6 +2099,7 @@ const WORLD_EXPANSION: CanonMilestone[] = [
     description:
       'Kisame brings Rōshi in, and the Four-Tails is sealed into the statue over three days and nights. Rōshi dies when the beast is torn out.',
     canonPoint: "The Four-Tails is sealed in the Akatsuki's statue.",
+    artDirection: 'the giant statue in a dark cavern, Akatsuki members standing on its fingers, beams of chakra drawn from the body below',
     from: { year: 21, month: 7 },
     to: { year: 21, month: 10 },
     region: 'Land of Earth',

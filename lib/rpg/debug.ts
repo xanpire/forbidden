@@ -21,6 +21,7 @@ export type DebugCallKind =
   | 'year'
   | 'image'
   | 'imageAction'
+  | 'imageCheck'
   | 'portrait';
 
 export type DebugCall = {

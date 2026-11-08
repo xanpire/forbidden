@@ -8,6 +8,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -27,8 +28,10 @@ import {
   Image as ImageIcon,
   Clock3,
   History,
+  Paintbrush,
   RotateCcw,
   Sparkles,
+  Wand2,
   Undo2,
   X,
 } from 'lucide-react-native';
@@ -50,25 +53,12 @@ import { useGame } from '@/lib/rpg/game';
 import { companionsOf } from '@/lib/rpg/companions';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
-import {
-  buildSceneImagePrompt,
-  collectRecentSceneImages,
-  fallbackImageAction,
-  sceneCharacterReferences,
-  writeImageAction,
-} from '@/lib/rpg/image';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
-import { loadImage, loadImages, useStoredImage } from '@/lib/rpg/imageStore';
+import { useStoredImage } from '@/lib/rpg/imageStore';
+import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
+import { paintScene, retouchSceneImage, type PaintedTake } from '@/lib/rpg/paintScene';
 import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
-import {
-  faceDroppedWarning,
-  loadKanReferenceImages,
-  planReferences,
-} from '@/lib/rpg/referenceImages';
-import { wearsAkatsukiCloak } from '@/lib/rpg/portrait';
-import { generateImage } from '@/lib/openrouter';
-import { recordDebugImage, recordDebugSideCall } from '@/lib/rpg/debug';
 import { fightOptionInput, resolveTurnMode } from '@/lib/rpg/sceneMode';
 import {
   FLASHBACK_BY_ID,
@@ -86,6 +76,8 @@ type StoryMessage = {
   role: 'user' | 'assistant';
   content: string;
   image: string | null;
+  /** The state tracker flagged this beat as worth painting. */
+  imageWorthy?: boolean;
   elapsedSeconds?: number;
   fightOptions?: string[];
   /** A turn inside a flashback (shown with the warm tint). */
@@ -237,30 +229,41 @@ function InlineAction({
   label,
   icon,
   onPress,
+  onLongPress,
   disabled,
   busy,
+  glow,
+  accessibilityHint,
 }: {
   label: string;
   icon: React.ReactNode;
   onPress: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   busy?: boolean;
+  /** A key moment: the action invites you. */
+  glow?: boolean;
+  accessibilityHint?: string;
 }) {
   return (
     <Pressable
+      accessibilityHint={accessibilityHint}
       accessibilityLabel={label}
       accessibilityRole="button"
       accessibilityState={{ disabled, busy }}
+      delayLongPress={450}
       disabled={disabled || busy}
+      onLongPress={onLongPress}
       onPress={onPress}
       style={({ pressed }) => [
         styles.inlineAction,
+        glow && styles.inlineActionGlow,
         pressed && styles.pressed,
         (disabled || busy) && styles.disabled,
       ]}
     >
       {busy ? <ActivityIndicator color={colors.textMuted} size="small" /> : icon}
-      <Text style={styles.inlineActionLabel}>{busy ? 'Painting…' : label}</Text>
+      <Text style={[styles.inlineActionLabel, glow && styles.inlineActionGlowLabel]}>{busy ? 'Painting…' : label}</Text>
     </Pressable>
   );
 }
@@ -291,7 +294,17 @@ export default function StoryScreen() {
 
   const [input, setInput] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<{ uri: string; logId?: string } | null>(null);
+  const selectedImage = viewer?.uri ?? null;
+  /** The shot menu (long-press Paint): a forced shot and how many takes. */
+  const [shotMenuOpen, setShotMenuOpen] = useState(false);
+  const [shotChip, setShotChip] = useState<ShotChip>('auto');
+  /** Two takes waiting for you to keep one. */
+  const [pendingTakes, setPendingTakes] = useState<{ turnId: string; takes: PaintedTake[] } | null>(null);
+  /** The retouch field in the viewer, and an edited version waiting to be kept. */
+  const [retouchText, setRetouchText] = useState<string | null>(null);
+  const [retouchDraft, setRetouchDraft] = useState<PaintedTake | null>(null);
+  const [isRetouching, setIsRetouching] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const [timeTarget, setTimeTarget] = useState<{ id: string; seconds: number } | null>(null);
   const [customAmount, setCustomAmount] = useState('');
@@ -332,6 +345,7 @@ export default function StoryScreen() {
             ? stripNarrationJson(message.content)
             : message.content,
         image: message.image ?? null,
+        ...(message.role === 'assistant' && message.imageWorthy ? { imageWorthy: true } : {}),
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
         fightOptions: message.role === 'assistant' ? message.fightOptions : undefined,
         ...(memory ? { memory: true } : {}),
@@ -450,108 +464,99 @@ export default function StoryScreen() {
     ],
   }));
 
-  const generateSceneImage = useCallback(async () => {
-    if (!db || isGeneratingImage || !apiKey) {
+  const generateSceneImage = useCallback(
+    async (chip: ShotChip = 'auto', twoTakes = Boolean(db?.settings.imageTwoTakes)) => {
+      if (!db || isGeneratingImage || !apiKey) {
+        return;
+      }
+
+      setIsGeneratingImage(true);
+
+      try {
+        const caps = await ensureImageCaps(db, updateSettings);
+        const result = await paintScene({
+          apiKey,
+          db,
+          caps,
+          chip,
+          takes: twoTakes ? 2 : 1,
+          onWarning: (message) => showToast(message, 'error'),
+        });
+
+        if (result.takes.length > 1) {
+          setPendingTakes(result);
+          return;
+        }
+
+        const take = result.takes[0];
+        await attachImage(result.turnId, take.dataUri, take.meta);
+
+        if (take.meta.mightBeOff) {
+          showToast('This one might be off: who does what may be swapped. Retouch or paint again.', 'error');
+        }
+      } catch (caught) {
+        const message =
+          caught instanceof Error ? caught.message : 'The scene wouldn’t paint. Try again.';
+        showToast(message, 'error');
+      } finally {
+        setIsGeneratingImage(false);
+      }
+    },
+    [apiKey, attachImage, db, isGeneratingImage, showToast, updateSettings]
+  );
+
+  const keepTake = useCallback(
+    async (take: PaintedTake) => {
+      const pending = pendingTakes;
+      setPendingTakes(null);
+
+      if (pending) {
+        await attachImage(pending.turnId, take.dataUri, take.meta);
+      }
+    },
+    [attachImage, pendingTakes]
+  );
+
+  const retouch = useCallback(async () => {
+    const tweak = retouchText?.trim();
+
+    if (!db || !apiKey || !viewer?.logId || !tweak || isRetouching) {
       return;
     }
 
-    const latestAssistant = [...db.rawLog]
-      .reverse()
-      .find((message) => message.kind === 'story' && message.role === 'assistant');
-
-    if (!latestAssistant) {
-      showToast('Start the story first — there’s nothing to paint yet.', 'error');
-      return;
-    }
-
-    setIsGeneratingImage(true);
+    setIsRetouching(true);
 
     try {
-      const recentRefs = collectRecentSceneImages(db);
-      const [caps, written, recentLoaded, kanRefs] = await Promise.all([
-        ensureImageCaps(db, updateSettings),
-        writeImageAction(apiKey, db),
-        Promise.all(recentRefs.map((ref) => loadImage(ref))),
-        loadKanReferenceImages(wearsAkatsukiCloak(db)),
-      ]);
-
-      if (written) {
-        recordDebugSideCall(latestAssistant.id, {
-          kind: 'imageAction',
-          model: written.model,
-          usage: written.usage,
-          apiKey,
-        });
-      }
-
-      const action = written?.action ?? fallbackImageAction(db);
-      // People named in the action who have a face reference or a portrait.
-      const sceneRefs = sceneCharacterReferences(db, action);
-      const people = await Promise.all(
-        sceneRefs.map(async (person) => ({
-          kind: 'character' as const,
-          uri: (await loadImage(person.image)) ?? '',
-          name: person.name,
-          source: person.source,
-        }))
-      );
-      // Which stored image each sent reference came from, for the image's record.
-      const refOf = new Map<string, string>();
-      people.forEach((person, index) => person.uri && refOf.set(person.uri, sceneRefs[index].image));
-      recentLoaded.forEach((uri, index) => uri && refOf.set(uri, recentRefs[index]));
-      const recentImages = recentLoaded.filter((uri): uri is string => Boolean(uri));
-      // A memory: Kan is a child there, so his present outfits stay out.
-      const inMemory = Boolean(latestAssistant.flashback);
-      const plan = planReferences(
-        [
-          { kind: 'face', uri: kanRefs.face },
-          ...(inMemory ? [] : [{ kind: 'outfit' as const, uri: kanRefs.outfit }]),
-          ...people,
-          ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
-          ...(inMemory ? [] : [{ kind: 'alternate' as const, uri: kanRefs.alternate }]),
-        ],
-        caps.maxReferences
-      );
-
-      if (plan.faceDropped) {
-        showToast(faceDroppedWarning(plan.faceDropped, caps.modelId), 'error');
-      }
-
-      const prompt = buildSceneImagePrompt(db, plan.references, action);
-      const startedAt = Date.now();
-      const result = await generateImage({
+      const caps = await ensureImageCaps(db, updateSettings);
+      const draft = await retouchSceneImage({
         apiKey,
+        db,
         caps,
-        prompt,
-        inputReferences: plan.references.map((reference) => reference.uri),
+        logId: viewer.logId,
+        image: viewer.uri,
+        tweak,
       });
-      recordDebugImage(
-        latestAssistant.id,
-        'image',
-        caps.modelId,
-        result.cost,
-        Date.now() - startedAt
-      );
-      await attachImage(latestAssistant.id, result.dataUri, {
-        prompt,
-        action,
-        ...(written?.caption ? { caption: written.caption } : {}),
-        references: plan.references.map((reference) => ({
-          kind: reference.kind,
-          ...('name' in reference && reference.name ? { name: String(reference.name) } : {}),
-          ...(refOf.get(reference.uri) ? { ref: refOf.get(reference.uri) } : {}),
-        })),
-        model: caps.modelId,
-        createdAt: Date.now(),
-      });
+      setRetouchDraft(draft);
+      setRetouchText(null);
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : 'The scene wouldn’t paint. Try again.';
-      showToast(message, 'error');
+      showToast(caught instanceof Error ? caught.message : 'The retouch didn’t work. Try again.', 'error');
     } finally {
-      setIsGeneratingImage(false);
+      setIsRetouching(false);
     }
-  }, [apiKey, attachImage, db, isGeneratingImage, showToast, updateSettings]);
+  }, [apiKey, db, isRetouching, retouchText, showToast, updateSettings, viewer]);
+
+  const keepRetouch = useCallback(async () => {
+    const draft = retouchDraft;
+    const logId = viewer?.logId;
+
+    if (!draft || !logId) {
+      return;
+    }
+
+    setRetouchDraft(null);
+    setViewer({ uri: draft.dataUri, logId });
+    await attachImage(logId, draft.dataUri, draft.meta);
+  }, [attachImage, retouchDraft, viewer]);
 
   const insertMarker = useCallback((marker: string) => {
     setInput((current) => {
@@ -587,12 +592,21 @@ export default function StoryScreen() {
   }, [regenerate, sendTurn]);
 
   const openImage = useCallback(
-    (uri: string) => {
+    (uri: string, logId?: string) => {
       resetImageZoom();
-      setSelectedImage(uri);
+      setRetouchText(null);
+      setRetouchDraft(null);
+      setViewer({ uri, logId });
     },
     [resetImageZoom]
   );
+
+  const closeViewer = useCallback(() => {
+    resetImageZoom();
+    setRetouchText(null);
+    setRetouchDraft(null);
+    setViewer(null);
+  }, [resetImageZoom]);
 
   if (!db) {
     return (
@@ -747,7 +761,11 @@ export default function StoryScreen() {
                   <NarrationParagraph key={index} memory={message.memory} text={paragraph} />
                 ))}
                 {message.image ? (
-                  <SceneImage eager={eagerImages.has(message.id)} onOpen={openImage} value={message.image} />
+                  <SceneImage
+                    eager={eagerImages.has(message.id)}
+                    onOpen={(uri) => openImage(uri, message.id)}
+                    value={message.image}
+                  />
                 ) : null}
                 {message.id === lastAssistantId && !isNarrating ? (
                   <View style={styles.inlineActions}>
@@ -766,10 +784,19 @@ export default function StoryScreen() {
                       />
                     ) : null}
                     <InlineAction
+                      accessibilityHint="Long-press to pick the shot"
                       busy={isGeneratingImage}
                       disabled={!apiKey}
-                      icon={<ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />}
-                      label="Paint"
+                      glow={Boolean(message.imageWorthy && !message.image)}
+                      icon={
+                        message.imageWorthy && !message.image ? (
+                          <Paintbrush color={colors.accent} size={15} strokeWidth={2} />
+                        ) : (
+                          <ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />
+                        )
+                      }
+                      label={message.imageWorthy && !message.image ? 'Paint this' : 'Paint'}
+                      onLongPress={() => setShotMenuOpen(true)}
                       onPress={() => void generateSceneImage()}
                     />
                     <InlineAction
@@ -1168,22 +1195,20 @@ export default function StoryScreen() {
 
       <Modal
         animationType="fade"
-        onRequestClose={() => {
-          resetImageZoom();
-          setSelectedImage(null);
-        }}
+        onRequestClose={closeViewer}
         transparent
         visible={Boolean(selectedImage)}
       >
-        <View
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={[
             styles.imageOverlay,
-            { paddingBottom: Math.max(insets.bottom + 80, spacing.xxxl) },
+            { paddingBottom: Math.max(insets.bottom + (retouchText !== null || retouchDraft ? 150 : 80), spacing.xxxl) },
           ]}
         >
           <Pressable
             accessibilityLabel="Close image"
-            onPress={() => setSelectedImage(null)}
+            onPress={closeViewer}
             style={StyleSheet.absoluteFill}
           />
 
@@ -1197,40 +1222,186 @@ export default function StoryScreen() {
                 )}
               >
                 <Animated.Image
-                  accessibilityLabel="Generated story scene"
+                  accessibilityLabel={retouchDraft ? 'Retouched scene, not kept yet' : 'Generated story scene'}
                   resizeMode="contain"
-                  source={{ uri: selectedImage }}
+                  source={{ uri: retouchDraft?.dataUri ?? selectedImage }}
                   style={[styles.fullscreenImage, fullscreenImageStyle]}
                 />
               </GestureDetector>
 
               <View
-                style={[styles.imageActions, { bottom: Math.max(insets.bottom + 20, spacing.xl) }]}
+                style={[styles.imageActionsColumn, { bottom: Math.max(insets.bottom + 20, spacing.xl) }]}
               >
-                <AppButton
-                  compact
-                  icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
-                  label="Download"
-                  onPress={() => {
-                    downloadImage(`kan-scene-${Date.now()}.jpg`, selectedImage);
-                    resetImageZoom();
-                  }}
-                  style={styles.imageActionButton}
-                />
-                <AppButton
-                  compact
-                  icon={<X color={colors.text} size={15} strokeWidth={2} />}
-                  label="Close"
-                  onPress={() => {
-                    resetImageZoom();
-                    setSelectedImage(null);
-                  }}
-                  style={styles.imageActionButton}
-                  variant="secondary"
-                />
+                {retouchDraft ? (
+                  <>
+                    <Text style={styles.retouchNote}>Retouched: “{retouchDraft.meta.tweak}”. Keep it?</Text>
+                    <View style={styles.imageActionsRow}>
+                      <AppButton
+                        compact
+                        label="Keep"
+                        onPress={() => void keepRetouch()}
+                        style={styles.imageActionButton}
+                      />
+                      <AppButton
+                        compact
+                        label="Discard"
+                        onPress={() => setRetouchDraft(null)}
+                        style={styles.imageActionButton}
+                        variant="secondary"
+                      />
+                    </View>
+                  </>
+                ) : retouchText !== null ? (
+                  <>
+                    <TextInput
+                      accessibilityLabel="What to change"
+                      autoFocus
+                      editable={!isRetouching}
+                      onChangeText={setRetouchText}
+                      onSubmitEditing={() => void retouch()}
+                      placeholder="Make him angrier, more fire, night not day…"
+                      placeholderTextColor={colors.textDim}
+                      returnKeyType="send"
+                      style={styles.retouchInput}
+                      value={retouchText}
+                    />
+                    <View style={styles.imageActionsRow}>
+                      <AppButton
+                        compact
+                        disabled={!retouchText.trim() || isRetouching}
+                        icon={isRetouching ? <ActivityIndicator color={colors.onAccent} size="small" /> : undefined}
+                        label={isRetouching ? 'Retouching…' : 'Retouch'}
+                        onPress={() => void retouch()}
+                        style={styles.imageActionButton}
+                      />
+                      <AppButton
+                        compact
+                        disabled={isRetouching}
+                        label="Cancel"
+                        onPress={() => setRetouchText(null)}
+                        style={styles.imageActionButton}
+                        variant="secondary"
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.imageActionsRow}>
+                    <AppButton
+                      compact
+                      icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
+                      label="Download"
+                      onPress={() => {
+                        downloadImage(`kan-scene-${Date.now()}.jpg`, selectedImage);
+                        resetImageZoom();
+                      }}
+                      style={styles.imageActionButton}
+                    />
+                    {viewer?.logId && apiKey ? (
+                      <AppButton
+                        compact
+                        icon={<Wand2 color={colors.text} size={15} strokeWidth={2} />}
+                        label="Retouch"
+                        onPress={() => {
+                          resetImageZoom();
+                          setRetouchText('');
+                        }}
+                        style={styles.imageActionButton}
+                        variant="secondary"
+                      />
+                    ) : null}
+                    <AppButton
+                      compact
+                      icon={<X color={colors.text} size={15} strokeWidth={2} />}
+                      label="Close"
+                      onPress={closeViewer}
+                      style={styles.imageActionButton}
+                      variant="secondary"
+                    />
+                  </View>
+                )}
               </View>
             </>
           ) : null}
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setShotMenuOpen(false)}
+        transparent
+        visible={shotMenuOpen}
+      >
+        <View style={styles.sheetOverlay}>
+          <Pressable
+            accessibilityLabel="Close shot menu"
+            onPress={() => setShotMenuOpen(false)}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <SectionLabel first>Paint this moment</SectionLabel>
+            <FilterPills
+              onChange={setShotChip}
+              options={SHOT_CHIPS.map((chip) => ({ value: chip.value, label: chip.label }))}
+              value={shotChip}
+            />
+            <Text style={type.rowBody}>{SHOT_CHIPS.find((chip) => chip.value === shotChip)?.hint}</Text>
+            <ListRow
+              accessibilityLabel="Two takes"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: Boolean(db.settings.imageTwoTakes) }}
+              meta="Paint two and keep the better one. Costs double."
+              onPress={() => void updateSettings({ imageTwoTakes: !db.settings.imageTwoTakes })}
+              title="Two takes"
+              trailing={
+                <Switch
+                  onValueChange={(value) => void updateSettings({ imageTwoTakes: value })}
+                  thumbColor={colors.text}
+                  trackColor={{ false: colors.surfaceSoft, true: colors.accent }}
+                  value={Boolean(db.settings.imageTwoTakes)}
+                  {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})}
+                />
+              }
+            />
+            <AppButton
+              disabled={!apiKey || isGeneratingImage}
+              icon={<Sparkles color={colors.onAccent} size={15} strokeWidth={2} />}
+              label="Paint"
+              onPress={() => {
+                setShotMenuOpen(false);
+                void generateSceneImage(shotChip);
+              }}
+            />
+            <AppButton label="Cancel" onPress={() => setShotMenuOpen(false)} variant="secondary" />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        onRequestClose={() => setPendingTakes(null)}
+        transparent
+        visible={Boolean(pendingTakes)}
+      >
+        <View style={[styles.imageOverlay, styles.takesOverlay]}>
+          <SectionLabel first>Two takes · tap the one to keep</SectionLabel>
+          <ScrollView contentContainerStyle={styles.takesList}>
+            {pendingTakes?.takes.map((take, index) => (
+              <Pressable
+                accessibilityLabel={`Keep take ${index + 1}${take.meta.mightBeOff ? ', might be off' : ''}`}
+                accessibilityRole="button"
+                key={index}
+                onPress={() => void keepTake(take)}
+                style={({ pressed }) => [styles.takeCard, pressed && styles.pressed]}
+              >
+                <Image resizeMode="cover" source={{ uri: take.dataUri }} style={styles.takeImage} />
+                <Text style={type.rowMeta}>
+                  Take {index + 1}
+                  {take.meta.mightBeOff ? ' · might be off' : ''}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <AppButton label="Keep neither" onPress={() => setPendingTakes(null)} variant="secondary" />
         </View>
       </Modal>
     </KeyboardAvoidingView>
@@ -1661,12 +1832,59 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
-  imageActions: {
+  imageActionsColumn: {
     position: 'absolute',
     left: spacing.xl,
     right: spacing.xl,
+    gap: spacing.sm,
+  },
+  imageActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  retouchInput: {
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+  },
+  retouchNote: {
+    ...type.rowBody,
+    color: colors.text,
+    textAlign: 'center',
+  },
+  takesOverlay: {
+    gap: spacing.md,
+    paddingTop: spacing.xxxl,
+  },
+  takesList: {
+    gap: spacing.lg,
+  },
+  takeCard: {
+    gap: spacing.xs,
+  },
+  takeImage: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  inlineActionGlow: {
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  inlineActionGlowLabel: {
+    color: colors.text,
   },
   imageActionButton: {
     flex: 1,

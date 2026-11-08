@@ -7,17 +7,40 @@ import { completeChat, type CallUsage } from '../openrouter';
 import { wearsAkatsukiCloak } from './portrait';
 import type { PlannedReference } from './referencePlan';
 import { flashbackImageNote, kanAgeAt, latestReplyIsFlashback } from './flashbacks';
+import { CANON_CAST } from './canonCast';
+import { entityAge, timeOfDayOf } from './calendar';
+import {
+  canonArtDirection,
+  chipDirection,
+  impactFrameAllowed,
+  isScaleShot,
+  jutsuLines,
+  jutsuOnScreen,
+  lightLine,
+  lookTags,
+  recentShots,
+  sceneMoment,
+  shotTypeOf,
+  type ShotChip,
+  type ShotType,
+} from './imageDirection';
+import { CONDITION_INFO } from './weather';
 import type { AppDatabase, EntityRecord } from './types';
 
-const RECENT_IMAGE_LIMIT = 2;
+/** At most one earlier scene is sent, for rendering style only (#4). */
+const RECENT_IMAGE_LIMIT = 1;
 
-function sceneCast(db: AppDatabase): string[] {
+/** People in the scene: 5 normally, up to 10 for an ensemble shot. */
+export const SCENE_CAST_LIMIT = 5;
+export const ENSEMBLE_CAST_LIMIT = 10;
+
+function sceneCast(db: AppDatabase, limit = SCENE_CAST_LIMIT): string[] {
   const fromState = (db.state.sceneCast ?? []).filter(
     (name) => name.toLowerCase() !== 'kan'
   );
 
   if (fromState.length > 0) {
-    return fromState.slice(0, 5);
+    return fromState.slice(0, limit);
   }
 
   const latestAssistant = [...db.rawLog]
@@ -32,12 +55,32 @@ function sceneCast(db: AppDatabase): string[] {
         entity.name.toLowerCase() !== 'kan' &&
         mentionsEntity(text, entity)
     )
-    .slice(0, 5)
+    .slice(0, limit)
     .map((entity) => entity.name);
 }
 
-/** Most people sent as references in one scene image. */
+/** Most people sent as references in one scene image (more for an ensemble). */
 export const SCENE_CHARACTER_LIMIT = 3;
+
+/** The canon cast, plus the canon people the save starts with (seed.ts). */
+const CANON_NAMES = new Set(
+  [...CANON_CAST.map((entry) => entry.name), 'Itachi Uchiha', 'Hana Inuzuka', 'Izumi Uchiha', 'Suzume'].map((name) =>
+    name.toLowerCase()
+  )
+);
+
+/** Canon characters the image model already knows by name. */
+export function isCanonCharacter(entity: Pick<EntityRecord, 'name'>) {
+  return CANON_NAMES.has(entity.name.toLowerCase());
+}
+
+/**
+ * How many people can get their own reference slot: what the model takes,
+ * minus Kan's face and outfit.
+ */
+export function personReferenceSlots(maxReferences: number, withOutfit = true) {
+  return Math.max(0, maxReferences - 1 - (withOutfit ? 1 : 0));
+}
 
 /**
  * People named in the image's ACTION who have a face reference or a painted
@@ -48,7 +91,9 @@ export const SCENE_CHARACTER_LIMIT = 3;
 export function sceneCharacterReferences(
   db: AppDatabase,
   action: string,
-  limit = SCENE_CHARACTER_LIMIT
+  limit = SCENE_CHARACTER_LIMIT,
+  /** Spend slots on original characters first: the model can't guess them (#6c). */
+  originalsFirst = false
 ): Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait' }> {
   const found: Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait'; at: number }> = [];
 
@@ -76,9 +121,12 @@ export function sceneCharacterReferences(
     found.push({ entity, name: entity.name, image, source: face ? 'face' : 'portrait', at });
   }
 
+  const rank = (entry: { entity: EntityRecord }) => (originalsFirst && isCanonCharacter(entry.entity) ? 1 : 0);
+
   return found
-    .sort((a, b) => a.at - b.at)
+    .sort((a, b) => rank(a) - rank(b) || a.at - b.at)
     .slice(0, Math.max(0, limit))
+    .sort((a, b) => a.at - b.at)
     .map(({ at: _at, ...rest }) => rest);
 }
 
@@ -88,6 +136,25 @@ export function collectRecentSceneImages(db: AppDatabase) {
     .slice(-RECENT_IMAGE_LIMIT)
     .map((message) => message.image as string)
     .reverse();
+}
+
+/** The shot type of the newest scene image, to decide whether it can guide style. */
+export function lastShotType(db: AppDatabase): ShotType | null {
+  const last = [...db.rawLog]
+    .reverse()
+    .find((message) => message.kind === 'story' && message.role === 'assistant' && message.image);
+  const meta = last?.imageMeta;
+
+  return (meta?.shotType as ShotType | undefined) ?? shotTypeOf(meta?.shot);
+}
+
+/**
+ * The previous image is only a style guide when it was framed the same way:
+ * a different shot type would pull the new image toward the old composition.
+ */
+export function usePreviousForStyle(db: AppDatabase, shotType: ShotType | null) {
+  const last = lastShotType(db);
+  return !shotType || !last || last === shotType;
 }
 
 function tailOf(text: string, maxLength: number) {
@@ -133,60 +200,128 @@ export function fallbackImageAction(db: AppDatabase) {
   return tailOf(cleanProse(reply?.content ?? db.state.scene), 700);
 }
 
-const IMAGE_ACTION_SYSTEM = `You write the action line for one illustration of an interactive Naruto story. The player character is Kan.
+const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive Naruto story, like an anime storyboard artist. The player character is Kan.
 
-Read the narrator's latest reply and describe the single most visual moment from it, normally the one at the END of the reply, as the picture should show it.
-- One or two sentences, at most 45 words, present tense, third person.
-- Say exactly who does what to whom, and where: the actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
+Read the narrator's latest reply and pick the single most dramatic INSTANT from it, normally the one at the END of the reply: a freeze frame, not a summary. Then write three lines.
+
+ACTION: exactly who does what to whom at that instant, and where.
+- One or two sentences, at most 45 words (up to 80 words for an ensemble shot, so you can place everyone), present tense, third person.
+- The actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
 - Name people by name ("Kan", "Itachi"). Unnamed people get a short description ("a Stone ninja").
-- Only people physically present in that moment. Include body positions, expressions, and any visible jutsu, weapon, or weather.
+- Only people physically present in that moment. Include body positions, expressions at their peak, and any visible jutsu, weapon, or weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
 
-Then write a caption for the same moment, for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). In the caption, call people only by the name you know them by (after "to you:"), or describe them.
+SHOT: frame that instant like an anime key frame in a wide 16:9 frame. One line, in this order:
+- shot type: extreme close-up | close-up | medium | full body | wide | extreme wide | aerial | ensemble | impact frame
+- angle: worm's-eye | low angle | eye level | high angle | bird's-eye | over-the-shoulder | dutch tilt
+- lens feel: wide-angle distortion | telephoto compression | shallow depth of field
+- composition: where the subject sits (lower third, off-center, tiny in frame, filling the frame), and what fills the rest of the wide frame (open sky, smoke, flames, the jutsu, the landscape)
+- focus: the ONE person who gets the sharpest light and the most space in the frame (usually Kan)
+- emotion at its peak, shown physically (screaming with veins on the neck, tears streaking a bloodied face, eyes wide with Sharingan spinning)
+- light and effects: light source and colour, motion (wind-whipped hair and cloak, speed lines, debris, embers, dust, chakra glow)
+Pick the shot that sells the moment:
+- emotional peak: close-up or extreme close-up on a face
+- jutsu or power: low angle or worm's-eye, the effect filling most of the frame
+- the instant a blow lands, a shocking reveal: impact frame
+- arrival, journey, calm: extreme wide, tiny figure, big landscape and sky
+- aftermath or destruction: aerial or bird's-eye
+- confrontation: over-the-shoulder, or two figures facing off across the frame
+- a group together, a gathering, one against many: ensemble, with one of these layouts:
+  - line-up: everyone facing the camera in a staggered V, the leader at the front, low angle, like an opening-credits shot
+  - battle lines: Kan in the foreground seen from behind or over the shoulder, facing a row of opponents across the frame
+  - circle: a high angle looking down on figures in a ring (an Akatsuki meeting: members as glowing ghostly projections standing on the fingers of the giant statue, faces lit from below)
+  - depth layers: 1-2 sharp hero faces in front, the others in mid-ground, silhouettes or out-of-focus figures at the back
+  - clash: two groups colliding mid-air, jutsu crossing between them
+Avoid: eye-level medium shots of people standing, centered symmetrical framing, neutral faces, posing for the camera.
 
-Output exactly two lines and nothing else:
+CAPTION: the same moment for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
+
+Output exactly three lines and nothing else:
 ACTION: <the action sentences>
+SHOT: <the camera line>
 CAPTION: <the caption>`;
 
-/**
- * Splits the reply into the action line and the caption. A reply without
- * the labels is all action (no caption).
- */
-export function parseImageAction(text: string): { action: string; caption?: string } {
-  const captionMatch = /^\s*caption\s*:\s*(.+)$/im.exec(text);
-  const caption = captionMatch ? cleanProse(captionMatch[1]).slice(0, 200) : undefined;
-  const withoutCaption = captionMatch ? text.replace(captionMatch[0], ' ') : text;
-  const action = cleanProse(withoutCaption).replace(/^action:\s*/i, '').slice(0, 400);
+const LABELS = ['action', 'shot', 'caption'] as const;
 
-  return { action, ...(caption ? { caption } : {}) };
+/**
+ * Splits the director's reply into the action, the camera line and the
+ * caption. A reply without labels is all action (no shot, no caption).
+ */
+export function parseImageAction(text: string): { action: string; shot?: string; caption?: string } {
+  const found: Partial<Record<(typeof LABELS)[number], string>> = {};
+  let rest = text;
+
+  for (const label of ['shot', 'caption'] as const) {
+    const match = new RegExp(`^\\s*\\**${label}\\**\\s*:\\s*(.+)$`, 'im').exec(rest);
+
+    if (match) {
+      found[label] = cleanProse(match[1]);
+      rest = rest.replace(match[0], ' ');
+    }
+  }
+
+  const caption = found.caption?.slice(0, 200);
+  const shot = found.shot?.slice(0, 500);
+  const action = cleanProse(rest).replace(/^action:\s*/i, '').slice(0, 700);
+
+  return { action, ...(shot ? { shot } : {}), ...(caption ? { caption } : {}) };
 }
 
-/**
- * Writes the image's action line fresh from the latest reply with a small,
- * cheap call. Returns null if the call fails, so the caller can fall back.
- */
-export async function writeImageAction(
-  apiKey: string,
-  db: AppDatabase,
-  signal?: AbortSignal
-): Promise<{ action: string; caption?: string; usage: CallUsage; model: string } | null> {
+export type DirectorOptions = {
+  /** A shot the player picked with a chip. */
+  chip?: ShotChip;
+};
+
+export type DirectedImage = {
+  action: string;
+  shot?: string;
+  shotType: ShotType | null;
+  caption?: string;
+  usage: CallUsage;
+  model: string;
+};
+
+/** People in the scene with their mood and how they look right now. */
+function peopleNotes(db: AppDatabase, cast: string[]) {
+  return cast
+    .map((name) => {
+      const entity = resolveEntity(db, name);
+      const bits = [entity?.mood ? `mood: ${entity.mood}` : '', entity?.currentLook ? `looks: ${entity.currentLook}` : '']
+        .filter(Boolean)
+        .join('; ');
+
+      return bits ? `${name} (${bits.slice(0, 160)})` : '';
+    })
+    .filter(Boolean);
+}
+
+/** What the director reads besides the reply: who, how they feel, light, jutsu, variety. */
+export function directorContext(db: AppDatabase, options: DirectorOptions = {}): string | null {
   const reply = latestStoryReply(db);
 
   if (!reply?.content.trim()) {
     return null;
   }
 
-  const cast = sceneCast(db);
-  const model = db.settings.extractionModel || db.settings.summaryModel;
+  const cast = sceneCast(db, ENSEMBLE_CAST_LIMIT);
   const playerAction = latestPlayerAction(db, reply.id);
   // A reply inside a flashback: the memory's place and Kan at his age then.
   const memory = reply.flashback ? db.state.flashbacks?.active ?? null : null;
-  const context = [
+  const moment = sceneMoment(db, Boolean(reply.flashback));
+  const sceneText = `${playerAction} ${reply.content}`;
+  const jutsu = jutsuOnScreen(db, sceneText);
+  const shots = recentShots(db);
+  const forced = chipDirection(options.chip);
+  const art = reply.flashback ? null : canonArtDirection(db);
+  const notes = reply.flashback ? [] : peopleNotes(db, cast);
+
+  return [
     memory || reply.flashback
       ? `This reply is a memory from Year ${reply.flashback!.date.year}: Kan is ${kanAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
       : `Location: ${db.state.location}.`,
     reply.flashback ? '' : `Scene: ${db.state.scene}.`,
     reply.flashback ? '' : `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
+    reply.flashback || !db.state.mood ? '' : `Kan's mood: ${db.state.mood}.`,
     reply.flashback
       ? ''
       : cast.length > 0 ? `Known people in the scene: ${cast.map((name) => {
@@ -195,6 +330,16 @@ export async function writeImageAction(
 
           return known === name ? name : `${name} (to you: ${known})`;
         }).join(', ')}.` : 'Known people in the scene: none besides Kan.',
+    notes.length > 0 ? `How they are: ${notes.join('; ')}.` : '',
+    `Time and weather: ${timeOfDayOf(moment.date)}, ${String(moment.date.hour ?? 12).padStart(2, '0')}:${String(moment.date.minute ?? 0).padStart(2, '0')}; ${moment.weatherText ?? CONDITION_INFO[moment.condition].label}${moment.indoors ? ' (indoors)' : ''}.`,
+    ...jutsu.map((record) => `Jutsu in this turn: ${record.name} looks like this: ${record.visual.trim()}`),
+    art ? `ART DIRECTION for this moment in canon (a hint; still frame it around Kan and what he does): ${art}.` : '',
+    reply.imageWorthy && !forced ? 'This is a key moment: go big.' : '',
+    forced ? `The player asked for this shot: ${forced}. Use it.` : '',
+    shots.length > 0
+      ? `Recent images were framed: ${shots.map((shot) => `"${shot.slice(0, 90)}"`).join('; ')}. Don't repeat the same shot type and angle as last time unless the moment demands it.`
+      : '',
+    options.chip === 'impact' || impactFrameAllowed(db) ? '' : 'Do not use an impact frame this time (one was used recently).',
     playerAction ? `What Kan's player wrote this turn: ${tailOf(playerAction, 600)}` : '',
     '',
     'NARRATOR REPLY:',
@@ -202,39 +347,126 @@ export async function writeImageAction(
   ]
     .filter((line) => line !== '')
     .join('\n');
-
-  try {
-    const result = await completeChat({
-      apiKey,
-      model,
-      messages: [
-        { role: 'system', content: IMAGE_ACTION_SYSTEM },
-        { role: 'user', content: context },
-      ],
-      temperature: 0.3,
-      maxTokens: 600,
-      signal,
-    });
-    const { action, caption } = parseImageAction(result.text);
-
-    return action ? { action, ...(caption ? { caption } : {}), usage: result.usage, model } : null;
-  } catch {
-    return null;
-  }
 }
 
-const KAN_LOOK =
-  'Kan: a lean young shinobi with black spiky hair and brown eyes, guarded expression.';
+/** A chip's shot type, to keep when the director answers with another. */
+const CHIP_SHOT: Partial<Record<ShotChip, ShotType>> = {
+  closeup: 'close-up',
+  impact: 'impact frame',
+  epic: 'extreme wide',
+  ensemble: 'ensemble',
+  aftermath: 'aerial',
+};
+
+/**
+ * The director: writes the image's action, camera line and caption fresh
+ * from the latest reply. Runs on the director model (the narrator model
+ * unless Settings picks another) at a high temperature for varied framing,
+ * and falls back to the cheap memory model. Returns null if both fail.
+ */
+export async function writeImageAction(
+  apiKey: string,
+  db: AppDatabase,
+  signal?: AbortSignal,
+  options: DirectorOptions = {}
+): Promise<DirectedImage | null> {
+  const context = directorContext(db, options);
+
+  if (!context) {
+    return null;
+  }
+
+  const director = db.settings.imageDirectorModel?.trim() || db.settings.narrationModel;
+  const cheap = db.settings.extractionModel || db.settings.summaryModel;
+  const attempts = [
+    { model: director, temperature: 0.75 },
+    ...(cheap && cheap !== director ? [{ model: cheap, temperature: 0.5 }] : []),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const result = await completeChat({
+        apiKey,
+        model: attempt.model,
+        messages: [
+          { role: 'system', content: IMAGE_ACTION_SYSTEM },
+          { role: 'user', content: context },
+        ],
+        temperature: attempt.temperature,
+        maxTokens: 900,
+        signal,
+      });
+      const parsed = parseImageAction(result.text);
+
+      if (!parsed.action) continue;
+
+      let shot = parsed.shot;
+      let shotType = shotTypeOf(shot);
+      const wanted = options.chip ? CHIP_SHOT[options.chip] : undefined;
+
+      // A picked chip wins over the director's choice.
+      if (wanted && shotType !== wanted) {
+        shot = `${wanted}${shot ? `, ${shot}` : ''}`;
+        shotType = wanted;
+      }
+
+      // Impact frames stay rare unless asked for.
+      if (shotType === 'impact frame' && options.chip !== 'impact' && !impactFrameAllowed(db)) {
+        shot = shot?.replace(/impact[- ]frame/i, 'close-up');
+        shotType = 'close-up';
+      }
+
+      return {
+        action: parsed.action,
+        ...(shot ? { shot } : {}),
+        shotType,
+        ...(parsed.caption ? { caption: parsed.caption } : {}),
+        usage: result.usage,
+        model: attempt.model,
+      };
+    } catch {
+      if (signal?.aborted) return null;
+    }
+  }
+
+  return null;
+}
+
+const KAN_LOOK = 'Kan: a lean young shinobi with black spiky hair and brown eyes.';
+
+const STYLE_OPENER =
+  'A dramatic widescreen anime key frame, like a still from a high-budget Naruto Shippuden fight episode: bold cel shading, clean line art, saturated colour with strong contrast, dynamic composition, film grain.';
+
+function impactOpener(accent: string) {
+  return `An anime impact frame: inverted, limited palette of black, white and ${accent}; rough expressive sketch lines; radial speed lines exploding from the point of impact; flat background.`;
+}
+
+const IDENTITY_ONLY =
+  'Identity only: copy face, hair, eyes and clothing design. Ignore its pose, expression, framing, lighting and background. The expression comes from the ACTION and SHOT.';
+
+export type ScenePromptOptions = {
+  shot?: string;
+  shotType?: ShotType | null;
+};
 
 export function buildSceneImagePrompt(
   db: AppDatabase,
   references: PlannedReference[],
-  action: string
+  action: string,
+  options: ScenePromptOptions = {}
 ) {
   // A memory: Kan and everyone else at their age then, no present outfit.
-  const memoryNote = flashbackImageNote(db, latestReplyIsFlashback(db));
-  const cast = memoryNote ? [] : sceneCast(db);
+  const memoryReply = latestReplyIsFlashback(db);
+  const memoryNote = flashbackImageNote(db, memoryReply);
+  const shotType = options.shotType ?? shotTypeOf(options.shot);
+  const ensemble = shotType === 'ensemble';
+  const cast = memoryNote ? [] : sceneCast(db, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
   const cloak = wearsAkatsukiCloak(db);
+  const reply = latestStoryReply(db);
+  const sceneText = `${action} ${options.shot ?? ''}`;
+  const jutsu = jutsuOnScreen(db, `${sceneText} ${reply?.content ?? ''}`);
+  const art = memoryNote ? null : canonArtDirection(db);
+  const impact = shotType === 'impact frame';
 
   const currentOutfit = cloak
     ? 'the Akatsuki cloak'
@@ -246,12 +478,84 @@ export function buildSceneImagePrompt(
 
   const hasFace = references.some((reference) => reference.kind === 'face');
   const hasOutfit = references.some((reference) => reference.kind === 'outfit');
+  const referenced = new Set(
+    references.flatMap((reference) =>
+      reference.kind === 'character' && reference.name ? [reference.name] : reference.kind === 'cast' ? reference.names ?? [] : []
+    )
+  );
+  const date = memoryReply?.flashback?.date ?? db.state.inStoryDate;
+  // Canon characters the model already knows, and anyone without a reference, get a look tag.
+  const looks = lookTags(db, action, {
+    exclude: new Set(
+      db.entities
+        .filter((entity) => referenced.has(entity.name) && !isCanonCharacter(entity))
+        .map((entity) => entity.name)
+    ),
+    limit: ensemble ? 10 : 5,
+    ageAt: (id) => {
+      const entity = db.entities.find((item) => item.id === id);
+      return entity ? entityAge(date, entity) : undefined;
+    },
+  });
 
+  // 1. Frame and style first: image models weight the start most.
+  const accentText = `${sceneText} ${jutsu.map((record) => record.visual).join(' ')}`;
+  const accent = /\bamaterasu\b|black flame/i.test(accentText)
+    ? 'violet'
+    : /\b(chidori|lightning|raiton)\b/i.test(accentText)
+      ? 'electric blue'
+      : 'red';
   const lines = [
-    'Cinematic dark anime illustration.',
-    'Visual image only. Do not render any words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere in the image.',
+    impact ? impactOpener(accent) : STYLE_OPENER,
+    'Visual image only: no words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere.',
   ];
 
+  // 2. The camera, 3. the action.
+  if (options.shot) {
+    lines.push(`SHOT: ${options.shot}`);
+  }
+
+  lines.push(`ACTION (depict this exactly): ${action}`);
+
+  if (art) {
+    lines.push(`ART DIRECTION: ${art}.`);
+  }
+
+  lines.push(...jutsuLines(jutsu));
+
+  // 4. Light and atmosphere from the real weather and clock (not for impact frames: flat colour).
+  if (!impact) {
+    lines.push(lightLine(db, sceneText, Boolean(memoryReply)));
+  }
+
+  if (memoryNote) {
+    lines.push(memoryNote);
+  } else {
+    lines.push(`Location: ${db.state.location}.`);
+  }
+
+  // Kan's look.
+  if (!hasFace) {
+    lines.push(KAN_LOOK);
+  }
+
+  if (!memoryNote) {
+    if (!hasOutfit) {
+      lines.push(
+        cloak
+          ? 'Kan wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.'
+          : 'Kan wears a plain black shinobi outfit: fitted black top and pants, no Akatsuki cloak.'
+      );
+    } else {
+      lines.push(`Kan currently wears ${currentOutfit}.`);
+    }
+  }
+
+  if (looks.length > 0) {
+    lines.push(`How the others look: ${looks.join(' | ')}.`);
+  }
+
+  // 5. Reference labels, short, identity only.
   if (references.length > 0) {
     lines.push('Use the attached reference images as labelled below.');
   }
@@ -259,68 +563,82 @@ export function buildSceneImagePrompt(
   references.forEach((reference, i) => {
     const n = i + 1;
 
-    if (reference.kind === 'face') {
+    if (reference.kind === 'edit') {
+      lines.push(`Reference image ${n}: the image to edit.`);
+    } else if (reference.kind === 'face') {
       lines.push(
-        `Reference image ${n}: Kan's face sheet — front, both profiles, and back of head, with no clothes shown. Match his face exactly: black spiky hair, brown eyes, facial structure, hairline.`
+        `Reference image ${n}: Kan's face sheet (front, both profiles, back of head; no clothes). Match his face exactly: black spiky hair, brown eyes, facial structure, hairline. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'outfit') {
       lines.push(
-        `Reference image ${n}: the clothes Kan currently wears (${currentOutfit}) — front, side, and back views with NO person. Dress Kan in exactly these clothes.`
+        `Reference image ${n}: the clothes Kan currently wears (${currentOutfit}), front, side and back views with NO person. Dress Kan in exactly these clothes. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'alternate') {
       lines.push(
-        `Reference image ${n}: the alternate outfit (${alternateOutfit}) — front, side, and back views with NO person. Use only if the story explicitly changes his clothing.`
+        `Reference image ${n}: the alternate outfit (${alternateOutfit}), views with NO person. Use only if the story explicitly changes his clothing.`
       );
     } else if (reference.kind === 'character') {
       const name = reference.name ?? 'this person';
       lines.push(
         reference.source === 'face'
-          ? `Reference image ${n}: ${name}'s face. When ${name} appears, match their face, eyes, hair and colouring exactly, at ${memoryNote ? 'the age the memory note gives' : 'their current age'}, in this image's art style. Ignore the reference's pose, clothes, background and art style.`
-          : `Reference image ${n}: a portrait of ${name}. When ${name} appears, match their face, hair, colouring and usual clothing. Ignore the portrait's pose and background.`
+          ? `Reference image ${n}: ${name}'s face, at ${memoryNote ? 'the age the memory note gives' : 'their current age'}, in this image's art style. ${IDENTITY_ONLY}`
+          : `Reference image ${n}: a portrait of ${name}: their face, hair, colouring and usual clothing. ${IDENTITY_ONLY}`
+      );
+    } else if (reference.kind === 'cast') {
+      const names = reference.names ?? [];
+      lines.push(
+        `Reference image ${n} is a cast sheet: left to right ${names.join(', ')}. Match each face to its name. The labels on the sheet are for you only; never draw them. ${IDENTITY_ONLY}`
       );
     } else {
       lines.push(
-        `Reference image ${n}: a previous scene image. Use it ONLY for art style, color palette, lighting, and rendering continuity. Ignore any characters or figures in it; they belonged to an older scene and must NOT appear now.`
+        `Reference image ${n}: a previous scene image, for rendering style and line quality only, not composition, camera or lighting. Ignore any characters or figures in it; they belonged to an older scene and must NOT appear now.`
       );
     }
   });
 
   if (hasFace) {
     lines.push(
-      'Use the face sheet for facial structure, eyes, nose, mouth, hairline, and hairstyle. Do not redesign Kan’s face or hairstyle.',
-      references.some((reference) => reference.kind === 'character')
-        ? 'Kan\'s face sheet and outfit images are for Kan only; each other person\'s reference is for that person only. Ignore poses and backgrounds in all references, and never give one person another\'s face.'
-        : 'The reference images are for Kan\'s face and clothing only. Ignore their poses, background, and any other people in them.'
+      references.some((reference) => reference.kind === 'character' || reference.kind === 'cast')
+        ? 'Kan\'s face sheet and outfit images are for Kan only; each other person\'s reference is for that person only, and never give one person another\'s face. Do not redesign Kan’s face or hairstyle.'
+        : 'The reference images are for Kan\'s face and clothing only, and any other people in them must not appear. Do not redesign Kan’s face or hairstyle.'
     );
-  } else {
-    lines.push(KAN_LOOK);
   }
 
-  if (memoryNote) {
-    lines.push(memoryNote);
-  } else if (!hasOutfit) {
-    lines.push(
-      cloak
-        ? 'Kan wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.'
-        : 'Kan wears a plain black shinobi outfit: fitted black top and pants, no Akatsuki cloak.'
-    );
-  } else {
-    lines.push(`Kan currently wears ${currentOutfit}.`);
-  }
-
+  // 6. Rules, condensed at the end.
   lines.push(
-    ...(memoryNote
-      ? []
-      : [`Scene: ${db.state.scene}.`, `Location: ${db.state.location}.`, `Timeline: ${db.state.canonPoint}.`]),
-    `ACTION (depict this exactly): ${action}`,
     'ACTOR RULE: Kan performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict Kan as the victim of his own action. If the ACTION says Kan chokes someone, draw Kan choking the other person, never Kan holding his own throat.',
-    'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',
+    isScaleShot(shotType)
+      ? 'Only the people named in the ACTION may appear with recognisable faces. Unnamed extras described there are allowed, and so are tiny, distant, faceless figures, rooftops, smoke columns, a whole village or battlefield below. No other recognisable faces.'
+      : 'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',
     cast.length > 0
       ? `Named people in this scene besides Kan: ${cast.join(', ')}.`
       : 'Named people in this scene besides Kan: none — any other person must come from the ACTION text itself.',
-    'Style: Naruto-inspired anime, gritty realism, moody lighting, rain, red accents, high detail.',
+    ensemble
+      ? 'Ensemble: keep every person distinct and readable; the focal person named in the SHOT gets the sharpest light and the most space.'
+      : '',
+    'Compose for the wide 16:9 frame: subjects off-center, the rest of the frame doing work (sky, landscape, effects).',
     'Final reminder: no text, lettering, captions, or watermarks in the image.',
   );
 
-  return localizePlaceNames(lines.join('\n'));
+  return localizePlaceNames(lines.filter(Boolean).join('\n'));
+}
+
+/** A short edit of an existing image (#12): the image, plus Kan's face so it doesn't drift. */
+export function buildRetouchPrompt(tweak: string, references: PlannedReference[]) {
+  const lines = [
+    `Edit this image: ${tweak.trim()}. Keep everything else the same: characters, faces, clothing, composition, style.`,
+  ];
+
+  references.forEach((reference, i) => {
+    const n = i + 1;
+
+    if (reference.kind === 'edit') {
+      lines.push(`Reference image ${n}: the image to edit.`);
+    } else if (reference.kind === 'face') {
+      lines.push(`Reference image ${n}: Kan's face sheet. Keep his face exactly like this. ${IDENTITY_ONLY}`);
+    }
+  });
+
+  lines.push('No text, lettering, captions, or watermarks in the image.');
+  return lines.join('\n');
 }

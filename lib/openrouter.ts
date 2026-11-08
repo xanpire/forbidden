@@ -669,6 +669,16 @@ function toWireMessages(model: string, messages: OpenRouterMessage[]) {
   const explicit = needsCacheBreakpoints(model);
 
   return messages.map((message) => {
+    if (message.images && message.images.length > 0) {
+      return {
+        role: message.role,
+        content: [
+          { type: 'text', text: message.content },
+          ...message.images.map((url) => ({ type: 'image_url', image_url: { url } })),
+        ],
+      };
+    }
+
     if (!explicit || !message.parts || message.parts.length === 0) {
       return { role: message.role, content: message.content };
     }

@@ -320,7 +320,9 @@ export function applyStateStep(
     ...next,
     // The chip under the reply shows this, and tapping it corrects it.
     rawLog: next.rawLog.map((entry) =>
-      entry.id === turn.turnLogId ? { ...entry, elapsedSeconds: appliedSeconds, fightOptions } : entry
+      entry.id === turn.turnLogId
+        ? { ...entry, elapsedSeconds: appliedSeconds, fightOptions, ...(extraction?.imageWorthy ? { imageWorthy: true } : {}) }
+        : entry
     ),
     state: {
       ...next.state,

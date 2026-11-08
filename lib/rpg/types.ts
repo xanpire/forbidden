@@ -509,6 +509,8 @@ export type RawLogEntry = {
   imageMeta?: SceneImageMeta;
   /** The scene mode this reply was narrated in (assistant story turns). */
   sceneMode?: SceneModeName;
+  /** The state tracker judged this beat visually striking (image_worthy). */
+  imageWorthy?: boolean;
   /** Quick moves offered under a fight reply (written by the state tracker). */
   fightOptions?: string[];
   /** A turn played inside a flashback: which one, and the memory's clock when it began. */
@@ -523,6 +525,15 @@ export type SceneImageMeta = {
   action: string;
   /** The scrapbook caption, written in second person with the action line. */
   caption?: string;
+  /** The director's camera line (shot, angle, lens, composition, light). */
+  shot?: string;
+  /** The shot type read from `shot`, for the variety tracker. */
+  shotType?: string;
+  /** A retouch: the player's tweak, and the stored image it was made from. */
+  tweak?: string;
+  previous?: string;
+  /** The swapped-roles check: true when it found the roles reversed or extra people. */
+  mightBeOff?: boolean;
   /** The references sent, in order: their kind, whose they are, and the stored image when there is one. */
   references: { kind: string; name?: string; ref?: string }[];
   model: string;
@@ -967,6 +978,12 @@ export type Settings = {
   canonProgress: boolean;
   /** Upper bound on the narrator prompt, in estimated tokens. */
   promptTokenBudget: number;
+  /** Frames each scene image (the "director"); empty = the narrator model. */
+  imageDirectorModel?: string;
+  /** Check each scene image for swapped roles and retry once (default on). */
+  imageCheck?: boolean;
+  /** Paint two takes and let you keep one (default off). */
+  imageTwoTakes?: boolean;
 };
 
 export type CanonProgress = {
@@ -1310,4 +1327,6 @@ export type OpenRouterMessage = {
    * always the blocks joined, so token estimates and the debug view stay the same.
    */
   parts?: { text: string; cache?: boolean }[];
+  /** Images sent with a user message (data URIs), for vision calls. */
+  images?: string[];
 };

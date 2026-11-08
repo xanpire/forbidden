@@ -296,7 +296,8 @@ describe('image reference pipeline', () => {
     };
 
     const recent = collectRecentSceneImages(db);
-    expect(recent.length).toBe(2);
+    // At most one earlier scene goes along, for rendering style only.
+    expect(recent.length).toBe(1);
   });
 });
 
@@ -634,7 +635,7 @@ describe('encounter frequency and image cast', () => {
       scene: { ended: false, entities: ['Itachi Uchiha'] },
     });
 
-    const prompt = buildSceneImagePrompt(db, ['data:image/jpeg;base64,AAA']);
+    const prompt = buildSceneImagePrompt(db, [{ kind: 'previous', uri: 'data:image/jpeg;base64,AAA' }], 'Kan waits.');
 
     expect(prompt).toContain('must NOT appear now');
     expect(prompt).toContain('Itachi Uchiha');
@@ -2044,8 +2045,9 @@ describe('character portraits', () => {
     // People outrank older scenes.
     expect(plan.references.map((r) => r.kind)).toEqual(['face', 'outfit', 'character', 'character']);
     const prompt = buildSceneImagePrompt(next, plan.references, action);
-    expect(prompt).toContain(`Reference image 3: ${hana.name}'s face.`);
-    expect(prompt).toContain(`Reference image 4: a portrait of ${itachi.name}.`);
+    expect(prompt).toContain(`Reference image 3: ${hana.name}'s face,`);
+    expect(prompt).toContain(`Reference image 4: a portrait of ${itachi.name}:`);
+    expect(prompt).toContain('Identity only');
     expect(prompt).toContain('never give one person another');
   });
 
