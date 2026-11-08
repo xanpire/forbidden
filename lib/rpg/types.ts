@@ -157,6 +157,8 @@ export type GameState = {
   safehouses?: SafehouseState;
   /** The money Kan carries, and what moved it (see money.ts). */
   purse?: PurseState;
+  /** Set once the save tracks which names Kan knows (names.ts); older saves get it on load. */
+  namesVersion?: number;
 };
 
 /** One change to Kan's money (see money.ts). */
@@ -588,12 +590,25 @@ export type EntityRecord = {
    */
   met?: boolean;
   /**
-   * Spoiler names (Obito for the masked man, Nagato for Pain). Kept apart
-   * from `aliases`, so they are never matched in story text, never shown and
-   * never sent to a model. Once revealed (see `revealHiddenAliases`), a name
-   * moves into `aliases`.
+   * Older saves only: spoiler names from before identities (names.ts).
+   * Dropped on load by `ensureNames`.
    */
   hiddenAliases?: HiddenAlias[];
+  /** How their name splits (see names.ts); worked out from the name when missing. */
+  nameParts?: NameParts;
+  /**
+   * More than one identity (Tobi: persona "Tobi", claimed "Madara Uchiha",
+   * true "Obito Uchiha"), with who in the world knows each (names.ts).
+   */
+  identities?: Identity[];
+  /**
+   * What Kan knows of their name. Missing means he knows it (older saves, and
+   * anyone the story introduced by name). `{}` means nothing yet: he sees
+   * only their label.
+   */
+  known?: NameKnowledge;
+  /** The story has not given them a name yet: `name` is only their label. */
+  unnamed?: true;
   /**
    * "minor": a one-scene character (a bounty target, a shopkeeper). No bond
    * card and no portrait unless they come back in a second scene, which
@@ -652,6 +667,57 @@ export type Reunion = {
 };
 
 export type Gender = 'male' | 'female' | 'unknown';
+
+export type NameParts = { given?: string; family?: string; full?: string };
+
+export type NamePart = 'given' | 'family' | 'full' | 'identity';
+
+export type NameHow = 'introduced' | 'told' | 'written' | 'overheard' | 'recognised' | 'news' | 'start';
+
+export type FameLevel = 'sight' | 'heard' | 'unknown';
+
+export type IdentityKind = 'true' | 'claimed' | 'persona';
+
+export type IdentityKnower = {
+  /** Canon names or entity ids. */
+  who: string[];
+  /** From this milestone (in the world, not Kan's hearing of it). */
+  from?: string;
+  /** Or from this in-story date (Kan told them). */
+  on?: CalendarDate;
+  /** They know the truth but call him by the name he goes by (Zetsu). */
+  playsAlong?: boolean;
+  note?: string;
+};
+
+export type Identity = {
+  name: string;
+  kind: IdentityKind;
+  /** Kan learns this identity when one of these milestones reaches him. */
+  learnedWith?: string[];
+  /** Who in the world knows them by this name, and from when. */
+  knownBy?: IdentityKnower[];
+  /** Everyone knows it from this milestone ("start": from the beginning). */
+  publicFrom?: string;
+  /** The identity exists only from this milestone (Tobi's act). */
+  existsFrom?: string;
+  /** Once this milestone has happened, the name reads differently (Masked Madara). */
+  renamed?: { after: string; name: string };
+  /** false: never added to aliases for matching (a name another person owns). */
+  alias?: false;
+  /** For the narrator only. */
+  note?: string;
+};
+
+export type NameKnowledge = {
+  /** A short description for someone Kan cannot name yet ("the red-haired girl"). */
+  label?: string;
+  given?: boolean;
+  family?: boolean;
+  /** Names of the identities he has learned. */
+  identities?: string[];
+  history?: { name: string; part: NamePart; how: NameHow; date: CalendarDate }[];
+};
 
 export type HiddenAlias = {
   name: string;
@@ -1077,6 +1143,10 @@ export type TurnDiff = {
     minor?: boolean;
     /** Who they are drawn to: men, women, both, none, or unknown. */
     attractedTo?: 'men' | 'women' | 'both' | 'none' | 'unknown';
+    /** A short description of how they look to Kan, for someone he cannot name. */
+    label?: string;
+    /** false: Kan doesn't know their name yet (a stranger: `name` is then only their label). */
+    nameKnown?: boolean;
   }[];
   jutsuUsed?: {
     name: string;
@@ -1180,6 +1250,10 @@ export type TurnDiff = {
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday Kan learned this turn (they said it, someone told him). */
   birthdaysLearned?: { entityId?: string; name: string }[];
+  /** Names Kan heard, read or recognised this turn (names.ts). */
+  namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
+  /** Someone in the scene learned another identity of a person (Kan told Deidara who Tobi is). */
+  namesTold?: { entityId?: string; character: string; name: string; toldTo: string[] }[];
   /** Villages whose bingo-book entry on Kan he saw or was told of this turn. */
   bountySeen?: VillageFaction[];
   /** Grudges started, acted on, settled or forgiven this turn. */

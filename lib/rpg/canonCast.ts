@@ -1,6 +1,8 @@
 import { CAST_ADDITIONS } from './canonCastMore';
+import { IDENTITIES } from './nameData';
+import { castKnowledge } from './names';
 import { loreProfileFor, romanceFor } from './romance';
-import type { EntityRecord, Gender, HiddenAlias } from './types';
+import type { EntityRecord, Gender } from './types';
 
 /**
  * The canon cast, loaded into every save from the start: the main players,
@@ -34,8 +36,6 @@ import type { EntityRecord, Gender, HiddenAlias } from './types';
 export type CastEntry = {
   name: string;
   aliases: string[];
-  /** Spoiler names: never matched, shown or sent until revealed (see HiddenAlias). */
-  hiddenAliases?: HiddenAlias[];
   /** Every person has one; `birthdayInvented` marks the few canon never gives. */
   birthday?: { month: number; day: number };
   birthdayInvented?: boolean;
@@ -250,11 +250,7 @@ const BASE_CAST: CastEntry[] = [
   {
     name: 'Pain',
     aliases: ['Six Paths of Pain', 'Deva Path', 'Asura Path', 'Animal Path', 'Human Path', 'Preta Path', 'Naraka Path'],
-    // The Leaf learns who is behind the six bodies when Pain falls there.
-    hiddenAliases: [
-      { name: 'Nagato', revealedBy: 'pain-assault' },
-      { name: 'Nagato Uzumaki', revealedBy: 'pain-assault' },
-    ],
+    // Who is behind the six bodies is an identity (nameData.ts): the Leaf learns it when Pain falls there.
     birthday: { month: 9, day: 19 },
     birthYear: -15,
     role: 'Akatsuki leader',
@@ -266,17 +262,15 @@ const BASE_CAST: CastEntry[] = [
   {
     // Named Tobi, not "Masked man": "the masked man" is ordinary description
     // (Kakuzu wears a mask too) and must never land on him.
+    // His three identities (Tobi, the Madara he claims to be, Obito) and who
+    // knows which are in nameData.ts.
     name: 'Tobi',
     aliases: [],
-    hiddenAliases: [
-      { name: 'Obito Uchiha', revealedBy: 'obito-unmasked' },
-      { name: 'Obito', revealedBy: 'obito-unmasked' },
-    ],
     birthday: { month: 2, day: 10 },
     birthYear: -9,
     role: 'Akatsuki’s hidden hand',
-    personality: 'Secretive and manipulative; hides his true self.',
-    speechStyle: 'Low and controlled; later playful as Tobi.',
+    personality: 'Two faces: a silly, cowardly act and a cold, controlled self.',
+    speechStyle: 'Low and cold; in his act high, goofy, third person.',
     appearance: 'Black cloak, an orange swirl mask with one eyehole showing a Sharingan.',
     tags: ['canon', 'akatsuki', 'uchiha'],
   },
@@ -1283,7 +1277,9 @@ export function castEntity(entry: CastEntry, id: string): EntityRecord {
     name: entry.name,
     type: 'character',
     aliases: [...entry.aliases],
-    ...(entry.hiddenAliases?.length ? { hiddenAliases: entry.hiddenAliases.map((alias) => ({ ...alias })) } : {}),
+    ...(IDENTITIES[entry.name] ? { identities: IDENTITIES[entry.name].map((identity) => ({ ...identity, knownBy: identity.knownBy?.map((knower) => ({ ...knower, who: [...knower.who] })) })) } : {}),
+    // What Kan knows of their name at the start (names.ts): most canon people only by sight.
+    ...(castKnowledge(entry.name) ? { known: castKnowledge(entry.name) } : {}),
     ...(entry.birthday ? { birthday: { ...entry.birthday } } : {}),
     ...(entry.birthdayInvented ? { birthdayInvented: true } : {}),
     ...(entry.birthYear !== undefined ? { birthYear: entry.birthYear } : {}),
@@ -1362,14 +1358,6 @@ export function ensureCanonCast(
       };
     }
 
-    if (entry.hiddenAliases?.length && !next[index].hiddenAliases) {
-      const shown = new Set(namesOf(next[index]));
-      const hidden = entry.hiddenAliases.filter((alias) => !shown.has(lower(alias.name)));
-
-      if (hidden.length > 0) {
-        next[index] = { ...next[index], hiddenAliases: hidden.map((alias) => ({ ...alias })) };
-      }
-    }
   }
 
   return next;

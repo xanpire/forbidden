@@ -23,6 +23,7 @@
 // turn, so a regenerate gets the same offer.
 
 import { daysBetween } from './calendar';
+import { displayName, narratorName } from './names';
 import { isCombatPace } from './canon';
 import { isCompanion } from './companions';
 import { isDeceased } from './deaths';
@@ -153,7 +154,7 @@ function startGrudge(db: AppDatabase, entity: EntityRecord, heat: number, reason
   next = applyFactDiff(next, {
     action: 'add',
     type: 'other',
-    text: `${entity.name} holds a grudge against you: ${grudge.reason}`,
+    text: `${displayName(db, entity)} holds a grudge against you: ${grudge.reason}`,
     subject: entity.name,
     whoKnows: [entity.name],
   });
@@ -164,10 +165,10 @@ function startGrudge(db: AppDatabase, entity: EntityRecord, heat: number, reason
 function endGrudge(db: AppDatabase, entity: EntityRecord, how: 'let-go' | 'settled' | 'forgiven' | 'died', reason?: string) {
   let next = setGrudge(db, entity.id, undefined);
   const outcome: Record<typeof how, string> = {
-    'let-go': `${entity.name} let go of their grudge against Kan.`,
-    settled: `${entity.name}'s grudge against Kan was settled${reason ? `: ${reason}` : '.'}`,
-    forgiven: `${entity.name} forgave Kan${reason ? `: ${reason}` : '.'}`,
-    died: `${entity.name} died still holding a grudge against Kan.`,
+    'let-go': `${displayName(db, entity)} let go of their grudge against Kan.`,
+    settled: `${displayName(db, entity)}'s grudge against Kan was settled${reason ? `: ${reason}` : '.'}`,
+    forgiven: `${displayName(db, entity)} forgave Kan${reason ? `: ${reason}` : '.'}`,
+    died: `${displayName(db, entity)} died still holding a grudge against Kan.`,
   };
 
   next = applyThreadDiff(next, {
@@ -482,7 +483,7 @@ export function formatGrudgeOffer(db: AppDatabase, offer: GrudgeOffer | null): s
 
   return [
     `SOMEONE WANTS YOU TO PAY (${offer.pressed ? 'it has waited too long: bring it in this turn unless it truly cannot fit' : 'optional'})`,
-    `${entity.name}${role}, ${stage === 'hunting' ? 'is hunting you' : 'wants revenge'}. They have held this grudge for ${since}: ${grudge.reason} ${last}`,
+    `${narratorName(db, entity)}${role}, ${stage === 'hunting' ? 'is hunting you' : 'wants revenge'}. They have held this grudge for ${since}: ${grudge.reason} ${last}`,
     `This turn it could come as ${offer.style}.`,
     stage === 'hunting'
       ? 'Show it on the page in their own way and at their canon power. It is this turn\'s encounter; it can be fought, escaped, talked down, or turned around. It does not end the grudge unless the story truly settles it.'

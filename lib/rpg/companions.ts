@@ -6,6 +6,7 @@
 // time together slowly builds familiarity on top.
 
 import { applyBondDiff } from './bonds';
+import { displayName } from './names';
 import { daysBetween } from './calendar';
 import { isDeceased } from './deaths';
 import { applyFactDiff } from './facts';
@@ -111,7 +112,7 @@ export function startCompanion(db: AppDatabase, entityId: string, reason?: strin
   next = applyFactDiff(next, {
     action: 'add',
     type: 'event',
-    text: `${entity.name} began travelling with you${cleanReason ? ` (${cleanReason})` : ''}.`,
+    text: `${displayName(next, entity)} began travelling with you${cleanReason ? ` (${cleanReason})` : ''}.`,
     subject: entity.name,
     whoKnows: ['Kan', entity.name],
   });
@@ -138,7 +139,7 @@ export function endCompanion(db: AppDatabase, entityId: string, reason?: string)
   next = applyFactDiff(next, {
     action: 'add',
     type: 'event',
-    text: `${entity.name} parted ways with you after ${days <= 0 ? 'less than a day' : formatTogether(days)} together${cleanReason ? ` (${cleanReason})` : ''}.`,
+    text: `${displayName(next, entity)} parted ways with you after ${days <= 0 ? 'less than a day' : formatTogether(days)} together${cleanReason ? ` (${cleanReason})` : ''}.`,
     subject: entity.name,
     whoKnows: ['Kan', entity.name],
   });

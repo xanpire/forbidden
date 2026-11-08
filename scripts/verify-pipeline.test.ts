@@ -15,7 +15,8 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
-import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity, revealHiddenAliases } from '../lib/rpg/entities';
+import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity } from '../lib/rpg/entities';
+import { learnFromCanon } from '../lib/rpg/names';
 import { appendStoryMessage, cloneDatabase, storyMessagesSinceLastSummary } from '../lib/rpg/log';
 import { trimToSentence } from '../lib/rpg/util';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
@@ -492,7 +493,7 @@ describe('presence tracking and bonds ordering', () => {
 function hearCanon(db: AppDatabase, milestoneId: string): AppDatabase {
   const progress = db.state.canonProgress ?? { completed: [], active: [], engaged: [] };
 
-  return revealHiddenAliases({
+  return learnFromCanon({
     ...db,
     state: {
       ...db.state,
@@ -531,17 +532,17 @@ describe('Tobi identity resolution', () => {
     const tobi = db.entities.find((entity) => entity.name === 'Tobi')!;
 
     expect(tobi.aliases.map((alias) => alias.toLowerCase())).not.toContain('obito');
-    expect(tobi.hiddenAliases?.map((alias) => alias.name)).toContain('Obito Uchiha');
+    expect(tobi.identities?.map((identity) => identity.name)).toContain('Obito Uchiha');
     expect(resolveEntity(db, 'Obito')).toBeNull();
     expect(resolveEntity(db, 'Obito Uchiha')).toBeNull();
 
-    // Never sent to a model before the reveal.
-    const prompts = [
-      buildNarrationPrompt(db, '*Tobi watches you.*'),
-      buildExtractionPrompt(db, '*Tobi watches you.*', 'Pain and Tobi watch.'),
-    ].flatMap((prompt) => prompt.messages.map((message) => message.content)).join('\n');
-    expect(prompts).not.toContain('Obito');
-    expect(prompts).not.toContain('Nagato');
+    // The narrator never sees it unless he is in the scene (then only as a
+    // narrator-only truth); the state tracker sees true identities.
+    const narration = buildNarrationPrompt(db, '*You watch the rain.*').messages.map((message) => message.content).join('\n');
+    expect(narration).not.toContain('Obito');
+    expect(narration).not.toContain('Nagato');
+    const tracker = buildExtractionPrompt(db, '*You watch.*', 'Rain falls.').messages.map((message) => message.content).join('\n');
+    expect(tracker).toContain('Obito Uchiha (true)');
 
     // Kakashi's dead teammate, named in the story, is someone else for now.
     db = applyEntityDiff(db, { isNew: true, name: 'Obito Uchiha', role: "Kakashi's fallen teammate" });
@@ -552,7 +553,7 @@ describe('Tobi identity resolution', () => {
     const revealed = hearCanon(loadSave(), 'obito-unmasked');
     const after = revealed.entities.find((entity) => entity.name === 'Tobi')!;
     expect(after.aliases).toContain('Obito Uchiha');
-    expect(after.hiddenAliases).toBeUndefined();
+    expect(after.known?.identities).toContain('Obito Uchiha');
     expect(resolveEntity(revealed, 'Obito')?.id).toBe(after.id);
   });
 
@@ -2977,13 +2978,14 @@ describe('news delivery: bearers, styles, escalation, catch-up', () => {
     };
     const offer = newsOffer(db)!;
     expect(offer.mode).toBe('single');
-    expect(offer.items[0].sceneBearers.some((label) => label.startsWith('Kakuzu'))).toBe(true);
+    // Kan hasn't learned his name here, so he is offered by his look (the name is for the narrator only).
+    expect(offer.items[0].sceneBearers.some((label) => label.includes('narrator only: Kakuzu'))).toBe(true);
     // Hana is a Leaf shinobi: she could not know Akatsuki business.
     expect(offer.items[0].sceneBearers.some((label) => label.startsWith('Hana'))).toBe(false);
     expect(offer.items[0].otherBearers).not.toContain('Kakuzu');
 
     const prompt = buildNarrationPrompt(db, '*Kan listens.*').messages.map((m) => m.content).join('\n');
-    expect(prompt).toContain('In the scene: Kakuzu');
+    expect(prompt).toContain('In the scene: the masked man with stitched arms [Kan doesn\'t know their name; narrator only: Kakuzu]');
     expect(prompt).toContain('Delivery this time:');
   });
 
@@ -3342,7 +3344,11 @@ describe('the wider canon cast', () => {
     const db = loadSave();
     const names = new Set(
       db.entities
-        .flatMap((entity) => [entity.name, ...entity.aliases, ...(entity.hiddenAliases ?? []).map((alias) => alias.name)])
+        .flatMap((entity) => [
+          entity.name,
+          ...entity.aliases,
+          ...(entity.identities ?? []).filter((identity) => identity.alias !== false).flatMap((identity) => [identity.name, identity.name.split(' ')[0]]),
+        ])
         .map((name) => name.toLowerCase())
     );
     const missing = CANON_MILESTONES.flatMap((milestone) => milestone.deaths ?? []).filter(

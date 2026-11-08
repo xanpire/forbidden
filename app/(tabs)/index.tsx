@@ -79,6 +79,7 @@ import {
   rememberChip,
 } from '@/lib/rpg/flashbacks';
 import type { SceneModeName } from '@/lib/rpg/types';
+import { displayName } from '@/lib/rpg/names';
 
 type StoryMessage = {
   id: string;
@@ -1081,7 +1082,7 @@ export default function StoryScreen() {
               {db && companionsOf(db).length > 0 ? (
                 <ListRow
                   meta="Travelling with you"
-                  title={companionsOf(db).map((entity) => entity.name).join(', ')}
+                  title={companionsOf(db).map((entity) => displayName(db, entity)).join(', ')}
                 />
               ) : null}
               <ListRow meta={`Chapter ${state.chapter}`} title={state.scene} />

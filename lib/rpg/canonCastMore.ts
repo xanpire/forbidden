@@ -355,7 +355,7 @@ export const CAST_ADDITIONS: CastEntry[] = [
     name: 'Nine-Tails',
     aliases: ['Nine-Tailed Fox', 'Kyūbi', 'Kyubi'],
     // The world only says "the Nine-Tails" until Naruto learns its name.
-    hiddenAliases: [{ name: 'Kurama', revealedBy: 'naruto-joins-war' }],
+    // "Kurama" is an identity Kan learns in the war (nameData.ts).
     role: 'Tailed beast sealed in Naruto (the Yang half; the Yin half in Minato’s seal)',
     personality: 'Full of hatred and contempt for humans at first; a slow, grudging friendship with Naruto later.',
     speechStyle: 'Deep, growling and mocking.',

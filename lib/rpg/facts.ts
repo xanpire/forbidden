@@ -1,6 +1,7 @@
 // Permanent facts, plot threads and scene-end memories from a turn.
 
 import { dateSortValue, normalizeDate, shiftSeconds } from './calendar';
+import { displayName } from './names';
 import { kanKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
@@ -86,7 +87,12 @@ export function knowersOf(db: AppDatabase, names: string[]): { ids: string[]; gr
 
 /** The names of whoever knows a fact, for prompts and the Journal. */
 export function knowerNames(db: AppDatabase, fact: Pick<FactRecord, 'whoKnows' | 'whoKnowsGroups'>) {
-  const names = fact.whoKnows.map((id) => db.entities.find((entity) => entity.id === id)?.name ?? id);
+  // As Kan knows them: "the masked man", not a name he has never heard.
+  const names = fact.whoKnows.map((id) => {
+    const entity = db.entities.find((item) => item.id === id);
+
+    return entity ? displayName(db, entity) : id;
+  });
   const groups = (fact.whoKnowsGroups ?? []).map((tag) => tag.replace(/-/g, ' '));
 
   return [...names, ...groups];

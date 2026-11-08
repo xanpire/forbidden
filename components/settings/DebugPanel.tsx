@@ -365,6 +365,9 @@ function StateBlock({ turn }: { turn: DebugTurn }) {
         <>
           {state.error ? <Text style={styles.error}>{state.error}</Text> : null}
           {state.note ? <Text style={type.rowMeta}>{state.note}</Text> : null}
+          {state.nameLeaks?.length ? (
+            <Text style={styles.error}>{`Names Kan couldn't know yet, used outside dialogue: ${state.nameLeaks.join('; ')}`}</Text>
+          ) : null}
           {state.changes ? (
             state.changes.length === 0 ? (
               <Text style={type.rowMeta}>Nothing in the save changed.</Text>

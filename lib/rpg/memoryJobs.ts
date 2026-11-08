@@ -51,7 +51,8 @@ import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, applySceneBeat, cleanFightOptions } from './sceneMode';
-import { resolveEntity, revealHiddenAliases } from './entities';
+import { resolveEntity } from './entities';
+import { applyNameStep, displayName, nameLeaks } from './names';
 import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
   applyTurnDiff,
@@ -248,6 +249,8 @@ export type StateStepResult = {
   notice: string | null;
   /** The diff that was applied, after the app settled the clock. */
   appliedDiff: TurnDiff | null;
+  /** Names the narration used outside dialogue that Kan couldn't know (for the Debug panel). */
+  nameLeaks?: string[];
 };
 
 /**
@@ -364,8 +367,17 @@ export function applyStateStep(
   );
   next = markNewsHeard(next, relays, allowance);
   next = advanceCanon(next, { inCombat });
-  // A spoiler name Kan has now learned becomes an ordinary alias.
-  next = revealHiddenAliases(next);
+  // Names Kan heard, read or recognised this turn, and identities the world
+  // revealed to him (the mask breaking); labels for anyone he can't name.
+  const presentIds =
+    next.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneCastIds ??
+    (next.state.sceneCast ?? []).map((name) => resolveEntity(next, name)?.id).filter((id): id is string => Boolean(id));
+  next = applyNameStep(next, {
+    learned: extraction?.namesLearned,
+    told: extraction?.namesTold,
+    narration: turn.narration,
+    presentIds,
+  });
   // Canon-bound hearts whose time has come go to their canon partners.
   next = applyCanonEndgames(next);
 
@@ -422,7 +434,9 @@ export function applyStateStep(
 
     if (delivered) {
       const title = delivered.summary.split(':')[0].trim();
-      const from = relays[0].from?.trim() || 'a rumor';
+      const bearer = relays[0].from?.trim() ? resolveEntity(next, relays[0].from.trim()) : null;
+      // As Kan knows them; never an id or a name he hasn't learned.
+      const from = bearer ? displayName(next, bearer) : relays[0].from?.trim() || 'a rumor';
       notice = `${title} — from ${from}`.slice(0, 110);
 
       if (relays.length > 1) {
@@ -432,7 +446,10 @@ export function applyStateStep(
   }
 
   if (!notice && extraction?.lettersReceived?.length) {
-    notice = `A letter from ${extraction.lettersReceived[0].name}`;
+    const writer = extraction.lettersReceived[0].entityId
+      ? next.entities.find((entity) => entity.id === extraction.lettersReceived![0].entityId)
+      : resolveEntity(next, extraction.lettersReceived[0].name);
+    notice = `A letter from ${writer ? displayName(next, writer) : extraction.lettersReceived[0].name}`;
   }
 
   // Kan just learned what a village has on him.
@@ -475,7 +492,7 @@ export function applyStateStep(
     }
   }
 
-  return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
+  return { db: next, followUpIds, notice, appliedDiff: effectiveDiff, nameLeaks: nameLeaks(next, turn.narration) };
 }
 
 /**

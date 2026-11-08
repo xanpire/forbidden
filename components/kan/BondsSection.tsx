@@ -15,6 +15,7 @@ import { latestCharacterPortraitMap } from '@/lib/rpg/characterPortrait';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { upcomingBirthdays, type UpcomingBirthday } from '@/lib/rpg/yearly';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
+import { displayName, searchableNames } from '@/lib/rpg/names';
 
 type BondEntry = {
   entity: EntityRecord;
@@ -36,9 +37,9 @@ export function formatAffinity(affinity: number) {
 }
 
 /** "Hana · today", "Shisui · in 5 days (remembered)". */
-export function formatUpcomingBirthday(item: UpcomingBirthday) {
+export function formatUpcomingBirthday(item: UpcomingBirthday, db?: AppDatabase) {
   const when = item.inDays === 0 ? 'today' : item.inDays === 1 ? 'tomorrow' : `in ${item.inDays} days`;
-  const first = item.entity.name.split(' ')[0];
+  const first = (db ? displayName(db, item.entity) : item.entity.name).split(' ')[0];
 
   return `${first} · ${when}${item.dead ? ' (remembered)' : item.turning !== undefined ? `, turns ${item.turning}` : ''}`;
 }
@@ -159,9 +160,9 @@ export function BondsSection() {
           return true;
         }
 
+        // Only names you know: a hidden name must never find (or spoil) anyone.
         return (
-          entity.name.toLowerCase().includes(term) ||
-          entity.aliases.some((alias) => alias.toLowerCase().includes(term)) ||
+          searchableNames(db, entity).some((name) => name.toLowerCase().includes(term)) ||
           (bond?.status.toLowerCase().includes(term) ?? false)
         );
       })
@@ -201,14 +202,14 @@ export function BondsSection() {
 
   const renderRow = (entry: BondEntry) => (
     <ListRow
-      accessibilityLabel={`Open ${entry.entity.name}`}
+      accessibilityLabel={`Open ${displayName(db, entry.entity)}`}
       chevron
       key={entry.entity.id}
       leading={
         <Avatar
           dimmed={entry.dead}
           image={portraits.get(entry.entity.id) ?? null}
-          name={entry.entity.name}
+          name={displayName(db, entry.entity)}
         />
       }
       meta={bondSubtitle(entry, db)}
@@ -216,7 +217,7 @@ export function BondsSection() {
     >
       <View style={styles.nameRow}>
         <Text numberOfLines={1} style={[styles.name, entry.dead && styles.nameDead]}>
-          {entry.entity.name}
+          {displayName(db, entry.entity)}
         </Text>
         {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
         {entry.entity.companion && !entry.dead && query ? <Text style={styles.major}>With you</Text> : null}
@@ -239,7 +240,7 @@ export function BondsSection() {
       {!query && birthdays.length > 0 ? (
         <ListCard>
           <ListRow
-            body={birthdays.map(formatUpcomingBirthday).join('   ·   ')}
+            body={birthdays.map((item) => formatUpcomingBirthday(item, db)).join('   ·   ')}
             bodyLines={3}
             title="Upcoming birthdays"
           />

@@ -28,6 +28,7 @@
 // the same offer and the same road.
 
 import { applyBondDiff } from './bonds';
+import { displayName, displayNameOf } from './names';
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
 import { isCombatPace } from './canon';
 import { castWithCompanions } from './companions';
@@ -636,7 +637,7 @@ export function turnLetterOffer(db: AppDatabase): LetterOffer | null {
   return newsOffer(db)?.mode === 'catch-up' ? null : letterOffer(db);
 }
 
-export function formatLetterOffer(offer: LetterOffer | null, address?: string): string {
+export function formatLetterOffer(offer: LetterOffer | null, address?: string, writer?: string): string {
   if (!offer) {
     return '';
   }
@@ -658,7 +659,7 @@ export function formatLetterOffer(offer: LetterOffer | null, address?: string): 
   const life = offer.theirNews ? ` If it fits, they mention news of their own life: they ${offer.theirNews}.` : '';
 
   return [
-    `A LETTER FOR YOU (personal, from someone far away; never mid-fight). ${entity.name} has written to you${answering}.`,
+    `A LETTER FOR YOU (personal, from someone far away; never mid-fight). ${writer ?? entity.name} has written to you${answering}.`,
     address
       ? `It reaches you by ${offer.carrier}, or it was waiting for you at ${address}: they know you stay here.`
       : `It reaches you by ${offer.carrier}. You are a missing-nin with no address, so show how it found you; if nothing could have found you here, leave it for later.`,
@@ -884,7 +885,7 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
     next = applyFactDiff(next, {
       action: 'add',
       type: 'event',
-      text: `${entity.name} received a ${letter.occasion === 'birthday' ? 'birthday letter' : 'letter'} from you${letter.gist ? `: ${letter.gist}` : ''}.`,
+      text: `${displayName(db, entity)} received a ${letter.occasion === 'birthday' ? 'birthday letter' : 'letter'} from you${letter.gist ? `: ${letter.gist}` : ''}.`,
       subject: entity.name,
       whoKnows: [entity.name],
       validFrom: letter.arrivesOn,
@@ -952,17 +953,19 @@ export function letterArchive(db: AppDatabase): ArchivedLetter[] {
     .filter((letter) => (letter.direction === 'to-kan' ? letter.status === 'delivered' : true))
     .map((letter) => {
       let label: string;
+      // As you know them now (a stranger who later gave a name shows it).
+      const name = displayNameOf(db, letter.entityId, letter.name);
 
       if (letter.direction === 'to-kan') {
-        label = letter.occasion === 'birthday' ? `Birthday letter from ${letter.name}` : `From ${letter.name}`;
+        label = letter.occasion === 'birthday' ? `Birthday letter from ${name}` : `From ${name}`;
       } else if (letter.status === 'unsent') {
-        label = `To ${letter.name} · never sent`;
+        label = `To ${name} · never sent`;
       } else if (answered.has(letter.id)) {
-        label = `To ${letter.name} · answered`;
+        label = `To ${name} · answered`;
       } else if (letter.status === 'travelling') {
-        label = `To ${letter.name} · on its way`;
+        label = `To ${name} · on its way`;
       } else {
-        label = `To ${letter.name} · no answer yet`;
+        label = `To ${name} · no answer yet`;
       }
 
       if (letter.interceptedBy && discovered.has(letter.id)) {

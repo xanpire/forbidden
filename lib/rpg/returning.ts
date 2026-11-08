@@ -1,4 +1,5 @@
 import { daysBetween, entityAge } from './calendar';
+import { narratorName } from './names';
 import { isCombatPace } from './canon';
 import { CANON_CAST } from './canonCast';
 import { mentionsEntity } from './characterRefs';
@@ -241,7 +242,7 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
 
   const { entity, bond, daysAway, reason } = offer;
   const age = entityAge(db.state.inStoryDate, entity);
-  const who = [entity.name, age !== undefined ? `age ${age}` : '', clip(entity.role, 50)]
+  const who = [narratorName(db, entity), age !== undefined ? `age ${age}` : '', clip(entity.role, 50)]
     .filter(Boolean)
     .join(', ');
   const where = entity.lastSeenAt ? ` at ${localizePlaceNames(entity.lastSeenAt)}` : '';

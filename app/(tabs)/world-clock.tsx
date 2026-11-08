@@ -13,6 +13,7 @@ import { waitingConsequences } from '@/lib/rpg/consequences';
 import { livingBearers, newsOffer } from '@/lib/rpg/newsDelivery';
 import { useGame } from '@/lib/rpg/game';
 import type { CalendarDate } from '@/lib/rpg/types';
+import { displayNameOf } from '@/lib/rpg/names';
 
 const QUEUE_PREVIEW = 8;
 
@@ -207,7 +208,7 @@ export default function WorldClockScreen() {
                   ]
                     .filter(Boolean)
                     .join(' · ')}
-                  title={letter.direction === 'from-kan' ? `Your letter to ${letter.name}` : `${letter.name}'s reply to you`}
+                  title={letter.direction === 'from-kan' ? `Your letter to ${displayNameOf(db, letter.entityId, letter.name)}` : `${displayNameOf(db, letter.entityId, letter.name)}'s reply to you`}
                 />
               ))}
             </ListCard>

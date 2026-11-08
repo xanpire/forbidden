@@ -483,7 +483,7 @@ const CORE_MILESTONES: CanonMilestone[] = [
     location: 'the Hidden Rain Village',
     knowledge: 'akatsuki',
     facts: [
-      "The Akatsuki's roster is complete: Pain, Konan, Itachi, Kisame, Sasori, Deidara, Hidan, Kakuzu, Zetsu, and Tobi.",
+      "The Akatsuki's roster is complete: Pain, Konan, Itachi, Kisame, Sasori, Deidara, Hidan, Kakuzu, and Zetsu.",
     ],
   },
   {
@@ -965,6 +965,28 @@ const CORE_MILESTONES: CanonMilestone[] = [
     knowledge: 'akatsuki',
     deaths: ['Sasori'],
     facts: ['Sasori of the Red Sand was killed by Chiyo and Sakura Haruno.'],
+  },
+  {
+    // The masked man's act begins: from here the Akatsuki who only ever meet
+    // the act know him as Tobi (nameData.ts).
+    id: 'tobi-joins-akatsuki',
+    era: 'Shippuden',
+    title: 'Tobi joins the Akatsuki',
+    description:
+      "A new recruit in an orange swirl mask, who calls himself Tobi, takes Sasori's ring and becomes Deidara's partner: loud, clumsy, cheerful and cowardly, and a constant irritation to Deidara.",
+    canonPoint: "A masked recruit called Tobi has taken Sasori's place as Deidara's partner.",
+    from: { year: 21, month: 3 },
+    to: { year: 21, month: 9 },
+    region: 'Land of Rain',
+    location: 'an Akatsuki hideout',
+    knowledge: 'akatsuki',
+    facts: ["A masked recruit called Tobi took Sasori's ring and became Deidara's partner."],
+    encounter: {
+      who: 'Tobi and Deidara',
+      where: 'an Akatsuki hideout or a gathering of the rings',
+      context:
+        "If Kan is with the Akatsuki, he can meet the new recruit in person: a goofy, cheerful man in an orange swirl mask who talks about himself in the third person and pesters Deidara. Whether Kan sees through the act depends on what he already knows of the masked man.",
+    },
   },
   {
     id: 'naruto-sage-training',

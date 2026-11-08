@@ -24,6 +24,7 @@ import {
   unheardCanonNews,
   type UnheardNews,
 } from './canon';
+import { displayName, narratorName } from './names';
 import { BEARER_TENURE } from './canonData';
 import { daysBetween } from './calendar';
 import { castWithCompanions } from './companions';
@@ -112,10 +113,11 @@ export function couldKnow(db: AppDatabase, entity: EntityRecord, item: UnheardNe
   }
 }
 
-function bearerLabel(entity: EntityRecord) {
-  if (entity.companion) return `${entity.name} (travelling with you)`;
-  if (isOriginalCharacter(entity)) return `${entity.name} (here with you; someone you know)`;
-  return `${entity.name} (here with you)`;
+function bearerLabel(db: AppDatabase, entity: EntityRecord) {
+  const name = narratorName(db, entity);
+  if (entity.companion) return `${name} (travelling with you)`;
+  if (isOriginalCharacter(entity)) return `${name} (here with you; someone you know)`;
+  return `${name} (here with you)`;
 }
 
 /** Locals who carry public talk, by kind of place. */
@@ -129,7 +131,7 @@ function sceneBearersFor(db: AppDatabase, item: UnheardNews, present: EntityReco
     .filter((entity) => couldKnow(db, entity, item))
     // Companions first: they are the ones Kan talks to.
     .sort((a, b) => Number(Boolean(b.companion)) - Number(Boolean(a.companion)));
-  const labels = knowing.map(bearerLabel);
+  const labels = knowing.map((entity) => bearerLabel(db, entity));
   const local = item.knowledge === 'public' ? LOCAL_BEARERS[locationKindOf(db)] : undefined;
 
   return local ? [...labels, local] : labels;
@@ -259,7 +261,7 @@ function singleStyle(db: AppDatabase, item: OfferedNews, present: EntityRecord[]
   const knowingCompanion = present.find((entity) => entity.companion && couldKnow(db, entity, item));
 
   if (knowingCompanion) {
-    pool.push(`${knowingCompanion.name} bringing it up in passing, from word they picked up`);
+    pool.push(`${displayName(db, knowingCompanion)} bringing it up in passing, from word they picked up`);
   }
 
   // Overdue news cannot wait for a chance meeting: it comes looking for Kan.
@@ -278,7 +280,7 @@ function catchUpStyle(db: AppDatabase, present: EntityRecord[]): string {
   const pool = [...CATCH_UP_STYLES[locationKindOf(db)]];
 
   if (companion) {
-    pool.unshift(`${companion.name} catching you up over a fire on everything they have heard`);
+    pool.unshift(`${displayName(db, companion)} catching you up over a fire on everything they have heard`);
   }
 
   return pick(pool, `${turnSeed(db)}:catch-up`);
@@ -291,7 +293,12 @@ function offered(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): O
   return {
     ...item,
     sceneBearers: sceneBearersFor(db, item, present),
-    otherBearers: livingBearers(db, item, present),
+    // As Kan knows them: the masked man is not "Tobi" to him before he hears it.
+    otherBearers: livingBearers(db, item, present).map((name) => {
+      const entity = db.entities.find((person) => person.type === 'character' && person.name === name);
+
+      return entity ? narratorName(db, entity) : name;
+    }),
     urgency: newsUrgency(item),
   };
 }

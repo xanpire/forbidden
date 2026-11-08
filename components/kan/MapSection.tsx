@@ -40,6 +40,7 @@ import {
   whoKnows,
 } from '@/lib/rpg/safehouses';
 import type { Safehouse } from '@/lib/rpg/types';
+import { displayName } from '@/lib/rpg/names';
 
 type Selection = { kind: 'place'; id: string } | { kind: 'region'; id: Region };
 
@@ -225,6 +226,7 @@ function WorldBoard({
 
 function PersonRows({ entries }: { entries: KnownWhereabouts[] }) {
   const router = useRouter();
+  const { db } = useGame();
 
   return (
     <ListCard>
@@ -235,7 +237,7 @@ function PersonRows({ entries }: { entries: KnownWhereabouts[] }) {
           key={entry.entity.id}
           meta={entry.detail}
           onPress={() => router.push({ pathname: '/bond/[id]', params: { id: entry.entity.id } })}
-          title={entry.entity.name}
+          title={db ? displayName(db, entry.entity) : entry.entity.name}
         />
       ))}
     </ListCard>
@@ -489,7 +491,7 @@ export function MapSection() {
           title={localizePlaceNames(db.state.location)}
         />
         {withYou.length > 0 ? (
-          <ListRow meta="Travelling with you" title={withYou.map((entry) => entry.entity.name).join(', ')} />
+          <ListRow meta="Travelling with you" title={withYou.map((entry) => displayName(db, entry.entity)).join(', ')} />
         ) : null}
       </ListCard>
 

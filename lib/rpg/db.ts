@@ -5,6 +5,7 @@ import { normalizeReputation } from './reputation';
 import { normalizeRenown } from './renown';
 import { normalizeConsequences } from './consequences';
 import { normalizeDeaths } from './deaths';
+import { ensureNames } from './names';
 import { knowersOf } from './facts';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
@@ -531,7 +532,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized))));
+  const withDeaths = ensureNames(dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized)))));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;
@@ -701,6 +702,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     flashbacks: normalizeFlashbacks(state.flashbacks),
     safehouses: normalizeSafehouses(state.safehouses),
     purse: normalizePurse(state.purse),
+    namesVersion: typeof state.namesVersion === 'number' ? state.namesVersion : undefined,
   };
 }
 

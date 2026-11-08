@@ -19,6 +19,7 @@ import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatT
 import { kanKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
+import { alsoKnownAs, displayName, kanKnowsName } from '@/lib/rpg/names';
 
 function Chip({ label, accent }: { label: string; accent?: boolean }) {
   return (
@@ -60,6 +61,9 @@ export default function BondScreen() {
   }
 
   const age = entityAge(db.state.inStoryDate, entity);
+  // Only ever the name you know them by (names.ts).
+  const name = displayName(db, entity);
+  const otherNames = alsoKnownAs(db, entity);
   // Only once the story has told you: a death still on its way is not spoiled here.
   const dead = kanKnowsDeath(db, entity);
   const death = entity.deceased;
@@ -114,6 +118,7 @@ export default function BondScreen() {
     : null;
   const partyFull = !companion && companionsOf(db).length >= MAX_COMPANIONS;
   const details = [
+    { label: 'Also known as', value: otherNames.length > 0 ? otherNames.join(', ') : undefined },
     { label: 'Died', value: dead ? death?.cause : undefined },
     { label: 'Mood', value: dead || !hereNow ? undefined : entity.mood },
     {
@@ -223,7 +228,7 @@ export default function BondScreen() {
                 <ListRow
                   key={`${event.date.year}-${event.date.month}-${event.date.day}-${index}`}
                   meta={`${formatDayMonth(event.date)}, year ${event.date.year}`}
-                  title={`${entity.name.split(' ')[0]} ${event.text}`}
+                  title={`${kanKnowsName(entity) ? name.split(' ')[0] : name.charAt(0).toUpperCase() + name.slice(1)} ${event.text}`}
                 />
               ))}
             </ListCard>
@@ -272,7 +277,7 @@ export default function BondScreen() {
                   ) : null}
                   <ListRow
                     accessibilityLabel={
-                      companion ? `Part ways with ${entity.name}` : `Travel together with ${entity.name}`
+                      companion ? `Part ways with ${name}` : `Travel together with ${name}`
                     }
                     body={
                       companion
@@ -298,7 +303,7 @@ export default function BondScreen() {
             <SectionLabel>Same person?</SectionLabel>
             <ListCard>
               <ListRow
-                accessibilityLabel={`Merge ${entity.name} with someone else`}
+                accessibilityLabel={`Merge ${name} with someone else`}
                 body="If the story split one person into two, fold them back together."
                 chevron
                 leading={<GitMerge color={colors.textMuted} size={18} strokeWidth={2} />}
@@ -310,7 +315,7 @@ export default function BondScreen() {
             <SectionLabel>{dead ? 'Not really dead?' : 'Died in the story?'}</SectionLabel>
             <ListCard>
               <ListRow
-                accessibilityLabel={dead ? `Mark ${entity.name} as alive` : `Mark ${entity.name} as dead`}
+                accessibilityLabel={dead ? `Mark ${name} as alive` : `Mark ${name} as dead`}
                 body={
                   dead
                     ? 'If the story got this wrong, or they truly came back, bring them back.'

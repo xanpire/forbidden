@@ -16,6 +16,7 @@ import { Avatar } from '@/components/kan/BondsSection';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue } from '@/lib/rpg/calendar';
 import type { AppDatabase, EntityRecord } from '@/lib/rpg/types';
+import { alsoKnownAs, displayName, searchableNames } from '@/lib/rpg/names';
 
 type MergeSheetProps = {
   visible: boolean;
@@ -27,8 +28,9 @@ type MergeSheetProps = {
   onMerge: (keepId: string, dropId: string) => Promise<void>;
 };
 
-function otherNames(entity: EntityRecord) {
-  return entity.aliases.filter((alias) => alias.toLowerCase() !== entity.name.toLowerCase());
+/** Only names you know (names.ts): the sheet never shows or finds a hidden one. */
+function otherNames(db: AppDatabase, entity: EntityRecord) {
+  return alsoKnownAs(db, entity);
 }
 
 /** Shared words in two people's names: a likely duplicate floats to the top. */
@@ -74,7 +76,7 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
       .filter(
         (item) =>
           !term ||
-          [item.name, ...item.aliases].some((name) => name.toLowerCase().includes(term))
+          searchableNames(db, item).some((name) => name.toLowerCase().includes(term))
       )
       .sort((a, b) => {
         const overlap = nameOverlap(entity, b) - nameOverlap(entity, a);
@@ -95,7 +97,7 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
 
         return seen !== 0 ? seen : a.name.localeCompare(b.name);
       });
-  }, [db.entities, entity, query]);
+  }, [db, entity, query]);
 
   const choose = (item: EntityRecord) => {
     setTarget(item);
@@ -118,8 +120,9 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
     }
   };
 
-  const keepName = keepId === entity.id ? entity.name : target?.name;
-  const dropName = keepId === entity.id ? target?.name : entity.name;
+  const shown = (item: EntityRecord | null | undefined) => (item ? displayName(db, item) : undefined);
+  const keepName = keepId === entity.id ? shown(entity) : shown(target);
+  const dropName = keepId === entity.id ? shown(target) : shown(entity);
 
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
@@ -137,7 +140,7 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
 
           {!target ? (
             <>
-              <Text style={styles.title}>Who else is {entity.name}?</Text>
+              <Text style={styles.title}>Who else is {displayName(db, entity)}?</Text>
               <Text style={styles.body}>
                 Pick the person this is a duplicate of. Their bonds, memories and facts become one.
               </Text>
@@ -166,20 +169,20 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
                 ) : (
                   <ListCard>
                     {candidates.map((item) => {
-                      const names = otherNames(item).slice(0, 3).join(', ');
+                      const names = otherNames(db, item).slice(0, 3).join(', ');
                       const meta = [item.met === false ? 'Not met yet' : null, names || null]
                         .filter(Boolean)
                         .join(' · ');
 
                       return (
                         <ListRow
-                          accessibilityLabel={`Merge with ${item.name}`}
+                          accessibilityLabel={`Merge with ${displayName(db, item)}`}
                           chevron
                           key={item.id}
-                          leading={<Avatar name={item.name} size={34} />}
+                          leading={<Avatar name={displayName(db, item)} size={34} />}
                           meta={meta || null}
                           onPress={() => choose(item)}
-                          title={item.name}
+                          title={displayName(db, item)}
                           titleLines={1}
                         />
                       );
@@ -205,14 +208,14 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
 
                   return (
                     <ListRow
-                      accessibilityLabel={`Keep the name ${item.name}`}
+                      accessibilityLabel={`Keep the name ${displayName(db, item)}`}
                       accessibilityRole="switch"
                       accessibilityState={{ checked: selected }}
                       key={item.id}
-                      leading={<Avatar name={item.name} size={34} />}
+                      leading={<Avatar name={displayName(db, item)} size={34} />}
                       meta={item.met === false ? 'Not met yet' : (item.role ?? null)}
                       onPress={() => setKeepId(item.id)}
-                      title={item.name}
+                      title={displayName(db, item)}
                       titleLines={1}
                       trailing={
                         <View style={[styles.radio, selected && styles.radioOn]}>

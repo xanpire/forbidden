@@ -7,6 +7,8 @@ import type {
   FactType,
   LetterCarrierKind,
   LocationKind,
+  NameHow,
+  NamePart,
   ReputationFaction,
   SafehouseDiff,
   SafehouseKind,
@@ -114,6 +116,41 @@ export function convertStateBlock(
 
     if (learned.length > 0) {
       diff.birthdaysLearned = learned;
+    }
+  }
+
+  if (Array.isArray(block.names_learned)) {
+    const parts = new Set(['given', 'family', 'full', 'identity']);
+    const hows = new Set(['introduced', 'told', 'written', 'overheard', 'recognised']);
+    const learned = block.names_learned
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        character: cleanString(item.character_id) ?? '',
+        name: cleanString(item.name)?.slice(0, 60) ?? '',
+        part: (typeof item.part === 'string' && parts.has(item.part) ? item.part : 'full') as NamePart,
+        how: (typeof item.how === 'string' && hows.has(item.how) ? item.how : 'told') as NameHow,
+      }))
+      .filter((item) => item.character.length > 0 && item.name.length > 0 && item.character.toLowerCase() !== 'kan')
+      .slice(0, 6);
+
+    if (learned.length > 0) {
+      diff.namesLearned = learned;
+    }
+  }
+
+  if (Array.isArray(block.names_told)) {
+    const told = block.names_told
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({
+        character: cleanString(item.character_id) ?? '',
+        name: cleanString(item.name)?.slice(0, 60) ?? '',
+        toldTo: stringItems(item.told_to),
+      }))
+      .filter((item) => item.character.length > 0 && item.name.length > 0 && item.toldTo.length > 0)
+      .slice(0, 3);
+
+    if (told.length > 0) {
+      diff.namesTold = told;
     }
   }
 
@@ -632,6 +669,7 @@ export function convertStateBlock(
           ...(gender ? { gender } : {}),
           ...(attractedTo ? { attractedTo } : {}),
           ...((item as { minor?: unknown }).minor === true ? { minor: true } : {}),
+          ...((item as { name_known?: unknown }).name_known === false ? { nameKnown: false, label: typeof character.name === 'string' ? character.name : undefined } : {}),
         };
       })
       .filter((item) => item.name.trim().length > 0);

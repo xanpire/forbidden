@@ -171,6 +171,9 @@ export const TURN_STATE_SCHEMA = object({
     attracted_to: nullableEnum(ATTRACTED_TO),
     // A one-scene character: a target, a guard, a shopkeeper.
     minor: { type: 'boolean' },
+    // false for a stranger whose name Kan has not learned: name is then a
+    // short description of how they look to him ("the scarred ferryman").
+    name_known: { type: 'boolean' },
   }),
   // appearance: how they look right now (clothes, wet, bloodied, Sharingan
   // active). lasting_appearance: only a real lasting change to their base look.
@@ -274,6 +277,19 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People whose birthday Kan learned on the page this turn.
   birthdays_learned: stringList,
+  // Names Kan heard, read or recognised this turn, within his hearing or reading.
+  names_learned: list({
+    character_id: { type: 'string' },
+    name: { type: 'string' },
+    part: { type: 'string', enum: ['given', 'family', 'full', 'identity'] },
+    how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard', 'recognised'] },
+  }),
+  // Someone present learned another name a person goes by (Kan told Deidara who Tobi is).
+  names_told: list({
+    character_id: { type: 'string' },
+    name: { type: 'string' },
+    told_to: stringList,
+  }),
   // What a village (or the Akatsuki) now has on Kan, from deeds its people
   // saw or survived this turn; and villages whose entry on him he learned of.
   reputation: list({

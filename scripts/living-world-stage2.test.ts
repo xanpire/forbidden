@@ -157,7 +157,7 @@ describe('the new cast', () => {
     const end = at({ year: 36, month: 1, day: 1, hour: 9, minute: 0 });
     const names = new Set(
       end.entities
-        .flatMap((entity) => [entity.name, ...entity.aliases, ...(entity.hiddenAliases ?? []).map((alias) => alias.name)])
+        .flatMap((entity) => [entity.name, ...entity.aliases, ...(entity.identities ?? []).flatMap((identity) => [identity.name, identity.name.split(' ')[0]])])
         .map((name) => name.toLowerCase())
     );
     const missing = CANON_MILESTONES.flatMap((milestone) => milestone.deaths ?? []).filter((name) => !names.has(name.toLowerCase()));
@@ -173,7 +173,7 @@ describe('the new cast', () => {
     expect(fox.gender).toBe('unknown');
     expect(fox.romanceAccessibility).toBe('not-applicable');
     expect(fox.aliases).not.toContain('Kurama');
-    expect(fox.hiddenAliases?.map((alias) => alias.name)).toEqual(['Kurama']);
+    expect(fox.identities?.map((identity) => identity.name)).toEqual(['Nine-Tails', 'Kurama']);
     expect(resolveEntity(db, 'Kurama')).toBeNull();
     expect(resolveEntity(db, 'Nine-Tails')?.id).toBe(fox.id);
     for (const name of ['Moegi Kazamatsuri', 'Katsuyu', 'Shima']) {

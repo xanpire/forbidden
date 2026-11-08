@@ -33,6 +33,8 @@ import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
 import { isDeceased, kanKnowsDeath } from './deaths';
+import { resolveEntity } from './entities';
+import { alsoKnownAs, displayName, identitiesOf, identityLine, kanKnowsLine, kanKnowsName, labelOf, narratorName } from './names';
 import { companionsOf, daysTogether, formatTogether } from './companions';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
@@ -53,6 +55,7 @@ import {
 } from './flashbacks';
 import type {
   AppDatabase,
+  BondRecord,
   EntityRecord,
   EventRecord,
   FactRecord,
@@ -87,8 +90,13 @@ CANON
 - The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told him: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
 - Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When Kan writes to someone far away, show him send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene. Kan writes his letters himself: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
 - People live their own lives while Kan is away. A "since you last saw them" note says what changed for someone he meets again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
-- Tobi (the man in the orange swirl mask) is one person, whatever he calls himself. The Akatsuki know him as Madara; he never unmasks before Itachi or Kan, and Itachi dies believing it. Only those present when his mask breaks in the Fourth War, against Kakashi and Naruto, learn his real name; until the character notes give it, no one in the story knows it. The real Madara is a separate character who appears later. Other masked people (Kakuzu, ANBU) are not him.
-- Pain is one entity acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see; who controls them stays hidden until the character notes name him. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
+- The man in the orange swirl mask is one person, whatever he is called; his card in CHARACTERS IN SCENE says which identity he is using and who knows him as what. The real Madara is a separate character who appears later. Other masked people (Kakuzu, ANBU) are not him.
+- Pain is one entity acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
+
+NAMES
+- Narration calls people only by the name Kan knows (each card says it). Anyone he can't name gets the same short description every time ("the red-haired girl") until he learns the name: they give it, someone says it, a letter or document shows it, or he recognises someone famous by their look. Never force an introduction.
+- Characters say names aloud when they naturally would ("Tobi!", "Itachi-san"), each using the name THEY know the person by. A "narrator only" truth is never narrated or said by someone who couldn't know it.
+- If Kan says a name he couldn't know, he says it aloud and people react ("How do you know that name?").
 
 STYLE
 - Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
@@ -122,7 +130,9 @@ TIME: time.elapsed + time.unit is the in-story time this turn covered, read from
 
 PLACE: location, with location_kind, when Kan moves. location_kind: settlement (a village, town, camp or market), structure (inside or on a building: a tower, a cell, a shrine, a hideout), road (a road, bridge or trail), wilderness (forest, ravine, mountains, river, open land). Never put Kan in characters_present. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed. money: every change to your own money on the page, in ryō: amount negative when you pay, lose, give away or are robbed of money, positive when you are paid, given, find, win or take it; reason in a few words ("a room at the inn", "Kakuzu's cut of the bounty"). Someone else paying for you changes nothing, and money only talked about has not moved. Use the amount the prose names; if it names none, estimate it from PRICES; a payment is never more than the Purse in CURRENT STATE. money_counted: your total, only when the prose states exactly how much you have now; otherwise null. Money is never an inventory item. ${PRICE_GUIDE} weather: a few words only when the prose shows the weather change from WEATHER NOW (rain starts or stops, snow begins, fog rolls in or lifts, a storm breaks, a jutsu brings rain); otherwise null.
 
-PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. A description belongs to whoever the prose means by it ("the masked man" who is Kakuzu is kakuzu): never pick an id because its name looks like a description. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), and minor (true for a one-scene character: a target, a guard, a shopkeeper); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the eastern border"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, Sharingan active), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (an Akatsuki or mission partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. A description belongs to whoever the prose means by it ("the masked man" who is Kakuzu is kakuzu): never pick an id because its name looks like a description. new_characters is ONLY for a person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), minor (true for a one-scene character: a target, a guard, a shopkeeper), and name_known (false for a stranger the story gives no name yet: name is then a short description of how they look to you, like "the scarred ferryman"); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the eastern border"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, Sharingan active), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (an Akatsuki or mission partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
+
+NAMES: you see everyone's true identity and id; the notes say what name you (Kan) know each by. Every text you write (facts, notes, threads, letters, world_description) names people only as you knew them at that moment, or describes them ("the masked man"). names_learned: {character_id, name, part, how} only when a name is spoken, written or recognised within your hearing or reading this turn and you did not know it: part given, family, full, or identity (another name they go by: "Madara" for the masked man, "Obito" when his mask breaks); how introduced (they said it), told (someone else said it), written (a letter, a document, a poster), overheard, or recognised (the prose shows you could tell who someone famous is by their look). A name spoken out of your hearing never counts. names_told: {character_id, name, told_to} when someone present learns another name a person goes by, in front of you (you tell Deidara who Tobi really is). Otherwise [].
 
 COMPANIONS: people marked [travelling with Kan] are with him in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with Kan this turn (agrees to come along, is assigned as his partner, leaves with him), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to Kan: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
@@ -149,7 +159,7 @@ FLASHBACK: flashback is null unless a FLASHBACK, MEMORY or THIS TURN IS A MEMORY
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
 Write a 100-150 word summary of the supplied scene.
-- Second person, present tense: Kan is "you" ("You follow Itachi north"). Everyone else is named.
+- Second person, present tense: Kan is "you" ("You follow Itachi north"). Everyone else is named only by the name you knew them by at the time, as the scene does; someone you could not name stays described ("the masked man").
 - Concrete and specific.
 - No meta-text, no commentary, no greeting.
 - Mention the most important NPCs, your choices, and the consequences.
@@ -164,7 +174,7 @@ const ARC_SUMMARY_SYSTEM = `You are a story archivist for a long-running interac
 
 Combine the supplied chapter summaries into one compact arc summary.
 - 120-180 words.
-- Second person, present tense: Kan is "you". Everyone else is named.
+- Second person, present tense: Kan is "you". Everyone else is named only by the names you knew them by, as the summaries do.
 - Keep cause and effect clear.
 - Preserve names, dates, and major consequences.
 - No meta-text.
@@ -176,7 +186,7 @@ SUMMARY: the arc summary`;
 const TIME_SKIP_SYSTEM = `You are a time-skip narrator for a long-running interactive novel.
 
 Write 100-150 words describing what happened meanwhile during the supplied time skip.
-- Second person, present tense: Kan is "you". Everyone else is named.
+- Second person, present tense: Kan is "you". Everyone else is named only by the names you know them by.
 - Focus on your off-screen growth as Kan, NPC changes, and world movement.
 - Respect the facts and bonds provided.
 - No meta-text.
@@ -206,8 +216,11 @@ export function buildNarrationPrompt(
   );
   const entityText = [...recentMessages.map((message) => message.content), userMessage].join('\n');
   // Companions are in every scene, so their character cards always come along.
+  // The people actually present, then anyone named: a label ("the masked
+  // man") never matches a name in the text.
   const matchedEntityIds = new Set([
     ...companionsOf(db).map((entity) => entity.id),
+    ...sceneCastIdsOf(db),
     ...db.entities
       .filter((entity) => mentionsEntity(entityText, entity))
       .map((entity) => entity.id),
@@ -650,7 +663,7 @@ function formatCompanions(db: AppDatabase) {
         ? `; feels ${bond.affinity > 0 ? '+' : ''}${bond.affinity}/10 toward Kan${bond.relationship && bond.relationship !== 'stranger' ? ` (${bond.relationship})` : ''}${bond.note ? `: ${truncate(bond.note, 70)}` : ''}`
         : '';
 
-      return `- ${entity.name}: ${together}${how ? ` (${truncate(how, 80)})` : ''}, ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared${feeling}`;
+      return `- ${narratorName(db, entity)}: ${together}${how ? ` (${truncate(how, 80)})` : ''}, ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared${feeling}`;
     }),
   ].join('\n');
 }
@@ -665,6 +678,13 @@ function formatCompanionIds(db: AppDatabase) {
       ? companions.map((entity) => `${refByEntity.get(entity.id)} (${entity.name})`).join(', ')
       : 'nobody'
   }`;
+}
+
+/** The scene cast as entity ids. */
+function sceneCastIdsOf(db: AppDatabase): string[] {
+  return (db.state.sceneCast ?? [])
+    .map((name) => resolveEntity(db, name)?.id)
+    .filter((id): id is string => Boolean(id));
 }
 
 function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
@@ -695,11 +715,24 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     return pov ? `; remembers of you: "${truncate(pov, 120)}"` : '';
   };
 
+  const present = sceneCastIdsOf(db);
+  const known = (entity: EntityRecord) => {
+    const other = kanKnowsName(entity) ? alsoKnownAs(db, entity)[0] : undefined;
+    const card = kanKnowsName(entity) ? displayName(db, entity) : `${labelOf(db, entity)} [narrator only: ${entity.name}]`;
+
+    return `${card}${other ? ` (also called ${other})` : ''}`;
+  };
+  const truth = (entity: EntityRecord) => {
+    const line = identityLine(db, entity, present.includes(entity.id) ? present : [...present, entity.id]);
+
+    return `\n  ${kanKnowsLine(db, entity)}.${line ? `\n${line}` : ''}`;
+  };
+
   return [
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}${remembers(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
+        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
     ),
   ].join('\n');
 }
@@ -743,7 +776,11 @@ function formatCharacterRoster(db: AppDatabase) {
         isDeceased(entity) ? (kanKnowsDeath(db, entity) ? 'deceased' : 'deceased, Kan does not know yet') : null,
       ].filter(Boolean);
 
-      return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}`;
+      // People with more than one identity: the tracker sees them all.
+      const identities = identitiesOf(entity);
+      const truth = identities.length > 1 ? `; identities: ${identities.map((identity) => `${identity.name} (${identity.kind})`).join(', ')}` : '';
+
+      return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}${truth}`;
     }),
   ].join('\n');
 }
@@ -778,7 +815,9 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
         return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
       }
 
-      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with Kan]' : ''}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
+      const name = entity.name.toLowerCase() === 'kan' ? '' : `; ${kanKnowsName(entity) ? `you know them as ${displayName(db, entity)}` : `you don't know their name (you see "${labelOf(db, entity)}")`}`;
+
+      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with Kan]' : ''}${name}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
     }),
   ].join('\n');
 }
@@ -819,6 +858,13 @@ function formatBonds(db: AppDatabase) {
       .filter(isDeceased)
       .map((entity) => [entity.id, kanKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, Kan does not know yet]'])
   );
+  const people = new Map(db.entities.map((entity) => [entity.id, entity]));
+  // The name Kan knows them by, never the record's own name.
+  const bondName = (bond: BondRecord) => {
+    const entity = people.get(bond.entityId);
+
+    return entity ? narratorName(db, entity) : bond.characterName;
+  };
   const bonds = [...db.bonds]
     .filter((bond) => bond.isMajor || Math.abs(bond.affinity) >= 4 || bond.grudge)
     .sort((a, b) => b.affinity - a.affinity)
@@ -832,7 +878,7 @@ function formatBonds(db: AppDatabase) {
     'BONDS',
     ...bonds.map(
       (bond) =>
-        `- ${bond.characterName}${deadLabel.get(bond.entityId) ?? ''} (they feel ${bond.affinity}/10 toward you; you feel ${bond.yourFeelings?.affinity ?? bond.affinity}/10 toward them): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.yourFeelings?.note ? ` You: ${truncate(bond.yourFeelings.note, 60)}` : ''}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}${bond.grudge ? ` [grudge: ${grudgeStage(db, bond)}, ${truncate(bond.grudge.reason, 60)}]` : ''}`
+        `- ${bondName(bond)}${deadLabel.get(bond.entityId) ?? ''} (they feel ${bond.affinity}/10 toward you; you feel ${bond.yourFeelings?.affinity ?? bond.affinity}/10 toward them): ${truncate(bond.status ?? 'unknown', 50)}. ${truncate(bond.note, 80)}${bond.yourFeelings?.note ? ` You: ${truncate(bond.yourFeelings.note, 60)}` : ''}${bond.relationship ? ` [relationship: ${bond.relationship}${bond.attraction && bond.attraction !== 'none' ? `, attraction: ${bond.attraction}` : ''}]` : ''}${bond.grudge ? ` [grudge: ${grudgeStage(db, bond)}, ${truncate(bond.grudge.reason, 60)}]` : ''}`
     ),
   ].join('\n');
 }
@@ -856,7 +902,11 @@ function formatTheDead(db: AppDatabase) {
     ...dead.map((entity) => {
       const cause = entity.deceased?.cause ? `: ${truncate(entity.deceased.cause, 60)}` : '';
 
-      return `- ${entity.name}${cause}${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
+      // Someone Kan never met nor heard of has no label worth giving: the name stays the narrator's.
+      const name =
+        kanKnowsName(entity) || entity.met !== false ? narratorName(db, entity) : `${entity.name} (unknown to Kan)`;
+
+      return `- ${name}${cause}${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
     }),
   ].join('\n');
 }
@@ -993,7 +1043,7 @@ function formatLetterBlock(db: AppDatabase) {
   const offer = turnLetterOffer(db);
   const address = offer ? letterAddress(db, offer.entity.id) : null;
 
-  return formatLetterOffer(offer, address ? address.name : undefined);
+  return formatLetterOffer(offer, address ? address.name : undefined, offer ? narratorName(db, offer.entity) : undefined);
 }
 
 function formatCanonBlock(db: AppDatabase) {
@@ -1314,7 +1364,7 @@ function formatElsewhere(db: AppDatabase) {
     'ELSEWHERE (not in this scene; each is where it says unless the story moves them, and never in two places)',
     ...people.map(
       (entity) =>
-        `- ${entity.name}: ${entity.whereabouts ? truncate(entity.whereabouts, 70) : `last seen at ${truncate(entity.lastSeenAt ?? 'somewhere', 50)}`}`
+        `- ${narratorName(db, entity)}: ${entity.whereabouts ? truncate(entity.whereabouts, 70) : `last seen at ${truncate(entity.lastSeenAt ?? 'somewhere', 50)}`}`
     ),
   ].join('\n');
 }

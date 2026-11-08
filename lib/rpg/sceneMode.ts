@@ -18,6 +18,7 @@
 // the chip on the Story screen (`override`).
 
 import { resolveEntity } from './entities';
+import { displayName } from './names';
 import { characterRefs } from './characterRefs';
 import { isDeceased } from './deaths';
 import type {
@@ -116,7 +117,10 @@ function fightGoingOn(db: AppDatabase) {
 
 function partnerNames(db: AppDatabase, partners: string[]) {
   return partners
-    .map((partner) => db.entities.find((entity) => entity.id === partner)?.name ?? partner)
+    .map((partner) => {
+      const entity = db.entities.find((item) => item.id === partner);
+      return entity ? (entity.name.toLowerCase() === 'kan' ? entity.name : displayName(db, entity)) : partner;
+    })
     .filter((name) => name && name.toLowerCase() !== 'kan')
     .slice(0, 4);
 }

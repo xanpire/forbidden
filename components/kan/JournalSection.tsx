@@ -15,6 +15,7 @@ import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
 import { PurseCard } from '@/components/kan/PurseCard';
 import { ScrapbookView } from '@/components/kan/ScrapbookView';
+import { displayName } from '@/lib/rpg/names';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters' | 'scrapbook';
 
@@ -47,7 +48,7 @@ function peopleIn(db: AppDatabase, eventId: string) {
   return db.entities
     .filter((entity) => ids.includes(entity.id) && entity.type === 'character' && entity.name !== 'Kan')
     .slice(0, 2)
-    .map((entity) => entity.name);
+    .map((entity) => displayName(db, entity));
 }
 
 function ThreadRows({ threads }: { threads: ThreadRecord[] }) {

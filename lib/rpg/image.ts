@@ -1,4 +1,6 @@
 import { characterFaceOf, latestCharacterPortrait } from './characterPortrait';
+import { resolveEntity } from './entities';
+import { displayName } from './names';
 import { mentionsEntity } from './characterRefs';
 import { localizePlaceNames } from './glossary';
 import { completeChat, type CallUsage } from '../openrouter';
@@ -140,7 +142,7 @@ Read the narrator's latest reply and describe the single most visual moment from
 - Only people physically present in that moment. Include body positions, expressions, and any visible jutsu, weapon, or weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
 
-Then write a caption for the same moment, for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower.").
+Then write a caption for the same moment, for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). In the caption, call people only by the name you know them by (after "to you:"), or describe them.
 
 Output exactly two lines and nothing else:
 ACTION: <the action sentences>
@@ -187,7 +189,12 @@ export async function writeImageAction(
     reply.flashback ? '' : `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
     reply.flashback
       ? ''
-      : cast.length > 0 ? `Known people in the scene: ${cast.join(', ')}.` : 'Known people in the scene: none besides Kan.',
+      : cast.length > 0 ? `Known people in the scene: ${cast.map((name) => {
+          const entity = resolveEntity(db, name);
+          const known = entity ? displayName(db, entity) : name;
+
+          return known === name ? name : `${name} (to you: ${known})`;
+        }).join(', ')}.` : 'Known people in the scene: none besides Kan.',
     playerAction ? `What Kan's player wrote this turn: ${tailOf(playerAction, 600)}` : '',
     '',
     'NARRATOR REPLY:',

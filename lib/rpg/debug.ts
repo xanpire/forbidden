@@ -53,6 +53,8 @@ export type DebugStateStep = {
   error?: string;
   /** How the reply was read when the first attempt failed (retry, repair). */
   note?: string;
+  /** Names the narration used outside dialogue that Kan couldn't know yet. */
+  nameLeaks?: string[];
   at: number;
 };
 

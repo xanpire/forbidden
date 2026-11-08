@@ -13,6 +13,7 @@
 // - Offered, never forced: the narrator gets one line.
 
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
+import { displayName, narratorName } from './names';
 import { isCombatPace } from './canon';
 import { castWithCompanions } from './companions';
 import { isDeceased, kanKnowsDeath } from './deaths';
@@ -209,8 +210,8 @@ function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
       )
       .sort((a, b) => Number(here.has(b.id)) - Number(here.has(a.id)) || (bondOf(db, b.id)?.affinity ?? 0) - (bondOf(db, a.id)?.affinity ?? 0))
       .slice(0, 3);
-    const present = rememberers.filter((entity) => here.has(entity.id)).map((entity) => entity.name);
-    const far = rememberers.filter((entity) => !here.has(entity.id)).map((entity) => entity.name);
+    const present = rememberers.filter((entity) => here.has(entity.id)).map((entity) => narratorName(db, entity));
+    const far = rememberers.filter((entity) => !here.has(entity.id)).map((entity) => narratorName(db, entity));
     const who = [
       present.length ? `${present.join(' and ')} (here) might remember` : '',
       far.length ? `${far.join(' and ')} might send word from far away` : '',
@@ -222,7 +223,7 @@ function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
     const views = db.entities
       .filter((entity) => here.has(entity.id) && !rememberers.includes(entity) && BIRTHDAY_HABITS[entity.name])
       .slice(0, 2)
-      .map((entity) => `${entity.name} ${birthdayHabit(entity).note}`);
+      .map((entity) => `${narratorName(db, entity)} ${birthdayHabit(entity).note}`);
 
     offers.push({
       key: 'kan-birthday',
@@ -255,7 +256,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
           key: `remembrance:${entity.id}`,
           kind: 'remembrance',
           entity,
-          line: `It would have been ${entity.name}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.${sharedMemoryLine(db, entity)}`,
+          line: `It would have been ${narratorName(db, entity)}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.${sharedMemoryLine(db, entity)}`,
         });
       }
       continue;
@@ -269,14 +270,14 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
           key: `birthday:${entity.id}`,
           kind: 'birthday',
           entity,
-          line: `It is ${entity.name}'s birthday today${turns(age)}, and you know it. They ${habit.note}. If it fits, the day can come up; never force it.`,
+          line: `It is ${narratorName(db, entity)}'s birthday today${turns(age)}, and you know it. They ${habit.note}. If it fits, the day can come up; never force it.`,
         });
       } else if (habit.kind === 'announces' || habit.kind === 'ritual') {
         present.push({
           key: `birthday:${entity.id}`,
           kind: 'birthday-unknown',
           entity,
-          line: `It is ${entity.name}'s birthday today${turns(age)}, which you do not know. They ${habit.note}, so they may let it slip.`,
+          line: `It is ${narratorName(db, entity)}'s birthday today${turns(age)}, which you do not know. They ${habit.note}, so they may let it slip.`,
         });
       }
       continue;
@@ -288,7 +289,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
         key: `birthday:${entity.id}`,
         kind: 'birthday-absent',
         entity,
-        line: `It is ${entity.name}'s birthday today${turns(age)}, far from you. A passing thought of them would fit a quiet moment; a letter sent now would still reach them late.`,
+        line: `It is ${narratorName(db, entity)}'s birthday today${turns(age)}, far from you. A passing thought of them would fit a quiet moment; a letter sent now would still reach them late.`,
       });
     }
   }
@@ -473,7 +474,7 @@ export function todayNotes(db: AppDatabase): string[] {
   if (now.month === 1 && now.day === 1) notes.push("New Year's Day");
 
   for (const birthday of upcomingBirthdays(db, 0)) {
-    notes.push(birthday.dead ? `${birthday.entity.name}'s birthday (remembered)` : `${birthday.entity.name}'s birthday`);
+    notes.push(birthday.dead ? `${displayName(db, birthday.entity)}'s birthday (remembered)` : `${displayName(db, birthday.entity)}'s birthday`);
   }
 
   for (const festival of FESTIVALS) {

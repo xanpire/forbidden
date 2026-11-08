@@ -95,6 +95,20 @@ export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark)
  * since this is the app's own canon data) — so "Inoichi Yamanaka" can never land on Ino and "Shikaku
  * Nara" never on Shikamaru. People the save does not have are skipped.
  */
+/** Every name a person goes by in the app's own data, identities included (Nagato, Obito). */
+function identityNames(entity: EntityRecord): string[] {
+  // Never a name someone else owns (the masked man's claimed "Madara Uchiha").
+  const identities = (entity.identities ?? []).filter((identity) => identity.alias !== false);
+
+  return [
+    entity.name,
+    ...entity.aliases,
+    ...identities.map((identity) => identity.name),
+    ...identities.map((identity) => identity.name.split(/\s+/)[0]),
+    ...(entity.hiddenAliases ?? []).map((alias) => alias.name),
+  ];
+}
+
 export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMark): AppDatabase {
   let next = db;
 
@@ -103,11 +117,9 @@ export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMa
     const entity = next.entities.find(
       (item) =>
         item.type === 'character' &&
-        // Canon data, not story text: a spoiler name still finds its person
-        // ("Nagato" is Pain), without revealing it anywhere.
-        [item.name, ...item.aliases, ...(item.hiddenAliases ?? []).map((alias) => alias.name)].some(
-          (candidate) => candidate.trim().toLowerCase() === wanted
-        )
+        // Canon data, not story text: an identity Kan hasn't learned still
+        // finds its person ("Nagato" is Pain), without revealing it anywhere.
+        identityNames(item).some((candidate) => candidate.trim().toLowerCase() === wanted)
     );
 
     if (entity) {
@@ -183,7 +195,7 @@ export function normalizeDeaths(db: AppDatabase): AppDatabase {
       return entity;
     }
 
-    const eventId = [entity.name, ...entity.aliases, ...(entity.hiddenAliases ?? []).map((alias) => alias.name)]
+    const eventId = identityNames(entity)
       .map((name) => canonDeathEvent.get(name.toLowerCase()))
       .find(Boolean);
 

@@ -183,6 +183,30 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
+  // Names Kan learned belong to someone the save knows (a stranger added this
+  // turn included, by the label they were added under).
+  const freshId = (raw: string) => {
+    const ref = resolve(raw);
+    return ref?.entityId ? ref : ref ? { name: ref.name } : null;
+  };
+
+  if (diff.namesLearned) {
+    next.namesLearned = diff.namesLearned.flatMap((item) => {
+      const ref = freshId(item.entityId ?? item.character);
+
+      return ref ? [{ ...item, character: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
+  if (diff.namesTold) {
+    next.namesTold = diff.namesTold.flatMap((item) => {
+      const ref = resolve(item.entityId ?? item.character);
+      const toldTo = item.toldTo.map((raw) => resolve(raw)?.entityId).filter((id): id is string => Boolean(id));
+
+      return ref?.entityId && toldTo.length > 0 ? [{ ...item, character: ref.name, entityId: ref.entityId, toldTo }] : [];
+    });
+  }
+
   // Life events belong to people the save knows.
   if (diff.lifeEvents) {
     next.lifeEvents = diff.lifeEvents.flatMap((item) => {
@@ -218,8 +242,8 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
 //   Preta, Naraka) controlled by one hidden mind.
 // - Zetsu is one being split into Black Zetsu and White Zetsu halves.
 // Only names count, never descriptions ("the masked man" is how anyone in a
-// mask is described), and never a spoiler name kept in hiddenAliases.
-const FAKE_HINTS = ['tobi', 'fake madara'];
+// mask is described), and never an identity Kan has not learned (names.ts).
+const FAKE_HINTS = ['tobi', 'fake madara', 'masked madara'];
 
 const REAL_MADARA_HINTS = ['madara'];
 
@@ -379,6 +403,44 @@ function known(value: string | undefined) {
  * the automatic identity merge (Tobi / masked man, Pain / Nagato) and by
  * "Merge with…" on the bond screen.
  */
+/** A stranger's label, made unique so two look-alikes stay two people. */
+function strangerName(db: AppDatabase, raw: string) {
+  const base = /^(?:the|a|an)\s/i.test(raw) ? raw.replace(/^(?:a|an)\s/i, 'the ') : `the ${raw}`;
+  const taken = new Set(db.entities.map((entity) => entity.name.toLowerCase()));
+
+  if (!taken.has(base.toLowerCase())) {
+    return base;
+  }
+
+  for (let index = 2; index < 30; index += 1) {
+    if (!taken.has(`${base} (${index})`.toLowerCase())) {
+      return `${base} (${index})`;
+    }
+  }
+
+  return base;
+}
+
+/** Kan knows the merged person by everything he knew of either record. */
+function mergeKnown(keep: EntityRecord, drop: EntityRecord): EntityRecord['known'] {
+  const named = (entity: EntityRecord) => !entity.unnamed && entity.known === undefined;
+
+  if (named(keep) || named(drop)) {
+    return undefined;
+  }
+
+  const a = keep.known ?? {};
+  const b = drop.known ?? {};
+
+  return {
+    ...(a.label ?? b.label ? { label: a.label ?? b.label } : {}),
+    ...(a.given || b.given ? { given: true } : {}),
+    ...(a.family || b.family ? { family: true } : {}),
+    ...(a.identities || b.identities ? { identities: uniqueList([...(a.identities ?? []), ...(b.identities ?? [])]) } : {}),
+    ...(a.history || b.history ? { history: [...(a.history ?? []), ...(b.history ?? [])].slice(-12) } : {}),
+  };
+}
+
 export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string): AppDatabase {
   const keep = db.entities.find((entity) => entity.id === keepId);
   const drop = db.entities.find((entity) => entity.id === dropId);
@@ -408,16 +470,10 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     ...drop,
     ...keep,
     aliases,
-    ...(keep.hiddenAliases || drop.hiddenAliases
-      ? {
-          hiddenAliases: [...(keep.hiddenAliases ?? []), ...(drop.hiddenAliases ?? [])].filter(
-            (alias, index, list) =>
-              !aliases.some((shown) => shown.toLowerCase() === alias.name.toLowerCase()) &&
-              alias.name.toLowerCase() !== keep.name.toLowerCase() &&
-              list.findIndex((item) => item.name.toLowerCase() === alias.name.toLowerCase()) === index
-          ),
-        }
-      : {}),
+    // What Kan knew of either name carries over to the one person.
+    known: mergeKnown(keep, drop),
+    unnamed: keep.unnamed && drop.unnamed ? true : undefined,
+    identities: keep.identities ?? drop.identities,
     age: keep.age ?? drop.age,
     birthday: keep.birthday ?? drop.birthday,
     birthYear: keep.birthYear ?? drop.birthYear,
@@ -723,7 +779,10 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     : null;
   // Someone flagged as new is only a known person under a name they already
   // go by: "Haku the Fisherman" is not Haku, "Hayate Moriya" is not Hayate.
-  let existing = byId ?? resolveEntity(db, name, { exactOnly: entity.isNew === true });
+  // A stranger Kan cannot name yet is always someone new: their "name" is
+  // only how they look to him, and two strangers can look alike.
+  const stranger = !byId && entity.isNew === true && entity.nameKnown === false;
+  let existing = stranger ? null : (byId ?? resolveEntity(db, name, { exactOnly: entity.isNew === true }));
 
   // The real Madara must never be merged into the masked man entity.
   // (An exact ID from the state tracker is trusted as-is.)
@@ -747,14 +806,16 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   // Only someone the tracker flagged as new may be created; an update for a
   // person who cannot be found is dropped instead of becoming a duplicate.
   // A description ("the masked man") is never a new person either.
-  if (!existing && (entity.isNew === false || isGenericDescription(name))) {
+  if (!existing && (entity.isNew === false || (isGenericDescription(name) && !stranger))) {
     return db;
   }
 
   if (!existing) {
+    const label = stranger ? strangerName(db, entity.label?.trim() || name) : null;
     const newEntity = {
       id: makeId('entity'),
-      name,
+      name: label ?? name,
+      ...(label ? { unnamed: true as const, known: { label } } : {}),
       type: 'character' as const,
       aliases: [],
       birthYear:
@@ -792,7 +853,12 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   const nextMood = entity.mood?.trim() || existing.mood;
 
-  const hidden = new Set((existing.hiddenAliases ?? []).map((alias) => alias.name.toLowerCase()));
+  // An identity Kan has not learned (Obito, before the mask breaks) never becomes a matchable alias.
+  const hidden = new Set(
+    (existing.identities ?? [])
+      .filter((identity) => !existing.aliases.some((alias) => alias.toLowerCase() === identity.name.toLowerCase()))
+      .map((identity) => identity.name.toLowerCase())
+  );
   const extraAlias =
     name.toLowerCase() !== existing.name.toLowerCase() &&
     !isGenericDescription(name) &&
@@ -845,47 +911,4 @@ export function milestoneKnown(db: AppDatabase, milestoneId: string) {
       progress?.heard?.[milestoneId] ||
       progress?.engaged?.includes(milestoneId)
   );
-}
-
-/**
- * A spoiler name becomes an ordinary alias once its identity is revealed to
- * Kan (the milestone in `revealedBy`). Until then it is never matched in
- * story text, never shown and never sent to a model, because nothing reads
- * `hiddenAliases` except this.
- */
-export function revealHiddenAliases(db: AppDatabase): AppDatabase {
-  let changed = false;
-
-  const entities = db.entities.map((entity) => {
-    const hidden = entity.hiddenAliases;
-
-    if (!hidden?.length) {
-      return entity;
-    }
-
-    const revealed = hidden.filter((alias) => alias.revealedBy && milestoneKnown(db, alias.revealedBy));
-
-    if (revealed.length === 0) {
-      return entity;
-    }
-
-    changed = true;
-    const shown = new Set([entity.name, ...entity.aliases].map((name) => name.toLowerCase()));
-    const next: EntityRecord = {
-      ...entity,
-      aliases: [
-        ...entity.aliases,
-        ...revealed.map((alias) => alias.name).filter((name) => !shown.has(name.toLowerCase())),
-      ].slice(0, 12),
-      hiddenAliases: hidden.filter((alias) => !revealed.includes(alias)),
-    };
-
-    if (next.hiddenAliases?.length === 0) {
-      delete next.hiddenAliases;
-    }
-
-    return next;
-  });
-
-  return changed ? { ...db, entities } : db;
 }

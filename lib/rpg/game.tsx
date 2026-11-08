@@ -430,6 +430,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 status: extraction ? 'applied' : 'fallback',
                 diff: result.appliedDiff,
                 changes: describeStateChange(latest, result.db),
+                ...(result.nameLeaks?.length ? { nameLeaks: result.nameLeaks } : {}),
               });
               followUps.push(...result.followUpIds);
               notice = result.notice;

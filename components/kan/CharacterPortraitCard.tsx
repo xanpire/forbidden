@@ -22,6 +22,7 @@ import {
 import { recordDebugImage } from '@/lib/rpg/debug';
 import { pickImageFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
+import { displayName, kanKnowsName } from '@/lib/rpg/names';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { loadImage, useStoredImage } from '@/lib/rpg/imageStore';
 import { planReferences } from '@/lib/rpg/referencePlan';
@@ -56,6 +57,8 @@ export function CharacterPortraitCard({
 }) {
   const { db, apiKey, addCharacterPortrait, setCharacterFace, updateSettings } = useGame();
   const { showToast } = useToast();
+  // The name you know them by, never a hidden one (names.ts).
+  const name = db ? displayName(db, entity) : entity.name;
   const [busy, setBusy] = useState(false);
   const [savingFace, setSavingFace] = useState(false);
   const [viewing, setViewing] = useState(false);
@@ -82,7 +85,7 @@ export function CharacterPortraitCard({
     }
 
     if (alreadyPainted(latest, signature, Boolean(face))) {
-      showToast(`${entity.name}’s portrait already shows them as they are now.`);
+      showToast(`${name}’s portrait already shows them as they are now.`);
       return;
     }
 
@@ -146,13 +149,13 @@ export function CharacterPortraitCard({
 
       setSavingFace(true);
       await setCharacterFace(entity.id, picked);
-      showToast(`Face reference saved. Paint ${entity.name} to use it.`);
+      showToast(`Face reference saved. Paint ${name} to use it.`);
     } catch (caught) {
       showToast(caught instanceof Error ? caught.message : 'That image couldn’t be used.', 'error');
     } finally {
       setSavingFace(false);
     }
-  }, [entity.id, entity.name, setCharacterFace, showToast]);
+  }, [entity.id, name, setCharacterFace, showToast]);
 
   if (!db) {
     return null;
@@ -171,7 +174,7 @@ export function CharacterPortraitCard({
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Pressable
-          accessibilityLabel={`Open ${entity.name}'s portrait`}
+          accessibilityLabel={`Open ${name}'s portrait`}
           accessibilityRole="imagebutton"
           disabled={!latest}
           onPress={() => setViewing(true)}
@@ -179,7 +182,7 @@ export function CharacterPortraitCard({
         >
           <StoredImage
             fallback={
-              <Text style={styles.initial}>{entity.name.trim().charAt(0).toUpperCase() || '?'}</Text>
+              <Text style={styles.initial}>{(kanKnowsName(entity) ? name : '?').trim().charAt(0).toUpperCase() || '?'}</Text>
             }
             value={latest?.image ?? null}
           />
@@ -191,7 +194,7 @@ export function CharacterPortraitCard({
         </Pressable>
 
         <View style={styles.info}>
-          <Text style={type.pageTitle}>{entity.name}</Text>
+          <Text style={type.pageTitle}>{kanKnowsName(entity) ? name : name.charAt(0).toUpperCase() + name.slice(1)}</Text>
           {subtitle ? <Text style={type.rowBody}>{subtitle}</Text> : null}
           <View style={styles.spacer} />
           <View style={styles.statusRow}>
@@ -206,7 +209,7 @@ export function CharacterPortraitCard({
             </Text>
           </View>
           <Pressable
-            accessibilityLabel={latest ? `Repaint ${entity.name}` : `Paint ${entity.name}`}
+            accessibilityLabel={latest ? `Repaint ${name}` : `Paint ${name}`}
             accessibilityRole="button"
             accessibilityState={{ busy }}
             disabled={busy}
@@ -232,11 +235,11 @@ export function CharacterPortraitCard({
 
       <ListCard>
         <ListRow
-          accessibilityLabel={face ? `Replace ${entity.name}'s face reference` : `Add a face reference for ${entity.name}`}
+          accessibilityLabel={face ? `Replace ${name}'s face reference` : `Add a face reference for ${name}`}
           body={
             face
-              ? `Sent every time ${entity.name} is painted, so their face stays the same. Tap to replace it.`
-              : `Optional. Choose a picture of ${entity.name}'s face — for canon characters, an official image works best. It keeps them on-model and stays on this device.`
+              ? `Sent every time ${name} is painted, so their face stays the same. Tap to replace it.`
+              : `Optional. Choose a picture of ${name}'s face — for canon characters, an official image works best. It keeps them on-model and stays on this device.`
           }
           leading={
             <View style={styles.faceThumb}>
@@ -255,7 +258,7 @@ export function CharacterPortraitCard({
           trailing={
             face ? (
               <Pressable
-                accessibilityLabel={`Remove ${entity.name}'s face reference`}
+                accessibilityLabel={`Remove ${name}'s face reference`}
                 accessibilityRole="button"
                 hitSlop={8}
                 onPress={() => void setCharacterFace(entity.id, null)}
@@ -288,7 +291,7 @@ export function CharacterPortraitCard({
           {latest ? (
             <Text style={styles.viewerCaption}>
               {[
-                entity.name,
+                name,
                 latest.signature.age !== null ? `Age ${latest.signature.age}` : null,
                 `Painted ${formatDayMonth(latest.inStoryDate)}`,
               ]
