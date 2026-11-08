@@ -28,7 +28,12 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `newsDelivery.ts` | How news reaches Kan this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
 | `reputation.ts` | Bingo books and Akatsuki standing (`state.reputation`): `applyReputationChanges`, `ensureLeafListing`, `bingoListings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
 | `grudges.ts` | Grudges, the dark mirror of romance (`BondRecord.grudge`): `applyGrudgeChanges`, `grudgeStage`, `grudgeHeat`, `grudgeOffer` (SOMEONE WANTS YOU TO PAY), `GRUDGE_RULES` (§10a) |
-| `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit` |
+| `letters.ts` | Personal letters to and from Kan (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit`, `letterArchive`, `interceptionRisks`, `tidyLetter` (§8c) |
+| `geography.ts` | Regions and shinobi travel days from the geography lore: `regionOf`, `travelDaysBetween`, `whereaboutsRegion` (§8c) |
+| `lives.ts` | People with their own lives (§8c): `advanceLives`, `applyLifeEvents`, `markReunions`, `sinceYouLastSaw`, `reunionNotes`, `knownLife` |
+| `consequences.ts` | Delayed consequences (`state.consequences`, §8c): `plantSeed`, `applyConsequences`, `advanceConsequences`, `canReturn`, `consequenceOffer` (SOMETHING COMES BACK), `waitingConsequences` |
+| `renown.ts` | Deeds, rumours, posters and Kan's epithets (`state.renown`, §8c): `recordDeeds`, `applyEpithet`, `markEpithetsSeen`, `localEpithet`, `knownEpithets`, `rumourOffer` (TALK OF YOU), `posterLine` |
+| `povMemories.ts` | Memories from each person's point of view (`EventRecord.povs`, §8c): `povCandidates`, `parsePovLines`, `resolvePovs`, `povOf`, `latestPov` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -170,9 +175,12 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 {
   letters: [{
     id, direction: 'to-kan' | 'from-kan', entityId, name,
-    sentOn, arrivesOn, gist?, status: 'travelling' | 'delivered' | 'lost',
+    sentOn, arrivesOn, gist?, text?,           // text: the letter's words, for the archive
+    status: 'travelling' | 'delivered' | 'lost' | 'unsent',   // unsent: a letter to the dead
+    lostReason?, carrier?: 'bird'|'ninken'|'summon'|'courier'|'dead-drop'|'hand',
+    coded?, toRegion?, interceptedBy?: 'root'|'akatsuki'|village, occasion?: 'birthday',
     replyTo?, deliveredOn?
-  }],                            // everything travelling + the last 40 done
+  }],                            // everything travelling + the last 200 done with words + 40 without
   lastLetterIn?: CalendarDate    // when a letter last reached Kan
 }
 ```
@@ -192,6 +200,24 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   recent: [{ faction, change, reason?, date }]   // last 12
 }
 ```
+
+### `state.renown` and `state.consequences` (§8c)
+
+```ts
+renown: {
+  deeds: [{ id, date, text, faction?, region?, weight }],          // last 40
+  epithets: { leaf?|sand?|mist?|cloud?|stone?|akatsuki?|rain?|underworld?: {
+    name, since, theme /* or 'story' */, known, history?: [{ name, since }]
+  } }
+}
+consequences: [{
+  id, kind: 'spared'|'lie'|'helped'|'witness'|'betrayal'|'humiliated'|'promise'|'debt'|'intercepted',
+  createdOn, entityId?, who, what, want?, witnesses: string[], faction?, region?,
+  after, before, status: 'waiting'|'returned'|'faded', letterId?, offeredOn?, resolvedOn?
+}]                               // up to 24 waiting + 20 ended
+```
+
+`EntityRecord.lifeEvents?: [{ date, text, kind, source: 'world'|'story', known? }]` (last 8) and `EntityRecord.reunion?: { on, lastSeen, lastSeenAt?, seq? }`. `EventRecord.povs?: [{ entityId, text }]` (up to 3).
 
 `BondRecord.grudge?: { since, reason, heat, updatedOn, lastStrike?, strikes }` — set while that person holds a grudge against Kan (§10a).
 
@@ -215,7 +241,9 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   threads?: [{ action, title, description?, type?, participants? }],
   canonCompleted?: string[], canonEngaged?: string[], canonPassed?: string[],
   newsRelayed?: [{ id, from? }],
-  lettersSent?: [{ entityId?, name, gist? }], lettersReceived?: [{ entityId?, name }],
+  lettersSent?: [{ entityId?, name, gist?, text?, carrier?, coded? }], lettersReceived?: [{ entityId?, name, text? }],
+  lifeEvents?: [{ entityId?, name, text }], epithet?: { audience, name },
+  consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
   birthdaysLearned?: [{ entityId?, name }],
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
@@ -444,7 +472,7 @@ Everything about one event — when, where, who could know — sits in its one r
 
 - Not canon news: people Kan is close to write about their own lives. Everything is delivered on the page, never as an app notification.
 - **Unprompted**: once `LETTER_GAP_DAYS` (21) have passed since the last letter reached Kan (or the story began), the warmest `correspondents` candidate writes: a met, living person with affinity ≥ 5 (or a close/romantic/partner stage), not travelling with Kan, not in the scene, not seen for 10+ days, who has not written in 45 days and has no letter on the road.
-- **Kan writes**: `letters_sent: [{to, gist}]` (someone not in the scene) sets out with `travelDays` of 3–9 days. When it arrives (`deliverLetters`, every turn): +2 affinity (+1 if they are cold toward him), a fact that they received it, and — unless affinity is below −3 — a reply sets out that arrives 3–9 days later. A letter to someone who died is `lost`.
+- **Kan writes**: `letters_sent: [{to, gist, text, carrier, coded}]` (someone not in the scene) sets out for as long as the distance and carrier take (§8c). When it arrives (`deliverLetters`, every turn): +2 affinity (+1 if they are cold toward him, +1 for a birthday letter), a fact that they received it, and — unless affinity is below −3 — a reply sets out the same way. Interception, real losses, letters to the dead and the archive: §8c.
 - **Delivery**: `letterOffer` offers an arrived reply first (it waits while the writer is in the scene), else an unprompted letter; never in combat or during a catch-up report. The carrier fits the writer (Itachi's crow, Hana's ninken, Suzume's Team 3 cipher, Konan's paper butterfly, a Leaf hawk, an Akatsuki dead drop, or a generic courier/bird/dead drop). After 5 days waiting, the offer is pressed. `letters_received: [id]` marks it read and sets `lastLetterIn`.
 - The hidden world-clock screen lists letters on the road.
 
@@ -543,6 +571,48 @@ Living-world Stage 2. The narrator gets at most one `THE DAY` line per turn, nev
 - **Festivals** (`FESTIVALS`): canon (the Leaf's winter Rinne Festival) plus a couple invented per village (`invented`), matched to Kan's location; the Mist keeps its quietly until Mei is Mizukage, Paper Flower Day starts with the Rain stronghold. A leap-day birthday (Kabuto) is kept on Feb 28 in other years.
 - **UI**: an "Upcoming birthdays" card on the bonds list (next 30 days) and a "Today" row on the Journal's Now view (`todayNotes`).
 - Tests: `scripts/living-world-stage2.test.ts`.
+
+## 8c. People and consequences (living-world Stage 3)
+
+Five systems that build on each other. Each only reaches the narrator when it matters this turn, in a line or two. Tests: `scripts/living-world-stage3.test.ts`.
+
+**Geography** (`geography.ts`): coarse regions (a country or the land around a great village) and shinobi travel days between them, the same numbers as the GEOGRAPHY lore. `regionOf(text)` reads a place; `whereaboutsRegion(entity)` = what the story said (`whereabouts`), else where Kan last saw them, else their home village. Used by letters, rumours and consequences.
+
+**People with their own lives** (`lives.ts`, section 8)
+- `advanceLives` (every turn): side characters Kan has met (`isSideCharacter`: original characters, and canon people named in fewer than 3 world milestones, like Hana and Suzume) get a small `world` life event every 60–150 days while he is away: a hard mission, an injury, a posting, a new team, a skill. Romance, moves and promotions are for original characters only, so nothing touches a canon path. Deterministic per save and person; 8 kept each.
+- `life_events` (tracker): things the page said about someone's own life are kept as `story` events.
+- **Reunions** (`markReunions`, after the state step): meeting someone again after 30+ days apart sets `entity.reunion`. The next narrator turns get a "since you last saw them" note on their character card (`sinceYouLastSaw`, at most 2 per turn): fired canon milestones that name them, their life events since, how the era changed them, and, where canon is silent, room for one small change of the narrator's own (which the tracker then keeps). Those events become `known`.
+- A letter can carry news of the writer's life (`newsOfTheirLife`), which marks it known.
+- UI: a "Their life" list on the bond page (known events only).
+
+**Better letters** (`letters.ts`, section 9)
+- **Travel time** (`letterDays`): shinobi days between Kan's region and the reader's × carrier speed (summon 0.3, bird 0.5, ninken 0.9, by hand 1, courier 1.6, dead drop 1.8) plus a fixed 0–2 day jitter; 3–9 days when either end is unknown.
+- **Kan's words** (`tidyLetter`, `keepKansWords`): the tracker passes the letter as written; the app fixes spacing, capitals, "i" → "I" and a closing full stop, never wording or tone. Replies keep the words the narrator gave the writer (`letters_received[].text`).
+- **Archive** (`letterArchive`): the Journal's Letters view, newest first, tap to read the whole letter; "Never sent" below. 200 letters with words and 40 without are kept.
+- **Interception** (`interceptionRisks`, rolled once per letter): Root reads Leaf letters while Danzō lives (22%, else the Leaf 8%); the Akatsuki (Zetsu) reads letters to Akatsuki members (12%, 18% when Kan's standing is suspected/doubted); a village whose land the reader is in reads it when it lists Kan (6% + rank). Summons ×0.3, dead drops ×0.5, by hand ×0.2, coded ×0.5. An interception plants an `intercepted` consequence; a village sometimes seizes the letter outright.
+- **Real losses** (`lossOnTheRoad`, when due): wartime roads (25%), a lost bird / killed courier / cleared dead drop / lost trail (grows with distance), the reader moved on (their region changed since it set out), or the reader died.
+- **Letters to the dead**: `unsent`, kept, never delivered, no reply.
+- **Birthdays**: someone close and far away who knows Kan's birthday writes for it once a year (`birthdayWriter`); a letter Kan sends within 3 days of a close person's birthday is a birthday letter.
+- The world-clock screen shows each letter's carrier, coded, and who read it.
+
+**Rumours, posters and Kan's name** (`renown.ts`, section 10)
+- **Deeds** (`recordDeeds`): every `reputation` change the tracker reports is kept as a deed with where, when and whose people saw it (last 40).
+- **Epithets**: each audience (the five villages' bingo books, the Akatsuki, the Rain, the underworld) names Kan after the theme its deeds weigh most (12+ weight), never one the player picks. A new theme renames him only when it leads by 25% and the old name has stood 120 days; old names go to `history`. The Leaf's first word on him names him; the underworld picks names up from the bingo books. A name the story gives him (`epithet` from the tracker) sticks for that audience and is `known`. Seeing a bingo book (`bounty_seen`) teaches the village's name.
+- **Narrator**: one line in YOUR NAME OUT THERE with what strangers here call him (`localEpithet`, by territory), the wanted-poster line (`posterLine`: where a village lists him at B+; sketch poor at B, fair at A, good at S), and now and then (1 turn in 5, places where people talk) an optional TALK OF YOU rumour (`rumourOffer`): a deed whose news could have reached here by now, close to the truth nearby, grown with distance, a monster story far away.
+- UI: "What they call you" on the Journal's World view (known names only); the bingo-book rows show the village's name for him.
+
+**Delayed consequences** (`consequences.ts`, section 11)
+- **Seeds**: the tracker's `consequences` (spared, lie, helped, witness, betrayal, humiliated, promise, debt; who, what, want, witnesses, faction, when) plus interceptions. `when` sets when it can first return: weeks (14–41 days), months (45–164, the default), years (300–899); it fades `max(120, 3 × that)` days later.
+- **Coming back** (`canReturn`): only once the window opens, only if the person is alive, and only where it is realistic: lies, betrayals, promises and debts face to face (the person in the scene); spared or humiliated people on a road or in a town within 2.5 days of where they are; help repaid in the same region; an Akatsuki interception with an Akatsuki member present. A **witness** doesn't need to find Kan: when the time comes, they talk and that village's heat rises (`advanceConsequences`). Seeds fade when the window closes or the person dies.
+- **Offer**: one optional SOMETHING COMES BACK line (`turnConsequenceOffer`), never in a fight, pressed after 90 days eligible; canon figures carry "they stay on their canon path; this changes only how they see you". The tracker marks it `consequences_returned`.
+- **Notice**: "Hana will remember that." when a seed lands with someone important (`isImportant`) or a major bond swings by 3+.
+- UI: a "Could come back" list on the hidden world-clock screen.
+
+**Point-of-view memories** (`povMemories.ts`, section 12, fix 29)
+- No extra call: the scene summary asks for one line per person it mattered to (`povCandidates`: present, alive, not minor, a major bond, |affinity| ≥ 5 or a companion; up to 3), in their voice, to Kan as "you", limited to what they saw or heard. Stored as `EventRecord.povs`.
+- The narrator gets each person's latest line on their character card ("remembers of you"); the bond page shows "Their side" under each shared memory.
+
+**Prompt size**: on a quiet turn nothing new reaches the narrator; the 60-turn token sample settles at about 6,770 (6,670 after Stage 2).
 
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
@@ -738,6 +808,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Reputation & grudges (`scripts/enemies.test.ts`): Leaf listing timing, heat → rank/bounty, per-turn clamp, cooling floor, `bounty_seen`, territory lines, empty places, Akatsuki standing, hunter cadence; grudges from soured bonds and `wronged`, stewing, canon hunt cap, due/pressed/combat/in-scene offers, `struck`, let go / settled / death, schema and reload
 - Token stability over 60 turns
 - Scene modes (`scripts/scene-mode.test.ts`): input reading, instruction never flips it, lean then settle, small actions stay in, remark carries, leaving ends with a transition, group talk, 20 s conversation turns, attack → fight with options, ambush → fight, options cleared when it ends, overrides and their clearing, reload, prompt and schema
+- Living-world Stage 3 (`scripts/living-world-stage3.test.ts`): geography and whereabouts, letter travel time by distance and carrier, Kan's words kept and tidied, the archive, letters to the dead, Root and Akatsuki interception and safer carriers, interception seeds, real losses, birthday letters, side characters' lives (canon-safe), reunion notes, life events from the page and from letters, epithets per audience (growth, renaming, story names, bingo books), posters and distorted rumours, consequence seeds (window, crossing paths, lies face to face, witnesses talking, fading, offers, returned, the remember notice), point-of-view memories, quiet-turn prompt size
 - Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 

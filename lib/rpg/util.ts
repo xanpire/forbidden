@@ -121,7 +121,13 @@ export function firstSentences(text: string, count = 2, maxLength = 260): string
   return result.length > maxLength ? `${result.slice(0, maxLength).replace(/\s+\S*$/, '')}…` : result;
 }
 
-export type TitledSummary = { title: string | null; memory: string | null; summary: string };
+export type TitledSummary = {
+  title: string | null;
+  memory: string | null;
+  summary: string;
+  /** The raw POV: section (points of view, see povMemories.ts), when the reply had one. */
+  pov?: string;
+};
 
 /**
  * Reads a summary reply written as TITLE / MEMORY / SUMMARY lines. A reply
@@ -129,7 +135,7 @@ export type TitledSummary = { title: string | null; memory: string | null; summa
  */
 export function parseTitledSummary(raw: string): TitledSummary | null {
   const text = raw.replace(/\r/g, '').trim();
-  const label = /^\s*\**\s*(TITLE|MEMORY|SUMMARY)\s*\**\s*:\s*\**\s*/gim;
+  const label = /^\s*\**\s*(TITLE|MEMORY|SUMMARY|POV)\s*\**\s*:\s*\**\s*/gim;
   const marks = [...text.matchAll(label)];
 
   if (marks.length === 0) {
@@ -167,6 +173,7 @@ export function parseTitledSummary(raw: string): TitledSummary | null {
     title: title.length >= 2 ? title : null,
     memory: memory || null,
     summary,
+    ...(fields.POV ? { pov: fields.POV } : {}),
   };
 }
 

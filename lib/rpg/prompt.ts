@@ -15,7 +15,12 @@ import {
   hasHeardNews,
 } from './canon';
 import { formatNewsOffer, newsOffer, newsTrackingLines } from './newsDelivery';
-import { formatLetterOffer, letterOffer, letterTrackingLines } from './letters';
+import { formatLetterOffer, letterTrackingLines, turnLetterOffer } from './letters';
+import { reunionNotes } from './lives';
+import { latestPov, povCandidates, povInstruction } from './povMemories';
+import { consequenceTrackingLines, formatConsequenceOffer, turnConsequenceOffer } from './consequences';
+import { epithetLines, formatRenownBlock, renownTrackingLine } from './renown';
+import { regionOf, travelDaysBetween } from './geography';
 import {
   formatEncounterConditions,
   locationKindOf,
@@ -67,7 +72,8 @@ TIME
 CANON
 - Canon happens on schedule unless Kan plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
 - The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told him: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
-- Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When Kan writes to someone far away, show him send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene.
+- Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When Kan writes to someone far away, show him send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene. Kan writes his letters himself: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
+- People live their own lives while Kan is away. A "since you last saw them" note says what changed for someone he meets again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
 - Tobi (the man in the orange swirl mask) is one person, whatever he calls himself. The Akatsuki know him as Madara; he never unmasks before Itachi or Kan, and Itachi dies believing it. Only those present when his mask breaks in the Fourth War, against Kakashi and Naruto, learn his real name; until the character notes give it, no one in the story knows it. The real Madara is a separate character who appears later. Other masked people (Kakuzu, ANBU) are not him.
 - Pain is one entity acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see; who controls them stays hidden until the character notes name him. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
 
@@ -116,9 +122,9 @@ MEMORY: facts are what actually happened or is now true, never what someone mere
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
-LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
+LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise []. life_events: {character_id, event} for something that happened in a person's own life away from you that this turn reveals as true (a promotion, an injury, a move, a new team, a wedding; their letter, or they tell you); event in a few words, third person without their name ("was promoted to jonin"); otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
 
-NAME & ENEMIES: reputation, bounty_seen, and grudges follow the rules under REPUTATION & GRUDGES; otherwise [].
+NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and consequences_returned follow the rules under REPUTATION & GRUDGES; otherwise [] (epithet null).
 
 BEAT: beat tags how this turn played, from Kan's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring tea, a flash of the Sharingan), instruction (someone tells Kan to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, a jutsu that changes the situation, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people Kan is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves Kan could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the threads and close in"), fitting the moment and what he can really do (dodge, block, counter, and at least one jutsu he knows); otherwise [].
 
@@ -248,9 +254,10 @@ export function buildNarrationPrompt(
       formatLastBeat(messagesForScene),
       formatVarietyBlock(db),
       formatEncounterConditions(db),
-      formatReputationBlock(db),
-      // At most one outside pressure per turn: a grudge first, then a
-      // bounty hunter, then a familiar face.
+      formatNameOutThere(db),
+      formatRenownBlock(db),
+      // At most one outside pressure per turn: a grudge first, then
+      // something coming back, then a bounty hunter, then a familiar face.
       formatPressure(db, entityText),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       formatSceneModeLine(db, sceneMode),
@@ -396,7 +403,9 @@ export function buildSceneSummaryPrompt(
     formatBonds(db),
   ].join('\n\n');
 
-  const user = `SCENE TRANSCRIPT:\n${transcript}\n\nWrite the summary now.`;
+  // The people it mattered to most also get their own side of it.
+  const pov = povInstruction(povCandidates(db, messages));
+  const user = `SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
   const promptMessages: OpenRouterMessage[] = [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -609,11 +618,19 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     return '';
   }
 
+  // Someone Kan meets again after a long time; how each remembers him.
+  const reunions = reunionNotes(db, characters);
+  const remembers = (entity: EntityRecord) => {
+    const pov = latestPov(db, entity.id);
+
+    return pov ? `; remembers of you: "${truncate(pov, 120)}"` : '';
+  };
+
   return [
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}`
+        `- ${entity.name}${entity.aliases.length > 0 ? ` (also called ${entity.aliases[0]})` : ''}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}${remembers(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
     ),
   ].join('\n');
 }
@@ -876,12 +893,31 @@ function formatUpcomingWorldBlock(db: AppDatabase) {
 
 function formatNewsBlock(db: AppDatabase) {
   // No news mid-fight; one piece per turn, or one catch-up report.
-  return formatNewsOffer(newsOffer(db));
+  const offer = newsOffer(db);
+  const block = formatNewsOffer(offer);
+  const item = offer?.mode === 'single' ? offer.items[0] : null;
+
+  // Public news from far away arrives second-hand, and grows on the road.
+  if (block && item && item.knowledge === 'public') {
+    const here = regionOf(db.state.location) ?? regionOf(db.state.scene);
+    const there = regionOf(`${item.location} ${item.region}`);
+
+    if (here && there && travelDaysBetween(here, there) >= 3) {
+      return `${block}\n- It happened far from here: if a stranger, a merchant or gossip tells it, it comes garbled by distance (the core is true, the details have grown).`;
+    }
+  }
+
+  return block;
 }
 
-/** A catch-up report fills the turn; a letter waits for the next one. */
-function turnLetterOffer(db: AppDatabase) {
-  return newsOffer(db)?.mode === 'catch-up' ? null : letterOffer(db);
+/** YOUR NAME OUT THERE, with what strangers here call Kan. */
+function formatNameOutThere(db: AppDatabase) {
+  const block = formatReputationBlock(db);
+  const extra = epithetLines(db).map((line) => `- ${line}`);
+
+  if (extra.length === 0) return block;
+
+  return block ? `${block}\n${extra.join('\n')}` : ['YOUR NAME OUT THERE (how strangers react to you)', ...extra].join('\n');
 }
 
 function formatLetterBlock(db: AppDatabase) {
@@ -981,6 +1017,12 @@ function formatPressure(db: AppDatabase, recentText: string) {
     return grudge;
   }
 
+  const comesBack = formatConsequenceOffer(db, turnConsequenceOffer(db));
+
+  if (comesBack) {
+    return comesBack;
+  }
+
   return formatHunterOffer(hunterOffer(db)) || formatReturningCharacter(db, recentText);
 }
 
@@ -990,7 +1032,9 @@ function formatEnemyTracking(db: AppDatabase) {
   return [
     'REPUTATION & GRUDGES',
     ...reputationTrackingLines(db).map((line) => `- ${line}`),
+    `- ${renownTrackingLine(db)}`,
     ...grudgeTrackingLines(grudgeOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name).map((line) => `- ${line}`),
+    ...consequenceTrackingLines(turnConsequenceOffer(db)).map((line) => `- ${line}`),
   ].join('\n');
 }
 

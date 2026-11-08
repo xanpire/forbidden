@@ -10,14 +10,17 @@ import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 import { loreActive } from '@/lib/rpg/lore';
 import { todayNotes } from '@/lib/rpg/yearly';
+import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
+import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
 
-type JournalView = 'now' | 'recap' | 'world' | 'memories';
+type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters';
 
 const VIEWS: { value: JournalView; label: string }[] = [
   { value: 'now', label: 'Now' },
   { value: 'recap', label: 'Recap' },
   { value: 'world', label: 'World' },
   { value: 'memories', label: 'Memories' },
+  { value: 'letters', label: 'Letters' },
 ];
 
 // Kept here too: the bond screen imports it from this file.
@@ -185,6 +188,8 @@ function WorldView({ db }: { db: AppDatabase }) {
   }, [db]);
   const heard = db.state.canonProgress?.heard ?? {};
   const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && loreActive(db, lore));
+  // Only the names you have heard yourself called.
+  const names = knownEpithets(db);
 
   return (
     <>
@@ -212,6 +217,22 @@ function WorldView({ db }: { db: AppDatabase }) {
           })}
         </ListCard>
       )}
+
+      {names.length > 0 ? (
+        <>
+          <SectionLabel>What they call you</SectionLabel>
+          <ListCard>
+            {names.map(({ audience, epithet }) => (
+              <ListRow
+                body={epithet.history?.length ? `Before that: ${epithet.history.map((item) => item.name).join(', ')}` : null}
+                key={audience}
+                meta={`${AUDIENCE_NAME[audience].charAt(0).toUpperCase()}${AUDIENCE_NAME[audience].slice(1)} · since ${formatDayMonth(epithet.since)}, year ${epithet.since.year}`}
+                title={epithet.name}
+              />
+            ))}
+          </ListCard>
+        </>
+      ) : null}
 
       <SectionLabel>The world as you know it</SectionLabel>
       <ListCard>
@@ -273,6 +294,58 @@ function MemoriesView({ db }: { db: AppDatabase }) {
   );
 }
 
+function LetterRow({ letter }: { letter: ArchivedLetter }) {
+  const [open, setOpen] = useState(false);
+  const words = letter.text?.trim() || null;
+  const when = letter.direction === 'to-kan' ? letter.deliveredOn ?? letter.arrivesOn : letter.sentOn;
+
+  return (
+    <ListRow
+      accessibilityLabel={open ? `Fold the letter: ${letter.label}` : `Read the letter: ${letter.label}`}
+      body={words ? (open ? words : words.split('\n')[0]) : letter.gist ?? 'Only the gist of this one was kept.'}
+      bodyLines={open ? undefined : 2}
+      meta={`${formatDayMonth(when)}, year ${when.year}${letter.gist && words ? ` · ${letter.gist}` : ''}`}
+      onPress={words ? () => setOpen((value) => !value) : undefined}
+      title={letter.label}
+    />
+  );
+}
+
+function LettersView({ db }: { db: AppDatabase }) {
+  const letters = useMemo(() => letterArchive(db), [db]);
+  const kept = letters.filter((letter) => letter.status === 'unsent');
+  const rest = letters.filter((letter) => letter.status !== 'unsent');
+
+  return (
+    <>
+      <SectionLabel>Letters</SectionLabel>
+      {rest.length === 0 ? (
+        <EmptyRow
+          body="Letters you write and the ones that find you are kept here, word for word. Tap one to read it."
+          title="No letters yet"
+        />
+      ) : (
+        <ListCard>
+          {rest.map((letter) => (
+            <LetterRow key={letter.id} letter={letter} />
+          ))}
+        </ListCard>
+      )}
+
+      {kept.length > 0 ? (
+        <>
+          <SectionLabel>Never sent</SectionLabel>
+          <ListCard>
+            {kept.map((letter) => (
+              <LetterRow key={letter.id} letter={letter} />
+            ))}
+          </ListCard>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function JournalSection() {
   const { db } = useGame();
   const [view, setView] = useState<JournalView>('now');
@@ -288,6 +361,7 @@ export function JournalSection() {
       {view === 'recap' ? <RecapView db={db} /> : null}
       {view === 'world' ? <WorldView db={db} /> : null}
       {view === 'memories' ? <MemoriesView db={db} /> : null}
+      {view === 'letters' ? <LettersView db={db} /> : null}
     </View>
   );
 }

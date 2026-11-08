@@ -3084,8 +3084,8 @@ describe('personal letters', () => {
     expect(db.state.post!.letters).toHaveLength(1);
     expect(db.state.post!.letters[0]).toMatchObject({ direction: 'from-kan', status: 'travelling' });
 
-    // Not there yet after a day.
-    db = deliverLetters(later(db, 1));
+    // Not there yet the same day (a letter takes at least a day, even inside the Land of Fire).
+    db = deliverLetters(db);
     expect(affinity(db, hana.id)).toBe(before);
 
     db = deliverLetters(later(db, LETTER_MAX_DAYS));

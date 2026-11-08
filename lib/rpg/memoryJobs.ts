@@ -25,8 +25,12 @@ import { markMet } from './met';
 import { applyStoryHooks } from './hooks';
 import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
 import { applyCanonEndgames } from './canonEndgame';
-import { deliverLetters, receiveLetters, sendLetters } from './letters';
+import { deliverLetters, receiveLetters, sendLetters, turnLetterOffer } from './letters';
+import { advanceLives, applyLifeEvents, markReunions } from './lives';
+import { advanceConsequences, applyConsequences, markConsequenceOffered, turnConsequenceOffer } from './consequences';
+import { applyEpithet, markEpithetsSeen, recordDeeds } from './renown';
 import { applyYearly, yearlyOffer } from './yearly';
+import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
 import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
@@ -272,6 +276,8 @@ export function applyStateStep(
   const effectiveDiff: TurnDiff = merged;
 
   let next = applyTurnDiff(latest, effectiveDiff);
+  // Someone Kan had not seen in a long time is here again.
+  next = markReunions(latest, next);
   const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
   const stalled = latest.state.turnsWithoutTimeChange ?? 0;
 
@@ -332,11 +338,25 @@ export function applyStateStep(
   // Canon-bound hearts whose time has come go to their canon partners.
   next = applyCanonEndgames(next);
 
+  // Side characters' lives move on; consequences fade or (witnesses) talk.
+  next = applyLifeEvents(next, extraction?.lifeEvents);
+  next = advanceLives(next);
+  next = advanceConsequences(next);
+
   // Letters: what Kan sent sets out, what reached him on the page is read,
   // and his letters that arrived by now move their reader's bond.
-  next = receiveLetters(next, extraction?.lettersReceived);
-  next = sendLetters(next, extraction?.lettersSent);
+  next = receiveLetters(next, extraction?.lettersReceived, turnLetterOffer(latest));
+  next = sendLetters(next, extraction?.lettersSent, turn.userMessage);
   next = deliverLetters(next);
+
+  // What people saw becomes talk and a name; choices that could come back
+  // are kept. The offers come from the state this turn's prompt was built on.
+  next = recordDeeds(next, extraction?.reputation);
+  next = applyEpithet(next, extraction?.epithet);
+  next = markEpithetsSeen(next, extraction?.bountySeen);
+  const offeredSeed = turnConsequenceOffer(latest);
+  const planted = applyConsequences(next, extraction?.consequences, extraction?.consequencesReturned, offeredSeed);
+  next = markConsequenceOffered(planted.db, offeredSeed);
   // The day's birthday or anniversary was offered (once a year), and any
   // birthday Kan learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
@@ -374,6 +394,20 @@ export function applyStateStep(
 
     if (listing) {
       notice = `${listing.name} bingo book: ${listing.rank}-rank · ${formatRyo(listing.bounty)}`;
+    }
+  }
+
+  // A choice landed with someone who matters: they will remember it.
+  if (!notice) {
+    const swung = (extraction?.bonds ?? []).find(
+      (bond) =>
+        Math.abs(bond.affinityDelta ?? 0) >= 3 &&
+        next.bonds.some((item) => item.isMajor && (item.entityId === bond.entityId || item.characterName === bond.character))
+    );
+    const who = planted.remembered ?? swung?.character;
+
+    if (who) {
+      notice = `${who.split(' ')[0]} will remember that.`;
     }
   }
 
@@ -790,6 +824,8 @@ export type SummaryJobOutput = {
   memory?: string;
   /** Inputs actually used, so the result can be checked against the latest save. */
   logIds?: string[];
+  /** Points of view on the memory, by entity id (scene summaries, see povMemories.ts). */
+  povs?: { entityId: string; text: string }[];
 };
 
 /** Calls the model for one summary job, using `base` only as context. Throws on failure. */
@@ -800,6 +836,7 @@ export async function runSummaryJob(
 ): Promise<SummaryJobOutput> {
   let result: Awaited<ReturnType<typeof summarizeScene>> = null;
   let logIds: string[] | undefined;
+  let povs: { entityId: string; text: string }[] | undefined;
 
   switch (job.kind) {
     case 'timeSkip':
@@ -816,6 +853,7 @@ export async function runSummaryJob(
       const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
       logIds = messages.map((entry) => entry.id);
       result = await summarizeScene({ apiKey, db: base, messages, debugTurnId: job.turnLogId });
+      povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
       break;
     }
     case 'arc':
@@ -846,6 +884,7 @@ export async function runSummaryJob(
     title: result.title ?? undefined,
     memory: result.memory ?? undefined,
     logIds,
+    ...(povs?.length ? { povs } : {}),
   };
 }
 
@@ -952,7 +991,7 @@ export function applySummaryJob(
         ...next,
         summaries: [...next.summaries, record],
       };
-      next = saveSummaryMemory(next, record, messages, output.memory, eventId);
+      next = saveSummaryMemory(next, record, messages, output.memory, eventId, output.povs);
 
       // No memory was saved (one already existed for this stretch): link that one.
       if (!next.events.some((event) => event.id === eventId)) {
@@ -1046,7 +1085,8 @@ function saveSummaryMemory(
   summary: SummaryRecord,
   messages: RawLogEntry[],
   memory?: string,
-  eventId: string = makeId('event')
+  eventId: string = makeId('event'),
+  povs?: { entityId: string; text: string }[]
 ): AppDatabase {
   const last = messages[messages.length - 1];
 
@@ -1095,6 +1135,10 @@ function saveSummaryMemory(
     ].slice(0, 10),
     pinned: false,
     sourceLogId: last.id,
+    // Only people who were there keep their own side of it.
+    ...(povs?.some((item) => presentIds.has(item.entityId))
+      ? { povs: povs.filter((item) => presentIds.has(item.entityId)) }
+      : {}),
     createdAt: summary.createdAt,
   };
 

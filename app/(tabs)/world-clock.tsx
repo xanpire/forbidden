@@ -9,6 +9,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { formatClock, formatDayMonth } from '@/lib/rpg/calendar';
 import { newsUrgency, worldClock } from '@/lib/rpg/canon';
 import { lettersInTransit } from '@/lib/rpg/letters';
+import { waitingConsequences } from '@/lib/rpg/consequences';
 import { livingBearers, newsOffer } from '@/lib/rpg/newsDelivery';
 import { useGame } from '@/lib/rpg/game';
 import type { CalendarDate } from '@/lib/rpg/types';
@@ -41,6 +42,7 @@ export default function WorldClockScreen() {
   const clock = useMemo(() => (db ? worldClock(db) : null), [db]);
   const offer = useMemo(() => (db ? newsOffer(db, { ignoreCombat: true }) : null), [db]);
   const letters = useMemo(() => (db ? lettersInTransit(db) : []), [db]);
+  const seeds = useMemo(() => (db ? waitingConsequences(db) : []), [db]);
 
   const back = () => router.navigate('/(tabs)');
 
@@ -197,8 +199,31 @@ export default function WorldClockScreen() {
                 <ListRow
                   body={letter.gist}
                   key={letter.id}
-                  meta={`sent ${dateLabel(letter.sentOn)} · arrives ${dateLabel(letter.arrivesOn)}`}
+                  meta={[
+                    `sent ${dateLabel(letter.sentOn)} · arrives ${dateLabel(letter.arrivesOn)}`,
+                    letter.carrier,
+                    letter.coded ? 'coded' : null,
+                    letter.interceptedBy ? `read by ${letter.interceptedBy}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
                   title={letter.direction === 'from-kan' ? `Your letter to ${letter.name}` : `${letter.name}'s reply to you`}
+                />
+              ))}
+            </ListCard>
+          </>
+        ) : null}
+
+        {seeds.length > 0 ? (
+          <>
+            <SectionLabel>Could come back</SectionLabel>
+            <ListCard>
+              {seeds.map((seed) => (
+                <ListRow
+                  body={[seed.what, seed.want ? `Wants ${seed.want}.` : null].filter(Boolean).join(' ')}
+                  key={seed.id}
+                  meta={`${seed.kind} · from ${dateLabel(seed.after)} · fades ${dateLabel(seed.before)}${seed.offeredOn ? ` · last offered ${dateLabel(seed.offeredOn)}` : ''}`}
+                  title={seed.who}
                 />
               ))}
             </ListCard>

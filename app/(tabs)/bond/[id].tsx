@@ -9,6 +9,8 @@ import { formatAffinity } from '@/components/kan/BondsSection';
 import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
 import { memoryTitle } from '@/components/kan/JournalSection';
 import { sharedMemories } from '@/lib/rpg/sharedMemories';
+import { knownLife } from '@/lib/rpg/lives';
+import { povOf } from '@/lib/rpg/povMemories';
 import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
@@ -36,6 +38,12 @@ export default function BondScreen() {
 
   // Only memories you shared: they were there. Being named in one isn't enough.
   const shared = useMemo(() => (db && id ? sharedMemories(db, id) : []), [db, id]);
+  // What you know of their own life while you were apart.
+  const life = useMemo(() => {
+    const person = db?.entities.find((item) => item.id === id);
+
+    return person ? knownLife(person) : [];
+  }, [db, id]);
 
   // Tabs' back() falls through to the first tab (Story), so go to Kan explicitly.
   const back = () => router.navigate('/(tabs)/kan');
@@ -194,6 +202,21 @@ export default function BondScreen() {
           </ListCard>
         ) : null}
 
+        {life.length > 0 ? (
+          <>
+            <SectionLabel>Their life</SectionLabel>
+            <ListCard>
+              {life.map((event, index) => (
+                <ListRow
+                  key={`${event.date.year}-${event.date.month}-${event.date.day}-${index}`}
+                  meta={`${formatDayMonth(event.date)}, year ${event.date.year}`}
+                  title={`${entity.name.split(' ')[0]} ${event.text}`}
+                />
+              ))}
+            </ListCard>
+          </>
+        ) : null}
+
         <SectionLabel>Shared memories</SectionLabel>
         {shared.length === 0 ? (
           <EmptyRow title="Nothing shared yet" />
@@ -201,6 +224,8 @@ export default function BondScreen() {
           <ListCard>
             {shared.map((event) => {
               const { title, body } = memoryTitle(event);
+              // How they remember it, when it mattered to them.
+              const theirs = povOf(event, entity.id);
 
               return (
                 <ListRow
@@ -208,7 +233,9 @@ export default function BondScreen() {
                   key={event.id}
                   meta={`${formatDayMonth(event.inStoryDate)} · ${event.scene}`}
                   title={title}
-                />
+                >
+                  {theirs ? <Text style={styles.pov}>{`Their side: “${theirs}”`}</Text> : null}
+                </ListRow>
               );
             })}
           </ListCard>
@@ -317,6 +344,12 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  pov: {
+    ...type.rowBody,
+    fontStyle: 'italic',
+    color: colors.textSoft,
+    marginTop: 4,
   },
   pressed: {
     opacity: 0.65,

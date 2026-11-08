@@ -179,7 +179,31 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     next.lettersReceived = diff.lettersReceived.flatMap((letter) => {
       const ref = resolve(letter.entityId ?? letter.name);
 
-      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId }] : [];
+      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId, ...(letter.text ? { text: letter.text } : {}) }] : [];
+    });
+  }
+
+  // Life events belong to people the save knows.
+  if (diff.lifeEvents) {
+    next.lifeEvents = diff.lifeEvents.flatMap((item) => {
+      const ref = resolve(item.entityId ?? item.name);
+
+      return ref?.entityId ? [{ ...item, name: ref.name, entityId: ref.entityId }] : [];
+    });
+  }
+
+  // A consequence can belong to someone unnamed; a named one is resolved, and
+  // witnesses become names.
+  if (diff.consequences) {
+    next.consequences = diff.consequences.map((seed) => {
+      const ref = seed.entityId ? resolve(seed.entityId) : null;
+
+      return {
+        ...seed,
+        entityId: ref?.entityId,
+        who: ref?.entityId ? ref.name : seed.who,
+        witnesses: seed.witnesses ? people(seed.witnesses) : seed.witnesses,
+      };
     });
   }
 

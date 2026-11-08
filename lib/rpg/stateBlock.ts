@@ -1,6 +1,20 @@
 // Reading the state model's reply: JSON parsing and snake_case → TurnDiff.
 
-import type { FactType, LocationKind, ReputationFaction, TurnDiff, VillageFaction } from './types';
+import type {
+  Audience,
+  ConsequenceKind,
+  FactType,
+  LetterCarrierKind,
+  LocationKind,
+  ReputationFaction,
+  TurnDiff,
+  VillageFaction,
+} from './types';
+
+const CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
+const AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
+const KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
+const VILLAGES = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
 
 /**
  * Turns the state model's snake_case JSON (see stateSchema.ts) into a
@@ -56,6 +70,9 @@ export function convertStateBlock(
       .map((item) => ({
         name: typeof item.to === 'string' ? item.to.trim() : '',
         gist: typeof item.gist === 'string' && item.gist.trim() ? item.gist.trim().slice(0, 160) : undefined,
+        text: cleanString(item.text)?.slice(0, 4000),
+        carrier: (CARRIERS as readonly string[]).includes(String(item.carrier)) ? (item.carrier as LetterCarrierKind) : undefined,
+        coded: item.coded === true ? true : undefined,
       }))
       .filter((item) => item.name.length > 0)
       .slice(0, 3);
@@ -66,10 +83,20 @@ export function convertStateBlock(
   }
 
   if (Array.isArray(block.letters_received)) {
+    // Older replies: a list of ids; now {from, text}.
     const received = block.letters_received
-      .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
-      .slice(0, 3)
-      .map((name) => ({ name: name.trim() }));
+      .map((item) =>
+        typeof item === 'string'
+          ? { name: item.trim() }
+          : item && typeof item === 'object'
+            ? {
+                name: cleanString((item as Record<string, unknown>).from) ?? '',
+                text: cleanString((item as Record<string, unknown>).text)?.slice(0, 2400),
+              }
+            : { name: '' }
+      )
+      .filter((item) => item.name.length > 0)
+      .slice(0, 3);
 
     if (received.length > 0) {
       diff.lettersReceived = received;
@@ -110,6 +137,62 @@ export function convertStateBlock(
 
   if (seen.length > 0) {
     diff.bountySeen = [...new Set(seen)];
+  }
+
+  if (Array.isArray(block.life_events)) {
+    const events = block.life_events
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => ({ name: cleanString(item.character_id) ?? '', text: cleanString(item.event)?.slice(0, 160) ?? '' }))
+      .filter((item) => item.name && item.text && item.name.toLowerCase() !== 'kan')
+      .slice(0, 3);
+
+    if (events.length > 0) {
+      diff.lifeEvents = events;
+    }
+  }
+
+  const epithet = block.epithet;
+
+  if (epithet && typeof epithet === 'object' && !Array.isArray(epithet)) {
+    const value = epithet as Record<string, unknown>;
+    const audience = cleanString(value.audience)?.toLowerCase();
+    const name = cleanString(value.name);
+
+    if (audience && name && (AUDIENCES as readonly string[]).includes(audience)) {
+      diff.epithet = { audience: audience as Audience, name: name.slice(0, 60) };
+    }
+  }
+
+  if (Array.isArray(block.consequences)) {
+    const seeds = block.consequences
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map((item) => {
+        const ref = cleanString(item.character_id);
+
+        return {
+          kind: (cleanString(item.kind)?.toLowerCase() ?? '') as ConsequenceKind,
+          // The tracker's id; resolveCharacterRefs turns it into a person (or drops it).
+          entityId: ref && ref.toLowerCase() !== 'null' ? ref : undefined,
+          who: cleanString(item.who)?.slice(0, 120) ?? ref ?? '',
+          what: cleanString(item.what)?.slice(0, 200) ?? '',
+          want: cleanString(item.want)?.slice(0, 160),
+          witnesses: stringItems(item.witnesses).slice(0, 6),
+          faction: (VILLAGES as readonly string[]).includes(String(item.faction)) ? (item.faction as VillageFaction) : undefined,
+          when: ['weeks', 'months', 'years'].includes(String(item.when)) ? (item.when as 'weeks' | 'months' | 'years') : undefined,
+        };
+      })
+      .filter((item) => (KINDS as readonly string[]).includes(item.kind) && item.who && item.what)
+      .slice(0, 2);
+
+    if (seeds.length > 0) {
+      diff.consequences = seeds;
+    }
+  }
+
+  const returned = stringItems(block.consequences_returned).slice(0, 2);
+
+  if (returned.length > 0) {
+    diff.consequencesReturned = returned;
   }
 
   if (Array.isArray(block.grudges)) {

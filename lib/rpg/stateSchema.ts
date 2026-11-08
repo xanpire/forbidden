@@ -77,6 +77,9 @@ export const REPUTATION_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'a
 export const VILLAGE_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
 export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
+export const LETTER_CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
+export const EPITHET_AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
+export const CONSEQUENCE_KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
 
 export const TURN_STATE_SCHEMA = object({
   time: object({
@@ -211,13 +214,26 @@ export const TURN_STATE_SCHEMA = object({
     id: { type: 'string' },
     from: nullableString,
   }),
-  // A letter or message Kan writes and sends to someone not in the scene.
+  // A letter or message Kan writes and sends to someone not in the scene (or
+  // to the dead: kept, never sent). text: Kan's words with only spelling and
+  // punctuation fixed.
   letters_sent: list({
     to: { type: 'string' },
     gist: nullableString,
+    text: nullableString,
+    carrier: nullableEnum(LETTER_CARRIERS),
+    coded: { type: ['boolean', 'null'] },
   }),
-  // People whose letter actually reached Kan on the page this turn.
-  letters_received: stringList,
+  // Letters that actually reached Kan on the page this turn, with their words.
+  letters_received: list({
+    from: { type: 'string' },
+    text: nullableString,
+  }),
+  // Something in a person's own life away from Kan that this turn revealed.
+  life_events: list({
+    character_id: { type: 'string' },
+    event: { type: 'string' },
+  }),
   // People whose birthday Kan learned on the page this turn.
   birthdays_learned: stringList,
   // What a village (or the Akatsuki) now has on Kan, from deeds its people
@@ -228,6 +244,28 @@ export const TURN_STATE_SCHEMA = object({
     reason: nullableString,
   }),
   bounty_seen: { type: 'array', items: { type: 'string', enum: [...VILLAGE_FACTIONS] } },
+  // A name the prose calls Kan by, and whose name it is.
+  epithet: {
+    type: ['object', 'null'],
+    properties: {
+      audience: { type: 'string', enum: [...EPITHET_AUDIENCES] },
+      name: { type: 'string' },
+    },
+    required: ['audience', 'name'],
+    additionalProperties: false,
+  },
+  // Choices that could come back later, and offered ones that came back.
+  consequences: list({
+    kind: { type: 'string', enum: [...CONSEQUENCE_KINDS] },
+    character_id: nullableString,
+    who: { type: 'string' },
+    what: { type: 'string' },
+    want: nullableString,
+    witnesses: stringList,
+    faction: nullableEnum(VILLAGE_FACTIONS),
+    when: nullableEnum(['weeks', 'months', 'years']),
+  }),
+  consequences_returned: stringList,
   // Grudges against Kan: started, acted on, settled, or forgiven.
   grudges: list({
     character_id: { type: 'string' },

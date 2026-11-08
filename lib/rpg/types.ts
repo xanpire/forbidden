@@ -143,6 +143,10 @@ export type GameState = {
   reputation?: ReputationState;
   /** Birthdays, anniversaries and festivals (see yearly.ts). */
   yearly?: YearlyState;
+  /** Deeds people talk about, and what they call Kan (see renown.ts). */
+  renown?: RenownState;
+  /** Choices that could come back later (see consequences.ts). */
+  consequences?: ConsequenceSeed[];
 };
 
 /** What the yearly calendar remembers (see yearly.ts). */
@@ -202,18 +206,120 @@ export type Letter = {
   arrivesOn: CalendarDate;
   /** What the letter says, in a few words (Kan's own letters). */
   gist?: string;
-  /** travelling: on its way; delivered: it reached its reader; lost: the reader was dead. */
-  status: 'travelling' | 'delivered' | 'lost';
+  /**
+   * The letter itself, kept for the archive: Kan's own words (only spelling
+   * and punctuation tidied), or the words the narrator gave the writer.
+   */
+  text?: string;
+  /**
+   * travelling: on its way; delivered: it reached its reader; lost: it never
+   * arrived (see lostReason); unsent: a letter to the dead, kept, never sent.
+   */
+  status: 'travelling' | 'delivered' | 'lost' | 'unsent';
+  /** Why a lost letter never arrived. */
+  lostReason?: string;
   /** A to-kan letter answering one of Kan's. */
   replyTo?: string;
   deliveredOn?: CalendarDate;
+  /** How it travels; sets its speed and how safe it is (see letters.ts). */
+  carrier?: LetterCarrierKind;
+  /** Written in a cipher. */
+  coded?: boolean;
+  /** Where the reader was thought to be when it set out (to notice they moved on). */
+  toRegion?: string;
+  /** Someone read it on the way (see letters.ts); Kan does not know until it comes back to him. */
+  interceptedBy?: Interceptor;
+  /** A birthday letter. */
+  occasion?: 'birthday';
 };
+
+export type LetterCarrierKind = 'bird' | 'ninken' | 'summon' | 'courier' | 'dead-drop' | 'hand';
+
+export type Interceptor = 'root' | 'akatsuki' | VillageFaction;
 
 export type PostState = {
   letters: Letter[];
   /** When a letter last reached Kan. */
   lastLetterIn?: CalendarDate;
 };
+
+/** A deed people saw, which travels as talk and shapes what they call Kan (see renown.ts). */
+export type Deed = {
+  id: string;
+  date: CalendarDate;
+  text: string;
+  /** Whose people saw it, when a village or the Akatsuki did. */
+  faction?: ReputationFaction;
+  /** Where it happened (geography.ts region). */
+  region?: string;
+  /** How much it moved the world's view of Kan (the reputation change, or a few points). */
+  weight: number;
+};
+
+/** Who calls Kan by a name of their own. */
+export type Audience = VillageFaction | 'akatsuki' | 'rain' | 'underworld';
+
+export type Epithet = {
+  name: string;
+  since: CalendarDate;
+  /** The theme it grew from (renown.ts), or 'story' when the story named him. */
+  theme: string;
+  /** Kan has heard himself called this. */
+  known: boolean;
+  /** Names it had before, oldest first. */
+  history?: { name: string; since: CalendarDate }[];
+};
+
+export type RenownState = {
+  deeds: Deed[];
+  epithets: Partial<Record<Audience, Epithet>>;
+};
+
+/**
+ * A choice that could come back later (see consequences.ts): who was
+ * involved, who saw it, what they would want, and roughly when and where it
+ * could return. It returns only if that is realistic, and only as an offer.
+ */
+export type ConsequenceSeed = {
+  id: string;
+  kind: ConsequenceKind;
+  createdOn: CalendarDate;
+  /** The person it comes back through, when the save knows them. */
+  entityId?: string;
+  /** Who it is, in words: a name, or "the bandit you spared at the ford". */
+  who: string;
+  /** What Kan did. */
+  what: string;
+  /** What they would want now. */
+  want?: string;
+  /** Ids of anyone else who saw it. */
+  witnesses: string[];
+  /** A village or the Akatsuki it could reach. */
+  faction?: ReputationFaction;
+  /** Where it happened (geography.ts region). */
+  region?: string;
+  /** Not before this date. */
+  after: CalendarDate;
+  /** It fades if it has not come back by this date. */
+  before: CalendarDate;
+  status: 'waiting' | 'returned' | 'faded';
+  /** The letter it came from (an interception). */
+  letterId?: string;
+  /** When it was last offered to the narrator. */
+  offeredOn?: CalendarDate;
+  resolvedOn?: CalendarDate;
+};
+
+export type ConsequenceKind =
+  | 'spared'
+  | 'lie'
+  | 'helped'
+  | 'witness'
+  | 'betrayal'
+  | 'humiliated'
+  | 'promise'
+  | 'debt'
+  | 'intercepted';
 
 export type RawLogEntry = {
   id: string;
@@ -334,7 +440,49 @@ export type EntityRecord = {
    * move their bond.
    */
   companion?: Companion;
+  /** Small events in their own life while Kan was elsewhere (see lives.ts). */
+  lifeEvents?: LifeEvent[];
+  /** Set when Kan meets them again after a long time apart (see lives.ts). */
+  reunion?: Reunion;
   tags: string[];
+};
+
+/**
+ * Something that happened in someone's own life away from Kan: a promotion,
+ * an injury, a move, a new team. `world` events are made by the engine as
+ * time passes; `story` ones were stated on the page. `known` once Kan has
+ * learned of it (he met them again, or a letter told him).
+ */
+export type LifeEvent = {
+  date: CalendarDate;
+  text: string;
+  kind: LifeEventKind;
+  source: 'world' | 'story';
+  known?: boolean;
+};
+
+export type LifeEventKind =
+  | 'mission'
+  | 'injury'
+  | 'posting'
+  | 'team'
+  | 'loss'
+  | 'skill'
+  | 'promotion'
+  | 'move'
+  | 'work'
+  | 'family'
+  | 'romance'
+  | 'growth'
+  | 'other';
+
+/** Kan met them again after REUNION_DAYS apart: when, and when he had last seen them. */
+export type Reunion = {
+  on: CalendarDate;
+  lastSeen: CalendarDate;
+  lastSeenAt?: string;
+  /** The scene it happened in (GameState.sceneSeq). */
+  seq?: number;
 };
 
 export type Gender = 'male' | 'female' | 'unknown';
@@ -377,6 +525,12 @@ export type EventRecord = {
    * on, so the chapter summary built from that turn takes it in.
    */
   turnLogId?: string;
+  /**
+   * The same memory as people who were there remember it, limited to what
+   * they could see or hear, in their own voice (see povMemories.ts). Only
+   * major characters, and only when the scene mattered to them.
+   */
+  povs?: { entityId: string; text: string }[];
   createdAt: number;
 };
 
@@ -815,10 +969,35 @@ export type TurnDiff = {
   canonEngaged?: string[];
   canonPassed?: string[];
   newsRelayed?: { id: string; from?: string }[];
-  /** Letters or messages Kan sent this turn to someone far away. */
-  lettersSent?: { entityId?: string; name: string; gist?: string }[];
-  /** People whose letter reached Kan on the page this turn. */
-  lettersReceived?: { entityId?: string; name: string }[];
+  /** Letters or messages Kan sent this turn to someone far away (or wrote to the dead). */
+  lettersSent?: {
+    entityId?: string;
+    name: string;
+    gist?: string;
+    /** The letter as Kan wrote it, only spelling and punctuation tidied. */
+    text?: string;
+    carrier?: LetterCarrierKind;
+    coded?: boolean;
+  }[];
+  /** People whose letter reached Kan on the page this turn, with its words. */
+  lettersReceived?: { entityId?: string; name: string; text?: string }[];
+  /** Things in someone's own life away from Kan that this turn revealed. */
+  lifeEvents?: { entityId?: string; name: string; text: string }[];
+  /** A name the story called Kan by this turn, and whose name it is. */
+  epithet?: { audience: Audience; name: string };
+  /** Choices this turn that could plausibly come back later. */
+  consequences?: {
+    kind: ConsequenceKind;
+    entityId?: string;
+    who: string;
+    what: string;
+    want?: string;
+    witnesses?: string[];
+    faction?: ReputationFaction;
+    when?: 'weeks' | 'months' | 'years';
+  }[];
+  /** Ids of offered consequences that came back on the page this turn. */
+  consequencesReturned?: string[];
   /** What a village or the Akatsuki now has on Kan. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday Kan learned this turn (they said it, someone told him). */

@@ -11,6 +11,7 @@ import {
   reputationOf,
   standingBand,
 } from '@/lib/rpg/reputation';
+import { renownOf } from '@/lib/rpg/renown';
 import type { AppDatabase } from '@/lib/rpg/types';
 
 const RANK_NOTE: Record<string, string> = {
@@ -53,7 +54,10 @@ export function ReputationCard({ db }: { db: AppDatabase }) {
               title={`${listing.name} · ${listing.rank}-rank`}
               trailing={<Text style={styles.rank}>{listing.rank}</Text>}
             >
-              <Text style={styles.bounty}>{formatRyo(listing.bounty)}</Text>
+              <Text style={styles.bounty}>
+                {formatRyo(listing.bounty)}
+                {renownOf(db).epithets[listing.village]?.known ? ` · “${renownOf(db).epithets[listing.village]!.name}”` : ''}
+              </Text>
               {listing.lastReason ? <Text style={type.rowBody}>{listing.lastReason}</Text> : null}
             </ListRow>
           ))

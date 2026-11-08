@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { normalizePost } from './letters';
 import { normalizeYearly } from './yearly';
 import { normalizeReputation } from './reputation';
+import { normalizeRenown } from './renown';
+import { normalizeConsequences } from './consequences';
 import { normalizeDeaths } from './deaths';
 import { knowersOf } from './facts';
 
@@ -680,6 +682,8 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     post: normalizePost(state.post),
     reputation: normalizeReputation(state.reputation),
     yearly: normalizeYearly(state.yearly),
+    renown: normalizeRenown(state.renown),
+    consequences: normalizeConsequences(state.consequences),
   };
 }
 

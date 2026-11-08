@@ -288,7 +288,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
         key: `birthday:${entity.id}`,
         kind: 'birthday-absent',
         entity,
-        line: `It is ${entity.name}'s birthday today${turns(age)}, far from you. A passing thought of them would fit a quiet moment; nothing more.`,
+        line: `It is ${entity.name}'s birthday today${turns(age)}, far from you. A passing thought of them would fit a quiet moment; a letter sent now would still reach them late.`,
       });
     }
   }
