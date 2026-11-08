@@ -289,6 +289,61 @@ function baseOwner(db: AppDatabase): string {
   return isAkatsukiMember(db) ? 'the Akatsuki' : 'the people who run it';
 }
 
+/** How each owner shows up in a membership fact. */
+const OWNER_KEYS: Record<string, RegExp> = {
+  'the Akatsuki': /\bakatsuki\b/i,
+  'the Allied Shinobi Forces': /\b(allied|alliance)\b/i,
+  Root: /\broot\b/i,
+  'the samurai': /\b(samurai|land of iron)\b/i,
+  'the Hidden Sound': /\b(hidden sound|sound village|orochimaru)\b/i,
+  'the Hidden Leaf': /\b(hidden leaf|leaf village|konoha)\b/i,
+  'the Hidden Sand': /\b(hidden sand|sand village|suna)\b/i,
+  'the Hidden Mist': /\b(hidden mist|mist village|kiri)\b/i,
+  'the Hidden Cloud': /\b(hidden cloud|cloud village|kumo)\b/i,
+  'the Hidden Stone': /\b(hidden stone|stone village|iwa)\b/i,
+  'the Hidden Rain': /\b(hidden rain|rain village|ame)\b/i,
+};
+const LEFT_WORDS = /\b(left|leave|leaves|leaving|defect(ed|s)?|quit|expelled|cast out|thrown out|abandon(ed|s)?|betray(ed|s)?|desert(ed|s)?|no longer|missing[- ]nin|rogue|traitor|broke with|walked away)\b/i;
+
+function isKanFact(db: AppDatabase, subjectId: string | null, text: string) {
+  const subject = subjectId ? db.entities.find((entity) => entity.id === subjectId) : null;
+  return subject ? isKanEntity(subject) : /^you\b/i.test(text.trim());
+}
+
+/** What Kan's newest membership fact about this owner says: in, out, or nothing. */
+function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
+  const key = OWNER_KEYS[owner];
+
+  if (!key) return null;
+
+  const facts = db.facts
+    .filter((fact) => fact.type === 'membership' && fact.validTo === null && key.test(fact.text) && isKanFact(db, fact.subjectEntityId, fact.text))
+    .sort((a, b) => dateSortValue(b.validFrom) - dateSortValue(a.validFrom));
+
+  if (facts.length === 0) return null;
+
+  return LEFT_WORDS.test(facts[0].text) ? 'out' : 'in';
+}
+
+/**
+ * Does Kan belong to the people who run this base? Membership facts first;
+ * for the Akatsuki also the joining beat, or travelling with a member (Itachi
+ * before Kan joins). An owner the words don't name gets the benefit of the doubt.
+ */
+export function belongsTo(db: AppDatabase, owner: string): boolean {
+  if (!OWNER_KEYS[owner]) return true;
+
+  const said = membershipSays(db, owner);
+
+  if (said) return said === 'in';
+
+  if (owner === 'the Akatsuki') {
+    return isAkatsukiMember(db) || db.entities.some((entity) => entity.companion && entity.tags.includes('akatsuki') && !isDeceased(entity));
+  }
+
+  return false;
+}
+
 function cleanName(text: string) {
   const value = localizePlaceNames(text).replace(/\s+/g, ' ').trim().replace(/[.]+$/, '');
   return value.slice(0, 70);
@@ -333,13 +388,15 @@ function newSafehouse(
   name: string | undefined,
   diff: SafehouseDiff | undefined,
   /** When Kan got there: the start of a night's rest, not the morning after. */
-  now: CalendarDate = db.state.inStoryDate
+  now: CalendarDate = db.state.inStoryDate,
+  /** A base he doesn't belong to: whose guest he is. */
+  guestOf?: string
 ): Safehouse {
   const location = db.state.location ?? '';
   const region = regionOf(location) ?? lastRegion(db);
   const placeId = placeIdOf(location);
   const host = kind === 'borrowed' && diff?.host ? personRef(db, diff.host) : null;
-  const groups: string[] = [];
+  const groups: string[] = guestOf ? [guestOf] : [];
 
   if (kind === 'base') groups.push(baseOwner(db));
   if (kind === 'rented') groups.push('the innkeeper');
@@ -355,7 +412,13 @@ function newSafehouse(
     lastVisit: now,
     nights: 0,
     ...(kind === 'rented' ? { until: rentedUntil(now, diff?.paidNights ?? 1) } : {}),
-    ...(host ? { hostId: host.id, hostName: host.name } : diff?.host && kind === 'borrowed' ? { hostName: diff.host.slice(0, 60) } : {}),
+    ...(host
+      ? { hostId: host.id, hostName: host.name }
+      : diff?.host && kind === 'borrowed'
+        ? { hostName: diff.host.slice(0, 60) }
+        : guestOf && kind === 'borrowed'
+          ? { hostName: guestOf }
+          : {}),
     knownBy: uniqueList([...sceneIds(db), ...(host ? [host.id] : [])]),
     knownGroups: groups,
     stash: [],
@@ -401,7 +464,9 @@ function personThreat(db: AppDatabase, house: Safehouse, entity: EntityRecord): 
     return { entityId: entity.id, who: entity.name, want: 'to tell Danzō where you hide', faction: 'leaf' };
   }
   // The Akatsuki learns Kan has a private place.
-  if (entity.tags.includes('akatsuki') && (house.kind === 'own' || house.kind === 'borrowed') && (bond?.affinity ?? 0) < 10) {
+  // (Not their own hideout he is a guest in.)
+  const theirs = house.knownGroups.some((group) => /akatsuki/i.test(group));
+  if (entity.tags.includes('akatsuki') && !theirs && (house.kind === 'own' || house.kind === 'borrowed') && (bond?.affinity ?? 0) < 10) {
     return { entityId: entity.id, who: entity.name, want: 'to know what you keep from the Akatsuki', faction: 'akatsuki' };
   }
 
@@ -414,6 +479,7 @@ function groupThreat(db: AppDatabase, house: Safehouse, group: string): Threat |
 
     if (faction === 'akatsuki') {
       if (house.kind !== 'own' && house.kind !== 'borrowed') return null;
+      if (house.knownGroups.some((item) => /akatsuki/i.test(item))) return null;
       return { who: group, want: 'to know what you keep from the Akatsuki', faction };
     }
 
@@ -588,7 +654,20 @@ export function applySafehouses(before: AppDatabase, db: AppDatabase, diff: Safe
   // Kan sleeps somewhere, or the story says he settles in.
   const wantsNew = Boolean(diff && (diff.name || diff.kind) && !target);
   let created: string | null = null;
-  const kind = diff?.kind ?? (turn.rested && !here ? guessKind(next) : null);
+  let kind = diff?.kind ?? (turn.rested && !here ? guessKind(next) : null);
+  let guestOf: string | undefined;
+
+  // A base is only his if he belongs to whoever runs it. Otherwise the story's
+  // word makes him a guest there (borrowed, while they let him stay); a guess
+  // from the words alone makes nothing (he may be a prisoner, or sneaking in).
+  if (kind === 'base' && !here) {
+    const owner = baseOwner(next);
+
+    if (!belongsTo(next, owner)) {
+      kind = diff?.kind ? 'borrowed' : null;
+      guestOf = owner;
+    }
+  }
 
   if (!fighting && kind && (wantsNew || (turn.rested && !here))) {
     if (here && here.kind !== kind) {
@@ -614,7 +693,7 @@ export function applySafehouses(before: AppDatabase, db: AppDatabase, diff: Safe
         });
         here = activeSafehouses(next).find((house) => house.id === revived.id) ?? null;
       } else {
-        const house = newSafehouse(next, kind, diff?.name, diff, turn.rested ? before.state.inStoryDate : now);
+        const house = newSafehouse(next, kind, diff?.name, diff, turn.rested ? before.state.inStoryDate : now, guestOf);
         created = house.id;
         next = withState(next, { ...safehouseState(next), places: [...safehouseState(next).places, house] });
         here = house;
@@ -794,6 +873,16 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
       continue;
     }
 
+    // A base he no longer belongs to: his room there is gone once he's left it.
+    if (house.kind === 'base' && house.id !== here) {
+      const owner = house.knownGroups.find((group) => OWNER_KEYS[group]);
+
+      if (owner && !belongsTo(next, owner)) {
+        next = endHouse(next, house.id, 'withdrawn', `you no longer belong to ${owner}`);
+        continue;
+      }
+    }
+
     if (house.kind === 'borrowed' && house.hostId) {
       const host = next.entities.find((entity) => entity.id === house.hostId);
       const bond = host ? next.bonds.find((item) => item.entityId === host.id) : null;
@@ -888,7 +977,9 @@ const KIND_LABEL: Record<SafehouseKind, string> = {
 };
 
 export function kindLabel(house: Safehouse): string {
-  if (house.kind === 'borrowed' && house.hostName) return `${house.hostName}’s, lent to you`;
+  if (house.kind === 'borrowed' && house.hostName) {
+    return !house.hostId && OWNER_KEYS[house.hostName] ? `a guest of ${house.hostName}` : `${house.hostName}’s, lent to you`;
+  }
   if (house.kind === 'base') {
     if (house.knownGroups.some((group) => /akatsuki/i.test(group))) return 'an Akatsuki base';
     const owner = house.knownGroups.find((group) => group !== 'the people who run it' && group !== 'the innkeeper');
@@ -1072,7 +1163,7 @@ export function formatSafehouseTracking(db: AppDatabase): string {
   return [
     'SAFEHOUSES',
     ...(listed.length > 0 ? listed : ['- none yet']),
-    'safehouse: null on most turns. Fill it when Kan sleeps somewhere or the page says he settles in (name: a short name for the place, like "the cave above the falls"; kind: own = a place he takes or builds himself, rented = an inn or teahouse room, borrowed = someone\'s home lent to him (host = their id), base = an organisation\'s place like an Akatsuki hideout or an army\'s or the Akatsuki\'s field camp, camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when he comes back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items he leaves there or picks up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
+    'safehouse: null on most turns. Fill it when Kan sleeps somewhere or the page says he settles in (name: a short name for the place, like "the cave above the falls"; kind: own = a place he takes or builds himself, rented = an inn or teahouse room, borrowed = someone\'s home lent to him (host = their id), base = an organisation\'s place Kan belongs to, like an Akatsuki hideout or an army\'s field camp (where he is only a guest it is borrowed, host = who lets him stay; a prisoner or an intruder gets null), camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when he comes back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items he leaves there or picks up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
   ].join('\n');
 }
 

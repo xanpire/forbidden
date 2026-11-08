@@ -28,6 +28,7 @@ import {
   formerSafehouses,
   headingTo,
   isOvergrown,
+  kindLabel,
   letterAddress,
   normalizeSafehouses,
   placesLine,
@@ -78,6 +79,24 @@ const days = (count: number) => ({ time: { elapsed: count, unit: 'days', clock_t
 const emptySafehouse = {
   id: null, name: null, kind: null, paid_nights: null, host: null, stored: [], taken: [], upgrade: null,
   shown_to: [], residents_joined: [], residents_left: [], ended: null,
+};
+
+/** Kan has joined the Akatsuki (the joining beat). */
+const member = (db: AppDatabase): AppDatabase => ({
+  ...db,
+  state: { ...db.state, canonProgress: { ...db.state.canonProgress!, completed: [...(db.state.canonProgress?.completed ?? []), 'kan-joins-akatsuki'] } },
+});
+
+/** A membership fact about Kan, newest. */
+const joined = (db: AppDatabase, text: string): AppDatabase => {
+  const kan = db.entities.find((entity) => entity.name === 'Kan')!;
+  return {
+    ...db,
+    facts: [
+      ...db.facts,
+      { ...db.facts[0], id: `fact_${text.length}_${db.facts.length}`, subjectEntityId: kan.id, type: 'membership', text, validFrom: db.state.inStoryDate, validTo: null },
+    ],
+  };
 };
 
 const person = (db: AppDatabase, name: string) => db.entities.find((entity) => entity.name === name)!;
@@ -166,17 +185,16 @@ describe('becoming a safehouse', () => {
     const sleepAt = (location: string, locationKind: AppDatabase['state']['locationKind'], scene = 'A night') =>
       currentSafehouse(play(save({ location, locationKind, scene }), '*You sleep.*', 'You sleep.', night));
 
-    const akatsuki = sleepAt('the Akatsuki field camp near the Grass border', 'settlement')!;
+    const akatsuki = currentSafehouse(play(member(save({ location: 'the Akatsuki field camp near the Grass border', locationKind: 'settlement' })), '*You sleep.*', 'You sleep.', night))!;
     expect(akatsuki.kind).toBe('base');
     expect(akatsuki.knownGroups).toContain('the Akatsuki');
 
-    const allied = sleepAt('the Allied Forces camp of the Third Division', 'settlement')!;
+    const allied = currentSafehouse(play(joined(save({ location: 'the Allied Forces camp of the Third Division', locationKind: 'settlement' }), 'You joined the Allied Shinobi Forces for the war.'), '*You sleep.*', 'You sleep.', night))!;
     expect(allied.kind).toBe('base');
     expect(allied.knownGroups).toContain('the Allied Shinobi Forces');
 
-    const army = sleepAt('a Leaf army camp outside the village', 'settlement')!;
-    expect(army.kind).toBe('base');
-    expect(army.knownGroups).toContain('the Hidden Leaf');
+    // Not his: a guess makes nothing (a prisoner? sneaking in?).
+    expect(sleepAt('a Leaf army camp outside the village', 'settlement')).toBeNull();
 
     // A camp of strangers is still a night among them, gone when he leaves.
     expect(sleepAt('a refugee camp on the edge of Hidden Rain', 'settlement')!.kind).toBe('camp');
@@ -187,6 +205,33 @@ describe('becoming a safehouse', () => {
     expect(sleepAt('the old camp office in Tanzaku Quarters', 'settlement')).toBeNull();
     // Ruins still make camps.
     expect(sleepAt('the ruins of a watchtower', 'structure')!.kind).toBe('camp');
+  });
+
+  test('a base is only his while he belongs; a guest is borrowed; leaving ends it', () => {
+    // The story says he stays at a Leaf camp he doesn't belong to: a guest.
+    let guest = save({ location: 'a Leaf army camp outside the village', locationKind: 'settlement' });
+    guest = play(guest, '*You sleep.*', 'They let you sleep in a spare tent.', { ...night, safehouse: { ...emptySafehouse, name: 'a spare tent in the Leaf camp', kind: 'base' } });
+    const tent = currentSafehouse(guest)!;
+    expect(tent.kind).toBe('borrowed');
+    expect(tent.hostName).toBe('the Hidden Leaf');
+    expect(kindLabel(tent)).toBe('a guest of the Hidden Leaf');
+
+    // Before he joins, an Akatsuki hideout is his while he travels with Itachi.
+    let early = save({ location: 'an Akatsuki hideout in the Land of Rain', locationKind: 'structure', sceneCast: ['Itachi Uchiha'] });
+    early = { ...early, entities: early.entities.map((entity) => (entity.name === 'Itachi Uchiha' ? { ...entity, companion: { since: NOW, sharedScenes: 0, bondPoints: 0 } } : entity)) };
+    early = play(early, '*You sleep.*', 'You sleep in the hideout.', { ...night, characters_present: ['itachi-uchiha'] });
+    expect(currentSafehouse(early)!.kind).toBe('base');
+
+    // A member who leaves the Akatsuki loses his room once he's gone from it.
+    let db = member(save({ location: 'an Akatsuki hideout in the Land of Rain', locationKind: 'structure' }));
+    db = play(db, '*You sleep.*', 'You sleep.', night);
+    const room = currentSafehouse(db)!;
+    expect(room.kind).toBe('base');
+    db = joined(db, 'You left the Akatsuki and defected before the war.');
+    db = play(db, '*You leave.*', 'You walk out into the rain for a day.', { ...days(1), location: 'the road through the Land of Fire', location_kind: 'road' });
+    const gone = formerSafehouses(db).find((house) => house.id === room.id)!;
+    expect(gone.ended?.reason).toBe('withdrawn');
+    expect(gone.ended?.note).toContain('no longer belong to the Akatsuki');
   });
 
   test('no safehouse in a fight', () => {
@@ -383,7 +428,7 @@ describe('being found', () => {
     db = play(db, '*Kisame follows you in.*', 'Kisame grins at your cave.', { ...minutes(2), safehouse: { ...emptySafehouse, id, shown_to: ['Kisame Hoshigaki'] } });
     expect(seedsOf(db).find((seed) => seed.kind === 'found')?.faction).toBe('akatsuki');
 
-    let base = save({ location: 'an Akatsuki hideout in the Land of Rain', locationKind: 'structure', scene: 'Arriving at the Akatsuki hideout' });
+    let base = member(save({ location: 'an Akatsuki hideout in the Land of Rain', locationKind: 'structure', scene: 'Arriving at the Akatsuki hideout' }));
     base = play(base, '*You sleep.*', 'You sleep in a stone cell of the hideout.', { ...night, safehouse: { ...emptySafehouse, name: 'your cell in the Rain hideout', kind: 'base' } });
     expect(currentSafehouse(base)!.knownGroups).toContain('the Akatsuki');
     base = play(base, '*Kisame passes.*', 'Kisame passes your door.', { ...minutes(1), safehouse: { ...emptySafehouse, shown_to: ['Kisame Hoshigaki'] } });
