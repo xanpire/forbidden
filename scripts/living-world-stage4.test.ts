@@ -26,6 +26,8 @@ import {
   placeIdOf,
   placeVisits,
   pointOfStop,
+  REGION_SHAPES,
+  regionAt,
   recordTravel,
   routePoints,
   travelEstimate,
@@ -325,10 +327,37 @@ describe('the canon world map layout', () => {
     expect(regionOf('a field white with frost')).toBeNull();
   });
 
-  test('the Land of Silence has no spot on the board', () => {
+  test('the Land of Silence is on the board now, at the western edge between Earth and Wind', () => {
     const silence = MAP_PLACES.find((place) => place.id === 'silence')!;
-    expect(silence.unplaced).toBe(true);
-    expect(pointOfStop({ place: 'the Land of Silence', placeId: 'silence' })).toBeNull();
+    expect(silence.unplaced).toBeFalsy();
+    expect(silence.region).toBe('silence');
+    expect(regionOf('the Land of Silence')).toBe('silence');
+    expect(pointOfStop({ place: 'the Land of Silence', placeId: 'silence' })).toEqual({ x: silence.x, y: silence.y });
+    expect(travelDaysBetween('fire', 'silence')).toBe(4.5);
+  });
+
+  test('every place on the board sits inside its own country', () => {
+    // The Island Turtle swims off Lightning's coast and the bridge spans the strait; everything else is on land.
+    for (const place of MAP_PLACES.filter((item) => !item.unplaced && item.id !== 'genbu' && item.id !== 'naruto-bridge')) {
+      expect([place.id, regionAt(place.x, place.y)]).toEqual([place.id, place.region]);
+    }
+  });
+
+  test('every country\'s anchor is inside it, so a stop with only a country lands on it', () => {
+    for (const [region, shape] of Object.entries(REGION_SHAPES)) {
+      expect([region, regionAt(shape.x, shape.y)]).toEqual([region, region]);
+    }
+    expect(regionAt(60, 50)).toBeNull(); // the bay south of the Leaf is sea
+  });
+
+  test('the Land of Rice Fields is the Land of Sound, and the new lands are found by name', () => {
+    expect(regionOf('the Land of Sound')).toBe('rice');
+    expect(regionOf('a farm in the Land of Rice Fields')).toBe('rice');
+    expect(regionOf('the bone fields of the Mountain Graveyard')).toBe('graveyard');
+    expect(regionOf('Degarashi Port')).toBe('tea');
+    expect(regionOf('the Hidden Rock village')).toBe('birds');
+    expect(travelDaysBetween('rice', 'graveyard')).toBe(1);
+    expect(travelDaysBetween('fire', 'tea')).toBe(2.5);
   });
 
   test('the narrator\'s geography matches, and older saves get the new text', () => {

@@ -977,6 +977,13 @@ function dateKey(date: { year: number; month: number; day: number }) {
   return date.year * 10000 + date.month * 100 + date.day;
 }
 
+/** The geography is the narrator's whole map and travel table: it is never cut short. */
+function loreLimit(entry: AppDatabase['loreEntries'][number]) {
+  if (entry.text.startsWith('GEOGRAPHY (fixed')) return 3600;
+
+  return entry.always ? 1400 : 600;
+}
+
 function formatLore(lore: AppDatabase['loreEntries']) {
   if (lore.length === 0) {
     return '';
@@ -984,7 +991,7 @@ function formatLore(lore: AppDatabase['loreEntries']) {
 
   return [
     'RELEVANT LORE',
-    ...lore.map((entry) => `- ${truncate(entry.text, entry.always ? 1400 : 600)}`),
+    ...lore.map((entry) => `- ${truncate(entry.text, loreLimit(entry))}`),
   ].join('\n');
 }
 

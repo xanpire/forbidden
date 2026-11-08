@@ -27,7 +27,13 @@ export type Region =
   | 'lightning'
   | 'iron'
   | 'frost'
-  | 'whirlpools';
+  | 'whirlpools'
+  | 'graveyard'
+  | 'birds'
+  | 'silence'
+  | 'woods'
+  | 'tea'
+  | 'sea';
 
 export const REGION_NAME: Record<Region, string> = {
   fire: 'the Land of Fire',
@@ -35,7 +41,8 @@ export const REGION_NAME: Record<Region, string> = {
   grass: 'the Land of Grass',
   waterfall: 'the Land of Waterfalls',
   'hot-water': 'the Land of Hot Water',
-  rice: 'the Land of Rice Fields',
+  // The old Land of Rice Fields: Orochimaru's Sound rules it now. The id stays 'rice' so old saves still match.
+  rice: 'the Land of Sound',
   waves: 'the Land of Waves',
   rivers: 'the Land of Rivers',
   wind: 'the Land of Wind',
@@ -45,6 +52,12 @@ export const REGION_NAME: Record<Region, string> = {
   iron: 'the Land of Iron',
   frost: 'the Land of Frost',
   whirlpools: 'the Land of Whirlpools',
+  graveyard: 'the Mountain Graveyard',
+  birds: 'the Land of Birds',
+  silence: 'the Land of Silence',
+  woods: 'the Land of Woods',
+  tea: 'the Land of Tea',
+  sea: 'the Land of the Sea',
 };
 
 // Earliest match in the text wins, so "a teahouse in the Rain, three days
@@ -54,15 +67,21 @@ const PATTERNS: Array<[RegExp, Region]> = [
   [/\b(hidden rain|amegakure|land of rain|rain country)\b/i, 'rain'],
   [/\b(hidden grass|kusagakure|land of grass|grass country)\b/i, 'grass'],
   [/\b(hidden waterfall|takigakure|land of waterfalls?|waterfall village)\b/i, 'waterfall'],
-  [/\b(land of hot water|hot water country|yugakure|hidden steam|hot springs? town)\b/i, 'hot-water'],
-  [/\b(land of rice( fields)?|rice country|hidden sound|otogakure|sound village)\b/i, 'rice'],
+  [/\b(land of hot water|hot water country|land of hot ?springs|yugakure|hidden steam|hot springs? town|bamboo village)\b/i, 'hot-water'],
+  [/\b(land of rice( fields| paddies)?|rice country|land of sound|sound country|hidden sound|otogakure|sound village)\b/i, 'rice'],
+  [/\b(mountain graveyard|graveyard of (the )?mountains?)\b/i, 'graveyard'],
+  [/\b(land of birds|bird country|hidden rock|ishigakure)\b/i, 'birds'],
+  [/\b(land of silence|curtain village)\b/i, 'silence'],
+  [/\b(land of woods|woods country)\b/i, 'woods'],
+  [/\b(land of tea|tea country|degarashi|nagi island|ouza island|todoroki (great )?shrine|modoroki shrine)\b/i, 'tea'],
+  [/\b(land of (the )?sea|sea country|demon island|mother island)\b/i, 'sea'],
   [/\b(land of waves|wave country|great naruto bridge)\b/i, 'waves'],
-  [/\b(land of rivers|river country)\b/i, 'rivers'],
-  [/\b(hidden sand|sunagakure|land of wind|wind country)\b/i, 'wind'],
+  [/\b(land of rivers|river country|hidden valley|tanigakure|artisans'? village)\b/i, 'rivers'],
+  [/\b(hidden sand|sunagakure|land of wind|wind country|loran|rouran)\b/i, 'wind'],
   [/\b(hidden stone|iwagakure|land of earth|earth country)\b/i, 'earth'],
   [/\b(hidden mist|kirigakure|land of water|water country)\b/i, 'water'],
-  [/\b(hidden cloud|kumogakure|land of lightning|lightning country)\b/i, 'lightning'],
-  [/\b(land of iron|iron country|samurai)\b/i, 'iron'],
+  [/\b(hidden cloud|kumogakure|land of lightning|lightning country|island turtle|genbu)\b/i, 'lightning'],
+  [/\b(land of iron|iron country|samurai|three wolf mountains?|land of medicines?)\b/i, 'iron'],
   // Only the names: "frost" alone is weather.
   [/\b(land of frost|frost country|hidden frost|shimogakure)\b/i, 'frost'],
   // "the Rain", "the Sand": only capitalised, so weather and beaches stay out.
@@ -90,7 +109,12 @@ const ROADS: Array<[Region, Region, number]> = [
   ['fire', 'whirlpools', 2],
   ['fire', 'water', 4.5],
   ['fire', 'lightning', 6],
-  ['fire', 'iron', 5.5],
+  ['fire', 'iron', 3.5],
+  ['fire', 'graveyard', 2.5],
+  ['fire', 'woods', 2],
+  ['fire', 'tea', 2.5],
+  // Shikamaru's team ran from the Leaf to the Land of Silence in three days and nights without rest.
+  ['fire', 'silence', 4.5],
   // The small countries to the west and north.
   ['rain', 'grass', 1],
   ['rain', 'wind', 3],
@@ -103,6 +127,18 @@ const ROADS: Array<[Region, Region, number]> = [
   ['rice', 'hot-water', 1.5],
   ['rivers', 'wind', 1.5],
   ['earth', 'iron', 3],
+  // West, between Earth and Wind: the Land of Birds (the Hidden Rock), then Silence at the continent's edge.
+  ['birds', 'rain', 1.5],
+  ['birds', 'earth', 2],
+  ['birds', 'wind', 2.5],
+  ['birds', 'silence', 1.5],
+  ['silence', 'earth', 2.5],
+  ['silence', 'wind', 2.5],
+  // North: the Mountain Graveyard runs up from the Sound to the cold tip where the samurai of Iron live.
+  ['graveyard', 'waterfall', 1.5],
+  ['graveyard', 'rice', 1],
+  ['graveyard', 'iron', 1.5],
+  ['graveyard', 'earth', 3],
   // North-east: Hot Water, then Frost, then across the strait to Lightning.
   ['hot-water', 'frost', 1.5],
   ['frost', 'lightning', 2.5],
@@ -111,6 +147,12 @@ const ROADS: Array<[Region, Region, number]> = [
   // Waves is on the south coast, below the Leaf.
   ['whirlpools', 'water', 2.5],
   ['waves', 'water', 3.5],
+  ['woods', 'whirlpools', 1],
+  ['woods', 'hot-water', 2.5],
+  // South, anime lands: Tea hangs off Fire's southern tongue; the Sea's islands lie past it.
+  ['tea', 'waves', 1.5],
+  ['tea', 'sea', 1.5],
+  ['sea', 'waves', 2.5],
 ];
 
 /** Within one country: a day or so. */
@@ -134,7 +176,7 @@ function distances(): Map<string, number> {
     dist.set(key(b, a), Math.min(days, dist.get(key(b, a))!));
   }
 
-  // Floyd-Warshall: 15 regions, computed once.
+  // Floyd-Warshall: a couple of dozen regions, computed once.
   for (const k of regions) {
     for (const i of regions) {
       for (const j of regions) {
@@ -184,6 +226,7 @@ const HOME_BY_TAG: Array<[string, Region]> = [
   ['waves', 'waves'],
   ['waterfall', 'waterfall'],
   ['frost', 'frost'],
+  ['tea', 'tea'],
 ];
 
 /**

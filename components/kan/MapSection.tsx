@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
-import Svg, { Circle, Ellipse, G, Polyline, Rect, Text as SvgText } from 'react-native-svg';
+import { Pressable, StyleSheet, Text, View, type GestureResponderEvent, type LayoutChangeEvent } from 'react-native';
+import Svg, { Circle, G, Line, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { WeatherIcon } from '@/components/WeatherIcon';
@@ -10,11 +10,13 @@ import { dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { REGION_NAME, currentRegion, type Region } from '@/lib/rpg/geography';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
+import { ANIME_LINE_Y, BRIDGES, UNCLAIMED_LAND, ringPath } from '@/lib/rpg/mapShapes';
 import {
   MAP_HEIGHT,
   MAP_PLACES,
   MAP_WIDTH,
   REGION_SHAPES,
+  regionAt,
   formatTravelDays,
   knownWhereabouts,
   mapPlace,
@@ -53,6 +55,40 @@ function dateLine(date: CalendarDate) {
   return `${formatDayMonth(date)}, year ${date.year}`;
 }
 
+const SEA = '#06090c';
+const LAND = '#151517';
+const LAND_VISITED = '#1f1416';
+const LAND_SELECTED = '#26262a';
+const BORDER = '#3a3a3e';
+const LABEL_SIZE = { large: 2.6, medium: 2.1, small: 1.6 } as const;
+/** Zoomed in, the board shows this much of the map around Kan or the selection. */
+const ZOOM_SPAN = 50;
+/** How close a tap must land to a place to pick it, in board units. */
+const PLACE_REACH = 2.4;
+
+/** Each country's outline as one SVG path (several rings for island countries). */
+const REGION_PATHS = Object.fromEntries(
+  REGIONS.map((region) => [region, REGION_SHAPES[region].rings.map(ringPath).join('')])
+) as Record<Region, string>;
+const UNCLAIMED_PATH = UNCLAIMED_LAND.map(ringPath).join('');
+
+/** What a tap at a board point means: the nearest place within reach, else the country under it. */
+function selectionAt(x: number, y: number): Selection | null {
+  let best: { id: string; distance: number } | null = null;
+
+  for (const place of TOP_PLACES) {
+    const distance = Math.hypot(place.x - x, place.y - y);
+
+    if (distance <= PLACE_REACH && (!best || distance < best.distance)) best = { id: place.id, distance };
+  }
+
+  if (best) return { kind: 'place', id: best.id };
+
+  const region = regionAt(x, y);
+
+  return region ? { kind: 'region', id: region } : null;
+}
+
 /** The board: countries, places, Kan's road and where he is. */
 function WorldBoard({
   db,
@@ -64,8 +100,7 @@ function WorldBoard({
   onSelect: (selection: Selection) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const height = (width * MAP_HEIGHT) / MAP_WIDTH;
-  const scale = width / MAP_WIDTH;
+  const [zoomed, setZoomed] = useState(false);
   const here = currentRegion(db);
   const visited = useMemo(() => regionsVisited(db), [db]);
   const visits = useMemo(() => placeVisits(db), [db]);
@@ -90,16 +125,41 @@ function WorldBoard({
     return counts;
   }, [people]);
 
+  // Zoomed in, the window centres on the selection (or Kan) and stays on the board.
+  const focus = selection?.kind === 'place' ? mapPlace(selection.id) : selection?.kind === 'region' ? REGION_SHAPES[selection.id] : null;
+  const center = focus ?? you;
+  const span = zoomed ? ZOOM_SPAN : MAP_WIDTH;
+  const viewX = zoomed ? Math.min(MAP_WIDTH - span, Math.max(0, center.x - span / 2)) : 0;
+  const viewY = zoomed ? Math.min(MAP_HEIGHT - span, Math.max(0, center.y - span / 2)) : 0;
+  const height = width;
+  const scale = width / span;
+
   const onLayout = (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width);
+  const onPress = (event: GestureResponderEvent) => {
+    if (!scale) return;
+
+    const picked = selectionAt(viewX + event.nativeEvent.locationX / scale, viewY + event.nativeEvent.locationY / scale);
+
+    if (picked) onSelect(picked);
+  };
   const selectedRegion =
     selection?.kind === 'region' ? selection.id : selection?.kind === 'place' ? mapPlace(selection.id)?.region ?? null : null;
 
   return (
-    <View onLayout={onLayout} style={[styles.board, { height: height || 260 }]}>
+    <View onLayout={onLayout} style={[styles.board, { height: height || 320 }]}>
       {width > 0 ? (
-        <>
-          <Svg height={height} viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} width={width}>
-            <Rect fill="#07090b" height={MAP_HEIGHT} width={MAP_WIDTH} x={0} y={0} />
+        <Pressable accessibilityHint="Tap a country or a place" accessibilityLabel="World map" onPress={onPress}>
+          <Svg height={height} viewBox={`${viewX} ${viewY} ${span} ${span}`} width={width}>
+            <Rect fill={SEA} height={MAP_HEIGHT} width={MAP_WIDTH} x={0} y={0} />
+
+            {/* Where the canon maps stop: below this line the lands come from the anime. */}
+            <Line stroke="#1b2329" strokeDasharray="1 0.8" strokeWidth={0.2} x1={0} x2={MAP_WIDTH} y1={ANIME_LINE_Y} y2={ANIME_LINE_Y} />
+            <SvgText fill="#33414b" fontFamily={fonts.semibold} fontSize={1.3} textAnchor="end" x={MAP_WIDTH - 1.5} y={ANIME_LINE_Y + 2}>
+              Anime-only lands below
+            </SvgText>
+
+            <Path d={UNCLAIMED_PATH} fill="#101113" stroke="#26262a" strokeWidth={0.25} />
+
             {REGIONS.map((region) => {
               const shape = REGION_SHAPES[region];
               const isHere = region === here;
@@ -107,29 +167,53 @@ function WorldBoard({
               const beenThere = visited.has(region);
 
               return (
-                <G key={region}>
-                  <Ellipse
-                    cx={shape.x}
-                    cy={shape.y}
-                    fill={beenThere ? '#1a1012' : '#121212'}
-                    rx={shape.rx}
-                    ry={shape.ry}
-                    stroke={isHere ? colors.accent : isSelected ? colors.textMuted : beenThere ? colors.accentBorder : '#262626'}
-                    strokeDasharray={shape.sea ? '1.2 0.8' : undefined}
-                    strokeWidth={isHere || isSelected ? 0.5 : 0.3}
-                  />
-                  <SvgText
-                    fill={isHere ? colors.accentTint : colors.textDim}
-                    fontFamily={fonts.semibold}
-                    fontSize={2.3}
-                    textAnchor="middle"
-                    x={shape.x}
-                    y={shape.y + shape.ry - 1.4}
-                  >
-                    {shape.label}
-                    {peopleByRegion.get(region) ? ` · ${peopleByRegion.get(region)}` : ''}
-                  </SvgText>
-                </G>
+                <Path
+                  d={REGION_PATHS[region]}
+                  fill={isSelected ? LAND_SELECTED : beenThere ? LAND_VISITED : LAND}
+                  key={region}
+                  stroke={BORDER}
+                  strokeDasharray={shape.animeOnly ? '0.9 0.5' : undefined}
+                  strokeLinejoin="round"
+                  strokeWidth={0.28}
+                />
+              );
+            })}
+
+            {/* Outlines on top, so a highlighted country isn't hidden under its neighbours' borders. */}
+            {REGIONS.filter((region) => region === here || region === selectedRegion).map((region) => (
+              <Path
+                d={REGION_PATHS[region]}
+                fill="none"
+                key={`edge-${region}`}
+                stroke={region === here ? colors.accent : colors.textMuted}
+                strokeLinejoin="round"
+                strokeWidth={0.45}
+              />
+            ))}
+
+            {BRIDGES.map(([from, to], index) => (
+              <Line key={`bridge-${index}`} stroke="#5a5a60" strokeWidth={0.35} x1={from[0]} x2={to[0]} y1={from[1]} y2={to[1]} />
+            ))}
+
+            {REGIONS.map((region) => {
+              const shape = REGION_SHAPES[region];
+              const count = peopleByRegion.get(region);
+              const size = LABEL_SIZE[shape.size ?? 'small'];
+
+              return (
+                <SvgText
+                  fill={region === here ? colors.accentTint : shape.size === 'large' ? colors.textDim : '#8a8a8f'}
+                  fontFamily={fonts.semibold}
+                  fontSize={size}
+                  key={`label-${region}`}
+                  letterSpacing={shape.size === 'large' ? 0.35 : 0}
+                  textAnchor="middle"
+                  x={shape.labelX ?? shape.x}
+                  y={shape.labelY ?? shape.y}
+                >
+                  {shape.size === 'large' ? shape.label.toUpperCase() : shape.label}
+                  {count ? ` · ${count}` : ''}
+                </SvgText>
               );
             })}
 
@@ -140,15 +224,15 @@ function WorldBoard({
                 stroke={colors.accent}
                 strokeDasharray="1 0.7"
                 strokeLinejoin="round"
-                strokeOpacity={0.55}
-                strokeWidth={0.45}
+                strokeOpacity={0.6}
+                strokeWidth={0.4}
               />
             ) : null}
 
             {TOP_PLACES.map((place) => {
               const beenThere = visits.has(place.id);
               const isSelected = selection?.kind === 'place' && selection.id === place.id;
-              const size = place.kind === 'village' ? 1.3 : 0.9;
+              const size = place.kind === 'village' ? 0.85 : 0.55;
 
               return (
                 <Circle
@@ -156,9 +240,9 @@ function WorldBoard({
                   cy={place.y}
                   fill={beenThere ? colors.textSoft : '#050505'}
                   key={place.id}
-                  r={isSelected ? size + 0.5 : size}
-                  stroke={isSelected ? colors.white : beenThere ? colors.textSoft : colors.textDim}
-                  strokeWidth={0.35}
+                  r={isSelected ? size + 0.45 : size}
+                  stroke={isSelected ? colors.white : beenThere ? colors.textSoft : '#9a9aa0'}
+                  strokeWidth={0.28}
                 />
               );
             })}
@@ -166,59 +250,33 @@ function WorldBoard({
             {houses.map(({ house, point }) => (
               <Rect
                 fill={house.kind === 'camp' ? 'none' : '#050505'}
-                height={1.8}
+                height={1.5}
                 key={house.id}
                 stroke={colors.accentTint}
-                strokeWidth={0.35}
-                width={1.8}
-                x={point.x + 0.9}
-                y={point.y - 2.7}
+                strokeWidth={0.3}
+                width={1.5}
+                x={point.x + 0.8}
+                y={point.y - 2.3}
               />
             ))}
 
-            <Circle cx={you.x} cy={you.y} fill={colors.accent} fillOpacity={0.2} r={3} />
-            <Circle cx={you.x} cy={you.y} fill={colors.accent} r={1.2} stroke={colors.white} strokeWidth={0.3} />
+            <G>
+              <Circle cx={you.x} cy={you.y} fill={colors.accent} fillOpacity={0.2} r={2.6} />
+              <Circle cx={you.x} cy={you.y} fill={colors.accent} r={1} stroke={colors.white} strokeWidth={0.28} />
+            </G>
           </Svg>
-
-          {/* Tap targets sit over the drawing: countries first, places on top. */}
-          {REGIONS.map((region) => {
-            const shape = REGION_SHAPES[region];
-
-            return (
-              <Pressable
-                accessibilityLabel={REGION_NAME[region]}
-                accessibilityRole="button"
-                key={`r-${region}`}
-                onPress={() => onSelect({ kind: 'region', id: region })}
-                style={{
-                  position: 'absolute',
-                  left: (shape.x - shape.rx * 0.7) * scale,
-                  top: (shape.y - shape.ry * 0.7) * scale,
-                  width: shape.rx * 1.4 * scale,
-                  height: shape.ry * 1.4 * scale,
-                  borderRadius: 999,
-                }}
-              />
-            );
-          })}
-          {TOP_PLACES.map((place) => (
-            <Pressable
-              accessibilityLabel={place.name}
-              accessibilityRole="button"
-              hitSlop={4}
-              key={`p-${place.id}`}
-              onPress={() => onSelect({ kind: 'place', id: place.id })}
-              style={{
-                position: 'absolute',
-                left: place.x * scale - 12,
-                top: place.y * scale - 12,
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-              }}
-            />
-          ))}
-        </>
+        </Pressable>
+      ) : null}
+      {width > 0 ? (
+        <Pressable
+          accessibilityLabel={zoomed ? 'Show the whole map' : 'Zoom in'}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => setZoomed((value) => !value)}
+          style={styles.zoomButton}
+        >
+          <Text style={styles.zoomText}>{zoomed ? 'Whole map' : 'Zoom in'}</Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -497,7 +555,7 @@ export function MapSection() {
 
       <WorldBoard db={db} onSelect={setSelection} selection={shown} />
       <Text style={styles.legend}>
-        Tap a country or a place. White dots are places you have been; the red line is your road; squares are your places. Numbers count people you know of there.
+        Tap a country or a place. White dots are places you have been; the red line is your road; squares are your places. Numbers count people you know of there. Dashed borders are lands only the anime shows.
       </Text>
 
       <SelectedCard db={db} people={people} selection={shown} />
@@ -567,6 +625,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: '#07090b',
+  },
+  zoomButton: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: 'rgba(15, 15, 15, 0.85)',
+  },
+  zoomText: {
+    ...type.rowMeta,
+    fontFamily: fonts.semibold,
+    color: colors.textMuted,
   },
   legend: {
     ...type.rowMeta,

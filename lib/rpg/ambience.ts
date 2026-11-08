@@ -102,7 +102,7 @@ const SEA_WORDS = /\b(sea|seaside|ocean|coast|coastal|shore|shoreline|beach|cove
 const WATERFALL_PLACES = new Set(['valley-end', 'waterfall']);
 const RIVER_PLACES = new Set(['naka-river']);
 const SEA_PLACES = new Set(['uzushio', 'naruto-bridge', 'mist']);
-const SEA_REGIONS = new Set<Region>(['whirlpools', 'water']);
+const SEA_REGIONS = new Set<Region>(['whirlpools', 'water', 'sea']);
 
 /** Where Kan is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
@@ -244,7 +244,7 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
       if (condition === 'snow') birds *= 0.5;
       add(beds, 'forest-day', birds);
       // Summer heat brings the cicadas.
-      if (season === 'summer' && period === 'afternoon' && (region === 'fire' || region === 'rice' || region === 'hot-water' || region === 'waves')) {
+      if (season === 'summer' && period === 'afternoon' && (region === 'fire' || region === 'rice' || region === 'hot-water' || region === 'waves' || region === 'woods' || region === 'tea')) {
         add(beds, 'cicadas', forest ? 0.55 : 0.35);
       }
     }
