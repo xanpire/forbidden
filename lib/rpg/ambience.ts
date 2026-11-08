@@ -19,8 +19,9 @@ import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
 import type { Region } from './geography';
 import { placeIdOf } from './mapData';
+import { currentSafehouse } from './safehouses';
 import { sceneModeOf } from './sceneMode';
-import type { AppDatabase, LocationKind, WeatherCondition } from './types';
+import type { AppDatabase, LocationKind, SafehouseKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
 
 export const AMBIENCE_BEDS = [
@@ -67,6 +68,8 @@ export type AmbienceInput = {
   /** A map place id, when the location names one. */
   placeId: string | null;
   fight: boolean;
+  /** The kind of safehouse Kan is at: walls and a roof, or a camp under the sky. */
+  shelter?: SafehouseKind;
 };
 
 export type AmbienceMix = {
@@ -104,7 +107,9 @@ const SEA_REGIONS = new Set<Region>(['whirlpools', 'water']);
 /** Where Kan is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
-  const place = localizePlaceNames(db.state.location ?? '');
+  const house = currentSafehouse(db);
+  // A safehouse's own name says what it is ("the cave above the falls").
+  const place = localizePlaceNames([db.state.location ?? '', house?.name ?? ''].filter(Boolean).join(', '));
 
   return {
     condition: weather.condition,
@@ -116,14 +121,18 @@ export function ambienceInputOf(db: AppDatabase): AmbienceInput {
     place,
     placeId: placeIdOf(db.state.location),
     fight: sceneModeOf(db).current === 'fight',
+    ...(house ? { shelter: house.kind } : {}),
   };
 }
 
 /** Is Kan inside? The location's own words decide; a structure counts unless it says outside. */
-export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place'>): boolean {
+export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place' | 'shelter'>): boolean {
   const location = input.place;
 
   if (CAVE_WORDS.test(location)) return true;
+  // A camp has no roof; any other safehouse has walls unless the words say he's outside it.
+  if (input.shelter === 'camp') return false;
+  if (input.shelter && !(OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location))) return true;
   if (OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location)) return false;
   if (INDOOR_WORDS.test(location)) return true;
 
@@ -269,7 +278,10 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
     if (CROWD_WORDS.test(place)) add(beds, 'murmur', night && input.hour >= 1 && input.hour < 5 ? 0.1 : 0.55);
   }
 
-  if (FIRE_WORDS.test(place) || (kind !== 'settlement' && /\bcamp\b/i.test(place) && (period === 'evening' || night))) {
+  if (
+    FIRE_WORDS.test(place) ||
+    ((input.shelter === 'camp' || (kind !== 'settlement' && /\bcamp\b/i.test(place))) && (period === 'evening' || night))
+  ) {
     add(beds, 'fire', 0.7);
   }
 

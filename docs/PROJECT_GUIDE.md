@@ -39,6 +39,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `ambience.ts` | Ambient sound (§8e): `ambienceInputOf`, `ambienceMix` (bed levels from weather, place, clock, season, region, scene mode), `currentAmbience`, `isIndoors`, `describeAmbience`. Pure; the player lives in `lib/audio/` |
 | `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter; flashback photos under `MEMORY_ERA`), `eraOfDate`, `captionOf`, `placeAt` |
 | `flashbackData.ts` / `flashbacks.ts` | Playable flashbacks (§8f): the 18 memories and Kan's parents (data), and the engine: `flashbackOffer`, `beginFlashback`, `applyFlashbackMarks`, `applyFlashbackTurn`, `endFlashback`, `applyFlashbackWriteUp`, `flashbackView` (the memory's date, place and weather), `formatFlashbackBlock` / `formatFlashbackOffer` / `formatFlashbackReturn`, `flashbackTrackingLines`, `flashbackImageNote`, `rememberChip` |
+| `safehouses.ts` | Safehouses (§8g, `state.safehouses`): `applySafehouses` (tagging, leaving and coming back, stash, upgrades, residents, who knows, rest), `advanceSafehouses` (rooms running out, hosts, residents, found places searched), `currentSafehouse`, `restQuality` / `restBlocked`, `formatSafehouseLine` (SAFEHOUSE), `placesLine`, `formatSafehouseTracking` (SAFEHOUSES), `letterAddress`, `headingTo` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -154,6 +155,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   weather?: { region, condition, text?, since, sceneSeq?, source: 'world'|'story' }   // §8d
   travelLog?: [{ place, region?, placeId?, date }]                          // §8d, last 400
   flashbacks?: { played, offered, lastOfferOn?, pending?, active?, returned? } // §8f
+  safehouses?: { places: Safehouse[], current? }                            // §8g
 }
 ```
 
@@ -221,9 +223,9 @@ renown: {
   } }
 }
 consequences: [{
-  id, kind: 'spared'|'lie'|'helped'|'witness'|'betrayal'|'humiliated'|'promise'|'debt'|'intercepted',
+  id, kind: 'spared'|'lie'|'helped'|'witness'|'betrayal'|'humiliated'|'promise'|'debt'|'intercepted'|'found',
   createdOn, entityId?, who, what, want?, witnesses: string[], faction?, region?,
-  after, before, status: 'waiting'|'returned'|'faded', letterId?, offeredOn?, resolvedOn?
+  after, before, status: 'waiting'|'returned'|'faded', letterId?, safehouseId?, offeredOn?, resolvedOn?
 }]                               // up to 24 waiting + 20 ended
 ```
 
@@ -255,6 +257,7 @@ consequences: [{
   lifeEvents?: [{ entityId?, name, text }], epithet?: { audience, name },
   consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
   birthdaysLearned?: [{ entityId?, name }], weather?: string, flashback?: 'offered'|'started'|'ended',
+  safehouse?: { id?, name?, kind?, paidNights?, host?, stored?, taken?, upgrade?, shownTo?, residentsJoined?, residentsLeft?, ended? },
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -645,7 +648,7 @@ Tests: `scripts/living-world-stage4.test.ts`.
 - **Kan's road** (`state.travelLog`, `recordTravel` after every state step): each new location once, with its region (a place that names none stays in the last one) and map place; 400 kept. Older saves start the road where Kan is (`normalizeTravelLog`). `routePoints` draws it; `placeVisits` counts visits (a shrine counts for its village too).
 - **Travel times** (`travelEstimate`): `travelDaysBetween` from Kan's region, and the same in the worse weather of the two ends.
 - **Where people are, as far as Kan knows** (`knownWhereabouts`): met, non-minor people; companions are with him; otherwise what the story said (`whereabouts`, "told"), else where he last saw them (`lastSeenAt`, "seen", with how long ago), else where they would usually be (role or village tags, "assumed"). Someone who died without Kan knowing is still shown where he thinks they are; once he knows, they leave the map. It is never the truth the save holds.
-- UI: Kan tab → **Map** (fourth switch). You are here (place, country, weather, season, companions), the board (countries you've been to tinted, your road as a red dashed line, white dots for places you've been, a red dot for you, a count of people you know of per country; tap a country or a place), the selected card (note, travel time, weather, visits, places inside, who is there as far as you know → bond page), everyone by country, and your road (newest first, 12 then "Show all"). The safehouse Places list (section 20) will go here.
+- UI: Kan tab → **Map** (fourth switch). You are here (place, country, weather, season, companions), the board (countries you've been to tinted, your road as a red dashed line, white dots for places you've been, a red dot for you, a count of people you know of per country; tap a country or a place), the selected card (note, travel time, weather, visits, places inside, who is there as far as you know → bond page), everyone by country, and your road (newest first, 12 then "Show all"). Your places and former places (§8g) sit under the selected card.
 
 **The scrapbook** (`scrapbook.ts`, `components/kan/ScrapbookView.tsx`)
 - Read from the story log, nothing stored twice: every assistant reply with an `image`, oldest first, grouped by era (`eraOfDate`: the era of the last world milestone that had begun by then, never moving backwards) and chapter (title from `state.chapters` or the current chapter).
@@ -702,6 +705,39 @@ Living-world section 19. Eighteen short scenes from Kan's life before the story 
 **UI** (Story): memory turns in a muted warm tint (`colors.memory*`), opened by a date line ("Team 3  Year 9, Sep 20. You are nine."); the Remember chip under the reply that showed the trigger; the live reply is tinted while it streams. Journal → Memories lists it under its own past date. Scrapbook: flashback photos go in "Before the story", grouped by memory title, with the memory's date, place and Kan's age. Images of a memory send no outfit references and tell the model Kan's age and look then (`kanLookAt`) and everyone's age then, in a faded warm tint.
 
 **Prompt size**: nothing on a quiet turn; one line on an offer turn; the memory block replaces the present's dynamic block while one plays.
+
+## 8g. Safehouses (`lib/rpg/safehouses.ts`)
+
+Living-world section 20. Any place Kan stays can become a safehouse by itself, and it goes when it stops working. Tests: `scripts/safehouses.test.ts`.
+
+**Data** (`state.safehouses`): `places` (active and ended; 16 active, 24 former kept) and `current` (the one Kan is at). Each `Safehouse`: id (`sh_…`), name, kind, place (the location when it became his), region, map place, since, lastVisit, nights, `until` (rented), host (borrowed), `knownBy` (entity ids) and `knownGroups` ("the Akatsuki", "the innkeeper", "Root"), stash, upgrades (name + date), residents, `compromised`, `raided` (`lost`, `seen`), status, `ended` (reason + note).
+
+**Kinds**: `own` (a place he takes or builds; lasts until lost), `rented` (an inn or teahouse room; check-out at 10 AM after the last paid night), `borrowed` (someone's home; ends when Kan knows the host died, or the host's grudge is known or they are an enemy), `base` (an organisation's place, like an Akatsuki hideout; his room, not his secret: it never plants a found seed), `camp` (a night in the wild).
+
+**Becoming one** (`applySafehouses`, after the consequences in the present state step; never in a fight; never in a flashback):
+- The tracker's `safehouse` (schema object, all fields nullable): `id` (a listed one, also when Kan comes back to it in other words), `name`, `kind`, `paid_nights`, `host`, `stored` / `taken`, `upgrade`, `shown_to`, `residents_joined` / `residents_left`, `ended` (expired, destroyed, compromised, withdrawn, given-up). The tracker sees `SAFEHOUSES` (the list with ids, Kan's marked, stashes) and the rule, every present turn (~300 tokens).
+- A night's rest without a tag still makes one when the place says what it is: an inn word → rented for one night, an Akatsuki hideout → base, wilderness/road/camp words → camp. "Rest" here is 5+ hours of `downtime` pace, never a long day of travel. A place made on a rest turn dates from when Kan lay down.
+- Where Kan is: the tracker's id, else `matchesSafehouse` (same place text, its name in the location, or 2+ shared words; a different region never matches).
+- Leaving a camp ends it (`left`) unless it has upgrades; resting again at the same spot within 60 days brings it back as `own`. A second stay at a camp, or any upgrade there, makes it `own`.
+- Everyone in the scene learns where he stays; `shown_to` adds people or groups.
+
+**Its course** (`advanceSafehouses`, every present turn): a rented room past its time ends `expired` once Kan isn't in it (still in it: the line says the innkeeper wants more; `paid_nights` again extends it); a borrowed place ends `withdrawn`; the dead leave `residents`; residents get `whereabouts` = the place while Kan is away (so the map, letters and lives see them there). Overgrown (`isOvergrown`): own, borrowed or base places not visited in 730 days.
+
+**Being found**: someone added to who knows with a reason to come after Kan plants a `found` consequence (`plantSeed`, `when: weeks`, `safehouseId`): a grudge, an enemy or affinity ≤ −10, a Root agent, an Akatsuki member (own or borrowed places only, unless affinity ≥ 10), Root / village groups whose book lists him, or hunter-nin and trackers. It comes back (`canReturn`) only while Kan is at that place, through the usual SOMETHING COMES BACK offer; when the tracker marks it returned, the place is `compromised`. If Kan is away 7+ days after its time comes, they search it instead: the stash goes (`raided.lost`), the place is compromised, and Kan only sees it when he is back (`raided.seen`; until then the Places list shows the old stash).
+
+**Rest** (`restQuality`): safe (own, borrowed, base) heals injuries 2 extra days per night (`restAt`, Kan's injuries only); rough (camp, rented, nowhere) is the ordinary rest; unsafe (compromised) means he may not sleep: `applyTurnDiff` doesn't end the "until rest" conditions there (`restBlocked`).
+
+**Stash**: `stored` items leave the inventory under their inventory name (fuzzy match), `taken` items come back; 30 kept.
+
+**Narrator**: one `SAFEHOUSE (where you are)` line after WEATHER: name, kind, since, who knows, the rented time, stash, upgrades, residents, a search Kan finds, compromised, overgrown, shelter (walls keep the weather out; a camp has no roof) and how sleep goes there. `SAFEHOUSE (where you are heading)` when Kan's words head back to one (its name, or "the safehouse/home/my place" with one fitting place). Otherwise only `Places you can go back to: …` in CURRENT STATE (names, up to 4, no camps). Nothing on a story with none.
+
+**Letters**: a writer who knows the place Kan is at (not a camp, not compromised; `letterAddress`): the letter offer says it may have waited for him there.
+
+**Ambience**: `ambienceInputOf` adds `shelter` (the kind) and reads the place's name with the location ("the cave above the falls" gets the cave and the falls); any kind but a camp counts as indoors unless the words say outside; a camp is outdoors and gets the fire at evening and night.
+
+**UI** (Kan tab → Map): squares on the board for active places (hollow for camps); **Your places** (kind, country, "You are here" or last there, paid until / paid time ran out, Found, Overgrown; place, who knows, living there, stashed, built up, searched while you were away) and **Former places** (what happened and when; 5 then "Show all").
+
+**Prompt size**: nothing on a quiet turn without places; one CURRENT STATE line (~20 tokens) while he has some; the SAFEHOUSE line (~90 tokens) only at or heading to one. The tracker's SAFEHOUSES block (~300 tokens) is in every present tracker prompt.
 
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
@@ -788,7 +824,7 @@ Three tabs: **Story / Kan / Settings** (the Kan tab switches Bonds / Jutsu / Jou
 - `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal / Map switch.
   - `BondsSection.tsx` — search + compact rows (people you have met; unmet canon cast is hidden) (avatar — their latest portrait when painted, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (portrait with Paint/Repaint and face reference, bond meter, chips, mood/personality/speech/appearance, shared memories, Merge with…).
   - **Only what Kan could know** (`lib/rpg/disclosure.ts`): the bond meter and list bar show *your* feelings (`yourFeelings`); theirs only as a word ("Toward you they seem warm", `howTheySeem`), with no note, attraction chip or romance note. Mood shows only while they are with you; otherwise "Last you saw them" with the date. A grudge (bond page, list label, enemies group, Journal thread) shows only once they have struck (`grudgeKnown`). Profile fields and portrait prompts use `shownField`: canon secrets in the seed (Sasori inside Hiruko, Tobi, Kabuto the spy, Minato and Kushina as Naruto's parents, Yagura's genjutsu…) show a version Kan could know until the milestone in `DISCLOSURES` is known; text the story itself wrote shows as it is. The narrator still gets everything. The bingo-book card never hints at listings you haven't seen. Tests: `scripts/immersion.test.ts`.
-  - `MapSection.tsx` — the map (§8d).
+  - `MapSection.tsx` — the map (§8d) and your places (§8g).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people), Letters, Scrapbook (§8d). Rows use an event's own `title` when it has one (`memoryTitle`); otherwise `titleAndBody` (`util.ts`) splits the text: "Title: …", a first sentence under 90 characters, or the first words cut at a word boundary with the rest kept as the description. Recap titles come from `summary.title`.
 - `app/(tabs)/world-clock.tsx` — hidden **World clock** (long-press the clock in the Story header; `href: null`, no tab). Read-only view of `worldClock(db)`: running/held-for-combat status, not heard yet (next in line first), due-but-waiting, queued with dates and days until, personal moments open to you, fired (with who told you), and missed beats. Contains spoilers by design.
@@ -819,6 +855,7 @@ Three tabs: **Story / Kan / Settings** (the Kan tab switches Bonds / Jutsu / Jou
 11. **Images only on user action**, with Kan’s face/outfit references and the action brief.
 12. **Version sync**: `package.json` → `app.json` → SW cache (`scripts/generate-sw.js`) → Settings display.
 13. **A flashback never moves the present**: its turns change only `state.flashbacks.active`; the present's clock, place, inventory, jutsu, facts, canon and weather stand still, and its turns stay out of chapter summaries.
+14. **A safehouse comes from the story**: the tracker tags it (or a night's downtime at an inn, a camp or an Akatsuki hideout makes one); upgrades, stash moves and endings only come from what the page shows, never a menu. Its line reaches the narrator only when Kan is at one or heading to one.
 
 ---
 
@@ -904,6 +941,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Living-world Stage 3 (`scripts/living-world-stage3.test.ts`): geography and whereabouts, letter travel time by distance and carrier, Kan's words kept and tidied, the archive, letters to the dead, Root and Akatsuki interception and safer carriers, interception seeds, real losses, birthday letters, side characters' lives (canon-safe), reunion notes, life events from the page and from letters, epithets per audience (growth, renaming, story names, bingo books), posters and distorted rumours, consequence seeds (window, crossing paths, lies face to face, witnesses talking, fading, offers, returned, the remember notice), point-of-view memories, quiet-turn prompt size
 - Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
 - Ambient sound (`scripts/ambience.test.ts`): birds by day and insects at night, dawn and winter, cicadas, rain outside vs on the roof indoors, heavy rain and storms, snow and blizzards, high places, water only where it belongs, village bustle by time, hearths and caves, fight mode adds nothing, indoor detection, levels in range, the description, reading the save (held weather, map place, fight)
+- Safehouses (`scripts/safehouses.test.ts`): schema and tracker block, tagging (name, kind, who knows), an untagged inn night → rented, paying on, running out, camps left and come back to, none in fights, stash in and out, upgrades, safe rest healing, residents' whereabouts, the narrator lines (none without places, places line, heading, overgrown), letter address, found seeds (Root, hunter-nin, the Akatsuki; never for a base), coming back → compromised, searched while away, compromised rest, a host's death, ambience, flashbacks, normalize
 - Playable flashbacks (`scripts/flashbacks.test.ts`): the 18 records (order, dates before the story, Kan's ages, Team 3 window, cast in the save), the date line, offers (fitting moments, none in fights/on the road/early/without a fit, date windows, once a month, played never again, Shisui's last night gated), the chip and the waiting offer, starting by words or chip, the narrator and tracker blocks, the dead alive at their age, Kan's parents made once, the present standing still, memory weather and ambience, ending (past-dated shared memory, ±1 bond, job, return line, recent scene), the write-up, the hard cap and wrap-up lines, images and scrapbook, old saves, remembrance days
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 

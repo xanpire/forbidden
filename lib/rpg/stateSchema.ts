@@ -80,6 +80,8 @@ export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as con
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
 export const LETTER_CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
 export const EPITHET_AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
+export const SAFEHOUSE_KINDS = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;
+export const SAFEHOUSE_ENDINGS = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'] as const;
 export const CONSEQUENCE_KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
 
 export const TURN_STATE_SCHEMA = object({
@@ -207,6 +209,29 @@ export const TURN_STATE_SCHEMA = object({
   scene_title: nullableString,
   // The weather, only when the page changes it from WEATHER NOW.
   weather: nullableString,
+  // A place Kan sleeps at or settles in, or what changed at one (see SAFEHOUSES).
+  safehouse: {
+    type: ['object', 'null'],
+    properties: {
+      id: nullableString,
+      name: nullableString,
+      kind: nullableEnum(SAFEHOUSE_KINDS),
+      paid_nights: nullableNumber,
+      host: nullableString,
+      stored: stringList,
+      taken: stringList,
+      upgrade: nullableString,
+      shown_to: stringList,
+      residents_joined: stringList,
+      residents_left: stringList,
+      ended: nullableEnum(SAFEHOUSE_ENDINGS),
+    },
+    required: [
+      'id', 'name', 'kind', 'paid_nights', 'host', 'stored', 'taken', 'upgrade',
+      'shown_to', 'residents_joined', 'residents_left', 'ended',
+    ],
+    additionalProperties: false,
+  },
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,

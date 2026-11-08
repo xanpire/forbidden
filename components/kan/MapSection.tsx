@@ -6,7 +6,7 @@ import Svg, { Circle, Ellipse, G, Polyline, Rect, Text as SvgText } from 'react-
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
-import { formatDayMonth } from '@/lib/rpg/calendar';
+import { dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { REGION_NAME, currentRegion, type Region } from '@/lib/rpg/geography';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
@@ -28,6 +28,18 @@ import {
 } from '@/lib/rpg/mapData';
 import type { AppDatabase, CalendarDate } from '@/lib/rpg/types';
 import { CONDITION_INFO, currentWeather, regionWeather, seasonLabel } from '@/lib/rpg/weather';
+import {
+  END_LABEL,
+  activeSafehouses,
+  currentSafehouse,
+  formerSafehouses,
+  isOvergrown,
+  kindLabel,
+  residentNames,
+  safehouseStop,
+  whoKnows,
+} from '@/lib/rpg/safehouses';
+import type { Safehouse } from '@/lib/rpg/types';
 
 type Selection = { kind: 'place'; id: string } | { kind: 'region'; id: Region };
 
@@ -58,6 +70,13 @@ function WorldBoard({
   const visits = useMemo(() => placeVisits(db), [db]);
   const route = useMemo(() => routePoints(db), [db]);
   const people = useMemo(() => knownWhereabouts(db), [db]);
+  const houses = useMemo(
+    () =>
+      activeSafehouses(db)
+        .map((house) => ({ house, point: pointOfStop(safehouseStop(house)) }))
+        .filter((item): item is { house: Safehouse; point: { x: number; y: number } } => Boolean(item.point)),
+    [db]
+  );
   const lastStop = db.state.travelLog?.[db.state.travelLog.length - 1];
   const you = (lastStop && pointOfStop(lastStop)) ?? { x: REGION_SHAPES[here].x, y: REGION_SHAPES[here].y };
   const peopleByRegion = useMemo(() => {
@@ -142,6 +161,19 @@ function WorldBoard({
                 />
               );
             })}
+
+            {houses.map(({ house, point }) => (
+              <Rect
+                fill={house.kind === 'camp' ? 'none' : '#050505'}
+                height={1.8}
+                key={house.id}
+                stroke={colors.accentTint}
+                strokeWidth={0.35}
+                width={1.8}
+                x={point.x + 0.9}
+                y={point.y - 2.7}
+              />
+            ))}
 
             <Circle cx={you.x} cy={you.y} fill={colors.accent} fillOpacity={0.2} r={3} />
             <Circle cx={you.x} cy={you.y} fill={colors.accent} r={1.2} stroke={colors.white} strokeWidth={0.3} />
@@ -324,6 +356,102 @@ function SelectedCard({ db, selection, people }: { db: AppDatabase; selection: S
   );
 }
 
+/** What you can see of a place: a search while you were away shows only once you are back. */
+function shownStash(house: Safehouse) {
+  return house.raided && !house.raided.seen ? house.raided.lost : house.stash;
+}
+
+function knownCompromised(house: Safehouse) {
+  return Boolean(house.compromised) && (!house.raided || house.raided.seen);
+}
+
+function placeMeta(db: AppDatabase, house: Safehouse, here: boolean) {
+  const until = house.kind === 'rented' && house.until ? house.until : null;
+  const overdue = until && dateSortValue(until) <= dateSortValue(db.state.inStoryDate);
+
+  return [
+    kindLabel(house),
+    house.region ? regionLabel(house.region as Region) : null,
+    here ? 'You are here' : `Last there ${dateLine(house.lastVisit)}`,
+    until ? (overdue ? 'Paid time ran out' : `Paid until ${dateLine(until)}`) : null,
+    knownCompromised(house) ? 'Found' : null,
+    isOvergrown(db, house) ? 'Overgrown' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+function placeBody(db: AppDatabase, house: Safehouse) {
+  const known = whoKnows(db, house);
+  const stash = shownStash(house);
+  const residents = residentNames(db, house);
+
+  return [
+    house.place && house.place !== house.name ? localizePlaceNames(house.place) : null,
+    known.length > 0 ? `Who knows: ${known.join(', ')}` : 'No one else knows of it',
+    residents.length > 0 ? `Living there: ${residents.join(', ')}` : null,
+    stash.length > 0 ? `Stashed: ${stash.join(', ')}` : null,
+    house.upgrades.length > 0 ? `Built up: ${house.upgrades.map((item) => item.name).join(', ')}` : null,
+    house.raided?.seen ? `Searched while you were away${house.raided.lost.length ? `: ${house.raided.lost.join(', ')} gone` : ''}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/** Kan's places: safehouses, rooms, hideouts, camps, and the ones he lost. */
+function PlacesList({ db }: { db: AppDatabase }) {
+  const here = currentSafehouse(db)?.id;
+  const active = [...activeSafehouses(db)].sort((a, b) =>
+    a.id === here ? -1 : b.id === here ? 1 : dateSortValue(b.lastVisit) - dateSortValue(a.lastVisit)
+  );
+  const former = formerSafehouses(db);
+  const [allFormer, setAllFormer] = useState(false);
+  const shownFormer = allFormer ? former : former.slice(0, 5);
+
+  return (
+    <>
+      <SectionLabel>Your places</SectionLabel>
+      {active.length > 0 ? (
+        <ListCard>
+          {active.map((house) => (
+            <ListRow body={placeBody(db, house)} bodyLines={8} key={house.id} meta={placeMeta(db, house, house.id === here)} title={house.name} />
+          ))}
+        </ListCard>
+      ) : (
+        <EmptyRow body="Wherever you sleep or settle in can become one." title="Nowhere to go back to, yet" />
+      )}
+
+      {former.length > 0 ? (
+        <>
+          <SectionLabel>Former places</SectionLabel>
+          <ListCard>
+            {shownFormer.map((house) => (
+              <ListRow
+                body={house.ended?.note ? house.ended.note.charAt(0).toUpperCase() + house.ended.note.slice(1) : null}
+                key={house.id}
+                meta={[
+                  house.ended ? `${END_LABEL[house.ended.reason]} ${dateLine(house.ended.on)}` : null,
+                  house.region ? regionLabel(house.region as Region) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                title={house.name}
+              />
+            ))}
+            {former.length > 5 ? (
+              <ListRow
+                accessibilityRole="button"
+                onPress={() => setAllFormer((value) => !value)}
+                title={allFormer ? 'Show less' : `Show all ${former.length}`}
+              />
+            ) : null}
+          </ListCard>
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function MapSection() {
   const { db } = useGame();
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -367,10 +495,12 @@ export function MapSection() {
 
       <WorldBoard db={db} onSelect={setSelection} selection={shown} />
       <Text style={styles.legend}>
-        Tap a country or a place. White dots are places you have been; the red line is your road. Numbers count people you know of there.
+        Tap a country or a place. White dots are places you have been; the red line is your road; squares are your places. Numbers count people you know of there.
       </Text>
 
       <SelectedCard db={db} people={people} selection={shown} />
+
+      <PlacesList db={db} />
 
       <SectionLabel>Not on any map you know</SectionLabel>
       <ListCard>

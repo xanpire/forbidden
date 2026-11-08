@@ -39,6 +39,7 @@ import { factRef, knowerNames } from './facts';
 import { formatAbilities } from './abilities';
 import { formatVarietyBlock } from './variety';
 import { formatWeatherLine, formatWeatherTracking } from './weather';
+import { formatSafehouseLine, formatSafehouseTracking, letterAddress, placesLine } from './safehouses';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import {
   activeFlashback,
@@ -283,6 +284,7 @@ export function buildNarrationPrompt(
       formatCompanions(db),
       formatTimeLine(db, 'narrator', sceneMode.mode),
       formatWeatherLine(db, sceneMode.mode),
+      formatSafehouseLine(db, userMessage),
       formatMatchedEntities(db, matchedEntityIds),
       formatFacts(db, facts),
       formatFigures(db),
@@ -412,6 +414,7 @@ export function buildExtractionPrompt(
     ...flashbackTrackingLines(db, reply?.flashbackOffer),
     memoryView ? '' : formatCanonTracking(db),
     memoryView ? '' : formatLetterTracking(db),
+    memoryView ? '' : formatSafehouseTracking(db),
     memoryView ? '' : formatYearlyTracking(db),
     memoryView ? '' : formatEnemyTracking(db),
     previousBeat
@@ -611,7 +614,10 @@ function formatState(db: AppDatabase) {
     `Canon point: ${truncate(state.canonPoint, 220)}`,
     `Chapter: ${state.chapter}${state.chapterTitle ? ` (${state.chapterTitle})` : ''}`,
     `Scene: ${truncate(state.scene, 140)}`,
-  ].join('\n');
+    placesLine(db),
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
@@ -981,7 +987,10 @@ function formatNameOutThere(db: AppDatabase) {
 }
 
 function formatLetterBlock(db: AppDatabase) {
-  return formatLetterOffer(turnLetterOffer(db));
+  const offer = turnLetterOffer(db);
+  const address = offer ? letterAddress(db, offer.entity.id) : null;
+
+  return formatLetterOffer(offer, address ? address.name : undefined);
 }
 
 function formatCanonBlock(db: AppDatabase) {

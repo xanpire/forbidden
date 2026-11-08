@@ -16,6 +16,7 @@ import { validateLocationKind } from './encounters';
 import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
 import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
+import { restBlocked } from './safehouses';
 import { applyFactDiff, applyThreadDiff, endFacts, expireFacts, recordSceneEvent } from './facts';
 import { applyJutsuDiff, isBareNatureName, jutsuKey } from './jutsu';
 import { settleNewlyMet } from './met';
@@ -175,8 +176,9 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   next = syncBondSides(next);
   next = applyClockTick(next, diff);
-  // Temporary conditions run out; a long stretch of rest ends the "until rest" ones.
-  next = expireFacts(next, { rested: isRest(diff) });
+  // Temporary conditions run out; a long stretch of rest ends the "until rest" ones
+  // (not in a compromised safehouse: Kan may not sleep there at all).
+  next = expireFacts(next, { rested: isRest(diff) && !restBlocked(next) });
   // After the clock: a bond the story set this turn cannot outlast canon.
   next = applyCanonEndgames(next);
 
@@ -186,7 +188,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 }
 
 /** A turn that covers a night's sleep or a long rest. */
-function isRest(diff: TurnDiff) {
+export function isRest(diff: TurnDiff) {
   const seconds = diff.state?.elapsedSeconds ?? 0;
   return seconds >= 5 * 3600 && diff.state?.scenePace !== 'combat' && diff.state?.scenePace !== 'chase';
 }

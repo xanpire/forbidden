@@ -153,6 +153,52 @@ export type GameState = {
   travelLog?: TravelStop[];
   /** Playable flashbacks: offers, the one playing now, and those already lived (see flashbacks.ts). */
   flashbacks?: FlashbackState;
+  /** Places Kan stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
+  safehouses?: SafehouseState;
+};
+
+export type SafehouseKind = 'own' | 'rented' | 'borrowed' | 'base' | 'camp';
+export type SafehouseEnd = 'expired' | 'destroyed' | 'compromised' | 'withdrawn' | 'given-up' | 'left';
+
+/** A place Kan stays (see safehouses.ts). */
+export type Safehouse = {
+  id: string;
+  /** A short name: "the cave above the falls", "a room at the Tanzaku inn". */
+  name: string;
+  kind: SafehouseKind;
+  /** state.location when it became his. */
+  place: string;
+  region?: string;
+  placeId?: string;
+  since: CalendarDate;
+  /** The last time Kan was there. */
+  lastVisit: CalendarDate;
+  /** Nights (long rests) spent there. */
+  nights: number;
+  /** A rented room: paid until then. */
+  until?: CalendarDate;
+  /** A borrowed place: whose it is. */
+  hostId?: string;
+  hostName?: string;
+  /** People (entity ids) and groups ("akatsuki", "the innkeeper") who know of it. */
+  knownBy: string[];
+  knownGroups: string[];
+  stash: string[];
+  upgrades: { name: string; since: CalendarDate }[];
+  /** People living there (entity ids). */
+  residents: string[];
+  /** Found by someone Kan is hiding from. */
+  compromised?: { on: CalendarDate; by: string };
+  /** Searched while Kan was away; seen once he is back. */
+  raided?: { on: CalendarDate; lost: string[]; seen: boolean };
+  status: 'active' | 'ended';
+  ended?: { on: CalendarDate; reason: SafehouseEnd; note?: string };
+};
+
+export type SafehouseState = {
+  places: Safehouse[];
+  /** The one Kan is at now. */
+  current?: string;
 };
 
 /**
@@ -395,6 +441,8 @@ export type ConsequenceSeed = {
   status: 'waiting' | 'returned' | 'faded';
   /** The letter it came from (an interception). */
   letterId?: string;
+  /** The safehouse someone found out about (kind found). */
+  safehouseId?: string;
   /** When it was last offered to the narrator. */
   offeredOn?: CalendarDate;
   resolvedOn?: CalendarDate;
@@ -409,7 +457,8 @@ export type ConsequenceKind =
   | 'humiliated'
   | 'promise'
   | 'debt'
-  | 'intercepted';
+  | 'intercepted'
+  | 'found';
 
 export type RawLogEntry = {
   id: string;
@@ -1100,6 +1149,8 @@ export type TurnDiff = {
   consequencesReturned?: string[];
   /** The weather as the page changed it this turn, in a few words. */
   weather?: string;
+  /** A place Kan settles in or sleeps at, and what changed there (see safehouses.ts). */
+  safehouse?: SafehouseDiff;
   /** What a village or the Akatsuki now has on Kan. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday Kan learned this turn (they said it, someone told him). */
@@ -1114,6 +1165,22 @@ export type TurnDiff = {
     reason?: string;
   }[];
   scene?: SceneInfo;
+};
+
+export type SafehouseDiff = {
+  /** A listed safehouse id; none means where Kan is now. */
+  id?: string;
+  name?: string;
+  kind?: SafehouseKind;
+  paidNights?: number;
+  host?: string;
+  stored?: string[];
+  taken?: string[];
+  upgrade?: string;
+  shownTo?: string[];
+  residentsJoined?: string[];
+  residentsLeft?: string[];
+  ended?: Exclude<SafehouseEnd, 'left'>;
 };
 
 export type PromptBundle = {

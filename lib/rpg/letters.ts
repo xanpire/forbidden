@@ -636,7 +636,7 @@ export function turnLetterOffer(db: AppDatabase): LetterOffer | null {
   return newsOffer(db)?.mode === 'catch-up' ? null : letterOffer(db);
 }
 
-export function formatLetterOffer(offer: LetterOffer | null): string {
+export function formatLetterOffer(offer: LetterOffer | null, address?: string): string {
   if (!offer) {
     return '';
   }
@@ -659,7 +659,9 @@ export function formatLetterOffer(offer: LetterOffer | null): string {
 
   return [
     `A LETTER FOR YOU (personal, from someone far away; never mid-fight). ${entity.name} has written to you${answering}.`,
-    `It reaches you by ${offer.carrier}. You are a missing-nin with no address, so show how it found you; if nothing could have found you here, leave it for later.`,
+    address
+      ? `It reaches you by ${offer.carrier}, or it was waiting for you at ${address}: they know you stay here.`
+      : `It reaches you by ${offer.carrier}. You are a missing-nin with no address, so show how it found you; if nothing could have found you here, leave it for later.`,
     `Write the letter out in their own voice, in full on the page (it is kept): short, in character, about their own life and what they could know, shaped by how they feel about you (${feeling}). No canon news Kan has not heard.${life}${press}`,
   ].join(' ');
 }

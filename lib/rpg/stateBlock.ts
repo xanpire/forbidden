@@ -7,6 +7,8 @@ import type {
   LetterCarrierKind,
   LocationKind,
   ReputationFaction,
+  SafehouseDiff,
+  SafehouseKind,
   TurnDiff,
   VillageFaction,
 } from './types';
@@ -360,6 +362,12 @@ export function convertStateBlock(
 
   if (flashbackMark === 'offered' || flashbackMark === 'started' || flashbackMark === 'ended') {
     diff.flashback = flashbackMark;
+  }
+
+  const safehouse = convertSafehouse(block.safehouse);
+
+  if (safehouse) {
+    diff.safehouse = safehouse;
   }
 
   const weather = cleanString(block.weather);
@@ -863,4 +871,35 @@ export function repairTruncatedJson(text: string): Record<string, unknown> | nul
   }
 
   return null;
+}
+
+const SAFEHOUSE_KIND_VALUES = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;
+const SAFEHOUSE_END_VALUES = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'] as const;
+
+/** The tracker's safehouse report, or null when it says nothing. */
+function convertSafehouse(value: unknown): SafehouseDiff | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+  const item = value as Record<string, unknown>;
+  const kind = cleanString(item.kind)?.toLowerCase();
+  const ended = cleanString(item.ended)?.toLowerCase().replace(/\s+/g, '-');
+  const id = cleanString(item.id);
+  const nights = typeof item.paid_nights === 'number' && Number.isFinite(item.paid_nights) && item.paid_nights > 0 ? Math.min(item.paid_nights, 365) : undefined;
+  const list = (raw: unknown, max: number) => stringItems(raw).map((entry) => entry.slice(0, 80)).slice(0, max);
+  const diff: SafehouseDiff = {
+    ...(id && id.toLowerCase() !== 'null' ? { id } : {}),
+    ...(cleanString(item.name) ? { name: cleanString(item.name)!.slice(0, 70) } : {}),
+    ...((SAFEHOUSE_KIND_VALUES as readonly string[]).includes(kind ?? '') ? { kind: kind as SafehouseKind } : {}),
+    ...(nights ? { paidNights: nights } : {}),
+    ...(cleanString(item.host) ? { host: cleanString(item.host)! } : {}),
+    ...(list(item.stored, 8).length ? { stored: list(item.stored, 8) } : {}),
+    ...(list(item.taken, 8).length ? { taken: list(item.taken, 8) } : {}),
+    ...(cleanString(item.upgrade) ? { upgrade: cleanString(item.upgrade)!.slice(0, 80) } : {}),
+    ...(list(item.shown_to, 8).length ? { shownTo: list(item.shown_to, 8) } : {}),
+    ...(list(item.residents_joined, 4).length ? { residentsJoined: list(item.residents_joined, 4) } : {}),
+    ...(list(item.residents_left, 4).length ? { residentsLeft: list(item.residents_left, 4) } : {}),
+    ...((SAFEHOUSE_END_VALUES as readonly string[]).includes(ended ?? '') ? { ended: ended as SafehouseDiff['ended'] } : {}),
+  };
+
+  return Object.keys(diff).length > 0 ? diff : null;
 }

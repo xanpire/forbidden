@@ -41,7 +41,7 @@ const PRESS_AFTER_DAYS = 90;
 /** How much a witness who talks raises a village's heat. */
 const WITNESS_HEAT = 8;
 
-const KINDS = new Set<ConsequenceKind>(['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt', 'intercepted']);
+const KINDS = new Set<ConsequenceKind>(['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt', 'intercepted', 'found']);
 
 export function seedsOf(db: AppDatabase): ConsequenceSeed[] {
   return Array.isArray(db.state.consequences) ? db.state.consequences : [];
@@ -265,6 +265,9 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
     case 'witness':
       // Without a village to talk to, the talk reaches a town near the place.
       return peopled && kind === 'settlement' && near(kanRegion, seed.region as Region, 4);
+    case 'found':
+      // They come to the place they found, while Kan is there (safehouses.ts searches it while he is away).
+      return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId && !db.state.flashbacks?.active;
     case 'intercepted':
       if (seed.faction === 'akatsuki') {
         return db.entities.some((entity) => here.has(entity.id) && entity.tags.includes('akatsuki'));
@@ -323,6 +326,7 @@ const HOW: Record<ConsequenceKind, string> = {
   promise: 'Someone comes to see whether you kept your word.',
   debt: 'Someone comes to collect.',
   intercepted: '',
+  found: 'They know where you stay now: watchers on the approach, a visit, an ambush at night, a question at the door. Show how they found it.',
 };
 
 function interceptHow(seed: ConsequenceSeed): string {
@@ -341,7 +345,12 @@ export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | 
 
   const person = seed.entityId ? db.entities.find((entity) => entity.id === seed.entityId) : null;
   const ago = agoLabel(daysBetween(seed.createdOn, db.state.inStoryDate));
-  const how = seed.kind === 'intercepted' ? interceptHow(seed) : HOW[seed.kind];
+  const how =
+    seed.kind === 'intercepted'
+      ? interceptHow(seed)
+      : seed.kind === 'found' && seed.faction === 'akatsuki'
+        ? 'Someone in the Akatsuki knows of your private place: a question, a test of your loyalty, or Zetsu in the walls.'
+        : HOW[seed.kind];
   const canon = person && isCanonFigure(person) ? ' They stay on their canon path; this changes only how they see you.' : '';
 
   return [

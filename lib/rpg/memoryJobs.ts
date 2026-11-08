@@ -32,6 +32,7 @@ import { applyEpithet, markEpithetsSeen, recordDeeds } from './renown';
 import { applyYearly, yearlyOffer } from './yearly';
 import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
+import { applySafehouses } from './safehouses';
 import {
   FLASHBACK_BY_ID,
   activeFlashback,
@@ -54,6 +55,7 @@ import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
 import {
   applyTurnDiff,
   extractTurnDiff,
+  isRest,
   rollArcSummary,
   summarizeScene,
   summarizeTimeSkip,
@@ -385,6 +387,13 @@ export function applyStateStep(
   const offeredSeed = turnConsequenceOffer(latest);
   const planted = applyConsequences(next, extraction?.consequences, extraction?.consequencesReturned, offeredSeed);
   next = markConsequenceOffered(planted.db, offeredSeed);
+  // Where Kan stays: a place he sleeps at or settles in, what is stashed or built there, who
+  // knows (after consequences, so a found place that came back this turn is compromised).
+  // Only real downtime counts as sleeping somewhere: a long day on the road is not a night's rest.
+  next = applySafehouses(latest, next, extraction?.safehouse, {
+    rested: isRest(effectiveDiff) && pace === 'downtime',
+    elapsedSeconds: clock.elapsedSeconds,
+  });
   // The day's birthday or anniversary was offered (once a year), and any
   // birthday Kan learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
