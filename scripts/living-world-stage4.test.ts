@@ -28,6 +28,7 @@ import {
   routePoints,
   travelEstimate,
 } from '../lib/rpg/mapData';
+import { parseImageAction } from '../lib/rpg/image';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import { captionOf, eraOfDate, placeAt, scrapbook } from '../lib/rpg/scrapbook';
@@ -327,7 +328,14 @@ describe('the scrapbook', () => {
           ? {
               ...entry,
               image: 'img:one',
-              imageMeta: { prompt: '', action: "Kan kneels at Izumi's grave and sets down a white flower.", references: [], model: 'x', createdAt: 0 },
+              imageMeta: {
+                prompt: '',
+                action: "Kan kneels at Izumi's grave and sets down a white flower.",
+                caption: "You kneel at Izumi's grave and set down a white flower.",
+                references: [],
+                model: 'x',
+                createdAt: 0,
+              },
             }
           : entry
       ),
@@ -340,7 +348,7 @@ describe('the scrapbook', () => {
     const book = scrapbook(next);
     expect(book.length).toBe(2);
     expect(book[0].era).toBe('Ashes');
-    expect(book[0].chapters[0].photos[0].caption).toMatch(/^You kneel at Izumi's grave/);
+    expect(book[0].chapters[0].photos[0].caption).toBe("You kneel at Izumi's grave and set down a white flower.");
     expect(book[0].chapters[0].photos[0].age).toBe(13);
     expect(book[1].chapters[0].chapter).toBe(9);
     expect(book[1].chapters[0].title).toBe('The exams');
@@ -348,8 +356,19 @@ describe('the scrapbook', () => {
     expect(book[0].chapters[0].photos[0].place).toBe('Forest outside Hidden Leaf');
   });
 
-  test('captions and places on their own', () => {
-    expect(captionOf({ content: 'Kan draws his blade. Rain falls.', imageMeta: undefined })).toBe('You draw his blade.');
+  test('captions: the one written in your words, else the narration, never the action line', () => {
+    const meta = { prompt: '', action: 'Kan draws his blade and steps forward.', references: [], model: 'x', createdAt: 0 };
+    // An older image with no caption: the narration's opening, already in "you".
+    expect(captionOf({ content: 'You draw your blade. Rain falls.', imageMeta: meta })).toBe('You draw your blade.');
+    expect(captionOf({ content: 'You draw your blade.', imageMeta: { ...meta, caption: 'You draw your blade in the rain.' } })).toBe(
+      'You draw your blade in the rain.'
+    );
+    expect(parseImageAction('ACTION: Kan draws his blade.\nCAPTION: You draw your blade.')).toEqual({
+      action: 'Kan draws his blade.',
+      caption: 'You draw your blade.',
+    });
+    expect(parseImageAction('Kan draws his blade.')).toEqual({ action: 'Kan draws his blade.' });
+    expect(parseImageAction('CAPTION: You draw your blade.\nACTION: Kan draws his blade.').action).toBe('Kan draws his blade.');
     const db = seed();
     expect(placeAt(db, shiftDate(db.state.inStoryDate, -5))).toBeNull();
   });

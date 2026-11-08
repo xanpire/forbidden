@@ -499,6 +499,7 @@ export default function StoryScreen() {
       await attachImage(latestAssistant.id, result.dataUri, {
         prompt,
         action,
+        ...(written?.caption ? { caption: written.caption } : {}),
         references: plan.references.map((reference) => ({
           kind: reference.kind,
           ...('name' in reference && reference.name ? { name: String(reference.name) } : {}),

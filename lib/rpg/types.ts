@@ -402,6 +402,8 @@ export type SceneImageMeta = {
   prompt: string;
   /** The short "who did what to whom" line the image followed. */
   action: string;
+  /** The scrapbook caption, written in second person with the action line. */
+  caption?: string;
   /** The references sent, in order: their kind, whose they are, and the stored image when there is one. */
   references: { kind: string; name?: string; ref?: string }[];
   model: string;

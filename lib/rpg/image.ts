@@ -138,7 +138,25 @@ Read the narrator's latest reply and describe the single most visual moment from
 - Name people by name ("Kan", "Itachi"). Unnamed people get a short description ("a Stone ninja").
 - Only people physically present in that moment. Include body positions, expressions, and any visible jutsu, weapon, or weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
-Output only the sentences.`;
+
+Then write a caption for the same moment, for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower.").
+
+Output exactly two lines and nothing else:
+ACTION: <the action sentences>
+CAPTION: <the caption>`;
+
+/**
+ * Splits the reply into the action line and the caption. A reply without
+ * the labels is all action (no caption).
+ */
+export function parseImageAction(text: string): { action: string; caption?: string } {
+  const captionMatch = /^\s*caption\s*:\s*(.+)$/im.exec(text);
+  const caption = captionMatch ? cleanProse(captionMatch[1]).slice(0, 200) : undefined;
+  const withoutCaption = captionMatch ? text.replace(captionMatch[0], ' ') : text;
+  const action = cleanProse(withoutCaption).replace(/^action:\s*/i, '').slice(0, 400);
+
+  return { action, ...(caption ? { caption } : {}) };
+}
 
 /**
  * Writes the image's action line fresh from the latest reply with a small,
@@ -148,7 +166,7 @@ export async function writeImageAction(
   apiKey: string,
   db: AppDatabase,
   signal?: AbortSignal
-): Promise<{ action: string; usage: CallUsage; model: string } | null> {
+): Promise<{ action: string; caption?: string; usage: CallUsage; model: string } | null> {
   const reply = latestStoryReply(db);
 
   if (!reply?.content.trim()) {
@@ -183,9 +201,9 @@ export async function writeImageAction(
       maxTokens: 600,
       signal,
     });
-    const action = cleanProse(result.text).replace(/^action:\s*/i, '').slice(0, 400);
+    const { action, caption } = parseImageAction(result.text);
 
-    return action ? { action, usage: result.usage, model } : null;
+    return action ? { action, ...(caption ? { caption } : {}), usage: result.usage, model } : null;
   } catch {
     return null;
   }

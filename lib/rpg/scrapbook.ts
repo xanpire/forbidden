@@ -56,12 +56,21 @@ export function eraOfDate(date: CalendarDate): string {
 
 const CAPTION_LENGTH = 150;
 
-/** A photo's caption: the "who did what" line the image followed, else the reply's opening. */
+/**
+ * A photo's caption: the one written for it in your words when the image was
+ * made, else the reply's opening sentence (the narrator already says "you").
+ * The third-person action line is never used: rewriting it word by word
+ * leaves slips like "You kneel and sets down" or "You draw his blade".
+ */
 export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>): string {
-  const action = entry.imageMeta?.action?.trim();
-  const source = action || entry.content.replace(/\*+/g, '').trim();
+  const written = entry.imageMeta?.caption?.trim();
 
-  return secondPerson(firstSentences(source, 1, CAPTION_LENGTH));
+  if (written) return firstSentences(written, 1, CAPTION_LENGTH);
+
+  const opening = firstSentences(entry.content.replace(/\*+/g, '').replace(/\s+/g, ' ').trim(), 1, CAPTION_LENGTH);
+
+  // Only a reply that names Kan needs the swap; the narrator normally writes "you".
+  return secondPerson(opening);
 }
 
 /** Where you were at a moment, from your road. */
