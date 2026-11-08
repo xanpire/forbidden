@@ -10,7 +10,7 @@ import { dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { REGION_NAME, currentRegion, type Region } from '@/lib/rpg/geography';
 import { localizePlaceNames } from '@/lib/rpg/glossary';
-import { ANIME_LINE_Y, BRIDGES, UNCLAIMED_LAND, ringPath } from '@/lib/rpg/mapShapes';
+import { ANIME_LINE_Y, BRIDGES, UNCLAIMED_LAND, labelLines, ringPath } from '@/lib/rpg/mapShapes';
 import {
   MAP_HEIGHT,
   MAP_PLACES,
@@ -199,21 +199,32 @@ function WorldBoard({
               const shape = REGION_SHAPES[region];
               const count = peopleByRegion.get(region);
               const size = LABEL_SIZE[shape.size ?? 'small'];
+              const large = shape.size === 'large';
+              const [first, name] = labelLines(shape.label);
+              const x = shape.labelX ?? shape.x;
+              const y = shape.labelY ?? shape.y;
+              const fill = region === here ? colors.accentTint : large ? colors.textDim : '#8a8a8f';
 
               return (
-                <SvgText
-                  fill={region === here ? colors.accentTint : shape.size === 'large' ? colors.textDim : '#8a8a8f'}
-                  fontFamily={fonts.semibold}
-                  fontSize={size}
-                  key={`label-${region}`}
-                  letterSpacing={shape.size === 'large' ? 0.35 : 0}
-                  textAnchor="middle"
-                  x={shape.labelX ?? shape.x}
-                  y={shape.labelY ?? shape.y}
-                >
-                  {shape.size === 'large' ? shape.label.toUpperCase() : shape.label}
-                  {count ? ` · ${count}` : ''}
-                </SvgText>
+                <G key={`label-${region}`}>
+                  {first ? (
+                    <SvgText fill={fill} fontFamily={fonts.semibold} fontSize={size * 0.58} textAnchor="middle" x={x} y={y - size * 0.92}>
+                      {first}
+                    </SvgText>
+                  ) : null}
+                  <SvgText
+                    fill={fill}
+                    fontFamily={fonts.semibold}
+                    fontSize={size}
+                    letterSpacing={large ? 0.35 : 0}
+                    textAnchor="middle"
+                    x={x}
+                    y={y}
+                  >
+                    {large ? name.toUpperCase() : name}
+                    {count ? ` · ${count}` : ''}
+                  </SvgText>
+                </G>
               );
             })}
 

@@ -130,8 +130,9 @@ export type RegionShape = {
   /** How far stops in this country spread around the anchor. */
   rx: number;
   ry: number;
+  /** The full name; drawn on two lines, "Land of" small above the name (see labelLines). */
   label: string;
-  /** Where the label sits, if not on the anchor. */
+  /** Where the name line sits, if not on the anchor. */
   labelX?: number;
   labelY?: number;
   /** Label size; small countries get small labels. */
@@ -143,51 +144,51 @@ export type RegionShape = {
 
 export const REGION_SHAPES: Record<Region, RegionShape> = {
   earth: {
-    x: 14, y: 12, rx: 6, ry: 5, label: 'Earth', labelY: 8, size: 'large',
+    x: 14, y: 12, rx: 6, ry: 5, label: 'Land of Earth', labelY: 8, size: 'large',
     rings: [ring(C.earth, rev(B.earthWaterfall), rev(B.earthGrass), rev(B.earthRain), rev(B.earthBirds), rev(B.earthSilence))],
   },
   silence: {
-    x: 6, y: 25, rx: 2.5, ry: 1, label: 'Silence', labelX: 7.6, labelY: 26.8, size: 'small',
+    x: 6, y: 25, rx: 2.5, ry: 1, label: 'Land of Silence', labelX: 7.6, labelY: 26.8, size: 'small',
     rings: [ring(B.earthSilence, B.birdsSilence, rev(B.silenceWind))],
   },
   birds: {
-    x: 16.5, y: 27.5, rx: 2.5, ry: 1, label: 'Birds', labelY: 27.4, size: 'small', animeOnly: true,
+    x: 16.5, y: 27.5, rx: 2.5, ry: 1, label: 'Land of Birds', labelY: 27.4, size: 'small', animeOnly: true,
     rings: [ring(B.earthBirds, rev(B.birdsRain), rev(B.birdsWind), rev(B.birdsSilence))],
   },
   rain: {
-    x: 25, y: 30.8, rx: 1.8, ry: 1, label: 'Rain', labelY: 32.3, size: 'small',
+    x: 25, y: 30.8, rx: 1.8, ry: 1, label: 'Land of Rain', labelY: 33, size: 'small',
     rings: [ring(B.earthRain, rev(B.grassRain), B.rainFire, B.rainRivers, B.rainWind, B.birdsRain)],
   },
   grass: {
-    x: 27.5, y: 25, rx: 1.2, ry: 1.2, label: 'Grass', labelX: 27.4, labelY: 24.6, size: 'small',
+    x: 27.5, y: 25, rx: 1.2, ry: 1.2, label: 'Land of Grass', labelX: 27.4, labelY: 24.6, size: 'small',
     rings: [ring(B.earthGrass, B.grassFire, B.grassRain)],
   },
   waterfall: {
-    x: 33.3, y: 18, rx: 1.5, ry: 2.5, label: 'Waterfall', labelY: 21, size: 'small',
+    x: 33.3, y: 18, rx: 1.5, ry: 2.5, label: 'Land of Waterfalls', labelY: 21, size: 'small',
     rings: [ring(C.waterfall, B.waterfallGraveyard, rev(B.waterfallFire), B.earthWaterfall)],
   },
   graveyard: {
-    x: 42.5, y: 14, rx: 2.5, ry: 2, label: 'Graveyard', labelX: 41.8, labelY: 16.4, size: 'small',
+    x: 42.5, y: 14, rx: 2.5, ry: 2, label: 'Mountain Graveyard', labelX: 41.8, labelY: 16.4, size: 'small',
     rings: [ring(C.graveyardWest, B.ironGraveyard, C.graveyardEast, rev(B.graveyardSound), rev(B.graveyardFire), rev(B.waterfallGraveyard))],
   },
   iron: {
-    x: 44, y: 6.3, rx: 2, ry: 1, label: 'Iron', labelY: 8.4, size: 'small',
+    x: 44, y: 6.3, rx: 2, ry: 1, label: 'Land of Iron', labelX: 43.6, labelY: 8.8, size: 'small',
     rings: [ring(C.iron, rev(B.ironGraveyard))],
   },
   rice: {
-    x: 43.5, y: 20.5, rx: 1.4, ry: 0.9, label: 'Sound', labelY: 22, size: 'small',
+    x: 43.5, y: 20.5, rx: 1.4, ry: 0.9, label: 'Land of Sound', labelY: 22, size: 'small',
     rings: [ring(B.graveyardSound, B.soundHot, rev(B.soundFire))],
   },
   'hot-water': {
-    x: 51, y: 24.5, rx: 2, ry: 1.2, label: 'Hot Water', labelX: 52.3, labelY: 23.6, size: 'small',
+    x: 51, y: 24.5, rx: 2, ry: 1.2, label: 'Land of Hot Water', labelX: 52.3, labelY: 23.6, size: 'small',
     rings: [ring(C.hotNorth, B.hotFrost, C.hotEast, rev(B.hotFire), rev(B.soundHot))],
   },
   frost: {
-    x: 53, y: 18, rx: 1.5, ry: 1, label: 'Frost', labelY: 16.9, size: 'small',
+    x: 53, y: 18, rx: 1.5, ry: 1, label: 'Land of Frost', labelY: 16.9, size: 'small',
     rings: [ring(C.frost, B.frostLightning, rev(B.hotFrost))],
   },
   lightning: {
-    x: 70, y: 8, rx: 6, ry: 4, label: 'Lightning', labelY: 6, size: 'large',
+    x: 70, y: 8, rx: 6, ry: 4, label: 'Land of Lightning', labelY: 6, size: 'large',
     rings: [
       ring(C.lightning, rev(B.frostLightning)),
       // The long island south of Lightning's coast.
@@ -195,7 +196,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   fire: {
-    x: 45, y: 36, rx: 6, ry: 5, label: 'Fire', labelY: 29.5, size: 'large',
+    x: 45, y: 36, rx: 6, ry: 5, label: 'Land of Fire', labelY: 29.5, size: 'large',
     rings: [
       ring(
         B.waterfallFire,
@@ -214,23 +215,23 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   rivers: {
-    x: 32.5, y: 42, rx: 1.3, ry: 3, label: 'Rivers', labelY: 39, size: 'small',
+    x: 32.5, y: 42, rx: 1.3, ry: 3, label: 'Land of Rivers', labelY: 39, size: 'small',
     rings: [ring(B.riversFire, C.rivers, rev(B.riversWind), rev(B.rainRivers))],
   },
   wind: {
-    x: 14, y: 45, rx: 7, ry: 6, label: 'Wind', labelY: 38, size: 'large',
+    x: 14, y: 45, rx: 7, ry: 6, label: 'Land of Wind', labelY: 38, size: 'large',
     rings: [ring(B.silenceWind, B.birdsWind, rev(B.rainWind), B.riversWind, C.wind)],
   },
   woods: {
-    x: 63.5, y: 43.4, rx: 1.5, ry: 0.6, label: 'Woods', labelY: 43.9, size: 'small', animeOnly: true,
+    x: 63.5, y: 43.4, rx: 1.5, ry: 0.6, label: 'Land of Woods', labelY: 43.9, size: 'small', animeOnly: true,
     rings: [ring(C.woods, rev(B.fireWoods))],
   },
   whirlpools: {
-    x: 60.1, y: 36.7, rx: 0.4, ry: 0.4, label: 'Whirlpools', labelX: 62, labelY: 40, size: 'small',
+    x: 60.1, y: 36.7, rx: 0.4, ry: 0.4, label: 'Land of Whirlpools', labelX: 62, labelY: 40, size: 'small',
     rings: [[[58.8, 35.6], [60.2, 35.2], [61.4, 35.9], [61.2, 37.4], [60, 38.2], [58.9, 37.5]]],
   },
   water: {
-    x: 82, y: 37.5, rx: 2.5, ry: 2.5, label: 'Water', labelX: 82.3, labelY: 41, size: 'large',
+    x: 82, y: 37.5, rx: 2.5, ry: 2.5, label: 'Land of Water', labelX: 83.3, labelY: 41, size: 'large',
     rings: [
       [[78, 34.5], [80.5, 32.8], [84, 33], [86.5, 35.5], [86.8, 39], [85, 41.8], [81.5, 42.3], [78.5, 40.8], [77.4, 37.8]],
       [[74.2, 32.2], [76.3, 31.8], [77, 33.6], [75.4, 35], [74, 34]],
@@ -243,7 +244,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   waves: {
-    x: 39.3, y: 55.2, rx: 0.8, ry: 0.6, label: 'Waves', labelY: 58.6, size: 'small',
+    x: 39.3, y: 55.2, rx: 0.8, ry: 0.6, label: 'Land of Waves', labelY: 58.6, size: 'small',
     rings: [
       [[37.2, 54], [39, 53.3], [40.8, 53.8], [41.6, 55.2], [40.6, 56.6], [38.6, 56.9], [37.1, 56]],
       [[36, 53], [36.8, 52.7], [37, 53.4], [36.3, 53.7]],
@@ -251,7 +252,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   tea: {
-    x: 44.5, y: 70, rx: 1.5, ry: 4, label: 'Tea', labelY: 71, size: 'medium', animeOnly: true,
+    x: 44.5, y: 70, rx: 1.5, ry: 4, label: 'Land of Tea', labelY: 71, size: 'medium', animeOnly: true,
     rings: [
       ring(B.fireTea, C.tea),
       // Nagi Island and Ouza Island, joined by a suspension bridge.
@@ -260,7 +261,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   sea: {
-    x: 62, y: 92, rx: 3, ry: 1.2, label: 'The Sea', labelX: 60, labelY: 87.5, size: 'medium', animeOnly: true,
+    x: 62, y: 92, rx: 3, ry: 1.2, label: 'Land of the Sea', labelX: 60, labelY: 87.5, size: 'medium', animeOnly: true,
     rings: [
       [[65, 85], [67, 84.4], [68.2, 86.2], [66.5, 87.8], [65.1, 87]],
       [[49.8, 89.8], [52.5, 89.4], [53.6, 91], [52.3, 92.6], [50.2, 92.2]],
@@ -289,6 +290,15 @@ export const BRIDGES: Array<readonly [Pt, Pt]> = [
 
 /** Where the canon maps end and the anime-only south begins. */
 export const ANIME_LINE_Y = 57;
+
+/** A label split for the board: a small first line ("Land of", "Mountain") and the name. */
+export function labelLines(label: string): [string, string] {
+  if (label.startsWith('Land of ')) return ['Land of', label.slice('Land of '.length)];
+
+  const space = label.indexOf(' ');
+
+  return space > 0 ? [label.slice(0, space), label.slice(space + 1)] : ['', label];
+}
 
 export function ringPath(points: readonly Pt[]): string {
   return `M${points.map(([x, y]) => `${x},${y}`).join('L')}Z`;
