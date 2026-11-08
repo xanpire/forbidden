@@ -18,6 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ToastProvider } from '@/components/Toast';
 import { colors } from '@/constants/theme';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
+import { AmbiencePlayer } from '@/lib/audio/AmbiencePlayer';
 import { GameProvider } from '@/lib/rpg/game';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -54,6 +55,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <GameProvider>
+          <AmbiencePlayer />
           <ToastProvider>
             <View style={styles.root}>
             <Stack

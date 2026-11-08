@@ -36,6 +36,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `povMemories.ts` | Memories from each person's point of view (`EventRecord.povs`, §8c): `povCandidates`, `parsePovLines`, `resolvePovs`, `povOf`, `latestPov` |
 | `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, region and 6-hour block), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `CLIMATES` |
 | `mapData.ts` | The map (§8d): `MAP_PLACES`, `REGION_SHAPES`, `placeIdOf`, `recordTravel` (`state.travelLog`), `routePoints`, `placeVisits`, `travelEstimate`, `knownWhereabouts` (as far as Kan knows) |
+| `ambience.ts` | Ambient sound (§8e): `ambienceInputOf`, `ambienceMix` (bed levels from weather, place, clock, season, region, scene mode), `currentAmbience`, `isIndoors`, `describeAmbience`. Pure; the player lives in `lib/audio/` |
 | `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter), `eraOfDate`, `captionOf`, `placeAt` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
@@ -649,6 +650,33 @@ Tests: `scripts/living-world-stage4.test.ts`.
 
 **Prompt size**: one WEATHER line (~80 tokens) per narrator turn, and two short lines in the state prompt; nothing else new.
 
+## 8e. Ambient sound (living-world Stage 5)
+
+Tests: `scripts/ambience.test.ts`.
+
+Ambience only: no music, no stingers, no recordings. Every sound is synthesised live with Web Audio from noise and oscillators, so nothing is downloaded or licensed, nothing ships with the install, and no loop ever repeats. Web only; on native the player does nothing. The narrator's and the tracker's prompts are untouched.
+
+**The mix** (`lib/rpg/ambience.ts`, pure)
+- `ambienceInputOf(db)` reads what the app already tracks: the scene's weather (`currentWeather`, so a held or story-set weather sounds the same as it reads), the time of day and hour, the season, the region, the location kind (`locationKindOf`), the location text (place names localized to English; the scene title is ignored) and its map place (`placeIdOf`), and whether the scene is in fight mode.
+- `ambienceMix(input)` returns a level 0–1 for each of 20 beds, plus `indoors` and `fight`:
+  - Weather: `rain-light`, `rain-heavy` (by intensity; drizzle → downpour), `rain-roof` (instead of rain when indoors), `storm` (thunder rolls every 18–45 s), `wind-light` (a little wind on roads and in the open even on calm days), `wind-strong` (wind, storms, blizzards, sandstorms), `wind-high` (mountains, passes, cliffs; blizzards), `snow-quiet`.
+  - Life: `forest-day` (birds: louder at dawn, fewer in winter, rain, fog and on roads, gone in heavy rain), `forest-night` (crickets and an owl; evenings fade between the two; no insects in winter), `cicadas` (summer afternoons in Fire, Rice, Hot Water and Waves). Never in the desert.
+  - Water, tied to places known to have it: the Naka River (river), the Valley of the End and the Hidden Waterfall (waterfall; the village gets it quieter), the Land of Waterfalls' wilds (streams), the coast, Uzushio, the Great Naruto Bridge and the Mist, and the island regions (sea). Elsewhere only when the location names a river, stream, lake, sea, coast or falls.
+  - People and places: `village` (street voices, footsteps, wood knocks; markets, ports and festivals louder, nights near silent, heavy weather empties the street), `murmur` (inside an inn, teahouse, tavern or bathhouse), `room` (room tone), `fire` (a hearth, fireplace or campfire, or a camp in the wilds at evening and night), `cave` (dripping stone with an echo).
+- **Indoors** (`isIndoors`): the location's own words (room, inn, house, hut, tent, hideout, hall… vs courtyard, street, roof of…), else a `structure` kind. Caves count. Indoors, outside beds drop (wind ×0.35, life ×0.3 or nothing in a cave, water ×0.45) and go through a low-pass.
+- **Fight mode** adds nothing and changes no bed: it only sets `fight`, and the player lowers everything to 30 %. The weather stays.
+- `key` is a stable string of the mix; the player ignores a new mix with the same key, so a quiet turn changes nothing.
+- A flashback (section 19, later) builds its own `AmbienceInput` from its date and place and calls `ambienceMix` with it, so it never touches the present scene.
+
+**The player** (`lib/audio/`)
+- `synth.ts`: the 20 bed builders, three 7-second stereo noise buffers (white, pink, brown; seams cross-faded) made once, and small helpers: steady filtered noise layers, `drifter` (wanders a gain or a filter frequency), `striker` (struck noise for raindrops, crackles, footsteps, one envelope at a time per voice), `tone` (bird notes, bubbles, drips, hoots, a cup set down). Events are scheduled 0.6 s ahead by each bed's `tick`. **Only linear and exponential ramps are chained**, never `setTargetAtTime` (implementations disagree on chained targets), and every parameter is anchored with `setValueAtTime` when made.
+- `ambienceEngine.ts` (`AmbienceEngine`, one per app): bed → bed gain → outdoor bus (low-pass, 18 kHz outside → 650 Hz indoors) or indoor bus → fight duck → volume → speakers. A mix change glides every bed to its new level over 4 s (`CROSSFADE_SECONDS`), so place, weather and time of day crossfade, never cut. Levels are squared for loudness and evened out by `BED_TRIM`. A bed silent for 10 s is stopped to save battery. The volume curve is squared too.
+- `AmbiencePlayer.tsx` (mounted in `app/_layout.tsx` inside `GameProvider`, renders nothing): builds the audio graph on the first tap or key press (browsers require one), feeds `currentAmbience(db)` whenever the save changes, pauses at once when the app goes to the background (`visibilitychange`, `pagehide`) and resumes when it comes back.
+- `ambienceSettings.ts`: on/off and volume (default on, 60 %), kept on the device in AsyncStorage (`kan.ambience.v1`), not in a save, so every story shares them.
+- Levels were checked by rendering each bed offline (40 s): all finite and unclipped, roughly −22 dB (waterfall) to −36 dB (room tone) RMS at full level.
+
+UI: Settings → **Sound**: Ambience switch (its line says what's playing now, e.g. "Now: rain on the roof, a quiet room, voices") and a Volume slider (`components/Slider.tsx`) that changes the sound live while dragging.
+
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
 - `classifyLocation(text)` uses first-mentioned place word → `settlement | road | wilderness | structure`.
@@ -738,7 +766,7 @@ Three tabs: **Story / Kan / Settings** (the Kan tab switches Bonds / Jutsu / Jou
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people), Letters, Scrapbook (§8d). Rows use an event's own `title` when it has one (`memoryTitle`); otherwise `titleAndBody` (`util.ts`) splits the text: "Title: …", a first sentence under 90 characters, or the first words cut at a word boundary with the rest kept as the description. Recap titles come from `summary.title`.
 - `app/(tabs)/world-clock.tsx` — hidden **World clock** (long-press the clock in the Story header; `href: null`, no tab). Read-only view of `worldClock(db)`: running/held-for-combat status, not heard yet (next in line first), due-but-waiting, queued with dates and days until, personal moments open to you, fired (with who told you), and missed beats. Contains spoilers by design.
-- `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
+- `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), Sound (ambience switch and volume, §8e), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
 - `components/settings/DebugPanel.tsx` — Settings → Debug. For each of the last 30 turns: the exact messages the narrator saw (newest 5 only; copyable), the state step's status, raw reply, applied diff and a field-by-field list of what changed in the save, and every call the turn made (narrator, state, summaries, images) with billed tokens, thinking/cached tokens, time and cost.
 
 ### Debug log (`lib/rpg/debug.ts`)
@@ -848,6 +876,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Living-world Stage 4 (`scripts/living-world-stage4.test.ts`): season names, deterministic weather, the Rain never clear / northern winters snowy / no desert snow / Fire's wet summer / the Mist's fog, spell length, the scene lock and new scenes, other regions, story weather and how long it holds, the narrator line by mode and indoors, the tracker field, old saves; map places and matching, the road (regions inherited, no repeats), visits, travel estimates in weather, whereabouts as Kan knows them (told, seen, unknown deaths, companions); eras, the scrapbook's grouping and captions; prompt size
 - Living-world Stage 3 (`scripts/living-world-stage3.test.ts`): geography and whereabouts, letter travel time by distance and carrier, Kan's words kept and tidied, the archive, letters to the dead, Root and Akatsuki interception and safer carriers, interception seeds, real losses, birthday letters, side characters' lives (canon-safe), reunion notes, life events from the page and from letters, epithets per audience (growth, renaming, story names, bingo books), posters and distorted rumours, consequence seeds (window, crossing paths, lies face to face, witnesses talking, fading, offers, returned, the remember notice), point-of-view memories, quiet-turn prompt size
 - Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
+- Ambient sound (`scripts/ambience.test.ts`): birds by day and insects at night, dawn and winter, cicadas, rain outside vs on the roof indoors, heavy rain and storms, snow and blizzards, high places, water only where it belongs, village bustle by time, hearths and caves, fight mode adds nothing, indoor detection, levels in range, the description, reading the save (held weather, map place, fight)
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

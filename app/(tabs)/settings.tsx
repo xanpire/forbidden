@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -27,6 +29,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
 import { SegmentedControl } from '@/components/SegmentedControl';
+import { Slider } from '@/components/Slider';
 import { DebugPanel } from '@/components/settings/DebugPanel';
 import { useToast } from '@/components/Toast';
 import { APP_VERSION } from '@/lib/version';
@@ -37,6 +40,9 @@ import { formatDayMonth } from '@/lib/rpg/calendar';
 import { DEFAULT_SETTINGS, PROMPT_BUDGET_OPTIONS } from '@/lib/rpg/defaults';
 import { downloadJson, pickJsonFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
+import { currentAmbience, describeAmbience } from '@/lib/rpg/ambience';
+import { ambienceEngine, ambienceSupported } from '@/lib/audio/ambienceEngine';
+import { setAmbienceSettings, useAmbienceSettings } from '@/lib/audio/ambienceSettings';
 import type { AppDatabase } from '@/lib/rpg/types';
 
 type Feedback = {
@@ -61,6 +67,9 @@ export default function SettingsScreen() {
   } = useGame();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
+  const ambience = useAmbienceSettings();
+  const [ambienceVolume, setAmbienceVolume] = useState<number | null>(null);
+  const soundSupported = Platform.OS === 'web' && ambienceSupported();
 
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState('');
@@ -462,6 +471,57 @@ export default function SettingsScreen() {
             ) : null}
           </ListCard>
 
+          <SectionLabel>Sound</SectionLabel>
+          <ListCard>
+            <ListRow
+              accessibilityLabel="Ambience"
+              accessibilityRole="switch"
+              accessibilityState={{ checked: ambience.enabled && soundSupported }}
+              meta={
+                !soundSupported
+                  ? 'This browser can’t play sound'
+                  : ambience.enabled
+                    ? `Now: ${describeAmbience(currentAmbience(db)).toLowerCase()}`
+                    : 'Off'
+              }
+              onPress={soundSupported ? () => setAmbienceSettings({ enabled: !ambience.enabled }) : undefined}
+              title="Ambience"
+              trailing={
+                <Switch
+                  disabled={!soundSupported}
+                  onValueChange={(enabled) => setAmbienceSettings({ enabled })}
+                  thumbColor={colors.text}
+                  trackColor={{ false: colors.surfaceSoft, true: colors.accent }}
+                  value={ambience.enabled && soundSupported}
+                  {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})}
+                />
+              }
+            />
+            {ambience.enabled && soundSupported ? (
+              <View style={styles.budgetRow}>
+                <View style={styles.volumeHead}>
+                  <Text style={styles.budgetLabel}>Volume</Text>
+                  <Text style={styles.valueText}>{Math.round((ambienceVolume ?? ambience.volume) * 100)}%</Text>
+                </View>
+                <Text style={styles.budgetHint}>
+                  Rain, wind, birds, water and voices around you, made on this device. Quieter in a fight.
+                </Text>
+                <Slider
+                  accessibilityLabel="Ambience volume"
+                  onChange={(volume) => {
+                    setAmbienceVolume(volume);
+                    ambienceEngine().setVolume(volume);
+                  }}
+                  onDone={(volume) => {
+                    setAmbienceSettings({ volume });
+                    setAmbienceVolume(null);
+                  }}
+                  value={ambienceVolume ?? ambience.volume}
+                />
+              </View>
+            ) : null}
+          </ListCard>
+
           <SectionLabel>Stories</SectionLabel>
           <ListCard>
             {slots.map((slot) => {
@@ -771,6 +831,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingLeft: spacing.lg,
     paddingRight: 14,
+  },
+  volumeHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   budgetLabel: {
     fontFamily: fonts.semibold,
