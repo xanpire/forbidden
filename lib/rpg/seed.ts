@@ -3,6 +3,7 @@ import { ensureCanonCast } from './canonCast';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { knowersOf } from './facts';
 import { makeId } from './id';
+import { startingPurse } from './money';
 import type {
   AppDatabase,
   BondRecord,
@@ -693,6 +694,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       chapterTitle: 'The flight from the Leaf',
       chapterStart: { turn: 1, date: DEFAULT_DATE },
       scene: 'The rain after',
+      purse: startingPurse(),
     },
     indices: emptyIndex(),
     snapshots: [],

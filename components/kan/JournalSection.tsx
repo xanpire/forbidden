@@ -13,6 +13,7 @@ import { todayNotes } from '@/lib/rpg/yearly';
 import { grudgeKnown } from '@/lib/rpg/disclosure';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
+import { PurseCard } from '@/components/kan/PurseCard';
 import { ScrapbookView } from '@/components/kan/ScrapbookView';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters' | 'scrapbook';
@@ -95,6 +96,8 @@ function NowView({ db }: { db: AppDatabase }) {
         />
         {today.length > 0 ? <ListRow body={today.join(' · ')} bodyLines={3} title="Today" /> : null}
       </ListCard>
+
+      <PurseCard db={db} />
 
       <SectionLabel>Missions</SectionLabel>
       {missions.length > 0 ? <ThreadRows threads={missions} /> : <EmptyRow title="No missions. For now." />}

@@ -33,6 +33,7 @@ import { applyYearly, yearlyOffer } from './yearly';
 import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
 import { applySafehouses } from './safehouses';
+import { applyPurse } from './money';
 import {
   FLASHBACK_BY_ID,
   activeFlashback,
@@ -387,6 +388,9 @@ export function applyStateStep(
   const offeredSeed = turnConsequenceOffer(latest);
   const planted = applyConsequences(next, extraction?.consequences, extraction?.consequencesReturned, offeredSeed);
   next = markConsequenceOffered(planted.db, offeredSeed);
+  // Kan's own money: what he paid, was paid, found or lost, and his total
+  // when the prose states it.
+  next = applyPurse(next, extraction?.money, extraction?.moneyCounted);
   // Where Kan stays: a place he sleeps at or settles in, what is stashed or built there, who
   // knows (after consequences, so a found place that came back this turn is compromised).
   // Only real downtime counts as sleeping somewhere: a long day on the road is not a night's rest.

@@ -1,5 +1,6 @@
 // Reading the state model's reply: JSON parsing and snake_case → TurnDiff.
 
+import { readRyo } from './money';
 import type {
   Audience,
   ConsequenceKind,
@@ -362,6 +363,18 @@ export function convertStateBlock(
 
   if (flashbackMark === 'offered' || flashbackMark === 'started' || flashbackMark === 'ended') {
     diff.flashback = flashbackMark;
+  }
+
+  const money = convertMoney(block.money);
+
+  if (money.length > 0) {
+    diff.money = money;
+  }
+
+  const counted = readRyo(block.money_counted);
+
+  if (counted !== null && counted >= 0) {
+    diff.moneyCounted = counted;
   }
 
   const safehouse = convertSafehouse(block.safehouse);
@@ -871,6 +884,25 @@ export function repairTruncatedJson(text: string): Record<string, unknown> | nul
   }
 
   return null;
+}
+
+/** The tracker's money changes: a signed amount and a reason each, zeros dropped. */
+function convertMoney(value: unknown): { amount: number; reason: string }[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+
+      const entry = item as Record<string, unknown>;
+      const amount = readRyo(entry.amount);
+
+      if (amount === null || amount === 0) return null;
+
+      return { amount, reason: (cleanString(entry.reason) ?? '').slice(0, 80) };
+    })
+    .filter((item): item is { amount: number; reason: string } => Boolean(item))
+    .slice(0, 6);
 }
 
 const SAFEHOUSE_KIND_VALUES = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;

@@ -40,6 +40,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter; flashback photos under `MEMORY_ERA`), `eraOfDate`, `captionOf`, `placeAt` |
 | `flashbackData.ts` / `flashbacks.ts` | Playable flashbacks (§8f): the 18 memories and Kan's parents (data), and the engine: `flashbackOffer`, `beginFlashback`, `applyFlashbackMarks`, `applyFlashbackTurn`, `endFlashback`, `applyFlashbackWriteUp`, `flashbackView` (the memory's date, place and weather), `formatFlashbackBlock` / `formatFlashbackOffer` / `formatFlashbackReturn`, `flashbackTrackingLines`, `flashbackImageNote`, `rememberChip` |
 | `safehouses.ts` | Safehouses (§8g, `state.safehouses`): `applySafehouses` (tagging, leaving and coming back, stash, upgrades, residents, who knows, rest), `advanceSafehouses` (rooms running out, hosts, residents, found places searched), `currentSafehouse`, `restQuality` / `restBlocked`, `formatSafehouseLine` (SAFEHOUSE), `placesLine`, `formatSafehouseTracking` (SAFEHOUSES), `letterAddress`, `headingTo` |
+| `money.ts` | Kan's money (§8h, `state.purse`): `applyPurse` (the tracker's changes and stated totals; never below zero), `formatPurseLine` (Purse in CURRENT STATE), `PRICE_GUIDE` (one price scale for narrator and tracker), `normalizePurse`, `readRyo`, `formatChange`, `purseFeel` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -156,6 +157,7 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   travelLog?: [{ place, region?, placeId?, date }]                          // §8d, last 400
   flashbacks?: { played, offered, lastOfferOn?, pending?, active?, returned? } // §8f
   safehouses?: { places: Safehouse[], current? }                            // §8g
+  purse?: { ryo, history: [{ date, change, reason, counted? }], estimatedStart? }  // §8h, last 40
 }
 ```
 
@@ -258,6 +260,7 @@ consequences: [{
   consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
   birthdaysLearned?: [{ entityId?, name }], weather?: string, flashback?: 'offered'|'started'|'ended',
   safehouse?: { id?, name?, kind?, paidNights?, host?, stored?, taken?, upgrade?, shownTo?, residentsJoined?, residentsLeft?, ended? },
+  money?: [{ amount /* ryō, negative when Kan pays */, reason }], moneyCounted?: number,
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -336,7 +339,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 
 ### Dynamic user block (in order)
 
-1. `formatState` (date, place, mood, world, inventory, canon point)
+1. `formatState` (date, place, mood, world, inventory, purse, canon point)
 1a. `formatCompanions` — `TRAVELLING WITH KAN`: each companion, how long together, why/where they joined, shared scenes, how they feel (only when someone travels with Kan). Their character cards are always in `CHARACTERS IN SCENE`, companions first.
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 2a. `formatWeatherLine` — `WEATHER (the Land of Rain, late autumn; it almost never stops raining here): steady rain. …` with what it does, shaped by the mode (§8d)
@@ -739,6 +742,22 @@ Living-world section 20. Any place Kan stays can become a safehouse by itself, a
 
 **Prompt size**: nothing on a quiet turn without places; one CURRENT STATE line (~20 tokens) while he has some; the SAFEHOUSE line (~90 tokens) only at or heading to one. The tracker's SAFEHOUSES block (~300 tokens) is in every present tracker prompt.
 
+## 8h. Money (`lib/rpg/money.ts`)
+
+Kan's own money, in ryō. Tests: `scripts/money.test.ts`.
+
+**Data** (`state.purse`): `ryo` (never below 0), `history` (the last 40 changes: date, signed change, reason, `counted` when a stated total set it), `estimatedStart` (an older save: the amount is the starting guess). New stories start with `STARTING_RYO` (4,000: what was in Kan's pouch the night he left the Leaf); older saves get the same amount marked as a guess.
+
+**Tracker**: `money: [{ amount, reason }]` for every change to Kan's own money on the page (negative when he pays, loses, gives away or is robbed; positive when he is paid, given, finds, wins or takes it), and `money_counted` only when the prose states his exact total. Someone else paying for him changes nothing; money only talked about hasn't moved; money is never an inventory item. With no amount in the prose, it estimates from `PRICE_GUIDE`. `readRyo` accepts numbers and strings ("-1,200 ryō", "−300"); zeros are dropped, 6 changes a turn at most.
+
+**Applying** (`applyPurse`, in the present state step just before the safehouses; never in a flashback, whose turns go through `applyMemoryStep`): changes in order, a payment larger than the purse pays what he has; then a stated total sets the count (a `counted` entry for the difference) and clears `estimatedStart`.
+
+**Narrator**: `Purse: 4,000 ryō` in CURRENT STATE (both prompts), with "(nearly empty)" under 1,000 and "(empty: …)" at 0. The CORE rule: he can't pay more than he has (the seller says he is short), say how much whenever money changes hands, someone else may pay; `PRICE_GUIDE` follows it in the cached rules (meals 300-800, a cheap inn 2,000-5,000 a night, kunai 200, mission pay D 5,000-50,000 up to S 1,000,000+, in scale with the bingo-book bounties).
+
+**UI** (Kan tab → Journal → Now): **Your purse**: how it feels ("Enough for the road", "A small fortune"…) with the total, the note on a guessed start, and the changes newest first (4, then "Show all").
+
+**Prompt size**: one CURRENT STATE line (~8 tokens) in both prompts; the rule and prices (~170 tokens) sit in the cached system blocks.
+
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
 - `classifyLocation(text)` uses first-mentioned place word → `settlement | road | wilderness | structure`.
@@ -943,6 +962,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Ambient sound (`scripts/ambience.test.ts`): birds by day and insects at night, dawn and winter, cicadas, rain outside vs on the roof indoors, heavy rain and storms, snow and blizzards, high places, water only where it belongs, village bustle by time, hearths and caves, fight mode adds nothing, indoor detection, levels in range, the description, reading the save (held weather, map place, fight)
 - Safehouses (`scripts/safehouses.test.ts`): schema and tracker block, tagging (name, kind, who knows), an untagged inn night → rented, paying on, running out, camps left and come back to, none in fights, stash in and out, upgrades, safe rest healing, residents' whereabouts, the narrator lines (none without places, places line, heading, overgrown), letter address, found seeds (Root, hunter-nin, the Akatsuki; never for a base), coming back → compromised, searched while away, compromised rest, a host's death, ambience, flashbacks, normalize
 - Playable flashbacks (`scripts/flashbacks.test.ts`): the 18 records (order, dates before the story, Kan's ages, Team 3 window, cast in the save), the date line, offers (fitting moments, none in fights/on the road/early/without a fit, date windows, once a month, played never again, Shisui's last night gated), the chip and the waiting offer, starting by words or chip, the narrator and tracker blocks, the dead alive at their age, Kan's parents made once, the present standing still, memory weather and ambience, ending (past-dated shared memory, ±1 bond, job, return line, recent scene), the write-up, the hard cap and wrap-up lines, images and scrapbook, old saves, remembrance days
+- Money (`scripts/money.test.ts`): new and old saves, schema and both prompts, reading the tracker's amounts, paying and being paid, never below zero, a stated total, flashbacks leave the purse alone
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

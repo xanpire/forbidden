@@ -155,6 +155,27 @@ export type GameState = {
   flashbacks?: FlashbackState;
   /** Places Kan stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
   safehouses?: SafehouseState;
+  /** The money Kan carries, and what moved it (see money.ts). */
+  purse?: PurseState;
+};
+
+/** One change to Kan's money (see money.ts). */
+export type PurseEntry = {
+  date: CalendarDate;
+  /** Ryō, negative when Kan paid, lost or gave it away. */
+  change: number;
+  reason: string;
+  /** The story stated his total and the count was set to it. */
+  counted?: boolean;
+};
+
+export type PurseState = {
+  /** Ryō Kan carries now. */
+  ryo: number;
+  /** The last 40 changes, oldest first. */
+  history: PurseEntry[];
+  /** An older save: the amount is the starting guess until the story states his total. */
+  estimatedStart?: boolean;
 };
 
 export type SafehouseKind = 'own' | 'rented' | 'borrowed' | 'base' | 'camp';
@@ -1151,6 +1172,10 @@ export type TurnDiff = {
   weather?: string;
   /** A place Kan settles in or sleeps at, and what changed there (see safehouses.ts). */
   safehouse?: SafehouseDiff;
+  /** Changes to Kan's own money this turn, in ryō (negative when he pays). */
+  money?: { amount: number; reason: string }[];
+  /** The total Kan has, when the prose states it. */
+  moneyCounted?: number;
   /** What a village or the Akatsuki now has on Kan. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday Kan learned this turn (they said it, someone told him). */

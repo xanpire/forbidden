@@ -103,6 +103,13 @@ export const TURN_STATE_SCHEMA = object({
   canon_point: nullableString,
   inventory_added: stringList,
   inventory_removed: stringList,
+  // Every change to Kan's own money this turn, in ryō (negative when he pays),
+  // and his total only when the prose states it.
+  money: list({
+    amount: { type: 'number' },
+    reason: { type: 'string' },
+  }),
+  money_counted: nullableNumber,
   jutsu_used: list({
     name: { type: 'string' },
     // A character ID ("kan", "kisame-hoshigaki"), or a description for an unnamed user.
