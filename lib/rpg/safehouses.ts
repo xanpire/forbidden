@@ -213,7 +213,13 @@ export function isOvergrown(db: Pick<AppDatabase, 'state'>, house: Safehouse): b
 
 const INN_WORDS = /\b(inn|teahouse|tea house|tavern|lodging|lodge|ryokan|guesthouse|guest house|hostel|boarding house|rented room|bathhouse)\b/i;
 const HIDEOUT_WORDS = /\b(akatsuki|hideout|lair|base)\b/i;
-const WILD_WORDS = /\b(camp|campsite|clearing|forest|woods|riverbank|ravine|cliff|hollow|thicket|field|hill|ridge|roadside|under the trees|bedroll|cave|cavern|grotto|ruin|ruins|ruined|rubble|overhang|ledge|abandoned)\b/i;
+const WILD_WORDS = /\b(clearing|forest|woods|riverbank|ravine|cliff|hollow|thicket|field|hill|ridge|roadside|under the trees|bedroll|cave|cavern|grotto|ruin|ruins|ruined|rubble|overhang|ledge)\b/i;
+/** An organisation's camp: an army, the Alliance, the Akatsuki. A base, not a night in the wild. */
+const ORG_CAMP =
+  /\b(akatsuki|army|military|war|field|battle|forward|command|allied|alliance|division|troops?|soldiers?|shinobi|ninja|hunter[- ]nin|anbu|root|samurai|sound|leaf|sand|mist|cloud|stone|rain)['’]?s? (field |war |base |forward |command )?(camp|encampment|bivouac)s?\b|\b(camp|encampment)s? of the\b|\bencampment\b/i;
+/** People's camps: refugees, travellers, merchants. A night among strangers, gone when he leaves. */
+const PEOPLE_CAMP = /\b(refugee|refugees'?|travell?ers'?|merchants?'?|caravan|nomad|nomads'?|bandit|bandits'?|hunting|fishing|logging|miners'?) camps?\b/i;
+const CAMP_WORD = /\b(camp|campsite|camped)\b/i;
 
 const CAVE_COVER = /\b(cave|cavern|grotto|tunnel|catacomb|underground|mine shaft)\b/i;
 const RUIN_COVER =
@@ -245,9 +251,42 @@ function guessKind(db: AppDatabase): SafehouseKind | null {
 
   if (INN_WORDS.test(location)) return 'rented';
   if (HIDEOUT_WORDS.test(location) && /\bakatsuki\b/i.test(`${location} ${db.state.scene}`)) return 'base';
-  if (kind === 'wilderness' || kind === 'road' || WILD_WORDS.test(location)) return 'camp';
+  // An army's or the Akatsuki's camp is theirs, and his place in it lasts while he belongs.
+  if (ORG_CAMP.test(location) && !PEOPLE_CAMP.test(location)) return 'base';
+  if (PEOPLE_CAMP.test(location)) return 'camp';
+  if (kind === 'wilderness' || kind === 'road' || WILD_WORDS.test(location) || RUIN_COVER.test(location)) return 'camp';
+  // "Camp" alone in a village or a building is not a night in the wild.
+  if (CAMP_WORD.test(location) && kind !== 'settlement' && kind !== 'structure') return 'camp';
 
   return null;
+}
+
+const OWNER_WORDS: Array<[RegExp, string]> = [
+  [/\bakatsuki\b/i, 'the Akatsuki'],
+  [/\b(allied|alliance|division)\b/i, 'the Allied Shinobi Forces'],
+  [/\broot\b/i, 'Root'],
+  [/\bsamurai\b/i, 'the samurai'],
+  [/\bsound\b/i, 'the Hidden Sound'],
+  [/\bleaf\b/i, 'the Hidden Leaf'],
+  [/\bsand\b/i, 'the Hidden Sand'],
+  [/\bmist\b/i, 'the Hidden Mist'],
+  [/\bcloud\b/i, 'the Hidden Cloud'],
+  [/\bstone\b/i, 'the Hidden Stone'],
+  [/\brain\b/i, 'the Hidden Rain'],
+];
+
+/** Whose base it is: the place's words first, then the scene's, then the Akatsuki if he is one of them. */
+function baseOwner(db: AppDatabase): string {
+  const location = localizePlaceNames(db.state.location ?? '');
+  const scene = localizePlaceNames(db.state.scene ?? '');
+
+  for (const text of [location, scene]) {
+    for (const [pattern, owner] of OWNER_WORDS) {
+      if (pattern.test(text)) return owner;
+    }
+  }
+
+  return isAkatsukiMember(db) ? 'the Akatsuki' : 'the people who run it';
 }
 
 function cleanName(text: string) {
@@ -302,7 +341,7 @@ function newSafehouse(
   const host = kind === 'borrowed' && diff?.host ? personRef(db, diff.host) : null;
   const groups: string[] = [];
 
-  if (kind === 'base') groups.push(/\bakatsuki\b/i.test(`${location} ${db.state.scene}`) || isAkatsukiMember(db) ? 'the Akatsuki' : 'the people who run it');
+  if (kind === 'base') groups.push(baseOwner(db));
   if (kind === 'rented') groups.push('the innkeeper');
 
   return {
@@ -851,8 +890,9 @@ const KIND_LABEL: Record<SafehouseKind, string> = {
 export function kindLabel(house: Safehouse): string {
   if (house.kind === 'borrowed' && house.hostName) return `${house.hostName}’s, lent to you`;
   if (house.kind === 'base') {
-    const org = house.knownGroups.find((group) => /akatsuki/i.test(group));
-    return org ? 'an Akatsuki hideout' : 'a base';
+    if (house.knownGroups.some((group) => /akatsuki/i.test(group))) return 'an Akatsuki base';
+    const owner = house.knownGroups.find((group) => group !== 'the people who run it' && group !== 'the innkeeper');
+    return owner ? `a base of ${owner}` : 'a base';
   }
   return KIND_LABEL[house.kind];
 }
@@ -1032,7 +1072,7 @@ export function formatSafehouseTracking(db: AppDatabase): string {
   return [
     'SAFEHOUSES',
     ...(listed.length > 0 ? listed : ['- none yet']),
-    'safehouse: null on most turns. Fill it when Kan sleeps somewhere or the page says he settles in (name: a short name for the place, like "the cave above the falls"; kind: own = a place he takes or builds himself, rented = an inn or teahouse room, borrowed = someone\'s home lent to him (host = their id), base = an organisation\'s place like an Akatsuki hideout, camp = a night in the wild), or when something changes at a listed one: then id = its id (also when he comes back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items he leaves there or picks up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
+    'safehouse: null on most turns. Fill it when Kan sleeps somewhere or the page says he settles in (name: a short name for the place, like "the cave above the falls"; kind: own = a place he takes or builds himself, rented = an inn or teahouse room, borrowed = someone\'s home lent to him (host = their id), base = an organisation\'s place like an Akatsuki hideout or an army\'s or the Akatsuki\'s field camp, camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when he comes back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items he leaves there or picks up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
   ].join('\n');
 }
 

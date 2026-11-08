@@ -162,6 +162,33 @@ describe('becoming a safehouse', () => {
     expect(back.kind).toBe('own');
   });
 
+  test('"camp" means a night in the wild only when it is one: an army or Akatsuki camp is a base', () => {
+    const sleepAt = (location: string, locationKind: AppDatabase['state']['locationKind'], scene = 'A night') =>
+      currentSafehouse(play(save({ location, locationKind, scene }), '*You sleep.*', 'You sleep.', night));
+
+    const akatsuki = sleepAt('the Akatsuki field camp near the Grass border', 'settlement')!;
+    expect(akatsuki.kind).toBe('base');
+    expect(akatsuki.knownGroups).toContain('the Akatsuki');
+
+    const allied = sleepAt('the Allied Forces camp of the Third Division', 'settlement')!;
+    expect(allied.kind).toBe('base');
+    expect(allied.knownGroups).toContain('the Allied Shinobi Forces');
+
+    const army = sleepAt('a Leaf army camp outside the village', 'settlement')!;
+    expect(army.kind).toBe('base');
+    expect(army.knownGroups).toContain('the Hidden Leaf');
+
+    // A camp of strangers is still a night among them, gone when he leaves.
+    expect(sleepAt('a refugee camp on the edge of Hidden Rain', 'settlement')!.kind).toBe('camp');
+    expect(sleepAt('a merchant caravan camp on the road', 'road')!.kind).toBe('camp');
+    // A camp by a river in the wild is a camp.
+    expect(sleepAt('a camp by the river', 'wilderness')!.kind).toBe('camp');
+    // "Camp" alone in a village or a building makes nothing by itself.
+    expect(sleepAt('the old camp office in Tanzaku Quarters', 'settlement')).toBeNull();
+    // Ruins still make camps.
+    expect(sleepAt('the ruins of a watchtower', 'structure')!.kind).toBe('camp');
+  });
+
   test('no safehouse in a fight', () => {
     const db = save();
     const next = play(db, '*You strike.*', 'Steel rings.', {
