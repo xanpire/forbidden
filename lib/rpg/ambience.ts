@@ -13,6 +13,7 @@
 // A flashback (section 19) can build its own AmbienceInput from its date and
 // place and pass it to ambienceMix, so the present scene is never touched.
 
+import { flashbackView } from './flashbacks';
 import { timeOfDayOf, type DayPeriod } from './calendar';
 import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
@@ -290,9 +291,12 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
   return { beds, indoors, fight: input.fight, key };
 }
 
-/** The mix for the save's present scene. */
+/**
+ * The mix for the save's scene: the present's, or while a flashback plays,
+ * the memory's own date, place and weather (never the present's held weather).
+ */
 export function currentAmbience(db: AppDatabase): AmbienceMix {
-  return ambienceMix(ambienceInputOf(db));
+  return ambienceMix(ambienceInputOf(flashbackView(db) ?? db));
 }
 
 const BED_LABEL: Record<AmbienceBed, string> = {

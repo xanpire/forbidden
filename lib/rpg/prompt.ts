@@ -40,6 +40,15 @@ import { formatAbilities } from './abilities';
 import { formatVarietyBlock } from './variety';
 import { formatWeatherLine, formatWeatherTracking } from './weather';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
+import {
+  activeFlashback,
+  flashbackOffer,
+  flashbackTrackingLines,
+  flashbackView,
+  formatFlashbackBlock,
+  formatFlashbackOffer,
+  formatFlashbackReturn,
+} from './flashbacks';
 import type {
   AppDatabase,
   EntityRecord,
@@ -130,7 +139,9 @@ NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and con
 
 BEAT: beat tags how this turn played, from Kan's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring tea, a flash of the Sharingan), instruction (someone tells Kan to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, a jutsu that changes the situation, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people Kan is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves Kan could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the threads and close in"), fitting the moment and what he can really do (dodge, block, counter, and at least one jutsu he knows); otherwise [].
 
-IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.`;
+IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
+
+FLASHBACK: flashback is null unless a FLASHBACK, MEMORY or THIS TURN IS A MEMORY line below says how to set it.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -216,8 +227,23 @@ export function buildNarrationPrompt(
       !(memory.summaryId && storySoFar.ids.includes(memory.summaryId))
   );
   const arcSummary = storySoFar.arc ?? storySoFar.chapters[storySoFar.chapters.length - 1] ?? null;
+  // A flashback playing now: the narrator gets the memory instead of the present.
+  const playing = activeFlashback(db);
+  const memoryView = playing ? flashbackView(db) : null;
+  const memoryCast = playing
+    ? playing.active.castIds.map((id) => db.entities.find((entity) => entity.id === id)?.name).filter((name): name is string => Boolean(name))
+    : [];
   // Conversation, fight, or normal narration, from the scene so far and Kan's input.
-  const sceneMode = resolveTurnMode(db, userMessage);
+  const sceneMode = resolveTurnMode(
+    playing ? { ...db, state: { ...db.state, sceneCast: memoryCast.length > 0 ? memoryCast : playing.record.cast } } : db,
+    userMessage
+  );
+  // At most one outside pressure per turn: a grudge first, then something
+  // coming back, then a bounty hunter, then a familiar face.
+  const pressure = playing ? '' : formatPressure(db, entityText);
+  // A memory that fits this moment: at most one a month, never in a fight or
+  // while something presses in on Kan.
+  const memoryOffer = playing || pressure ? null : flashbackOffer(db, userMessage, sceneMode.mode);
 
   // Ordered from never-changing to changing-every-turn, so the front of the
   // prompt is a stable prefix that providers can cache (cache reads cost a
@@ -235,9 +261,24 @@ export function buildNarrationPrompt(
     formatTheDead(db),
   ].filter(Boolean).join('\n\n');
 
-  // 3. Everything that moves turn to turn.
-  const buildDynamic = (messagesForScene: RawLogEntry[]) =>
+  // 3. Everything that moves turn to turn. Inside a flashback the present
+  //    stands still: no news, letters, canon, pressure or present state.
+  const buildMemoryDynamic = (messagesForScene: RawLogEntry[]) =>
     [
+      formatFlashbackBlock(db, formatWeatherLine(memoryView ?? db, sceneMode.mode)),
+      formatMemories(db, freshMemories),
+      formatRecentMessages(messagesForScene),
+      formatLastBeat(messagesForScene),
+      'CONTINUITY: continue directly from the last narrated beat of the memory. Never repeat a beat you already wrote and never contradict it.',
+      // Present wounds don't exist in the memory.
+      formatSceneModeLine({ ...db, facts: [] }, sceneMode),
+      `YOU (KAN) DO OR SAY:\n${userMessage}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+  const buildDynamic = (messagesForScene: RawLogEntry[]) =>
+    playing ? buildMemoryDynamic(messagesForScene) : [
       formatState(db),
       formatCompanions(db),
       formatTimeLine(db, 'narrator', sceneMode.mode),
@@ -259,9 +300,9 @@ export function buildNarrationPrompt(
       formatEncounterConditions(db),
       formatNameOutThere(db),
       formatRenownBlock(db),
-      // At most one outside pressure per turn: a grudge first, then
-      // something coming back, then a bounty hunter, then a familiar face.
-      formatPressure(db, entityText),
+      pressure,
+      formatFlashbackOffer(db, memoryOffer),
+      formatFlashbackReturn(db),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       formatSceneModeLine(db, sceneMode),
       `YOU (KAN) DO OR SAY:\n${userMessage}`,
@@ -323,6 +364,11 @@ export function buildNarrationPrompt(
     recentMessages: sceneMessages,
     arcSummary,
     sceneMode,
+    /** The flashback this reply belongs to (stamped on its entries), or the one offered on it. */
+    flashback: {
+      ...(playing ? { active: { id: playing.active.id, date: playing.active.date } } : {}),
+      ...(memoryOffer ? { offerId: memoryOffer.id } : {}),
+    },
   };
 }
 
@@ -346,24 +392,28 @@ export function buildExtractionPrompt(
     formatThreads(db),
   ].join('\n\n');
 
+  const reply = [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.content === assistantMessage);
+  // A turn inside a flashback: the memory's clock and place, and none of the
+  // present's canon, letters or enemies to mark.
+  const memoryView = activeFlashback(db) ? flashbackView(db) : null;
   const dynamic = [
     // Facts move every turn, so they sit outside the cached part, with refs
     // the tracker can end or replace.
-    formatFacts(db, stateFacts(db, `${userMessage}\n${assistantMessage}`), { refs: true }),
-    formatState(db),
-    formatCompanionIds(db),
-    `YOUR ABILITIES\n${formatAbilities(db)}`,
+    memoryView ? '' : formatFacts(db, stateFacts(db, `${userMessage}\n${assistantMessage}`), { refs: true }),
+    memoryView
+      ? `CURRENT STATE (inside the memory)\nDate: ${formatDate(memoryView.state.inStoryDate)}\nLocation: ${truncate(memoryView.state.location, 100)}`
+      : formatState(db),
+    memoryView ? '' : formatCompanionIds(db),
+    memoryView ? '' : `YOUR ABILITIES\n${formatAbilities(db)}`,
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
-    formatTimeLine(db, 'state'),
-    formatWeatherTracking(db),
-    formatSceneModeTracking(
-      null,
-      [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.content === assistantMessage)?.sceneMode
-    ),
-    formatCanonTracking(db),
-    formatLetterTracking(db),
-    formatYearlyTracking(db),
-    formatEnemyTracking(db),
+    formatTimeLine(memoryView ?? db, 'state'),
+    formatWeatherTracking(memoryView ?? db),
+    formatSceneModeTracking(null, reply?.sceneMode),
+    ...flashbackTrackingLines(db, reply?.flashbackOffer),
+    memoryView ? '' : formatCanonTracking(db),
+    memoryView ? '' : formatLetterTracking(db),
+    memoryView ? '' : formatYearlyTracking(db),
+    memoryView ? '' : formatEnemyTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
@@ -392,7 +442,8 @@ export function buildExtractionPrompt(
 
 export function buildSceneSummaryPrompt(
   db: AppDatabase,
-  messages: RawLogEntry[]
+  messages: RawLogEntry[],
+  options: { memoryNote?: string } = {}
 ) {
   const transcript = messages
     .map(
@@ -409,7 +460,8 @@ export function buildSceneSummaryPrompt(
 
   // The people it mattered to most also get their own side of it.
   const pov = povInstruction(povCandidates(db, messages));
-  const user = `SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
+  const memory = options.memoryNote ? `${options.memoryNote}\n\n` : '';
+  const user = `${memory}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
   const promptMessages: OpenRouterMessage[] = [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -467,8 +519,12 @@ export function buildTimeSkipPrompt(
 }
 
 export function getRecentMessages(db: AppDatabase, limit: number): RawLogEntry[] {
+  // Inside a flashback: the present lead-in and this memory's turns. Back in
+  // the present: memories stay out, so the story picks up where Kan left it.
+  const playing = activeFlashback(db)?.active.id;
+
   return db.rawLog
-    .filter((message) => message.kind === 'story')
+    .filter((message) => message.kind === 'story' && (!message.flashback || message.flashback.id === playing))
     .slice(-limit);
 }
 
@@ -1101,7 +1157,9 @@ function formatMemories(db: AppDatabase, memories: EventRecord[]) {
         ? db.summaries.find((summary) => summary.id === memory.summaryId)?.text
         : undefined;
       const text = full ?? memory.summary;
-      return `- ${memory.title ? `${memory.title}: ` : ''}${truncate(text, 400)}`;
+      // A flashback is a memory of the past, lived again, not something that just happened.
+      const past = memory.tags.includes('flashback') ? `(from Year ${memory.inStoryDate.year}, before the story) ` : '';
+      return `- ${past}${memory.title ? `${memory.title}: ` : ''}${truncate(text, 400)}`;
     }),
   ].join('\n');
 }

@@ -21,6 +21,7 @@ import { normalizeSceneMode } from './sceneMode';
 import type { AppDatabase, MemoryIndex, WeatherLock } from './types';
 import { normalizeTravelLog } from './mapData';
 import { WEATHER_CONDITIONS } from './weather';
+import { normalizeFlashbacks } from './flashbacks';
 
 const META_KEY = 'kan.meta.v1';
 const SLOT_PREFIX = 'kan.slot.';
@@ -695,6 +696,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     consequences: normalizeConsequences(state.consequences),
     weather: normalizeWeather(state.weather),
     travelLog: normalizeTravelLog(state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
+    flashbacks: normalizeFlashbacks(state.flashbacks),
   };
 }
 

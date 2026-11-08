@@ -356,6 +356,12 @@ export function convertStateBlock(
     diff.chapterTitle = chapterTitle.slice(0, 60);
   }
 
+  const flashbackMark = cleanString(block.flashback)?.toLowerCase();
+
+  if (flashbackMark === 'offered' || flashbackMark === 'started' || flashbackMark === 'ended') {
+    diff.flashback = flashbackMark;
+  }
+
   const weather = cleanString(block.weather);
 
   if (weather && weather.length >= 2) {

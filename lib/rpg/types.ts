@@ -151,6 +151,49 @@ export type GameState = {
   weather?: WeatherLock;
   /** Every place Kan has been, oldest first (see mapData.ts). */
   travelLog?: TravelStop[];
+  /** Playable flashbacks: offers, the one playing now, and those already lived (see flashbacks.ts). */
+  flashbacks?: FlashbackState;
+};
+
+/**
+ * Kan's playable memories of his life before the story (see flashbacks.ts).
+ * A flashback has its own clock and place; the present stands still while
+ * it plays.
+ */
+export type FlashbackState = {
+  /** Flashback ids already lived through; each plays once. */
+  played: string[];
+  /** When each flashback was last offered (present date). */
+  offered: Record<string, CalendarDate>;
+  /** The last offer of any flashback: at most one per in-story month. */
+  lastOfferOn?: CalendarDate;
+  /** An offer the reply showed, which Kan can still follow. */
+  pending?: { id: string; logId: string; turnsLeft: number };
+  /** The flashback playing now. */
+  active?: ActiveFlashback;
+  /** The flashback that just ended: the next present turn picks up from it. */
+  returned?: { id: string; ending: string; forced?: boolean };
+};
+
+export type ActiveFlashback = {
+  id: string;
+  /** The memory's own clock. */
+  date: CalendarDate;
+  place: string;
+  locationKind: LocationKind;
+  /** The present moment Kan left. */
+  startedOn: CalendarDate;
+  /** Flashback turns narrated and applied so far. */
+  turns: number;
+  /** Everyone who was in the memory's scene (entity ids). */
+  castIds: string[];
+  /** How the memory moved people's feelings, summed; applied, capped, when it ends. */
+  nudges: Record<string, number>;
+  /** Weather the memory's own prose set. */
+  weather?: { condition: WeatherCondition; text?: string };
+  /** The present scene's pace and mode, put back when it ends. */
+  presentPace?: ScenePace;
+  presentSceneMode?: SceneModeState;
 };
 
 export type WeatherCondition =
@@ -396,6 +439,10 @@ export type RawLogEntry = {
   sceneMode?: SceneModeName;
   /** Quick moves offered under a fight reply (written by the state tracker). */
   fightOptions?: string[];
+  /** A turn played inside a flashback: which one, and the memory's clock when it began. */
+  flashback?: { id: string; date: CalendarDate };
+  /** A flashback offered to the narrator on this reply (see flashbacks.ts). */
+  flashbackOffer?: string;
 };
 
 export type SceneImageMeta = {
@@ -735,7 +782,7 @@ export type SummaryRecord = {
  * Jobs live in the save so a failed or interrupted step survives a reload
  * and can be retried from the story screen.
  */
-export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year';
+export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year' | 'flashback';
 
 export type MemoryJob = {
   id: string;
@@ -750,6 +797,8 @@ export type MemoryJob = {
   logIds?: string[];
   /** arc / year: the chapter summaries to roll up. */
   summaryIds?: string[];
+  /** flashback: the memory being written up (see flashbacks.ts). */
+  flashbackId?: string;
   /** timeSkip: the jump being summarized. */
   fromDate?: CalendarDate;
   toDate?: CalendarDate;
@@ -924,6 +973,8 @@ export type TurnDiff = {
   fightOptions?: string[];
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
+  /** A flashback offered this turn showed its trigger, Kan followed one into the memory, or the memory ended. */
+  flashback?: 'offered' | 'started' | 'ended';
   /** Chakra natures Kan gained this turn: found innate, or taken with Thousand Souls. */
   naturesGained?: { nature: string; source: 'innate' | 'thousand-souls'; from?: string }[];
   /** Abilities Kan gained or that changed stage this turn (Sharingan 2 tomoe, Mangekyō...). */

@@ -55,6 +55,7 @@ export const RELATIONSHIPS = [
   'rejected',
   'ex',
 ] as const;
+export const FLASHBACK_MARKS = ['offered', 'started', 'ended'] as const;
 export const ATTRACTIONS = ['none', 'warm', 'strong'] as const;
 export const GENDERS = ['male', 'female', 'unknown'] as const;
 export const ATTRACTED_TO = ['men', 'women', 'both', 'none', 'unknown'] as const;
@@ -209,6 +210,9 @@ export const TURN_STATE_SCHEMA = object({
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,
+  // Flashbacks (see FLASHBACK in the state prompt): an offered memory's
+  // trigger was shown, Kan let a memory take him, or the memory ended.
+  flashback: nullableEnum(FLASHBACK_MARKS),
   canon_engaged: stringList,
   canon_completed: stringList,
   canon_passed: stringList,

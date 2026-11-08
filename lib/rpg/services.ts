@@ -428,14 +428,16 @@ export async function summarizeScene(options: {
   db: AppDatabase;
   messages: RawLogEntry[];
   debugTurnId?: string;
+  /** For a flashback: what memory this scene is, so it is written up as one. */
+  memoryNote?: string;
 }): Promise<TitledSummary | null> {
-  const { apiKey, db, messages, debugTurnId } = options;
+  const { apiKey, db, messages, debugTurnId, memoryNote } = options;
 
   if (messages.length === 0) {
     return null;
   }
 
-  const prompt = buildSceneSummaryPrompt(db, messages);
+  const prompt = buildSceneSummaryPrompt(db, messages, { memoryNote });
 
   return summaryChat('scene', debugTurnId, {
     apiKey,

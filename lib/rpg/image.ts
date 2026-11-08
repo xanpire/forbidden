@@ -4,6 +4,7 @@ import { localizePlaceNames } from './glossary';
 import { completeChat, type CallUsage } from '../openrouter';
 import { wearsAkatsukiCloak } from './portrait';
 import type { PlannedReference } from './referencePlan';
+import { flashbackImageNote, kanAgeAt, latestReplyIsFlashback } from './flashbacks';
 import type { AppDatabase, EntityRecord } from './types';
 
 const RECENT_IMAGE_LIMIT = 2;
@@ -176,11 +177,17 @@ export async function writeImageAction(
   const cast = sceneCast(db);
   const model = db.settings.extractionModel || db.settings.summaryModel;
   const playerAction = latestPlayerAction(db, reply.id);
+  // A reply inside a flashback: the memory's place and Kan at his age then.
+  const memory = reply.flashback ? db.state.flashbacks?.active ?? null : null;
   const context = [
-    `Location: ${db.state.location}.`,
-    `Scene: ${db.state.scene}.`,
-    `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
-    cast.length > 0 ? `Known people in the scene: ${cast.join(', ')}.` : 'Known people in the scene: none besides Kan.',
+    memory || reply.flashback
+      ? `This reply is a memory from Year ${reply.flashback!.date.year}: Kan is ${kanAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
+      : `Location: ${db.state.location}.`,
+    reply.flashback ? '' : `Scene: ${db.state.scene}.`,
+    reply.flashback ? '' : `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
+    reply.flashback
+      ? ''
+      : cast.length > 0 ? `Known people in the scene: ${cast.join(', ')}.` : 'Known people in the scene: none besides Kan.',
     playerAction ? `What Kan's player wrote this turn: ${tailOf(playerAction, 600)}` : '',
     '',
     'NARRATOR REPLY:',
@@ -217,7 +224,9 @@ export function buildSceneImagePrompt(
   references: PlannedReference[],
   action: string
 ) {
-  const cast = sceneCast(db);
+  // A memory: Kan and everyone else at their age then, no present outfit.
+  const memoryNote = flashbackImageNote(db, latestReplyIsFlashback(db));
+  const cast = memoryNote ? [] : sceneCast(db);
   const cloak = wearsAkatsukiCloak(db);
 
   const currentOutfit = cloak
@@ -259,7 +268,7 @@ export function buildSceneImagePrompt(
       const name = reference.name ?? 'this person';
       lines.push(
         reference.source === 'face'
-          ? `Reference image ${n}: ${name}'s face. When ${name} appears, match their face, eyes, hair and colouring exactly, at their current age, in this image's art style. Ignore the reference's pose, clothes, background and art style.`
+          ? `Reference image ${n}: ${name}'s face. When ${name} appears, match their face, eyes, hair and colouring exactly, at ${memoryNote ? 'the age the memory note gives' : 'their current age'}, in this image's art style. Ignore the reference's pose, clothes, background and art style.`
           : `Reference image ${n}: a portrait of ${name}. When ${name} appears, match their face, hair, colouring and usual clothing. Ignore the portrait's pose and background.`
       );
     } else {
@@ -280,7 +289,9 @@ export function buildSceneImagePrompt(
     lines.push(KAN_LOOK);
   }
 
-  if (!hasOutfit) {
+  if (memoryNote) {
+    lines.push(memoryNote);
+  } else if (!hasOutfit) {
     lines.push(
       cloak
         ? 'Kan wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.'
@@ -291,9 +302,9 @@ export function buildSceneImagePrompt(
   }
 
   lines.push(
-    `Scene: ${db.state.scene}.`,
-    `Location: ${db.state.location}.`,
-    `Timeline: ${db.state.canonPoint}.`,
+    ...(memoryNote
+      ? []
+      : [`Scene: ${db.state.scene}.`, `Location: ${db.state.location}.`, `Timeline: ${db.state.canonPoint}.`]),
     `ACTION (depict this exactly): ${action}`,
     'ACTOR RULE: Kan performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict Kan as the victim of his own action. If the ACTION says Kan chokes someone, draw Kan choking the other person, never Kan holding his own throat.',
     'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',

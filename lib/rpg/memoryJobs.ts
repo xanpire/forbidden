@@ -32,6 +32,15 @@ import { applyEpithet, markEpithetsSeen, recordDeeds } from './renown';
 import { applyYearly, yearlyOffer } from './yearly';
 import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
+import {
+  FLASHBACK_BY_ID,
+  activeFlashback,
+  ageWord,
+  applyFlashbackMarks,
+  applyFlashbackTurn,
+  applyFlashbackWriteUp,
+  kanAgeAt,
+} from './flashbacks';
 import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
 import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
@@ -116,7 +125,8 @@ export function unsummarizedStory(db: AppDatabase): RawLogEntry[] {
     ...chapters.filter((summary) => !summary.sourceLogIds?.length).map((summary) => summary.createdAt)
   );
 
-  return storyLog(db).filter((entry) => !covered.has(entry.id) && entry.createdAt > untracedAt);
+  // Flashback turns are written up as their own memory, never as a chapter.
+  return storyLog(db).filter((entry) => !entry.flashback && !covered.has(entry.id) && entry.createdAt > untracedAt);
 }
 
 function sameIds(a: string[] | undefined, b: string[] | undefined) {
@@ -155,6 +165,12 @@ export function isJobValid(db: AppDatabase, job: MemoryJob): boolean {
       return hasLog(db, job.turnLogId) && Boolean(job.fromDate && job.toDate);
     case 'scene':
       return (job.logIds ?? []).filter((id) => hasLog(db, id)).length >= 2;
+    case 'flashback':
+      // Its memory must still exist (an undone ending removes it).
+      return (
+        (job.logIds ?? []).filter((id) => hasLog(db, id)).length >= 2 &&
+        db.events.some((event) => event.tags.includes('flashback') && event.tags.includes(job.flashbackId ?? ''))
+      );
     case 'arc':
     case 'year': {
       const ids = job.summaryIds ?? [];
@@ -241,6 +257,13 @@ export function applyStateStep(
   turn: TurnInfo,
   activeIds: ReadonlySet<string>
 ): StateStepResult {
+  // A turn played inside a flashback moves only the memory (see flashbacks.ts).
+  const turnEntry = latest.rawLog.find((entry) => entry.id === turn.turnLogId);
+
+  if (turnEntry?.flashback) {
+    return applyMemoryStep(latest, stateReply, turn);
+  }
+
   // Unreadable state reply: still record who the prose shows and the jutsu
   // Kan called in his own message. Clock and pace come from the prose below.
   // Kan's jutsu always keep the names the player wrote.
@@ -365,6 +388,12 @@ export function applyStateStep(
   // The day's birthday or anniversary was offered (once a year), and any
   // birthday Kan learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
+  // A memory offered on this reply waits for Kan; one he follows starts next turn.
+  next = applyFlashbackMarks(next, {
+    offeredId: turnEntry?.flashbackOffer,
+    mark: extraction?.flashback,
+    turnLogId: turn.turnLogId,
+  });
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
   // The big personal threads open and close as the story reaches them.
@@ -434,6 +463,38 @@ export function applyStateStep(
   }
 
   return { db: next, followUpIds, notice, appliedDiff: effectiveDiff };
+}
+
+/**
+ * The state step for a turn inside a flashback: the memory's clock, place,
+ * cast and mode move; nothing in the present does. When the memory ends it
+ * is saved as a past memory and written up by a `flashback` job.
+ */
+function applyMemoryStep(latest: AppDatabase, stateReply: TurnDiff | null, turn: TurnInfo): StateStepResult {
+  const entry = latest.rawLog.find((item) => item.id === turn.turnLogId);
+  const playing = activeFlashback(latest);
+  const settle = (db: AppDatabase) =>
+    withJobs(db, jobsOf(db).filter((job) => !(job.kind === 'state' && job.turnLogId === turn.turnLogId)));
+
+  // A memory turn whose flashback is no longer playing changes nothing.
+  if (!playing || playing.active.id !== entry?.flashback?.id) {
+    return { db: settle(latest), followUpIds: [], notice: null, appliedDiff: null };
+  }
+
+  const result = applyFlashbackTurn(latest, stateReply, turn);
+  let next = settle(syncBondSides(result.db));
+  const followUpIds: string[] = [];
+
+  if (result.ended && result.ended.logIds.length >= 2) {
+    const job = newJob('flashback', turn.turnLogId, {
+      logIds: result.ended.logIds,
+      flashbackId: result.ended.flashbackId,
+    });
+    next = withJobs(next, [...jobsOf(next), job]);
+    followUpIds.push(job.id);
+  }
+
+  return { db: next, followUpIds, notice: null, appliedDiff: stateReply };
 }
 
 /** A chapter is long: a break only counts once this much story has passed in it. */
@@ -847,6 +908,23 @@ export async function runSummaryJob(
       povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
       break;
     }
+    case 'flashback': {
+      const wanted = new Set(job.logIds ?? []);
+      const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
+      const record = FLASHBACK_BY_ID[job.flashbackId ?? ''];
+      logIds = messages.map((entry) => entry.id);
+      result = await summarizeScene({
+        apiKey,
+        db: base,
+        messages,
+        debugTurnId: job.turnLogId,
+        memoryNote: record
+          ? `This scene is a memory you lived through again: "${record.title}", Year ${record.date.year}, when you were ${ageWord(kanAgeAt(base, record.date))}. Write it up as that memory, in its own time; the present plays no part in it.`
+          : undefined,
+      });
+      povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
+      break;
+    }
     case 'arc':
     case 'year': {
       const wanted = job.summaryIds ?? [];
@@ -1031,6 +1109,14 @@ export function applySummaryJob(
       next = rollups.db;
       followUpIds = [...followUpIds, ...rollups.jobIds];
       return { db: next, followUpIds };
+    }
+    case 'flashback': {
+      const updated = applyFlashbackWriteUp(next, job.flashbackId ?? '', output);
+
+      if (updated) {
+        next = updated;
+      }
+      break;
     }
     case 'arc':
     case 'year': {

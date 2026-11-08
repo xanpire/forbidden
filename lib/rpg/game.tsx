@@ -50,6 +50,7 @@ import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortr
 import { deleteJutsuRecord, renameJutsuRecord } from './jutsu';
 import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
+import { beginFlashback } from './flashbacks';
 import {
   applyStateStep,
   applySummaryJob,
@@ -136,7 +137,8 @@ type GameContextValue = {
   worldEventNotice: string | null;
   dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
-  sendTurn: (input: string) => Promise<void>;
+  /** Sends Kan's input. `remember` follows the offered flashback into the memory (the "Remember" chip). */
+  sendTurn: (input: string, options?: { remember?: string }) => Promise<void>;
   regenerate: () => Promise<void>;
   undoLastTurn: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
@@ -586,7 +588,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendTurnInner = useCallback(
-    async (action: string, activeKey: string) => {
+    async (action: string, activeKey: string, remember?: string) => {
       if (backgroundPromiseRef.current) {
         await backgroundPromiseRef.current;
       }
@@ -606,7 +608,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       let narratorRecorded = false;
 
       try {
-        const snapshotDb = pushSnapshot(current);
+        // Following an offered memory: the flashback plays from this turn.
+        const start = (db: AppDatabase) => (remember ? beginFlashback(db, remember) : db);
+        const snapshotDb = start(pushSnapshot(current));
         const withUser = appendStoryMessage(
           snapshotDb,
           'user',
@@ -695,7 +699,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         let turnLogId = '';
 
         const saved = await updateLatest(slotId, (latest) => {
-          const withSnapshot = pushSnapshot(latest);
+          // The snapshot is taken first, so undo also undoes stepping into a memory.
+          const withSnapshot = start(pushSnapshot(latest));
           const withPlayer = appendStoryMessage(withSnapshot, 'user', action, null, 0, 0);
           const withReply = appendStoryMessage(
             withPlayer,
@@ -711,7 +716,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           withReply.rawLog[withReply.rawLog.length - 1] = {
             ...withReply.rawLog[withReply.rawLog.length - 1],
             sceneMode: prompt.sceneMode.mode,
+            ...(prompt.flashback.offerId ? { flashbackOffer: prompt.flashback.offerId } : {}),
           };
+
+          // A turn inside a memory: both entries carry it, with the memory's clock.
+          if (prompt.flashback.active) {
+            const memory = prompt.flashback.active;
+            const last = withReply.rawLog.length - 1;
+            withReply.rawLog[last] = { ...withReply.rawLog[last], flashback: memory };
+            withReply.rawLog[last - 1] = { ...withReply.rawLog[last - 1], flashback: memory };
+          }
           // Clear the live text in the same tick the saved reply appears, so
           // the turn never shows twice.
           setStreamingText('');
@@ -764,8 +778,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
 
   const sendTurn = useCallback(
-    async (input: string) => {
+    async (input: string, options?: { remember?: string }) => {
       const action = input.trim();
+      const remember = options?.remember;
 
       if (!action) {
         return;
@@ -780,11 +795,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
 
         setApiKeyState(storedKey);
-        await sendTurnInner(action, storedKey);
+        await sendTurnInner(action, storedKey, remember);
         return;
       }
 
-      await sendTurnInner(action, apiKey.trim());
+      await sendTurnInner(action, apiKey.trim(), remember);
     },
     [apiKey, sendTurnInner]
   );
@@ -829,10 +844,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const lastUser = [...current.rawLog].reverse().find((entry) => entry.kind === 'story' && entry.role === 'user');
     const snapshot = restoreLastSnapshot(current);
     const restored = snapshot ? carryOverMemory(current, snapshot) : current;
     await commitDb(restored);
-    await sendTurn(userMessage);
+    // The turn that stepped into a memory steps into it again.
+    const remember =
+      lastUser?.flashback && restored.state.flashbacks?.active?.id !== lastUser.flashback.id
+        ? lastUser.flashback.id
+        : undefined;
+    await sendTurn(userMessage, remember ? { remember } : undefined);
   }, [commitDb, sendTurn]);
 
   const updateSettings = useCallback(

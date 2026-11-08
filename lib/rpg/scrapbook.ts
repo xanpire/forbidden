@@ -8,6 +8,7 @@
 import { calculateAge, dateSortValue } from './calendar';
 import { CANON_ERA_ORDER, CANON_MILESTONES } from './canonData';
 import { localizePlaceNames } from './glossary';
+import { FLASHBACK_BY_ID } from './flashbackData';
 import type { AppDatabase, CalendarDate, RawLogEntry } from './types';
 import { firstSentences, secondPerson } from './util';
 
@@ -19,9 +20,20 @@ export type ScrapbookPhoto = {
   caption: string;
   place: string | null;
   age: number;
+  /** A photo from a flashback: shown under its own past date and its memory's title. */
+  memory?: string;
 };
 
-export type ScrapbookChapter = { chapter: number; title: string | null; photos: ScrapbookPhoto[] };
+/** Flashback photos sit in an era of their own, before the story. */
+export const MEMORY_ERA = 'Before the story';
+
+export type ScrapbookChapter = {
+  chapter: number;
+  title: string | null;
+  photos: ScrapbookPhoto[];
+  /** A flashback, not a chapter: shown by its title. */
+  memory?: boolean;
+};
 export type ScrapbookEra = { era: string; chapters: ScrapbookChapter[]; count: number };
 
 function dateValue(date: { year: number; month: number; day?: number }) {
@@ -91,15 +103,22 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
 
   return db.rawLog
     .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
-    .map((entry) => ({
-      logId: entry.id,
-      image: entry.image as string,
-      date: entry.inStoryDate,
-      chapter: entry.chapter,
-      caption: captionOf(entry),
-      place: placeAt(db, entry.inStoryDate),
-      age: calculateAge(entry.inStoryDate, player.birthday, player.birthYear),
-    }))
+    .map((entry) => {
+      // A flashback photo keeps the memory's own date, place and Kan's age then.
+      const memory = entry.flashback ? FLASHBACK_BY_ID[entry.flashback.id] : undefined;
+      const date = entry.flashback?.date ?? entry.inStoryDate;
+
+      return {
+        logId: entry.id,
+        image: entry.image as string,
+        date,
+        chapter: memory ? -memory.number : entry.chapter,
+        caption: captionOf(entry),
+        place: memory ? localizePlaceNames(memory.place) : placeAt(db, entry.inStoryDate),
+        age: calculateAge(date, player.birthday, player.birthYear),
+        ...(memory ? { memory: memory.title } : {}),
+      };
+    })
     .sort((a, b) => dateSortValue(a.date) - dateSortValue(b.date));
 }
 
@@ -117,7 +136,7 @@ export function scrapbook(db: AppDatabase): ScrapbookEra[] {
   const eras: ScrapbookEra[] = [];
 
   for (const photo of scrapbookPhotos(db)) {
-    const era = eraOfDate(photo.date);
+    const era = photo.memory ? MEMORY_ERA : eraOfDate(photo.date);
     let group = eras[eras.length - 1];
 
     if (!group || group.era !== era) {
@@ -128,7 +147,9 @@ export function scrapbook(db: AppDatabase): ScrapbookEra[] {
     let chapter = group.chapters[group.chapters.length - 1];
 
     if (!chapter || chapter.chapter !== photo.chapter) {
-      chapter = { chapter: photo.chapter, title: chapterTitle(db, photo.chapter), photos: [] };
+      chapter = photo.memory
+        ? { chapter: photo.chapter, title: photo.memory, photos: [], memory: true }
+        : { chapter: photo.chapter, title: chapterTitle(db, photo.chapter), photos: [] };
       group.chapters.push(chapter);
     }
 

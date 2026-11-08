@@ -150,8 +150,8 @@ export function ScrapbookView({ db }: { db: AppDatabase }) {
             return (
               <View key={`${era.era}-${chapter.chapter}`} style={styles.chapter}>
                 <Text style={styles.chapterTitle}>
-                  Chapter {chapter.chapter}
-                  {chapter.title ? `: ${chapter.title}` : ''}
+                  {chapter.memory ? `A memory: ${chapter.title}` : `Chapter ${chapter.chapter}`}
+                  {!chapter.memory && chapter.title ? `: ${chapter.title}` : ''}
                 </Text>
                 <View style={styles.grid}>
                   {chapter.photos.map((photo, index) => (

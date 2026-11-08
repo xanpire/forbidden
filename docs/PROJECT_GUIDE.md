@@ -37,7 +37,8 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, region and 6-hour block), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `CLIMATES` |
 | `mapData.ts` | The map (§8d): `MAP_PLACES`, `REGION_SHAPES`, `placeIdOf`, `recordTravel` (`state.travelLog`), `routePoints`, `placeVisits`, `travelEstimate`, `knownWhereabouts` (as far as Kan knows) |
 | `ambience.ts` | Ambient sound (§8e): `ambienceInputOf`, `ambienceMix` (bed levels from weather, place, clock, season, region, scene mode), `currentAmbience`, `isIndoors`, `describeAmbience`. Pure; the player lives in `lib/audio/` |
-| `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter), `eraOfDate`, `captionOf`, `placeAt` |
+| `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter; flashback photos under `MEMORY_ERA`), `eraOfDate`, `captionOf`, `placeAt` |
+| `flashbackData.ts` / `flashbacks.ts` | Playable flashbacks (§8f): the 18 memories and Kan's parents (data), and the engine: `flashbackOffer`, `beginFlashback`, `applyFlashbackMarks`, `applyFlashbackTurn`, `endFlashback`, `applyFlashbackWriteUp`, `flashbackView` (the memory's date, place and weather), `formatFlashbackBlock` / `formatFlashbackOffer` / `formatFlashbackReturn`, `flashbackTrackingLines`, `flashbackImageNote`, `rememberChip` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -152,10 +153,13 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   yearly?: { knownBirthdays: string[], offered: Record<key, year> }        // §8b
   weather?: { region, condition, text?, since, sceneSeq?, source: 'world'|'story' }   // §8d
   travelLog?: [{ place, region?, placeId?, date }]                          // §8d, last 400
+  flashbacks?: { played, offered, lastOfferOn?, pending?, active?, returned? } // §8f
 }
 ```
 
 `EntityRecord.birthdayInvented?: true` marks a birthday the app chose (canon gives none).
+
+`RawLogEntry.flashback?: { id, date }` marks a turn played inside a flashback (both entries, with the memory's clock when it began); `RawLogEntry.flashbackOffer?: id` marks a reply whose prompt offered one (§8f).
 
 `EntityRecord.companion?: { since, sinceLocation?, reason?, sharedScenes, bondPoints }` — set while that person travels with Kan (§6a).
 
@@ -250,7 +254,7 @@ consequences: [{
   lettersSent?: [{ entityId?, name, gist?, text?, carrier?, coded? }], lettersReceived?: [{ entityId?, name, text? }],
   lifeEvents?: [{ entityId?, name, text }], epithet?: { audience, name },
   consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
-  birthdaysLearned?: [{ entityId?, name }], weather?: string,
+  birthdaysLearned?: [{ entityId?, name }], weather?: string, flashback?: 'offered'|'started'|'ended',
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -666,7 +670,7 @@ Ambience only: no music, no stingers, no recordings. Every sound is synthesised 
 - **Indoors** (`isIndoors`): the location's own words (room, inn, house, hut, tent, hideout, hall… vs courtyard, street, roof of…), else a `structure` kind. Caves count. Indoors, outside beds drop (wind ×0.35, life ×0.3 or nothing in a cave, water ×0.45) and go through a low-pass.
 - **Fight mode** adds nothing and changes no bed: it only sets `fight`, and the player lowers everything to 30 %. The weather stays.
 - `key` is a stable string of the mix; the player ignores a new mix with the same key, so a quiet turn changes nothing.
-- A flashback (section 19, later) builds its own `AmbienceInput` from its date and place and calls `ambienceMix` with it, so it never touches the present scene.
+- A flashback (§8f): `currentAmbience` reads `flashbackView(db)`, the memory's date, place and weather, so it never touches the present scene.
 
 **The player** (`lib/audio/`)
 - `synth.ts`: the 20 bed builders, three 7-second stereo noise buffers (white, pink, brown; seams cross-faded) made once, and small helpers: steady filtered noise layers, `drifter` (wanders a gain or a filter frequency), `striker` (struck noise for raindrops, crackles, footsteps, one envelope at a time per voice), `tone` (bird notes, bubbles, drips, hoots, a cup set down). Events are scheduled 0.6 s ahead by each bed's `tick`. **Only linear and exponential ramps are chained**, never `setTargetAtTime` (implementations disagree on chained targets), and every parameter is anchored with `setValueAtTime` when made.
@@ -676,6 +680,28 @@ Ambience only: no music, no stingers, no recordings. Every sound is synthesised 
 - Levels were checked by rendering each bed offline (40 s): all finite and unclipped, roughly −22 dB (waterfall) to −36 dB (room tone) RMS at full level.
 
 UI: Settings → **Sound**: Ambience switch (its line says what's playing now, e.g. "Now: rain on the roof, a quiet room, voices") and a Volume slider (`components/Slider.tsx`) that changes the sound live while dragging.
+
+## 8f. Playable flashbacks (`lib/rpg/flashbacks.ts`, `flashbackData.ts`)
+
+Living-world section 19. Eighteen short scenes from Kan's life before the story (ages 0–13), from the first day with Itachi and Shisui to the fight days before the massacre. Offered, never requested; each plays once. Tests: `scripts/flashbacks.test.ts`.
+
+**Data** (`FLASHBACKS`): id, number, title, date, place and location kind, cast (entity names), the scene, notes on how people were then, a trigger hint, triggers (`people` in the scene, `places` by map id or words, `dates` of the year, `beats` reached in the last 7 days, `words` in the present scene, `afterFight`), what is fixed, what must stay hidden, `requires` (Shisui's last night waits for `shisui-truth`), a one-line memory and its importance. Team 3 flashbacks sit between graduation (9) and ANBU (12). Kan's parents, Erisa Uchiha and Banri Uzumaki (`KAN_PARENTS`), are not in the canon cast: `ensureFlashbackPeople` adds them, dead and met, the first time a memory needs them.
+
+**Offer** (`flashbackOffer`, inside `buildNarrationPrompt`): never while one plays or waits, never in a fight, a chase or on the road (pace downtime or conversation only), never on a turn with a grudge, hunter or other pressure, not before story turn 12 or in the story's first 3 days, and at most once per 30 in-story days (`lastOfferOn`). Each record scores the moment (date or beat 3, place or person 2, words 2, or 1 + 1 after a fight for the `afterFight` ones; people and words only count after a fight there); 2 is enough, the highest wins. A date trigger fits within 2 days of its day; a world beat counts from the day Kan heard it. The narrator gets one optional `A MEMORY` line (let one small trigger touch Kan, don't start the memory); `game.tsx` stamps the reply with `flashbackOffer`.
+
+**Taking it**: the state step marks the offer (`applyFlashbackMarks`): the month gap starts either way; if the tracker says `flashback: "offered"` (the reply showed the trigger), it waits as `pending` for 2 turns and the reply gets a **Remember** chip. Tapping it calls `sendTurn(REMEMBER_INPUT, { remember: id })`, which runs `beginFlashback` on the snapshot it saves (so Undo undoes it) and narrates that turn inside the memory. Kan can also follow it in his own words: the tracker's `"started"` begins it from the next turn. Regenerate re-enters a memory the regenerated turn stepped into.
+
+**Playing**: `state.flashbacks.active` holds the memory's own clock, place, kind, weather, turn count, cast, bond nudges, and the present pace and scene mode to put back. Both story entries of a memory turn carry `flashback: { id, date }`.
+- Narrator (`formatFlashbackBlock` instead of the present's dynamic block: no state, news, letters, canon, pressure, encounters): the memory's date and Kan's age, WHERE, its WEATHER line (`formatWeatherLine(flashbackView(db))`), KAN THEN (`kanThen(age)`: a child, an Academy student, a Team 3 genin, an ANBU boy; no Sharingan; his real strength stays hidden; present jutsu, abilities and inventory don't exist there), who is there at their age then (`entityAge` on the memory's date; the dead marked alive here), fixed facts, the hidden list (plus how Shisui died until `shisui-truth`), pacing by turn (begin → play → from turn 6 look for the end → from turn 9 end it this reply, carrying Kan back to the same second), and THE PRESENT frozen with its last line. RECENT SCENE shows the present lead-in and this memory's turns (`getRecentMessages`). Fight mode works; its line leaves out the present's wounds.
+- Tracker: THIS TURN IS A MEMORY (report the memory's time and place, who is in it, the dead included, bonds −1..1, everything else empty; `"ended"` when it closes), CURRENT STATE and TIME from the memory, no canon/letters/yearly/enemy tracking.
+- State step (`applyMemoryStep` → `applyFlashbackTurn`): `resolveTurnClock` on the memory's clock; place, kind, weather (`conditionFromText`), cast and bond nudges kept on `active`; scene beat and fight options as usual. Nothing in the present moves: clock, location, inventory, jutsu, facts, threads, deaths, canon, letters, travel log, held weather. Memory turns are never chapter material (`unsummarizedStory`, `storyMessagesSinceLastSummary` skip them) and carry no time chip.
+- Header, ambience and images read `flashbackView(db)`: the memory's date, place and weather, so `state.weather` and `state.travelLog` are never touched. The Story header shows "Memory · Year 5 · …".
+
+**Ending** (`endFlashback`, on the tracker's `"ended"`, or forced after `FLASHBACK_HARD_CAP` = 12 turns): an `EventRecord` dated on the memory's date, tagged `flashback` + its id, `present`-linked to everyone in it; each living person's bond moves by the sum of its nudges capped at ±1; the id goes to `played`; the present's pace and mode come back; `returned` gives the next present turn one `BACK FROM A MEMORY` line (same second, how it ended, never retold) and is cleared after it. A `flashback` memory job (`runSummaryJob` → `summarizeScene` with a memory note) writes it up: `applyFlashbackWriteUp` puts the MEMORY line on the event and keeps point-of-view lines from the living people in it. In the present, memories show as "(from Year N, before the story)" in RELEVANT MEMORIES; a remembrance day names one lived with the dead.
+
+**UI** (Story): memory turns in a muted warm tint (`colors.memory*`), opened by a date line ("Team 3  Year 9, Sep 20. You are nine."); the Remember chip under the reply that showed the trigger; the live reply is tinted while it streams. Journal → Memories lists it under its own past date. Scrapbook: flashback photos go in "Before the story", grouped by memory title, with the memory's date, place and Kan's age. Images of a memory send no outfit references and tell the model Kan's age and look then (`kanLookAt`) and everyone's age then, in a faded warm tint.
+
+**Prompt size**: nothing on a quiet turn; one line on an offer turn; the memory block replaces the present's dynamic block while one plays.
 
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
@@ -792,6 +818,7 @@ Three tabs: **Story / Kan / Settings** (the Kan tab switches Bonds / Jutsu / Jou
 10. **Token ceiling**: prompts over `settings.promptTokenBudget` are trimmed; never add unbounded prompt data. Keep the rules and slow blocks first so the cached prefix survives.
 11. **Images only on user action**, with Kan’s face/outfit references and the action brief.
 12. **Version sync**: `package.json` → `app.json` → SW cache (`scripts/generate-sw.js`) → Settings display.
+13. **A flashback never moves the present**: its turns change only `state.flashbacks.active`; the present's clock, place, inventory, jutsu, facts, canon and weather stand still, and its turns stay out of chapter summaries.
 
 ---
 
@@ -877,6 +904,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Living-world Stage 3 (`scripts/living-world-stage3.test.ts`): geography and whereabouts, letter travel time by distance and carrier, Kan's words kept and tidied, the archive, letters to the dead, Root and Akatsuki interception and safer carriers, interception seeds, real losses, birthday letters, side characters' lives (canon-safe), reunion notes, life events from the page and from letters, epithets per audience (growth, renaming, story names, bingo books), posters and distorted rumours, consequence seeds (window, crossing paths, lies face to face, witnesses talking, fading, offers, returned, the remember notice), point-of-view memories, quiet-turn prompt size
 - Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
 - Ambient sound (`scripts/ambience.test.ts`): birds by day and insects at night, dawn and winter, cicadas, rain outside vs on the roof indoors, heavy rain and storms, snow and blizzards, high places, water only where it belongs, village bustle by time, hearths and caves, fight mode adds nothing, indoor detection, levels in range, the description, reading the save (held weather, map place, fight)
+- Playable flashbacks (`scripts/flashbacks.test.ts`): the 18 records (order, dates before the story, Kan's ages, Team 3 window, cast in the save), the date line, offers (fitting moments, none in fights/on the road/early/without a fit, date windows, once a month, played never again, Shisui's last night gated), the chip and the waiting offer, starting by words or chip, the narrator and tracker blocks, the dead alive at their age, Kan's parents made once, the present standing still, memory weather and ambience, ending (past-dated shared memory, ±1 bond, job, return line, recent scene), the write-up, the hard cap and wrap-up lines, images and scrapbook, old saves, remembrance days
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies
 
 Run: `bun test`.

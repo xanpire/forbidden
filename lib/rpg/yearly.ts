@@ -255,7 +255,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
           key: `remembrance:${entity.id}`,
           kind: 'remembrance',
           entity,
-          line: `It would have been ${entity.name}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.`,
+          line: `It would have been ${entity.name}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.${sharedMemoryLine(db, entity)}`,
         });
       }
       continue;
@@ -330,6 +330,16 @@ function festivals(db: AppDatabase): YearlyOffer[] {
 }
 
 /** Everything the calendar holds for today, most important first (offered or not). */
+/** A flashback Kan lived through with someone who is gone, for their remembrance day. */
+function sharedMemoryLine(db: AppDatabase, entity: EntityRecord): string {
+  const linked = new Set(db.eventEntities.filter((link) => link.entityId === entity.id).map((link) => link.eventId));
+  const memory = db.events
+    .filter((event) => linked.has(event.id) && event.tags.includes('flashback'))
+    .sort((a, b) => b.importance - a.importance)[0];
+
+  return memory ? ` A memory you lived again with them may come back today: ${memory.title ?? memory.scene} (${memory.summary.replace(/\.$/, '')}).` : '';
+}
+
 export function yearlyCandidates(db: AppDatabase): YearlyOffer[] {
   const birthdayOffers = birthdays(db);
   const festivalOffers = festivals(db);
