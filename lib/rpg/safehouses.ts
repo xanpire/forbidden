@@ -213,7 +213,31 @@ export function isOvergrown(db: Pick<AppDatabase, 'state'>, house: Safehouse): b
 
 const INN_WORDS = /\b(inn|teahouse|tea house|tavern|lodging|lodge|ryokan|guesthouse|guest house|hostel|boarding house|rented room|bathhouse)\b/i;
 const HIDEOUT_WORDS = /\b(akatsuki|hideout|lair|base)\b/i;
-const WILD_WORDS = /\b(camp|campsite|clearing|forest|woods|riverbank|ravine|cliff|hollow|thicket|field|hill|ridge|roadside|under the trees|bedroll)\b/i;
+const WILD_WORDS = /\b(camp|campsite|clearing|forest|woods|riverbank|ravine|cliff|hollow|thicket|field|hill|ridge|roadside|under the trees|bedroll|cave|cavern|grotto|ruin|ruins|ruined|rubble|overhang|ledge|abandoned)\b/i;
+
+const CAVE_COVER = /\b(cave|cavern|grotto|tunnel|catacomb|underground|mine shaft)\b/i;
+const RUIN_COVER =
+  /\b(ruin|ruins|ruined|rubble|collapsed|crumbling|broken walls?|burn(ed|t)[- ]out|roofless|half[- ]fallen|abandoned (temple|shrine|house|hut|fort|watchtower|village|farmhouse|mill|outpost)|overhang|rock shelter|under a ledge)\b/i;
+const WALL_COVER = /\b(hut|shack|cabin|barn|shed|shrine|temple|house|farmhouse|mill|outpost|watchtower|storehouse|hall|room|tent)\b/i;
+
+export type CampCover = 'cave' | 'ruin' | 'walls' | 'open';
+
+/** What a camp is in, from the words: a cave, ruins (half a shelter), walls of some kind, or the open sky. */
+export function campCover(text: string): CampCover {
+  const place = localizePlaceNames(text ?? '');
+
+  if (CAVE_COVER.test(place)) return 'cave';
+  if (RUIN_COVER.test(place)) return 'ruin';
+  if (WALL_COVER.test(place)) return 'walls';
+  return 'open';
+}
+
+const CAMP_SHELTER: Record<CampCover, string> = {
+  cave: 'Rock overhead: rain and snow stay outside, but the cold and the damp do not, and a fire’s smoke needs somewhere to go.',
+  ruin: 'Half a shelter: the broken walls take the edge off the wind, but rain and snow get in through the gaps and the missing roof.',
+  walls: 'Walls of a sort: the weather mostly stays outside, but it finds the gaps.',
+  open: 'No roof: whatever the WEATHER line says reaches you.',
+};
 
 function guessKind(db: AppDatabase): SafehouseKind | null {
   const location = db.state.location ?? '';
@@ -946,7 +970,7 @@ export function formatSafehouseLine(db: AppDatabase, userMessage: string): strin
     const quality = restQuality(house);
     const shelter =
       house.kind === 'camp'
-        ? 'No roof: whatever the WEATHER line says reaches you.'
+        ? CAMP_SHELTER[campCover(`${house.place}, ${house.name}`)]
         : 'A roof and walls: the weather stays outside.';
     const rest =
       quality === 'safe'

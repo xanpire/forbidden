@@ -19,7 +19,7 @@ import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
 import type { Region } from './geography';
 import { placeIdOf } from './mapData';
-import { currentSafehouse } from './safehouses';
+import { campCover, currentSafehouse } from './safehouses';
 import { sceneModeOf } from './sceneMode';
 import type { AppDatabase, LocationKind, SafehouseKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
@@ -130,8 +130,15 @@ export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place' | 'shelter
   const location = input.place;
 
   if (CAVE_WORDS.test(location)) return true;
-  // A camp has no roof; any other safehouse has walls unless the words say he's outside it.
-  if (input.shelter === 'camp') return false;
+  // A camp is what it's in: a cave (above), ruins (half open, see ambienceMix), the walls of a hut, or the sky.
+  if (input.shelter === 'camp') {
+    const cover = campCover(location);
+    // "A hut in the forest" is inside the hut; "outside the hut" is not.
+    return cover === 'walls' && !/\b(outside|roof of|rooftop)\b/i.test(location);
+  }
+  // Ruins with no place of Kan's own in them are open to the sky.
+  if (!input.shelter && campCover(location) === 'ruin') return false;
+  // Any other safehouse has walls unless the words say he's outside it.
   if (input.shelter && !(OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location))) return true;
   if (OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location)) return false;
   if (INDOOR_WORDS.test(location)) return true;
@@ -283,6 +290,23 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
     ((input.shelter === 'camp' || (kind !== 'settlement' && /\bcamp\b/i.test(place))) && (period === 'evening' || night))
   ) {
     add(beds, 'fire', 0.7);
+  }
+
+  // ---- Ruins: half a shelter ---------------------------------------------
+  // Broken walls: some rain drips off what's left of the roof, wind whistles
+  // through the gaps, the birds keep their distance, and wet stone drips.
+  const ruined = !indoors && (input.shelter === 'camp' || !input.shelter) && campCover(place) === 'ruin';
+  if (ruined) {
+    scale(beds, 'rain-light', 0.6);
+    scale(beds, 'rain-heavy', 0.6);
+    if (rain > 0) {
+      add(beds, 'rain-roof', 0.2 + rain * 0.25);
+      add(beds, 'cave', 0.2);
+    }
+    if (!harsh) add(beds, 'wind-light', 0.3);
+    scale(beds, 'forest-day', 0.6);
+    scale(beds, 'cicadas', 0.6);
+    delete beds.village;
   }
 
   // ---- Inside -------------------------------------------------------------

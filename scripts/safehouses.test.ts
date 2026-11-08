@@ -393,6 +393,54 @@ describe('around it', () => {
     expect(currentAmbience(camp).beds.fire).toBeGreaterThan(0);
   });
 
+  test('caves and ruins can be camps, and each sounds like what it is', () => {
+    const campAt = (location: string, kind: AppDatabase['state']['locationKind'], hour = 22) => {
+      let db = save({ location, locationKind: kind });
+      db = play(db, '*You sleep.*', 'You sleep.', night);
+      expect(currentSafehouse(db)?.kind).toBe('camp');
+      db = { ...db, state: { ...db.state, inStoryDate: { ...db.state.inStoryDate, hour } } };
+      return db;
+    };
+    const rainy = (db: AppDatabase) => ({ ...db, state: { ...db.state, weather: { region: 'fire', condition: 'rain' as const, since: db.state.inStoryDate, sceneSeq: db.state.sceneSeq, source: 'story' as const } } });
+
+    // A cave: dripping stone, the fire, the rain kept out.
+    const cave = rainy(campAt('a shallow cave in the hills of the Land of Fire', 'wilderness'));
+    const caveMix = currentAmbience(cave);
+    expect(caveMix.indoors).toBe(true);
+    expect(caveMix.beds.cave).toBeGreaterThan(0);
+    expect(caveMix.beds.fire).toBeGreaterThan(0);
+    // The rain stays outside the mouth: heard through the indoor filter, never on a roof.
+    expect(caveMix.beds['rain-roof'] ?? 0).toBe(0);
+    expect(formatSafehouseLine(cave, '*You wait.*')).toContain('Rock overhead');
+
+    // Ruins (untagged, a structure): open to the sky but broken up; rain drips, wind in the gaps, no street.
+    const dryRuin = campAt('the ruins of an old temple in the Land of Fire', 'structure');
+    const dry = { ...dryRuin, state: { ...dryRuin.state, weather: { region: 'fire', condition: 'clear' as const, since: dryRuin.state.inStoryDate, sceneSeq: dryRuin.state.sceneSeq, source: 'story' as const } } };
+    expect(currentAmbience(dry).beds['wind-light']).toBeGreaterThan(0);
+    expect(currentAmbience(dry).beds.village ?? 0).toBe(0);
+    const ruin = rainy(dryRuin);
+    const ruinMix = currentAmbience(ruin);
+    expect(ruinMix.indoors).toBe(false);
+    expect(ruinMix.beds['rain-light']).toBeGreaterThan(0);
+    expect(ruinMix.beds['rain-roof']).toBeGreaterThan(0);
+    expect(ruinMix.beds.fire).toBeGreaterThan(0);
+    expect(formatSafehouseLine(ruin, '*You wait.*')).toContain('Half a shelter');
+
+    // An abandoned hut in the woods: walls, a quiet room, rain on the roof.
+    let hut = save({ location: 'a woodcutter’s hut in the forest of the Land of Fire', locationKind: 'wilderness' });
+    hut = play(hut, '*You sleep.*', 'You sleep.', { ...night, safehouse: { ...emptySafehouse, name: 'the woodcutter’s hut', kind: 'camp' } });
+    hut = rainy({ ...hut, state: { ...hut.state, inStoryDate: { ...hut.state.inStoryDate, hour: 22 } } });
+    const hutMix = currentAmbience(hut);
+    expect(hutMix.indoors).toBe(true);
+    expect(hutMix.beds['rain-roof']).toBeGreaterThan(0);
+    expect(formatSafehouseLine(hut, '*You wait.*')).toContain('Walls of a sort');
+
+    // The open: no roof.
+    const open = campAt('a clearing in the forest near the Hidden Leaf', 'wilderness');
+    expect(currentAmbience(open).indoors).toBe(false);
+    expect(formatSafehouseLine(open, '*You wait.*')).toContain('No roof');
+  });
+
   test('a flashback never sees the present\'s places', () => {
     const db = settled();
     const inMemory = {
