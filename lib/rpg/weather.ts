@@ -286,6 +286,14 @@ export const CLIMATES: Record<Region, Climate> = {
     note: 'thunder rolls around the peaks',
     cold: { winter: 'a bitter northern winter', autumn: 'a cold northern autumn' },
   },
+  frost: {
+    winter: { snow: 5, blizzard: 2, clear: 1, cloudy: 1 },
+    spring: { snow: 2, sleet: 2, cloudy: 2, clear: 2 },
+    summer: { clear: 4, cloudy: 2, rain: 1.5, fog: 1 },
+    autumn: { cloudy: 2, sleet: 2, snow: 2, clear: 2, wind: 1 },
+    note: 'a cold, snowy country even by the north’s standards',
+    cold: { winter: 'a hard northern winter', autumn: 'an early, cold autumn' },
+  },
   iron: {
     winter: { snow: 5, blizzard: 3, clear: 1 },
     spring: { snow: 3, cloudy: 2, clear: 2, sleet: 1 },

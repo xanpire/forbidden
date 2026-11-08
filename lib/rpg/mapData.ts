@@ -31,22 +31,31 @@ export const MAP_HEIGHT = 90;
 
 export type RegionShape = { x: number; y: number; rx: number; ry: number; label: string; sea?: boolean };
 
-/** Rough country shapes, placed as the GEOGRAPHY lore describes them. */
+/**
+ * Rough country shapes, laid out like the canon world map: Fire large in the
+ * middle; Rain and Grass small on its west with Grass north of Rain; Rivers
+ * south-west between Fire and Wind; Waterfall, the Rice Fields (Sound) and Hot
+ * Water along its north, Frost past Hot Water; Lightning across the strait to
+ * the north-east; Whirlpools an island off Fire's east coast on the way to
+ * the Water islands; Waves on the south coast below the Leaf. Iron has no
+ * canon spot and sits in the far north between Earth and Lightning.
+ */
 export const REGION_SHAPES: Record<Region, RegionShape> = {
-  fire: { x: 60, y: 60, rx: 15, ry: 12, label: 'Fire' },
-  rice: { x: 57, y: 41, rx: 7, ry: 5, label: 'Rice Fields' },
-  waterfall: { x: 69, y: 39, rx: 5, ry: 4, label: 'Waterfalls' },
-  'hot-water': { x: 78, y: 45, rx: 5, ry: 4, label: 'Hot Water' },
-  rain: { x: 39, y: 54, rx: 6, ry: 6, label: 'Rain' },
-  grass: { x: 40, y: 40, rx: 6, ry: 5, label: 'Grass' },
-  rivers: { x: 38, y: 69, rx: 7, ry: 5, label: 'Rivers' },
-  wind: { x: 15, y: 66, rx: 13, ry: 13, label: 'Wind' },
-  earth: { x: 20, y: 28, rx: 13, ry: 11, label: 'Earth' },
-  iron: { x: 52, y: 12, rx: 10, ry: 6, label: 'Iron' },
-  lightning: { x: 85, y: 15, rx: 11, ry: 9, label: 'Lightning', sea: true },
-  water: { x: 92, y: 59, rx: 6, ry: 10, label: 'Water', sea: true },
-  waves: { x: 77, y: 77, rx: 5, ry: 4, label: 'Waves' },
-  whirlpools: { x: 88, y: 81, rx: 4, ry: 3.5, label: 'Whirlpools', sea: true },
+  fire: { x: 45, y: 55, rx: 14, ry: 13, label: 'Fire' },
+  rain: { x: 27, y: 51, rx: 4, ry: 3.5, label: 'Rain' },
+  grass: { x: 27, y: 42.5, rx: 4, ry: 3.5, label: 'Grass' },
+  rivers: { x: 31.5, y: 69, rx: 4.5, ry: 8, label: 'Rivers' },
+  wind: { x: 14, y: 67, rx: 13, ry: 14, label: 'Wind' },
+  earth: { x: 18, y: 24, rx: 15, ry: 13, label: 'Earth' },
+  waterfall: { x: 33, y: 28, rx: 4, ry: 5.5, label: 'Waterfall' },
+  rice: { x: 43, y: 32, rx: 4.5, ry: 4, label: 'Rice Fields' },
+  'hot-water': { x: 55, y: 38, rx: 5.5, ry: 4.5, label: 'Hot Water' },
+  frost: { x: 53, y: 26, rx: 4.5, ry: 3.5, label: 'Frost' },
+  iron: { x: 46, y: 10, rx: 7, ry: 4.5, label: 'Iron' },
+  lightning: { x: 71, y: 18, rx: 13, ry: 9, label: 'Lightning', sea: true },
+  whirlpools: { x: 65, y: 60, rx: 3.5, ry: 3, label: 'Whirlpools', sea: true },
+  water: { x: 82, y: 61, rx: 10, ry: 12, label: 'Water', sea: true },
+  waves: { x: 39, y: 83.5, rx: 4.5, ry: 3.5, label: 'Waves', sea: true },
 };
 
 export type MapPlaceKind = 'village' | 'place' | 'shrine' | 'ruin' | 'hideout';
@@ -63,31 +72,35 @@ export type MapPlace = {
   match: RegExp;
   /** A place inside another (a shrine in the Leaf): listed under it, drawn with it. */
   parent?: string;
+  /** No known location: never drawn, listed apart (x and y are unused). */
+  unplaced?: boolean;
   note?: string;
 };
 
 export const MAP_PLACES: MapPlace[] = [
-  { id: 'leaf', name: 'Hidden Leaf', region: 'fire', x: 60, y: 59, kind: 'village', match: /\b(hidden leaf|konoha(gakure)?|leaf village|the Leaf)\b/i },
-  { id: 'uchiha-district', name: 'Uchiha district', region: 'fire', x: 60, y: 59, kind: 'ruin', parent: 'leaf', match: /\buchiha (district|compound|quarter)\b/i, note: 'Your clan’s streets, empty since the massacre.' },
-  { id: 'naka-shrine', name: 'Naka Shrine', region: 'fire', x: 60, y: 59, kind: 'shrine', parent: 'leaf', match: /\bnaka shrine\b/i, note: 'The Uchiha stone tablet lies beneath it.' },
-  { id: 'naka-river', name: 'Naka River', region: 'fire', x: 60, y: 59, kind: 'place', parent: 'leaf', match: /\bnaka river\b/i },
-  { id: 'mask-shrine', name: 'Uzumaki mask shrine', region: 'fire', x: 60, y: 59, kind: 'shrine', parent: 'leaf', match: /\b(uzumaki )?mask shrine\b/i, note: 'Kept by the Uzumaki since Uzushio fell, on the edge of the Leaf.' },
-  { id: 'valley-end', name: 'Valley of the End', region: 'fire', x: 56, y: 47, kind: 'place', match: /\bvalley of the end\b/i },
-  { id: 'tanzaku', name: 'Tanzaku Town', region: 'fire', x: 52, y: 66, kind: 'place', match: /\btanzaku\b/i },
-  { id: 'fire-temple', name: 'Fire Temple', region: 'fire', x: 68, y: 52, kind: 'shrine', match: /\bfire temple\b/i },
-  { id: 'sand', name: 'Hidden Sand', region: 'wind', x: 14, y: 67, kind: 'village', match: /\b(hidden sand|sunagakure|the Sand)\b/i },
-  { id: 'rain', name: 'Hidden Rain', region: 'rain', x: 38, y: 55, kind: 'village', match: /\b(hidden rain|amegakure|the Rain)\b/i, note: 'The Akatsuki’s stronghold, in the tower.' },
-  { id: 'grass', name: 'Hidden Grass', region: 'grass', x: 40, y: 38.5, kind: 'village', match: /\b(hidden grass|kusagakure)\b/i, note: 'Where Karin is from.' },
-  { id: 'waterfall', name: 'Hidden Waterfall', region: 'waterfall', x: 69, y: 37.5, kind: 'village', match: /\b(hidden waterfall|takigakure)\b/i },
-  { id: 'hot-springs', name: 'Hot springs towns', region: 'hot-water', x: 78, y: 43.5, kind: 'place', match: /\b(yugakure|hot springs?|hidden steam)\b/i },
-  { id: 'sound', name: 'Sound hideouts', region: 'rice', x: 56, y: 39, kind: 'hideout', match: /\b(hidden sound|otogakure|sound (village|hideout|base)|orochimaru'?s (hideout|lair|base))\b/i },
-  { id: 'naruto-bridge', name: 'Great Naruto Bridge', region: 'waves', x: 77, y: 76, kind: 'place', match: /\bgreat naruto bridge\b/i },
-  { id: 'uzushio', name: 'Ruins of Uzushio', region: 'whirlpools', x: 88, y: 79.5, kind: 'ruin', match: /\b(uzushio(gakure)?|hidden whirlpool|hidden eddy)\b/i, note: 'Your father’s people. Ruins, old seals and graves.' },
-  { id: 'stone', name: 'Hidden Stone', region: 'earth', x: 20, y: 28, kind: 'village', match: /\b(hidden stone|iwagakure|the Stone)\b/i },
-  { id: 'mist', name: 'Hidden Mist', region: 'water', x: 92, y: 59, kind: 'village', match: /\b(hidden mist|kirigakure|the Mist)\b/i },
-  { id: 'cloud', name: 'Hidden Cloud', region: 'lightning', x: 85, y: 16, kind: 'village', match: /\b(hidden cloud|kumogakure|the Cloud)\b/i },
-  { id: 'iron', name: 'Samurai of Iron', region: 'iron', x: 52, y: 12, kind: 'place', match: /\b(land of iron|iron country|samurai)\b/i },
-  { id: 'silence', name: 'Land of Silence', region: null, x: 31, y: 16, kind: 'place', match: /\bland of silence\b/i, note: 'A small country far from the great villages and off every road you know.' },
+  { id: 'leaf', name: 'Hidden Leaf', region: 'fire', x: 41, y: 54.5, kind: 'village', match: /\b(hidden leaf|konoha(gakure)?|leaf village|the Leaf)\b/i },
+  { id: 'uchiha-district', name: 'Uchiha district', region: 'fire', x: 41, y: 54.5, kind: 'ruin', parent: 'leaf', match: /\buchiha (district|compound|quarter)\b/i, note: 'Your clan’s streets, empty since the massacre.' },
+  { id: 'naka-shrine', name: 'Naka Shrine', region: 'fire', x: 41, y: 54.5, kind: 'shrine', parent: 'leaf', match: /\bnaka shrine\b/i, note: 'The Uchiha stone tablet lies beneath it.' },
+  { id: 'naka-river', name: 'Naka River', region: 'fire', x: 41, y: 54.5, kind: 'place', parent: 'leaf', match: /\bnaka river\b/i },
+  { id: 'mask-shrine', name: 'Uzumaki mask shrine', region: 'fire', x: 41, y: 54.5, kind: 'shrine', parent: 'leaf', match: /\b(uzumaki )?mask shrine\b/i, note: 'Kept by the Uzumaki since Uzushio fell, on the edge of the Leaf.' },
+  { id: 'valley-end', name: 'Valley of the End', region: 'fire', x: 43, y: 39, kind: 'place', match: /\bvalley of the end\b/i, note: 'On the Land of Fire’s northern border.' },
+  { id: 'tanzaku', name: 'Tanzaku Town', region: 'fire', x: 37, y: 62, kind: 'place', match: /\btanzaku\b/i },
+  { id: 'fire-temple', name: 'Fire Temple', region: 'fire', x: 50, y: 47, kind: 'shrine', match: /\bfire temple\b/i },
+  { id: 'sand', name: 'Hidden Sand', region: 'wind', x: 23.5, y: 66, kind: 'village', match: /\b(hidden sand|sunagakure|the Sand)\b/i },
+  { id: 'rain', name: 'Hidden Rain', region: 'rain', x: 26, y: 50.5, kind: 'village', match: /\b(hidden rain|amegakure|the Rain)\b/i, note: 'The Akatsuki’s stronghold, in the tower.' },
+  { id: 'grass', name: 'Hidden Grass', region: 'grass', x: 26, y: 42, kind: 'village', match: /\b(hidden grass|kusagakure)\b/i, note: 'Where Karin is from.' },
+  { id: 'tenchi-bridge', name: 'Tenchi Bridge', region: 'grass', x: 28, y: 39.5, kind: 'place', match: /\btenchi bridge\b/i },
+  { id: 'waterfall', name: 'Hidden Waterfall', region: 'waterfall', x: 32, y: 27, kind: 'village', match: /\b(hidden waterfall|takigakure)\b/i },
+  { id: 'sound', name: 'Sound hideouts', region: 'rice', x: 42.5, y: 31, kind: 'hideout', match: /\b(hidden sound|otogakure|sound (village|hideout|base)|orochimaru'?s (hideout|lair|base))\b/i },
+  { id: 'hot-springs', name: 'Hidden Hot Springs', region: 'hot-water', x: 52, y: 35, kind: 'village', match: /\b(yugakure|hot springs?|hidden steam)\b/i },
+  { id: 'frost', name: 'Hidden Frost', region: 'frost', x: 53, y: 24.5, kind: 'village', match: /\b(hidden frost|shimogakure)\b/i },
+  { id: 'naruto-bridge', name: 'Great Naruto Bridge', region: 'waves', x: 39, y: 83, kind: 'place', match: /\bgreat naruto bridge\b/i },
+  { id: 'uzushio', name: 'Ruins of Uzushio', region: 'whirlpools', x: 65, y: 60, kind: 'ruin', match: /\b(uzushio(gakure)?|hidden whirlpool|hidden eddy)\b/i, note: 'Your father’s people. Ruins, old seals and graves.' },
+  { id: 'stone', name: 'Hidden Stone', region: 'earth', x: 24, y: 21, kind: 'village', match: /\b(hidden stone|iwagakure|the Stone)\b/i },
+  { id: 'mist', name: 'Hidden Mist', region: 'water', x: 78, y: 61, kind: 'village', match: /\b(hidden mist|kirigakure|the Mist)\b/i },
+  { id: 'cloud', name: 'Hidden Cloud', region: 'lightning', x: 64, y: 21.5, kind: 'village', match: /\b(hidden cloud|kumogakure|the Cloud)\b/i },
+  { id: 'iron', name: 'Samurai of Iron', region: 'iron', x: 46, y: 10, kind: 'place', match: /\b(land of iron|iron country|samurai)\b/i, note: 'Canon never shows where the Land of Iron lies; this spot is a guess.' },
+  { id: 'silence', name: 'Land of Silence', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\bland of silence\b/i, note: 'No map you know shows where it lies: a walled country that takes in missing-nin, past a guarded checkpoint.' },
 ];
 
 const PLACE_BY_ID = new Map(MAP_PLACES.map((place) => [place.id, place]));
@@ -175,7 +188,7 @@ export type MapPoint = { x: number; y: number };
 export function pointOfStop(stop: Pick<TravelStop, 'place' | 'region' | 'placeId'>): MapPoint | null {
   const place = mapPlace(stop.placeId);
 
-  if (place) return { x: place.x, y: place.y };
+  if (place && !place.unplaced) return { x: place.x, y: place.y };
   if (!isRegion(stop.region)) return null;
 
   const shape = REGION_SHAPES[stop.region];

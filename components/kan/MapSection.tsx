@@ -25,7 +25,6 @@ import {
   routePoints,
   travelEstimate,
   type KnownWhereabouts,
-  type MapPlace,
 } from '@/lib/rpg/mapData';
 import type { AppDatabase, CalendarDate } from '@/lib/rpg/types';
 import { CONDITION_INFO, currentWeather, regionWeather, seasonLabel } from '@/lib/rpg/weather';
@@ -33,15 +32,12 @@ import { CONDITION_INFO, currentWeather, regionWeather, seasonLabel } from '@/li
 type Selection = { kind: 'place'; id: string } | { kind: 'region'; id: Region };
 
 const REGIONS = Object.keys(REGION_SHAPES) as Region[];
-const TOP_PLACES = MAP_PLACES.filter((place) => !place.parent);
+const TOP_PLACES = MAP_PLACES.filter((place) => !place.parent && !place.unplaced);
+const UNPLACED = MAP_PLACES.filter((place) => place.unplaced);
 const ROAD_PREVIEW = 12;
 
 function dateLine(date: CalendarDate) {
   return `${formatDayMonth(date)}, year ${date.year}`;
-}
-
-function placeLabel(place: MapPlace) {
-  return place.region ? `${place.name} · ${regionLabel(place.region)}` : place.name;
 }
 
 /** The board: countries, places, Kan's road and where he is. */
@@ -375,6 +371,21 @@ export function MapSection() {
       </Text>
 
       <SelectedCard db={db} people={people} selection={shown} />
+
+      <SectionLabel>Not on any map you know</SectionLabel>
+      <ListCard>
+        {UNPLACED.map((place) => (
+          <ListRow
+            accessibilityRole="button"
+            body={place.note ?? null}
+            bodyLines={2}
+            key={place.id}
+            meta={placeVisits(db).get(place.id) ? 'You have been there' : 'Location unknown'}
+            onPress={() => setSelection({ kind: 'place', id: place.id })}
+            title={place.name}
+          />
+        ))}
+      </ListCard>
 
       <SectionLabel>Where people are, as far as you know</SectionLabel>
       {byRegion.size > 0 ? (

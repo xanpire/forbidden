@@ -16,7 +16,8 @@ import { advanceSeconds, shiftDate } from '../lib/rpg/calendar';
 import { startCompanion } from '../lib/rpg/companions';
 import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
-import { currentRegion } from '../lib/rpg/geography';
+import { currentRegion, regionOf, travelDaysBetween } from '../lib/rpg/geography';
+import { GEOGRAPHY_LORE } from '../lib/rpg/seed';
 import { appendStoryMessage } from '../lib/rpg/log';
 import {
   MAP_PLACES,
@@ -24,6 +25,7 @@ import {
   normalizeTravelLog,
   placeIdOf,
   placeVisits,
+  pointOfStop,
   recordTravel,
   routePoints,
   travelEstimate,
@@ -306,6 +308,43 @@ describe('the map', () => {
     const itachi = person(db, 'Itachi Uchiha');
     const together = startCompanion(db, itachi.id, 'travelling west');
     expect(knownWhereabouts(together).find((entry) => entry.entity.id === itachi.id)?.basis).toBe('with-you');
+  });
+});
+
+describe('the canon world map layout', () => {
+  test('Whirlpools off Fire\'s east coast, Waves on the south coast, Frost past Hot Water', () => {
+    expect(travelDaysBetween('fire', 'whirlpools')).toBe(2);
+    expect(travelDaysBetween('whirlpools', 'water')).toBe(2.5);
+    // Opposite sides of Fire now: no one-day road between them.
+    expect(travelDaysBetween('waves', 'whirlpools')).toBeGreaterThanOrEqual(4);
+    expect(travelDaysBetween('hot-water', 'frost')).toBe(1.5);
+    expect(travelDaysBetween('fire', 'frost')).toBe(3);
+    expect(travelDaysBetween('grass', 'waterfall')).toBe(1.5);
+    expect(regionOf('the gates of the Hidden Frost Village')).toBe('frost');
+    // "frost" alone is weather, not a country.
+    expect(regionOf('a field white with frost')).toBeNull();
+  });
+
+  test('the Land of Silence has no spot on the board', () => {
+    const silence = MAP_PLACES.find((place) => place.id === 'silence')!;
+    expect(silence.unplaced).toBe(true);
+    expect(pointOfStop({ place: 'the Land of Silence', placeId: 'silence' })).toBeNull();
+  });
+
+  test('the narrator\'s geography matches, and older saves get the new text', () => {
+    expect(GEOGRAPHY_LORE).toContain('southern coast, south of Hidden Leaf');
+    expect(GEOGRAPHY_LORE).toContain('Land of Whirlpools');
+    expect(GEOGRAPHY_LORE).toContain('Land of Frost');
+    const db = seed();
+    const old = {
+      ...db,
+      loreEntries: db.loreEntries.map((lore) =>
+        lore.text === GEOGRAPHY_LORE ? { ...lore, text: 'GEOGRAPHY (fixed; old directions)' } : lore
+      ),
+    } as AppDatabase;
+    const loaded = normalizeDatabase(old);
+    expect(loaded.loreEntries.some((lore) => lore.text === GEOGRAPHY_LORE)).toBe(true);
+    expect(loaded.loreEntries.some((lore) => lore.text.includes('old directions'))).toBe(false);
   });
 });
 

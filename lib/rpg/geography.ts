@@ -26,6 +26,7 @@ export type Region =
   | 'water'
   | 'lightning'
   | 'iron'
+  | 'frost'
   | 'whirlpools';
 
 export const REGION_NAME: Record<Region, string> = {
@@ -42,6 +43,7 @@ export const REGION_NAME: Record<Region, string> = {
   water: 'the Land of Water',
   lightning: 'the Land of Lightning',
   iron: 'the Land of Iron',
+  frost: 'the Land of Frost',
   whirlpools: 'the Land of Whirlpools',
 };
 
@@ -61,6 +63,8 @@ const PATTERNS: Array<[RegExp, Region]> = [
   [/\b(hidden mist|kirigakure|land of water|water country)\b/i, 'water'],
   [/\b(hidden cloud|kumogakure|land of lightning|lightning country)\b/i, 'lightning'],
   [/\b(land of iron|iron country|samurai)\b/i, 'iron'],
+  // Only the names: "frost" alone is weather.
+  [/\b(land of frost|frost country|hidden frost|shimogakure)\b/i, 'frost'],
   // "the Rain", "the Sand": only capitalised, so weather and beaches stay out.
   [/\bthe Leaf\b/, 'fire'],
   [/\bthe Rain\b/, 'rain'],
@@ -73,31 +77,40 @@ const PATTERNS: Array<[RegExp, Region]> = [
 
 /** Travel times between neighbours, in shinobi days (from the GEOGRAPHY lore). */
 const ROADS: Array<[Region, Region, number]> = [
+  // From the Land of Fire.
   ['fire', 'rain', 3],
   ['fire', 'grass', 2.5],
   ['fire', 'waterfall', 2],
   ['fire', 'rice', 1.5],
+  ['fire', 'hot-water', 1.5],
   ['fire', 'waves', 2],
   ['fire', 'rivers', 1.5],
   ['fire', 'wind', 3],
   ['fire', 'earth', 5],
+  ['fire', 'whirlpools', 2],
   ['fire', 'water', 4.5],
   ['fire', 'lightning', 6],
-  ['fire', 'hot-water', 1.5],
-  ['fire', 'whirlpools', 2.5],
   ['fire', 'iron', 5.5],
+  // The small countries to the west and north.
   ['rain', 'grass', 1],
   ['rain', 'wind', 3],
   ['rain', 'rivers', 1.5],
   ['rain', 'earth', 3],
   ['grass', 'earth', 2.5],
+  ['grass', 'waterfall', 1.5],
+  ['waterfall', 'earth', 3],
+  ['waterfall', 'rice', 1.5],
+  ['rice', 'hot-water', 1.5],
   ['rivers', 'wind', 1.5],
   ['earth', 'iron', 3],
+  // North-east: Hot Water, then Frost, then across the strait to Lightning.
+  ['hot-water', 'frost', 1.5],
+  ['frost', 'lightning', 2.5],
   ['iron', 'lightning', 3],
-  ['hot-water', 'lightning', 4],
-  ['waves', 'water', 2.5],
-  ['waves', 'whirlpools', 1],
-  ['waterfall', 'hot-water', 1],
+  // The sea: Whirlpools lies off Fire's east coast on the way to the Mist;
+  // Waves is on the south coast, below the Leaf.
+  ['whirlpools', 'water', 2.5],
+  ['waves', 'water', 3.5],
 ];
 
 /** Within one country: a day or so. */
@@ -121,7 +134,7 @@ function distances(): Map<string, number> {
     dist.set(key(b, a), Math.min(days, dist.get(key(b, a))!));
   }
 
-  // Floyd-Warshall: 14 regions, computed once.
+  // Floyd-Warshall: 15 regions, computed once.
   for (const k of regions) {
     for (const i of regions) {
       for (const j of regions) {
@@ -170,6 +183,7 @@ const HOME_BY_TAG: Array<[string, Region]> = [
   ['sound', 'rice'],
   ['waves', 'waves'],
   ['waterfall', 'waterfall'],
+  ['frost', 'frost'],
 ];
 
 /**

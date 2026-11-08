@@ -13,7 +13,7 @@ import { stripNarrationJson } from './prompt';
 import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canonData';
 import { dropBareNatureJutsu, normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
-import { seedDatabase } from './seed';
+import { GEOGRAPHY_LORE, seedDatabase } from './seed';
 import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
@@ -490,7 +490,14 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
     facts: Array.isArray(db.facts) ? db.facts : [],
     threads: Array.isArray(db.threads) ? db.threads : [],
-    loreEntries: Array.isArray(db.loreEntries) ? db.loreEntries : [],
+    // The geography paragraph is the app's, not the story's: older saves get the current one.
+    loreEntries: Array.isArray(db.loreEntries)
+      ? db.loreEntries.map((lore) =>
+          typeof lore.text === 'string' && lore.text.startsWith('GEOGRAPHY (fixed') && lore.text !== GEOGRAPHY_LORE
+            ? { ...lore, text: GEOGRAPHY_LORE }
+            : lore
+        )
+      : [],
     // The same summary saved twice (a job that ran twice) is kept once.
     summaries: Array.isArray(db.summaries)
       ? db.summaries.filter(
