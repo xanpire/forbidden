@@ -21,6 +21,7 @@ import {
   knownWhereabouts,
   mapPlace,
   placeVisits,
+  placeNameSpot,
   pointOfStop,
   regionLabel,
   regionsVisited,
@@ -63,6 +64,7 @@ const BORDER = '#3a3a3e';
 const LABEL_SIZE = { large: 2.6, medium: 2.1, small: 1.6 } as const;
 /** Zoomed in, the board shows this much of the map around Kan or the selection. */
 const ZOOM_SPAN = 50;
+const PLACE_NAME_SIZE = 0.9;
 /** How close a tap must land to a place to pick it, in board units. */
 const PLACE_REACH = 2.4;
 
@@ -257,6 +259,25 @@ function WorldBoard({
                 />
               );
             })}
+
+            {/* Zoomed in, every place is named; the whole map only names the countries. */}
+            {zoomed
+              ? TOP_PLACES.map((place) => {
+                  const spot = placeNameSpot(place);
+
+                  // A dark halo under the name first, so it reads over borders and coasts.
+                  return (
+                    <G key={`name-${place.id}`}>
+                      <SvgText fill={SEA} fontFamily={fonts.semibold} fontSize={PLACE_NAME_SIZE} stroke={SEA} strokeWidth={0.35} textAnchor={spot.anchor} x={spot.x} y={spot.y}>
+                        {place.name}
+                      </SvgText>
+                      <SvgText fill={visits.has(place.id) ? colors.textSoft : '#b4b4ba'} fontFamily={fonts.semibold} fontSize={PLACE_NAME_SIZE} textAnchor={spot.anchor} x={spot.x} y={spot.y}>
+                        {place.name}
+                      </SvgText>
+                    </G>
+                  );
+                })
+              : null}
 
             {houses.map(({ house, point }) => (
               <Rect
@@ -566,7 +587,7 @@ export function MapSection() {
 
       <WorldBoard db={db} onSelect={setSelection} selection={shown} />
       <Text style={styles.legend}>
-        Tap a country or a place. White dots are places you have been; the red line is your road; squares are your places. Numbers count people you know of there. Dashed borders are lands only the anime shows.
+        Tap a country or a place; zoom in to see every place's name. White dots are places you have been; the red line is your road; squares are your places. Numbers count people you know of there. Dashed borders are lands only the anime shows.
       </Text>
 
       <SelectedCard db={db} people={people} selection={shown} />

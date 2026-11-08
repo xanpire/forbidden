@@ -156,7 +156,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     rings: [ring(B.earthBirds, rev(B.birdsRain), rev(B.birdsWind), rev(B.birdsSilence))],
   },
   rain: {
-    x: 25, y: 30.8, rx: 1.8, ry: 1, label: 'Land of Rain', labelY: 33, size: 'small',
+    x: 25, y: 30.8, rx: 1.8, ry: 1, label: 'Land of Rain', labelX: 26.2, labelY: 34.2, size: 'small',
     rings: [ring(B.earthRain, rev(B.grassRain), B.rainFire, B.rainRivers, B.rainWind, B.birdsRain)],
   },
   grass: {
@@ -252,7 +252,7 @@ export const REGION_SHAPES: Record<Region, RegionShape> = {
     ],
   },
   tea: {
-    x: 44.5, y: 70, rx: 1.5, ry: 4, label: 'Land of Tea', labelY: 71, size: 'medium', animeOnly: true,
+    x: 44.5, y: 70, rx: 1.5, ry: 4, label: 'Land of Tea', labelY: 72.6, size: 'medium', animeOnly: true,
     rings: [
       ring(B.fireTea, C.tea),
       // Nagi Island and Ouza Island, joined by a suspension bridge.
@@ -293,6 +293,7 @@ export const ANIME_LINE_Y = 57;
 
 /** A label split for the board: a small first line ("Land of", "Mountain") and the name. */
 export function labelLines(label: string): [string, string] {
+  if (label.startsWith('Land of the ')) return ['Land of the', label.slice('Land of the '.length)];
   if (label.startsWith('Land of ')) return ['Land of', label.slice('Land of '.length)];
 
   const space = label.indexOf(' ');
