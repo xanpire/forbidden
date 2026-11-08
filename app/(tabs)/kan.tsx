@@ -6,16 +6,18 @@ import { Segmented } from '@/components/List';
 import { BondsSection } from '@/components/kan/BondsSection';
 import { JournalSection } from '@/components/kan/JournalSection';
 import { JutsuSection } from '@/components/kan/JutsuSection';
+import { MapSection } from '@/components/kan/MapSection';
 import { PortraitHeader } from '@/components/kan/PortraitHeader';
 import { colors, spacing } from '@/constants/theme';
 import { useGame } from '@/lib/rpg/game';
 
-type KanTab = 'bonds' | 'jutsu' | 'journal';
+type KanTab = 'bonds' | 'jutsu' | 'journal' | 'map';
 
 const TABS: { value: KanTab; label: string }[] = [
   { value: 'bonds', label: 'Bonds' },
   { value: 'jutsu', label: 'Jutsu' },
   { value: 'journal', label: 'Journal' },
+  { value: 'map', label: 'Map' },
 ];
 
 export default function KanScreen() {
@@ -46,6 +48,7 @@ export default function KanScreen() {
           {tab === 'bonds' ? <BondsSection /> : null}
           {tab === 'jutsu' ? <JutsuSection /> : null}
           {tab === 'journal' ? <JournalSection /> : null}
+          {tab === 'map' ? <MapSection /> : null}
         </ScrollView>
       </SafeAreaView>
     </View>

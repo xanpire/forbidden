@@ -25,11 +25,9 @@ import {
   CircleAlert,
   Download,
   Image as ImageIcon,
-  Moon,
   Clock3,
   RotateCcw,
   Sparkles,
-  Sun,
   Undo2,
   X,
 } from 'lucide-react-native';
@@ -60,6 +58,8 @@ import {
 } from '@/lib/rpg/image';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { loadImage, loadImages, useStoredImage } from '@/lib/rpg/imageStore';
+import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
+import { WeatherIcon } from '@/components/WeatherIcon';
 import {
   faceDroppedWarning,
   loadKanReferenceImages,
@@ -592,6 +592,7 @@ export default function StoryScreen() {
   const state = db.state;
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
   const night = ['night', 'evening'].includes(timeOfDayOf(state.inStoryDate));
+  const weather = db ? currentWeather(db) : { condition: 'clear' as const, seasonLabel: '', night, region: 'fire' as const };
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
@@ -631,11 +632,7 @@ export default function StoryScreen() {
                 {location}
               </Text>
             </View>
-            {night ? (
-              <Moon color={colors.textMuted} size={18} strokeWidth={2} />
-            ) : (
-              <Sun color={colors.textMuted} size={18} strokeWidth={2} />
-            )}
+            <WeatherIcon color={colors.textMuted} condition={weather.condition} night={night} />
           </Pressable>
         </View>
 
@@ -1014,6 +1011,12 @@ export default function StoryScreen() {
                 title={location}
               />
               <ListRow meta="Mood" title={state.mood} />
+              {db ? (
+                <ListRow
+                  meta={`Weather · ${weather.seasonLabel}`}
+                  title={capitalize(weatherPhrase(weather))}
+                />
+              ) : null}
               {db && companionsOf(db).length > 0 ? (
                 <ListRow
                   meta="Travelling with you"
@@ -1569,3 +1572,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}

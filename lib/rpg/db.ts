@@ -18,7 +18,9 @@ import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
-import type { AppDatabase, MemoryIndex } from './types';
+import type { AppDatabase, MemoryIndex, WeatherLock } from './types';
+import { normalizeTravelLog } from './mapData';
+import { WEATHER_CONDITIONS } from './weather';
 
 const META_KEY = 'kan.meta.v1';
 const SLOT_PREFIX = 'kan.slot.';
@@ -684,6 +686,25 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     yearly: normalizeYearly(state.yearly),
     renown: normalizeRenown(state.renown),
     consequences: normalizeConsequences(state.consequences),
+    weather: normalizeWeather(state.weather),
+    travelLog: normalizeTravelLog(state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
+  };
+}
+
+function normalizeWeather(value: unknown): WeatherLock | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+
+  const lock = value as WeatherLock;
+
+  if (!WEATHER_CONDITIONS.includes(lock.condition) || typeof lock.region !== 'string' || !lock.since) return undefined;
+
+  return {
+    region: lock.region,
+    condition: lock.condition,
+    ...(typeof lock.text === 'string' ? { text: lock.text.slice(0, 60) } : {}),
+    since: lock.since,
+    ...(typeof lock.sceneSeq === 'number' ? { sceneSeq: lock.sceneSeq } : {}),
+    source: lock.source === 'story' ? 'story' : 'world',
   };
 }
 

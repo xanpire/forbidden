@@ -34,6 +34,9 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `consequences.ts` | Delayed consequences (`state.consequences`, §8c): `plantSeed`, `applyConsequences`, `advanceConsequences`, `canReturn`, `consequenceOffer` (SOMETHING COMES BACK), `waitingConsequences` |
 | `renown.ts` | Deeds, rumours, posters and Kan's epithets (`state.renown`, §8c): `recordDeeds`, `applyEpithet`, `markEpithetsSeen`, `localEpithet`, `knownEpithets`, `rumourOffer` (TALK OF YOU), `posterLine` |
 | `povMemories.ts` | Memories from each person's point of view (`EventRecord.povs`, §8c): `povCandidates`, `parsePovLines`, `resolvePovs`, `povOf`, `latestPov` |
+| `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, region and 6-hour block), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `CLIMATES` |
+| `mapData.ts` | The map (§8d): `MAP_PLACES`, `REGION_SHAPES`, `placeIdOf`, `recordTravel` (`state.travelLog`), `routePoints`, `placeVisits`, `travelEstimate`, `knownWhereabouts` (as far as Kan knows) |
+| `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter), `eraOfDate`, `captionOf`, `placeAt` |
 | `yearly.ts` / `yearlyData.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and festivals: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes`; habits and festivals are data in `yearlyData.ts` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
@@ -146,6 +149,8 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   sceneCast?: string[]
   sceneMode?: { current, exchangeStreak, partners, lastBeat?, override? }   // §8a
   yearly?: { knownBirthdays: string[], offered: Record<key, year> }        // §8b
+  weather?: { region, condition, text?, since, sceneSeq?, source: 'world'|'story' }   // §8d
+  travelLog?: [{ place, region?, placeId?, date }]                          // §8d, last 400
 }
 ```
 
@@ -244,7 +249,7 @@ consequences: [{
   lettersSent?: [{ entityId?, name, gist?, text?, carrier?, coded? }], lettersReceived?: [{ entityId?, name, text? }],
   lifeEvents?: [{ entityId?, name, text }], epithet?: { audience, name },
   consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
-  birthdaysLearned?: [{ entityId?, name }],
+  birthdaysLearned?: [{ entityId?, name }], weather?: string,
   companionsJoined?: [{ entityId?, name, reason? }], companionsLeft?: [{ entityId?, name, reason? }],
   scene?: { ended, summary?, tags?, entities?, importance? }
 }
@@ -326,6 +331,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 1. `formatState` (date, place, mood, world, inventory, canon point)
 1a. `formatCompanions` — `TRAVELLING WITH KAN`: each companion, how long together, why/where they joined, shared scenes, how they feel (only when someone travels with Kan). Their character cards are always in `CHARACTERS IN SCENE`, companions first.
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
+2a. `formatWeatherLine` — `WEATHER (the Land of Rain, late autumn; it almost never stops raining here): steady rain. …` with what it does, shaped by the mode (§8d)
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
 4. `formatNewsBlock` — `newsOffer`: the next unheard event (or one catch-up report), with location, bearers in the scene first, the living fallbacks, this turn's delivery style and urgency (none in combat)
 4a. `formatLetterBlock` — `A LETTER FOR YOU`: a reply that has arrived, or an unprompted letter (none in combat or during a catch-up report)
@@ -614,6 +620,34 @@ Five systems that build on each other. Each only reaches the narrator when it ma
 
 **Prompt size**: on a quiet turn nothing new reaches the narrator; the 60-turn token sample settles at about 6,770 (6,670 after Stage 2).
 
+## 8d. The world around Kan (living-world Stage 4)
+
+Tests: `scripts/living-world-stage4.test.ts`.
+
+**Seasons and weather** (`weather.ts`)
+- Seasons from the month (Dec–Feb winter …), named as people there would say it (`seasonLabel`): "the rainy season" (June) and "monsoon heat" (July–August) in the Land of Fire, "a deep northern winter" in Iron, "early/mid/late <season>" elsewhere.
+- Each region has a `CLIMATES` entry: weights per season (per month for the Fire's rainy season and monsoon), how long spells last, and a note (the Rain: it almost never stops raining; the Mist: the fog rarely lifts; the Wind: scorching days, freezing nights). The Rain is never clear, the desert never snows, Iron and Lightning are snowy in winter.
+- `weatherAt(seed, region, date)` is deterministic per save (`meta.slotId`), region and 6-hour block. Spells are walked forward from a fixed anchor every 4 days (2 days of warm-up), each block keeping the last one's weather with the region's persistence (0.78 by default), so neighbouring hours agree and the sky changes about once a day or less. Fog gathers around dawn; summer thunder builds in the afternoon.
+- The region is `currentRegion(db)` (`geography.ts`): the one the location names, else the last region on Kan's road, else Fire.
+- **Held for the scene** (`state.weather`, `applyWeather` after every state step): a new scene holds the world's weather; the same scene keeps it (up to 12 h). The tracker's `weather` (a few words, only when the prose changes it from WEATHER NOW) is read by `conditionFromText` ("the rain stops" → overcast, "thunder" → storm, "the fog lifts" → clear) and holds 8 h in that region, across scenes. Another region always gets its own weather.
+- **Narrator**: one WEATHER line after TIME (`formatWeatherLine`): region, season, climate note, the weather at this hour (clear nights, cold desert nights), and by mode: normal → how much slower travel is (`CONDITION_INFO.travel`: rain ×1.25, snow ×1.4, sandstorm ×1.8, blizzard ×2), tracks and scent, footing, feel; fight → footing, sight and sound only; conversation or indoors → just the feel ("outside, steady rain"). A STYLE rule says weather follows that line all scene. About 80 tokens.
+- **Tracker**: `WEATHER NOW` in the state prompt, the `weather` field in `TURN_STATE_SCHEMA`.
+- UI: the Story header's icon shows the weather (sun/moon when clear); the status sheet has a Weather row.
+
+**The map** (`mapData.ts`, `components/kan/MapSection.tsx`)
+- A 100 × 90 board: `REGION_SHAPES` (ellipses placed as the GEOGRAPHY lore describes; seas dashed) and `MAP_PLACES` (the great villages, the Valley of the End, Tanzaku, the Fire Temple, the Sound hideouts, the Great Naruto Bridge, Iron, and the Stage 2 places: Karin's Hidden Grass, the ruins of Uzushio, the Land of Silence, and in the Leaf the Uchiha district, the Naka Shrine, the Naka River and the Uzumaki mask shrine as `parent: 'leaf'`). `placeIdOf(location)` matches a place (a shrine in the Leaf beats the Leaf).
+- **Kan's road** (`state.travelLog`, `recordTravel` after every state step): each new location once, with its region (a place that names none stays in the last one) and map place; 400 kept. Older saves start the road where Kan is (`normalizeTravelLog`). `routePoints` draws it; `placeVisits` counts visits (a shrine counts for its village too).
+- **Travel times** (`travelEstimate`): `travelDaysBetween` from Kan's region, and the same in the worse weather of the two ends.
+- **Where people are, as far as Kan knows** (`knownWhereabouts`): met, non-minor people; companions are with him; otherwise what the story said (`whereabouts`, "told"), else where he last saw them (`lastSeenAt`, "seen", with how long ago), else where they would usually be (role or village tags, "assumed"). Someone who died without Kan knowing is still shown where he thinks they are; once he knows, they leave the map. It is never the truth the save holds.
+- UI: Kan tab → **Map** (fourth switch). You are here (place, country, weather, season, companions), the board (countries you've been to tinted, your road as a red dashed line, white dots for places you've been, a red dot for you, a count of people you know of per country; tap a country or a place), the selected card (note, travel time, weather, visits, places inside, who is there as far as you know → bond page), everyone by country, and your road (newest first, 12 then "Show all"). The safehouse Places list (section 20) will go here.
+
+**The scrapbook** (`scrapbook.ts`, `components/kan/ScrapbookView.tsx`)
+- Read from the story log, nothing stored twice: every assistant reply with an `image`, oldest first, grouped by era (`eraOfDate`: the era of the last world milestone that had begun by then, never moving backwards) and chapter (title from `state.chapters` or the current chapter).
+- Each photo: the caption (`imageMeta.action`, the "who did what" line the image followed, else the reply's first sentence; second person via `secondPerson`), the in-story date and time, Kan's age, and where he was (`placeAt`, from the road).
+- UI: Kan tab → Journal → **Scrapbook**: era headers with counts, chapter titles, a three-column grid; tap for a full view with caption, date, age and place, and earlier/later buttons.
+
+**Prompt size**: one WEATHER line (~80 tokens) per narrator turn, and two short lines in the state prompt; nothing else new.
+
 ## 9. Encounter realism (`lib/rpg/encounters.ts`)
 
 - `classifyLocation(text)` uses first-mentioned place word → `settlement | road | wilderness | structure`.
@@ -693,13 +727,14 @@ The dark mirror of romance: slow, earned, lasting.
 ## 12. UI
 
 - `app/_layout.tsx` — fonts (Manrope), navigation, GameProvider, toasts, Android nav bar.
-Three tabs: **Story / Kan / Settings**. All list screens use the shared kit in `components/List.tsx` (`SectionLabel`, `ListCard`, `ListRow`, `FilterPills`, `Segmented`) and the type tokens in `constants/theme.ts` (`sectionLabel`, `rowTitle` 15 bold, `rowBody` 13, `rowMeta` 12, `prose` 16) — use them for new screens instead of one-off styles.
+Three tabs: **Story / Kan / Settings** (the Kan tab switches Bonds / Jutsu / Journal / Map). All list screens use the shared kit in `components/List.tsx` (`SectionLabel`, `ListCard`, `ListRow`, `FilterPills`, `Segmented`) and the type tokens in `constants/theme.ts` (`sectionLabel`, `rowTitle` 15 bold, `rowBody` 13, `rowMeta` 12, `prose` 16) — use them for new screens instead of one-off styles.
 
 - `app/(tabs)/index.tsx` — Story: narration as plain prose, Kan's turns as tinted blocks (`*actions*` italic), header with clock/date/location (tap → status sheet with mood, date, scene), news strip, a `+N min` time chip under each reply (tap to correct), Image / Retry / Undo under the latest reply, single-row composer with `"` and `*` markers, fullscreen image viewer.
-- `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal switch.
+- `app/(tabs)/kan.tsx` — Kan hub: `components/kan/PortraitHeader.tsx` (current portrait, outdated reason, Refresh, history strip) plus a sticky Bonds / Jutsu / Journal / Map switch.
   - `BondsSection.tsx` — search + compact rows (people you have met; unmet canon cast is hidden) (avatar — their latest portrait when painted, name, Major tag, affinity bar, relationship · last seen), sorted by most recent contact; rows open `app/(tabs)/bond/[id].tsx` (portrait with Paint/Repaint and face reference, bond meter, chips, mood/personality/speech/appearance, shared memories, Merge with…).
+  - `MapSection.tsx` — the map (§8d).
   - `JutsuSection.tsx` — jutsu grouped by chakra nature; rows expand for appearance and notes.
-  - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people). Rows use an event's own `title` when it has one (`memoryTitle`); otherwise `titleAndBody` (`util.ts`) splits the text: "Title: …", a first sentence under 90 characters, or the first words cut at a word boundary with the rest kept as the description. Recap titles come from `summary.title`.
+  - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard canon news with source, world state, lore), Memories (events with people), Letters, Scrapbook (§8d). Rows use an event's own `title` when it has one (`memoryTitle`); otherwise `titleAndBody` (`util.ts`) splits the text: "Title: …", a first sentence under 90 characters, or the first words cut at a word boundary with the rest kept as the description. Recap titles come from `summary.title`.
 - `app/(tabs)/world-clock.tsx` — hidden **World clock** (long-press the clock in the Story header; `href: null`, no tab). Read-only view of `worldClock(db)`: running/held-for-combat status, not heard yet (next in line first), due-but-waiting, queued with dates and days until, personal moments open to you, fired (with who told you), and missed beats. Contains spoilers by design.
 - `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), World (canon toggle), Stories (slots with a ⋯ menu: play, copy, rename, delete; New story), Export / Import, Debug, version and credit.
 - `components/settings/DebugPanel.tsx` — Settings → Debug. For each of the last 30 turns: the exact messages the narrator saw (newest 5 only; copyable), the state step's status, raw reply, applied diff and a field-by-field list of what changed in the save, and every call the turn made (narrator, state, summaries, images) with billed tokens, thinking/cached tokens, time and cost.
@@ -808,6 +843,7 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 - Reputation & grudges (`scripts/enemies.test.ts`): Leaf listing timing, heat → rank/bounty, per-turn clamp, cooling floor, `bounty_seen`, territory lines, empty places, Akatsuki standing, hunter cadence; grudges from soured bonds and `wronged`, stewing, canon hunt cap, due/pressed/combat/in-scene offers, `struck`, let go / settled / death, schema and reload
 - Token stability over 60 turns
 - Scene modes (`scripts/scene-mode.test.ts`): input reading, instruction never flips it, lean then settle, small actions stay in, remark carries, leaving ends with a transition, group talk, 20 s conversation turns, attack → fight with options, ambush → fight, options cleared when it ends, overrides and their clearing, reload, prompt and schema
+- Living-world Stage 4 (`scripts/living-world-stage4.test.ts`): season names, deterministic weather, the Rain never clear / northern winters snowy / no desert snow / Fire's wet summer / the Mist's fog, spell length, the scene lock and new scenes, other regions, story weather and how long it holds, the narrator line by mode and indoors, the tracker field, old saves; map places and matching, the road (regions inherited, no repeats), visits, travel estimates in weather, whereabouts as Kan knows them (told, seen, unknown deaths, companions); eras, the scrapbook's grouping and captions; prompt size
 - Living-world Stage 3 (`scripts/living-world-stage3.test.ts`): geography and whereabouts, letter travel time by distance and carrier, Kan's words kept and tidied, the archive, letters to the dead, Root and Akatsuki interception and safer carriers, interception seeds, real losses, birthday letters, side characters' lives (canon-safe), reunion notes, life events from the page and from letters, epithets per audience (growth, renaming, story names, bingo books), posters and distorted rumours, consequence seeds (window, crossing paths, lies face to face, witnesses talking, fading, offers, returned, the remember notice), point-of-view memories, quiet-turn prompt size
 - Living-world Stage 2 (`scripts/living-world-stage2.test.ts`): the 67 new people, birthday fixes and backfill, the unborn / real Madara / Kaguya arriving with their milestones, every canon death landing on someone, beasts and children never romance, the shorter tracker roster, the new milestones' order, the Karin arc, the eyes and Shisui threads, the yearly offers (present, unknown, learned, once a year, anniversaries, remembrance, festivals, none in fights) and upcoming birthdays
 - Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing from normal and streamed replies

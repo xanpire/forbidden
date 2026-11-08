@@ -30,6 +30,8 @@ import { advanceLives, applyLifeEvents, markReunions } from './lives';
 import { advanceConsequences, applyConsequences, markConsequenceOffered, turnConsequenceOffer } from './consequences';
 import { applyEpithet, markEpithetsSeen, recordDeeds } from './renown';
 import { applyYearly, yearlyOffer } from './yearly';
+import { recordTravel } from './mapData';
+import { applyWeather } from './weather';
 import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
 import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
@@ -317,6 +319,9 @@ export function applyStateStep(
   // Which scene this turn belongs to, and who was in it: memories are cut
   // and shared by this, never by names in their text.
   next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true, next.state.chapter !== chapterBefore);
+  // Kan's road and the scene's weather (held through the scene unless the page changed it).
+  next = recordTravel(next);
+  next = applyWeather(next, extraction?.weather);
 
   // One piece of news per turn (or one catch-up report); nothing in the
   // world fires mid-fight. The allowance comes from the state the turn's

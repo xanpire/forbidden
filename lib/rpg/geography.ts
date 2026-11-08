@@ -10,7 +10,7 @@
 // couriers are slower, birds faster (see letters.ts).
 
 import { localizePlaceNames } from './glossary';
-import type { EntityRecord } from './types';
+import type { AppDatabase, EntityRecord } from './types';
 
 export type Region =
   | 'fire'
@@ -195,4 +195,29 @@ export function whereaboutsRegion(entity: EntityRecord): Region | null {
   }
 
   return null;
+}
+
+export function isRegion(value: unknown): value is Region {
+  return typeof value === 'string' && value in REGION_NAME;
+}
+
+/**
+ * The region Kan is in now: the one his location names, else the last one
+ * on his road (a forest clearing is still in the country he was last in),
+ * else the Land of Fire, where the story starts.
+ */
+export function currentRegion(db: Pick<AppDatabase, 'state'>): Region {
+  const named = regionOf(db.state.location);
+
+  if (named) return named;
+
+  const road = db.state.travelLog ?? [];
+
+  for (let index = road.length - 1; index >= 0; index -= 1) {
+    const region = road[index].region;
+
+    if (isRegion(region)) return region;
+  }
+
+  return 'fire';
 }

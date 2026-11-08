@@ -356,6 +356,12 @@ export function convertStateBlock(
     diff.chapterTitle = chapterTitle.slice(0, 60);
   }
 
+  const weather = cleanString(block.weather);
+
+  if (weather && weather.length >= 2) {
+    diff.weather = weather.slice(0, 80);
+  }
+
   const sceneTitle = cleanString(block.scene_title)
     ?.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
     .replace(/[.!?]+$/, '')

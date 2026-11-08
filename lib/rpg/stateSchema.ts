@@ -204,6 +204,8 @@ export const TURN_STATE_SCHEMA = object({
   scene_ended: { type: 'boolean' },
   // A short name for the scene, only when a new scene starts this turn.
   scene_title: nullableString,
+  // The weather, only when the page changes it from WEATHER NOW.
+  weather: nullableString,
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,

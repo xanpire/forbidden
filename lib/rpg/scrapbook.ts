@@ -1,0 +1,131 @@
+// The scrapbook (living-world Stage 4, section 15).
+//
+// Every scene image you asked for, kept like photos of your life: sorted by
+// era and chapter, each with a short caption, its in-story date, where you
+// were and how old you were. Nothing is stored twice: it is read from the
+// story log (rawLog[].image and imageMeta), the chapters and your road.
+
+import { calculateAge, dateSortValue } from './calendar';
+import { CANON_ERA_ORDER, CANON_MILESTONES } from './canonData';
+import { localizePlaceNames } from './glossary';
+import type { AppDatabase, CalendarDate, RawLogEntry } from './types';
+import { firstSentences, secondPerson } from './util';
+
+export type ScrapbookPhoto = {
+  logId: string;
+  image: string;
+  date: CalendarDate;
+  chapter: number;
+  caption: string;
+  place: string | null;
+  age: number;
+};
+
+export type ScrapbookChapter = { chapter: number; title: string | null; photos: ScrapbookPhoto[] };
+export type ScrapbookEra = { era: string; chapters: ScrapbookChapter[]; count: number };
+
+function dateValue(date: { year: number; month: number; day?: number }) {
+  return (date.year * 12 + date.month) * 32 + (date.day ?? 1);
+}
+
+// World events only: personal beats have wide windows and would blur the line.
+const ERA_STARTS = CANON_MILESTONES.filter((milestone) => !milestone.playerDriven)
+  .map((milestone) => ({ era: milestone.era, at: dateValue(milestone.from) }))
+  .sort((a, b) => a.at - b.at);
+
+/** The era a date falls in: the era of the last world event that had begun by then. */
+export function eraOfDate(date: CalendarDate): string {
+  const at = dateValue(date);
+  let era = CANON_ERA_ORDER[0];
+  let rank = 0;
+
+  for (const start of ERA_STARTS) {
+    if (start.at > at) break;
+
+    // Eras only move forward, so a late-listed early-era event can't pull it back.
+    const startRank = CANON_ERA_ORDER.indexOf(start.era);
+
+    if (startRank >= rank) {
+      era = start.era;
+      rank = startRank;
+    }
+  }
+
+  return era;
+}
+
+const CAPTION_LENGTH = 150;
+
+/** A photo's caption: the "who did what" line the image followed, else the reply's opening. */
+export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>): string {
+  const action = entry.imageMeta?.action?.trim();
+  const source = action || entry.content.replace(/\*+/g, '').trim();
+
+  return secondPerson(firstSentences(source, 1, CAPTION_LENGTH));
+}
+
+/** Where you were at a moment, from your road. */
+export function placeAt(db: AppDatabase, date: CalendarDate): string | null {
+  const when = dateSortValue(date);
+  let place: string | null = null;
+
+  for (const stop of db.state.travelLog ?? []) {
+    if (dateSortValue(stop.date) > when) break;
+    place = stop.place;
+  }
+
+  return place ? localizePlaceNames(place) : null;
+}
+
+export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
+  const player = db.state.player;
+
+  return db.rawLog
+    .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
+    .map((entry) => ({
+      logId: entry.id,
+      image: entry.image as string,
+      date: entry.inStoryDate,
+      chapter: entry.chapter,
+      caption: captionOf(entry),
+      place: placeAt(db, entry.inStoryDate),
+      age: calculateAge(entry.inStoryDate, player.birthday, player.birthYear),
+    }))
+    .sort((a, b) => dateSortValue(a.date) - dateSortValue(b.date));
+}
+
+function chapterTitle(db: AppDatabase, chapter: number): string | null {
+  const done = db.state.chapters?.find((item) => item.chapter === chapter);
+
+  if (done?.title) return done.title;
+  if (chapter === db.state.chapter) return db.state.chapterTitle ?? null;
+
+  return null;
+}
+
+/** The scrapbook: eras in story order, chapters inside them, photos oldest first. */
+export function scrapbook(db: AppDatabase): ScrapbookEra[] {
+  const eras: ScrapbookEra[] = [];
+
+  for (const photo of scrapbookPhotos(db)) {
+    const era = eraOfDate(photo.date);
+    let group = eras[eras.length - 1];
+
+    if (!group || group.era !== era) {
+      group = { era, chapters: [], count: 0 };
+      eras.push(group);
+    }
+
+    let chapter = group.chapters[group.chapters.length - 1];
+
+    if (!chapter || chapter.chapter !== photo.chapter) {
+      chapter = { chapter: photo.chapter, title: chapterTitle(db, photo.chapter), photos: [] };
+      group.chapters.push(chapter);
+    }
+
+    chapter.photos.push(photo);
+    group.count += 1;
+  }
+
+  return eras;
+}

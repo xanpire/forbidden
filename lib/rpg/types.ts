@@ -147,6 +147,53 @@ export type GameState = {
   renown?: RenownState;
   /** Choices that could come back later (see consequences.ts). */
   consequences?: ConsequenceSeed[];
+  /** The weather held for the current scene (see weather.ts). */
+  weather?: WeatherLock;
+  /** Every place Kan has been, oldest first (see mapData.ts). */
+  travelLog?: TravelStop[];
+};
+
+export type WeatherCondition =
+  | 'clear'
+  | 'cloudy'
+  | 'drizzle'
+  | 'rain'
+  | 'downpour'
+  | 'storm'
+  | 'fog'
+  | 'snow'
+  | 'blizzard'
+  | 'sleet'
+  | 'wind'
+  | 'sandstorm'
+  | 'heat'
+  | 'humid';
+
+/**
+ * The weather a scene is played in, held so it stays the same through the
+ * scene: the world's own weather for the region, or what the story changed
+ * it to (a storm rolling in, a jutsu clearing the fog).
+ */
+export type WeatherLock = {
+  /** A geography region id, or 'unknown'. */
+  region: string;
+  condition: WeatherCondition;
+  /** The story's own words for it, when the story set it. */
+  text?: string;
+  since: CalendarDate;
+  sceneSeq?: number;
+  source: 'world' | 'story';
+};
+
+/** One stop on Kan's road (see mapData.ts). */
+export type TravelStop = {
+  /** state.location as the story gave it. */
+  place: string;
+  /** A geography region id, when the place names one or Kan has not left the last one. */
+  region?: string;
+  /** The map place it matches (a village, a shrine, a ruin). */
+  placeId?: string;
+  date: CalendarDate;
 };
 
 /** What the yearly calendar remembers (see yearly.ts). */
@@ -998,6 +1045,8 @@ export type TurnDiff = {
   }[];
   /** Ids of offered consequences that came back on the page this turn. */
   consequencesReturned?: string[];
+  /** The weather as the page changed it this turn, in a few words. */
+  weather?: string;
   /** What a village or the Akatsuki now has on Kan. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday Kan learned this turn (they said it, someone told him). */

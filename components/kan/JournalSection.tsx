@@ -12,8 +12,9 @@ import { loreActive } from '@/lib/rpg/lore';
 import { todayNotes } from '@/lib/rpg/yearly';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
+import { ScrapbookView } from '@/components/kan/ScrapbookView';
 
-type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters';
+type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters' | 'scrapbook';
 
 const VIEWS: { value: JournalView; label: string }[] = [
   { value: 'now', label: 'Now' },
@@ -21,6 +22,7 @@ const VIEWS: { value: JournalView; label: string }[] = [
   { value: 'world', label: 'World' },
   { value: 'memories', label: 'Memories' },
   { value: 'letters', label: 'Letters' },
+  { value: 'scrapbook', label: 'Scrapbook' },
 ];
 
 // Kept here too: the bond screen imports it from this file.
@@ -362,6 +364,7 @@ export function JournalSection() {
       {view === 'world' ? <WorldView db={db} /> : null}
       {view === 'memories' ? <MemoriesView db={db} /> : null}
       {view === 'letters' ? <LettersView db={db} /> : null}
+      {view === 'scrapbook' ? <ScrapbookView db={db} /> : null}
     </View>
   );
 }

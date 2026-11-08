@@ -38,6 +38,7 @@ import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
 import { formatAbilities } from './abilities';
 import { formatVarietyBlock } from './variety';
+import { formatWeatherLine, formatWeatherTracking } from './weather';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
   AppDatabase,
@@ -79,6 +80,7 @@ CANON
 
 STYLE
 - Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
+- Weather and season follow the WEATHER line, the same all scene: let them show, slow travel, hide or reveal tracks, and change footing and sight in a fight.
 - 2-4 paragraphs of plain English (unless SCENE MODE says otherwise): common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
 - Play out conversations, fights, and travel unless Kan asks to skip; compress uneventful travel into a paragraph or two.
 - Encounters are rare and must fit the ENCOUNTER CONDITIONS (place, hour, how crowded). Most turns bring no new people; when a place is isolated, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
@@ -106,7 +108,7 @@ const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel;
 
 TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. Count only what the narration shows happening: plans or times spoken in dialogue ("walk until nightfall", "we leave at dawn") have not happened and add nothing. time.clock_time stays null unless the narration itself names the hour ("at noon", "by dusk", "3 PM"); never guess it. TIME BEFORE THIS TURN is the clock the turn starts from, so a clock_time must fit it plus time.elapsed. scene_pace: combat (any fight or ambush, even a short one), chase, conversation, travel (only moving from place to place with no fight), or downtime (rest, sleep, waiting).
 
-PLACE: location, with location_kind, when Kan moves. location_kind: settlement (a village, town, camp or market), structure (inside or on a building: a tower, a cell, a shrine, a hideout), road (a road, bridge or trail), wilderness (forest, ravine, mountains, river, open land). Never put Kan in characters_present. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed.
+PLACE: location, with location_kind, when Kan moves. location_kind: settlement (a village, town, camp or market), structure (inside or on a building: a tower, a cell, a shrine, a hideout), road (a road, bridge or trail), wilderness (forest, ravine, mountains, river, open land). Never put Kan in characters_present. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed. weather: a few words only when the prose shows the weather change from WEATHER NOW (rain starts or stops, snow begins, fog rolls in or lifts, a storm breaks, a jutsu brings rain); otherwise null.
 
 PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. A description belongs to whoever the prose means by it ("the masked man" who is Kakuzu is kakuzu): never pick an id because its name looks like a description. new_characters is ONLY for a named person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), and minor (true for a one-scene character: a target, a guard, a shopkeeper); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the eastern border"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, Sharingan active), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (an Akatsuki or mission partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
 
@@ -239,6 +241,7 @@ export function buildNarrationPrompt(
       formatState(db),
       formatCompanions(db),
       formatTimeLine(db, 'narrator', sceneMode.mode),
+      formatWeatherLine(db, sceneMode.mode),
       formatMatchedEntities(db, matchedEntityIds),
       formatFacts(db, facts),
       formatFigures(db),
@@ -352,6 +355,7 @@ export function buildExtractionPrompt(
     `YOUR ABILITIES\n${formatAbilities(db)}`,
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
     formatTimeLine(db, 'state'),
+    formatWeatherTracking(db),
     formatSceneModeTracking(
       null,
       [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.content === assistantMessage)?.sceneMode
