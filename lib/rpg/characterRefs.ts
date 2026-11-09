@@ -1,20 +1,29 @@
 import { slug } from './id';
+import { isPlayerEntity } from './player';
 import type { AppDatabase, EntityRecord } from './types';
 
 /**
  * Short, readable IDs for characters in the state tracker's prompt
- * ("itachi-uchiha", "kisame-hoshigaki", "kan").
+ * ("mara-vell", "old-tom"). The player is always "player".
  *
  * The tracker refers to everyone by these IDs, so "Kisame", "Hoshigaki" and
  * "the shark man" all land on one person. IDs come from the current name, so
  * they stay the same from turn to turn (and keep the prompt cacheable); two
  * people with the same name get "-2", "-3" in save order.
  */
+/** The player's ID in the tracker prompt. */
+export const PLAYER_REF = 'player';
+
 export function characterRefs(db: AppDatabase): Map<string, EntityRecord> {
   const refs = new Map<string, EntityRecord>();
+  const player = db.entities.find((entity) => entity.type === 'character' && isPlayerEntity(entity));
+
+  if (player) {
+    refs.set(PLAYER_REF, player);
+  }
 
   for (const entity of db.entities) {
-    if (entity.type !== 'character') {
+    if (entity.type !== 'character' || entity === player) {
       continue;
     }
 

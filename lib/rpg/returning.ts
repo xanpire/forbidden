@@ -8,6 +8,7 @@ import { encounterRisk, locationKindOf } from './encounters';
 import { timeOfDayOf } from './calendar';
 import { localizePlaceNames } from './glossary';
 import type { AppDatabase, BondRecord, EntityRecord, LocationKind } from './types';
+import { isPlayerEntity } from './player';
 
 /**
  * Characters who come back.
@@ -109,7 +110,7 @@ export function isReturnTurn(db: AppDatabase, turn = playerTurn(db)) {
 
 export function isOriginalCharacter(entity: EntityRecord) {
   if (entity.type !== 'character') return false;
-  if (entity.name.toLowerCase() === 'kan' || entity.tags.includes('player')) return false;
+  if (isPlayerEntity(entity)) return false;
   if (entity.tags.includes('canon')) return false;
 
   // A one-word alias ("Mei" for Mei Tsukada) is a shared given name, not proof

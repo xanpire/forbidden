@@ -70,6 +70,7 @@ import {
 } from '@/lib/rpg/flashbacks';
 import type { SceneModeName } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
+import { playerAge } from '@/lib/rpg/player';
 
 type StoryMessage = {
   id: string;
@@ -1092,11 +1093,7 @@ export default function StoryScreen() {
             <SectionLabel first>Right now</SectionLabel>
             <ListCard>
               <ListRow
-                meta={formatStoryDate(
-                  state.inStoryDate,
-                  state.player.birthday,
-                  state.player.birthYear
-                )}
+                meta={formatStoryDate(state.inStoryDate, playerAge(db))}
                 title={location}
               />
               <ListRow meta="Mood" title={state.mood} />

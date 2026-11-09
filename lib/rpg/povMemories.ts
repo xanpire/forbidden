@@ -14,14 +14,11 @@
 import { dateSortValue } from './calendar';
 import { isDeceased } from './deaths';
 import type { AppDatabase, EntityRecord, EventRecord, RawLogEntry } from './types';
+import { isPlayerEntity } from './player';
 
 /** At most this many points of view per memory. */
 export const POV_PER_MEMORY = 3;
 const POV_MAX_CHARS = 260;
-
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
 
 /** The people in these story turns whose own memory of them is worth keeping. */
 export function povCandidates(db: AppDatabase, messages: RawLogEntry[]): EntityRecord[] {
@@ -29,7 +26,7 @@ export function povCandidates(db: AppDatabase, messages: RawLogEntry[]): EntityR
 
   return db.entities
     .filter((entity) => {
-      if (!present.has(entity.id) || entity.type !== 'character' || isKan(entity) || isDeceased(entity)) return false;
+      if (!present.has(entity.id) || entity.type !== 'character' || isPlayerEntity(entity) || isDeceased(entity)) return false;
       if (entity.tier === 'minor') return false;
 
       const bond = db.bonds.find((item) => item.entityId === entity.id);

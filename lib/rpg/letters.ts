@@ -33,7 +33,7 @@ import { daysBetween, dateSortValue, shiftDate } from './calendar';
 import { isCombatPace } from './canon';
 import { castWithCompanions } from './companions';
 import { plantSeed } from './consequences';
-import { isDeceased, kanKnowsDeath } from './deaths';
+import { isDeceased, playerKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { applyFactDiff } from './facts';
 import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
@@ -53,6 +53,7 @@ import type {
   PostState,
   TurnDiff,
 } from './types';
+import { isPlayerEntity } from './player';
 
 /** A letter is on the road at least / at most this many days. */
 export const LETTER_MIN_DAYS = 1;
@@ -135,10 +136,6 @@ export function normalizePost(raw: unknown): PostState | undefined {
   };
 }
 
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
-
 function bondOf(db: AppDatabase, entityId: string): BondRecord | null {
   return db.bonds.find((bond) => bond.entityId === entityId) ?? null;
 }
@@ -164,7 +161,7 @@ function dayKey(date: CalendarDate) {
   return `${date.year}-${date.month}-${date.day}`;
 }
 
-export function kanRegion(db: AppDatabase): Region | null {
+export function playerRegion(db: AppDatabase): Region | null {
   return regionOf(db.state.location) ?? regionOf(db.state.scene);
 }
 
@@ -409,7 +406,7 @@ const words = (text: string) => text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
  * Kan's letter as it should be kept: the tracker's copy (spelling fixed) when
  * it kept to his words, else the words in his own input. Never a rewrite.
  */
-export function keepKansWords(trackerText: string | undefined, userMessage: string | undefined): string | undefined {
+export function keepPlayersWords(trackerText: string | undefined, userMessage: string | undefined): string | undefined {
   const own = userMessage?.trim() ?? '';
   const quoted = [...own.matchAll(/"([^"]{12,})"|“([^”]{12,})”/g)].map((match) => match[1] ?? match[2]).join('\n\n');
   const fallback = quoted || own.replace(/\*[^*]*\*/g, ' ').trim();
@@ -459,8 +456,8 @@ function storyStart(db: AppDatabase): CalendarDate {
   return db.state.canonProgress?.baselineDate ?? db.rawLog[0]?.inStoryDate ?? db.state.inStoryDate;
 }
 
-function writesToKan(db: AppDatabase, entity: EntityRecord, here: Set<string>, pending: Set<string>) {
-  if (entity.type !== 'character' || isKan(entity) || isDeceased(entity) || entity.met === false) return false;
+function writesToPlayer(db: AppDatabase, entity: EntityRecord, here: Set<string>, pending: Set<string>) {
+  if (entity.type !== 'character' || isPlayerEntity(entity) || isDeceased(entity) || entity.met === false) return false;
   if (entity.companion || here.has(entity.id) || pending.has(entity.id)) return false;
 
   return true;
@@ -493,7 +490,7 @@ export function correspondents(db: AppDatabase): EntityRecord[] {
 
   return db.entities
     .filter((entity) => {
-      if (!writesToKan(db, entity, here, pending)) return false;
+      if (!writesToPlayer(db, entity, here, pending)) return false;
 
       const bond = bondOf(db, entity.id);
 
@@ -543,7 +540,7 @@ function birthdayWriter(db: AppDatabase): EntityRecord | null {
   return (
     db.entities
       .filter((entity) => {
-        if (!writesToKan(db, entity, here, pending)) return false;
+        if (!writesToPlayer(db, entity, here, pending)) return false;
         const bond = bondOf(db, entity.id);
 
         if (!bond || bond.affinity < 0) return false;
@@ -703,20 +700,20 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
 
   const now = db.state.inStoryDate;
   const here = inScene(db);
-  const from = kanRegion(db);
+  const from = playerRegion(db);
   let next = db;
   const letters = [...postOf(db).letters];
 
   for (const item of sent) {
     const entity = item.entityId ? db.entities.find((person) => person.id === item.entityId) : resolveEntity(db, item.name);
 
-    if (!entity || isKan(entity)) continue;
+    if (!entity || isPlayerEntity(entity)) continue;
 
     const id = makeId('letter');
-    const text = keepKansWords(item.text, userMessage);
+    const text = keepPlayersWords(item.text, userMessage);
 
     // To the dead: kept, never sent.
-    if (isDeceased(entity) && kanKnowsDeath(db, entity)) {
+    if (isDeceased(entity) && playerKnowsDeath(db, entity)) {
       letters.push({
         id,
         direction: 'from-kan',
@@ -805,7 +802,7 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
         direction: 'to-kan',
         entityId,
         name: entity.name,
-        sentOn: shiftDate(now, -letterDays(whereaboutsRegion(entity), kanRegion(db), carrier, `${db.meta.slotId}:${entityId}:${now.year}-${now.month}`)),
+        sentOn: shiftDate(now, -letterDays(whereaboutsRegion(entity), playerRegion(db), carrier, `${db.meta.slotId}:${entityId}:${now.year}-${now.month}`)),
         arrivesOn: now,
         status: 'delivered',
         deliveredOn: now,
@@ -902,7 +899,7 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
         sentOn: letter.arrivesOn,
         arrivesOn: shiftDate(
           letter.arrivesOn,
-          letterDays(whereaboutsRegion(entity), kanRegion(next), carrier, `${db.meta.slotId}:reply:${entity.name}:${dayKey(letter.arrivesOn)}`)
+          letterDays(whereaboutsRegion(entity), playerRegion(next), carrier, `${db.meta.slotId}:reply:${entity.name}:${dayKey(letter.arrivesOn)}`)
         ),
         status: 'travelling',
         replyTo: letter.id,

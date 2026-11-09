@@ -53,16 +53,16 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, viewport-fit=cover"
           name="viewport"
         />
-        <title>Kan — Interactive Naruto RPG</title>
+        <title>frbddn — Sandbox Roleplay</title>
         <meta
-          content="A single-page PWA where you play Kan, an original shinobi in the Naruto universe."
+          content="A sandbox roleplay game: be anyone, in any world you write."
           name="description"
         />
         <meta content="#050505" name="theme-color" />
         <meta content="yes" name="mobile-web-app-capable" />
         <meta content="yes" name="apple-mobile-web-app-capable" />
         <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style" />
-        <meta content="Kan" name="apple-mobile-web-app-title" />
+        <meta content="frbddn" name="apple-mobile-web-app-title" />
         <link href="/manifest.webmanifest?v=1.3.2" rel="manifest" />
         <link href="/apple-touch-icon.png?v=1.3.2" rel="apple-touch-icon" sizes="180x180" />
         <link href="/icon-192.png?v=1.3.2" rel="icon" sizes="192x192" type="image/png" />

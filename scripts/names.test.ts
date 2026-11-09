@@ -21,7 +21,7 @@ import {
   displayName,
   ensureNames,
   identityLine,
-  kanKnowsName,
+  playerKnowsName,
   learnFromCanon,
   nameKnownBy,
   nameLeaks,
@@ -104,7 +104,7 @@ describe('names Kan knows', () => {
     expect(displayName(db, person(db, 'Yamato'))).toBe('Tenzo');
     expect(displayName(db, person(db, 'Karin'))).toBe('the red-haired girl');
     expect(displayName(db, person(db, 'Tobi'))).toBe('the masked man');
-    expect(kanKnowsName(person(db, 'Karin'))).toBe(false);
+    expect(playerKnowsName(person(db, 'Karin'))).toBe(false);
   });
 
   test("Karin first, then Karin Uzumaki once he learns she's an Uzumaki", () => {
@@ -219,7 +219,7 @@ describe('names Kan knows', () => {
 
     // Gaara's face goes with his title only once he is Kazekage.
     const before = play(save(), '*You look.*', 'A boy with a gourd.', { ...minutes, characters_present: ['gaara'] }).db;
-    expect(kanKnowsName(person(before, 'Gaara'))).toBe(false);
+    expect(playerKnowsName(person(before, 'Gaara'))).toBe(false);
     const after = play(happen(save(), 'gaara-kage'), '*You look.*', 'The Kazekage.', { ...minutes, characters_present: ['gaara'] }).db;
     expect(displayName(after, person(after, 'Gaara'))).toBe('Gaara');
   });
@@ -317,7 +317,7 @@ describe('the prompts', () => {
 
     expect(prompt).toContain('the red-haired girl [narrator only: Karin]');
     expect(prompt).toContain('call them "the red-haired girl" every time');
-    expect(NARRATION_SYSTEM).toContain('Narration calls people only by the name Kan knows');
+    expect(NARRATION_SYSTEM).toContain('Narration calls people only by the name the player knows');
     expect(NARRATION_SYSTEM).toContain('How do you know that name?');
     expect(NARRATION_SYSTEM).not.toContain('Itachi dies believing it');
   });

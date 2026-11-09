@@ -7,6 +7,7 @@ import { mentionsEntity, mentionsName } from './characterRefs';
 import { isCompanion } from './companions';
 import { jutsuKey, jutsuNameVariants, NATURE_WORDS, normalizeJutsuNature } from './jutsu';
 import type { AppDatabase, TurnDiff } from './types';
+import { isPlayerName } from './player';
 
 /** Sentences that describe someone else, or talk about a jutsu, not Kan using it. */
 const NOT_USING =
@@ -139,7 +140,7 @@ export function presentFromProse(db: AppDatabase, narration: string): string[] {
 }
 
 /** Jutsu Kan uses in the player's own message: ones he already knows, and named techniques. */
-export function kanJutsuFromMessage(db: AppDatabase, userMessage: string): string[] {
+export function playerJutsuFromMessage(db: AppDatabase, userMessage: string): string[] {
   if (!userMessage.trim()) {
     return [];
   }
@@ -188,8 +189,8 @@ export function kanJutsuFromMessage(db: AppDatabase, userMessage: string): strin
     .slice(0, 4);
 }
 
-function isKanUser(user: string | undefined) {
-  return !user || user.trim().toLowerCase() === 'kan';
+function isPlayerUser(db: AppDatabase, user: string | undefined) {
+  return !user || isPlayerName(db, user);
 }
 
 /**
@@ -203,7 +204,7 @@ export function preferPlayerJutsuNames(
   diff: TurnDiff,
   userMessage: string
 ): TurnDiff {
-  const written = kanJutsuFromMessage(db, userMessage);
+  const written = playerJutsuFromMessage(db, userMessage);
 
   if (written.length === 0) {
     return diff;
@@ -211,13 +212,13 @@ export function preferPlayerJutsuNames(
 
   const used = [...(diff.jutsuUsed ?? [])];
   const writtenKeys = new Set(written.map(jutsuKey));
-  const reportedKeys = new Set(used.filter((item) => isKanUser(item.user)).map((item) => jutsuKey(item.name)));
+  const reportedKeys = new Set(used.filter((item) => isPlayerUser(db, item.user)).map((item) => jutsuKey(item.name)));
   const missing = written.filter((name) => !reportedKeys.has(jutsuKey(name)));
 
   // Kan's entries the player didn't name: candidates to carry the player's name.
   const spare = used
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => isKanUser(item.user) && !writtenKeys.has(jutsuKey(item.name)));
+    .filter(({ item }) => isPlayerUser(db, item.user) && !writtenKeys.has(jutsuKey(item.name)));
   const taken = new Set<number>();
 
   for (const name of missing) {
@@ -261,7 +262,7 @@ export function fallbackDiffFromProse(
   turn: { userMessage: string; narration: string }
 ): TurnDiff | null {
   const present = presentFromProse(db, turn.narration);
-  const jutsu = kanJutsuFromMessage(db, turn.userMessage);
+  const jutsu = playerJutsuFromMessage(db, turn.userMessage);
 
   if (present.length === 0 && jutsu.length === 0) {
     return null;

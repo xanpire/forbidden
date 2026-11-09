@@ -4,7 +4,8 @@ import { NAMES_VERSION } from './names';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { knowersOf } from './facts';
 import { makeId } from './id';
-import { startingPurse } from './money';
+import { STARTING_RYO, startingPurse } from './money';
+import { emptyWorld } from './world';
 import type {
   AppDatabase,
   BondRecord,
@@ -27,7 +28,7 @@ const ITACHI_ID = makeId('entity');
 const HANA_ID = makeId('entity');
 const IZUMI_ID = makeId('entity');
 const SUZUME_ID = makeId('entity');
-const KAN_ID = makeId('entity');
+const PLAYER_ID = makeId('entity');
 const FOREST_ID = makeId('entity');
 
 export function seedDatabase(slotId: string, slotName: string): AppDatabase {
@@ -35,7 +36,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
 
   const storyEntities: EntityRecord[] = [
     {
-      id: KAN_ID,
+      id: PLAYER_ID,
       name: 'Kan',
       type: 'character',
       aliases: ['Uchiha-Uzumaki Kan'],
@@ -319,7 +320,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
   const facts: FactRecord[] = [
     {
       id: makeId('fact'),
-      subjectEntityId: KAN_ID,
+      subjectEntityId: PLAYER_ID,
       type: 'death',
       text: 'Your parents, Erisa and Banri, died in the Nine-Tails attack.',
       whoKnows: ['Kan', 'village elders'],
@@ -330,7 +331,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     {
       id: makeId('fact'),
-      subjectEntityId: KAN_ID,
+      subjectEntityId: PLAYER_ID,
       type: 'event',
       text: 'You were five years old when the Nine-Tails attacked.',
       whoKnows: ['Kan'],
@@ -341,7 +342,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     {
       id: makeId('fact'),
-      subjectEntityId: KAN_ID,
+      subjectEntityId: PLAYER_ID,
       type: 'membership',
       text: 'You joined ANBU at twelve, one year after Itachi.',
       whoKnows: ['Kan', 'ANBU command'],
@@ -352,7 +353,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     {
       id: makeId('fact'),
-      subjectEntityId: KAN_ID,
+      subjectEntityId: PLAYER_ID,
       type: 'secret',
       text: 'You have a crush on Hana Inuzuka and have never told her.',
       whoKnows: ['Kan'],
@@ -385,7 +386,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     {
       id: makeId('fact'),
-      subjectEntityId: KAN_ID,
+      subjectEntityId: PLAYER_ID,
       type: 'knowledge',
       text: 'You left for the forest days before the massacre. You do not know whether Itachi went through with it, how it happened, who died, or why. Itachi promised to tell you.',
       whoKnows: ['Kan', 'Itachi Uchiha'],
@@ -622,7 +623,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
       // Everything you know at the start comes with the opening memory.
       sourceEventId: fact.sourceEventId ?? openingEvent.id,
-      subjectEntityId: fact.subjectEntityId ?? (fact.text.startsWith('Shisui') ? (entities.find((e) => e.name === 'Shisui Uchiha')?.id ?? KAN_ID) : KAN_ID),
+      subjectEntityId: fact.subjectEntityId ?? (fact.text.startsWith('Shisui') ? (entities.find((e) => e.name === 'Shisui Uchiha')?.id ?? PLAYER_ID) : PLAYER_ID),
     };
   });
 
@@ -636,11 +637,12 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
     settings: DEFAULT_SETTINGS,
     rawLog: [],
+    world: emptyWorld('Legacy world'),
     entities,
     jutsuRecords,
     events: [openingEvent],
     eventEntities: [
-      { eventId: openingEvent.id, entityId: KAN_ID, role: 'participant' },
+      { eventId: openingEvent.id, entityId: PLAYER_ID, role: 'participant' },
       { eventId: openingEvent.id, entityId: ITACHI_ID, role: 'present' },
       { eventId: openingEvent.id, entityId: FOREST_ID, role: 'present' },
     ],
@@ -652,29 +654,28 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     state: {
       player: {
         name: 'Kan',
-        lineage: ['Uchiha', 'Uzumaki'],
+        aliases: ['Uchiha-Uzumaki Kan'],
+        age: 13,
         birthday: { month: 6, day: 30 },
         birthYear: 0,
-        rank: 'Missing-nin (former ANBU)',
-        role: 'Missing shinobi',
-        team: ['Hana Inuzuka', 'Izumi Uchiha'],
-        sensei: 'Suzume',
-        personality: [
-          'smart',
-          'learns naturally',
-          'dislikes studying',
-          'reserved',
-          'watchful',
-          'hard to read',
-          'versatile',
-          'a little timid underneath',
-          'hides his feelings',
-        ],
-        secretNotes: [
+        gender: 'male',
+        appearance: 'Lean teenage shinobi with black hair and dark watchful eyes.',
+        outfit: 'A plain black high-collared shinobi outfit with bandage-wrapped forearms. No ANBU gear.',
+        personality:
+          'Smart, learns naturally, dislikes studying, reserved, watchful, hard to read, versatile, a little timid underneath, hides his feelings.',
+        speechStyle: 'Short, restrained, rarely volunteers more than necessary.',
+        backstory:
+          'Uchiha-Uzumaki lineage, usually goes only by Kan. Former member of Team 3 (Hana Inuzuka, Izumi Uchiha) under sensei Suzume, left on joining ANBU at 12. Now a missing-nin.',
+        role: 'Missing-nin (former ANBU)',
+        abilities: [],
+        inventory: [],
+        money: STARTING_RYO,
+        secrets: [
           'Has a secret crush on Hana Inuzuka.',
           'Rarely mentions his clan names.',
           'Created a forbidden jutsu, Thousand Souls, in secret. No one knows it exists.',
         ],
+        goals: [],
       },
       mood: 'Numb, guarded, torn',
       worldDescription: 'The Hidden Leaf still carries the scars of the Nine-Tails attack. Tonight the rain is heavy, and the forest around the village is silent.',

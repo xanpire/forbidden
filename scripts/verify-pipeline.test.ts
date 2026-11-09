@@ -19,7 +19,7 @@ import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveChar
 import { learnFromCanon } from '../lib/rpg/names';
 import { appendStoryMessage, cloneDatabase, storyMessagesSinceLastSummary } from '../lib/rpg/log';
 import { trimToSentence } from '../lib/rpg/util';
-import { convertStateBlock } from '../lib/rpg/stateBlock';
+import { convertStateBlock, statePlayerOf } from '../lib/rpg/stateBlock';
 import { buildExtractionPrompt, buildNarrationPrompt, splitNarrationAndDiff, streamingPreview, stripNarrationJson } from '../lib/rpg/prompt';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { mentionsName } from '../lib/rpg/characterRefs';
@@ -38,7 +38,7 @@ import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
-import { isDeceased, kanKnowsDeath, markDeathsByName, markDeceased } from '../lib/rpg/deaths';
+import { isDeceased, playerKnowsDeath, markDeathsByName, markDeceased } from '../lib/rpg/deaths';
 import { CATCH_UP_QUIET_DAYS, couldKnow, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
 import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
 import { newsUrgency } from '../lib/rpg/canon';
@@ -2495,9 +2495,9 @@ describe('deaths', () => {
     const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha')!;
 
     expect(isDeceased(shisui)).toBe(true);
-    expect(kanKnowsDeath(db, shisui)).toBe(true);
+    expect(playerKnowsDeath(db, shisui)).toBe(true);
     expect(isDeceased(izumi)).toBe(true);
-    expect(kanKnowsDeath(db, izumi)).toBe(false);
+    expect(playerKnowsDeath(db, izumi)).toBe(false);
   });
 
   test('a canon death marks the record, and Kan knows only once the news reaches him', () => {
@@ -2505,13 +2505,13 @@ describe('deaths', () => {
     db = applyCanonMarks(db, ['jiraiya-dies'], []);
     // completed = witnessed
     expect(isDeceased(jiraiyaOf(db))).toBe(true);
-    expect(kanKnowsDeath(db, jiraiyaOf(db))).toBe(true);
+    expect(playerKnowsDeath(db, jiraiyaOf(db))).toBe(true);
 
     let fresh = afterJiraiya(loadSave());
     expect(isDeceased(jiraiyaOf(fresh))).toBe(true);
-    expect(kanKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(false);
+    expect(playerKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(false);
     fresh = markNewsHeard(fresh, [{ id: 'jiraiya-dies', from: 'Konan' }]);
-    expect(kanKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(true);
+    expect(playerKnowsDeath(fresh, jiraiyaOf(fresh))).toBe(true);
   });
 
   test('canon deaths use exact names only', () => {
@@ -2550,7 +2550,7 @@ describe('deaths', () => {
     const izumiId = db.entities.find((entity) => entity.name === 'Izumi Uchiha')!.id;
     const { diff } = convertStateBlock({ deaths: [{ character_id: 'izumi-uchiha', cause: null }] });
     db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
-    expect(kanKnowsDeath(db, db.entities.find((e) => e.id === izumiId)!)).toBe(true);
+    expect(playerKnowsDeath(db, db.entities.find((e) => e.id === izumiId)!)).toBe(true);
 
     db = afterJiraiya(db);
     const back = convertStateBlock({ revived: ['jiraiya'] }).diff;
@@ -2582,12 +2582,12 @@ describe('deaths', () => {
 
     const narration = buildNarrationPrompt(db, '*Kan waits.*').messages.map((m) => m.content).join('\n');
     expect(narration).toContain('THE DEAD');
-    expect(narration).toContain('- Jiraiya (Kan does not know yet)');
-    expect(narration).toContain('- Izumi Uchiha (Kan does not know yet)');
+    expect(narration).toContain('- Jiraiya (you do not know yet)');
+    expect(narration).toContain('- Izumi Uchiha (you do not know yet)');
     expect(narration).toContain('- Shisui Uchiha');
 
     const state = buildExtractionPrompt(db, '*Kan waits.*', 'Rain falls.').messages.map((m) => m.content).join('\n');
-    expect(state).toMatch(/- jiraiya: Jiraiya.*deceased, Kan does not know yet\]/);
+    expect(state).toMatch(/- jiraiya: Jiraiya.*deceased, you do not know yet\]/);
     expect(JSON.stringify(TURN_STATE_SCHEMA)).toContain('"deaths"');
   });
 
@@ -2743,12 +2743,12 @@ describe('companions', () => {
       companions_joined: [{ character_id: 'itachi-uchiha', reason: 'leaving together' }],
       companions_left: [{ character_id: 'kan', reason: null }],
     };
-    const { diff } = convertStateBlock(block);
+    const db = loadSave();
+    const { diff } = convertStateBlock(block, statePlayerOf(db));
 
     expect(diff?.companionsJoined).toEqual([{ name: 'itachi-uchiha', reason: 'leaving together' }]);
     expect(diff?.companionsLeft).toBeUndefined();
 
-    const db = loadSave();
     const resolved = resolveCharacterRefs(db, diff!);
     expect(resolved.companionsJoined?.[0].entityId).toBe(itachiOf(db).id);
     expect(TURN_STATE_SCHEMA.required).toContain('companions_joined');
@@ -2876,20 +2876,20 @@ describe('companions', () => {
     const system = narration.messages[0].content;
     const user = narration.messages[1].content;
 
-    expect(system).toContain('TRAVELLING WITH KAN is physically at his side in every scene');
-    expect(user).toContain('TRAVELLING WITH KAN (at his side');
+    expect(system).toContain("TRAVELLING WITH YOU is physically at the player's side in every scene");
+    expect(user).toContain('TRAVELLING WITH YOU (at your side');
     expect(user).toMatch(/- Itachi Uchiha: joined today \(leaving the Leaf together/);
     expect(user).toContain('CHARACTERS IN SCENE');
     expect(JSON.stringify(narration.messages)).not.toContain('companions_joined');
 
     const state = buildExtractionPrompt(db, 'We move.', 'You walk on beside Itachi.');
     const stateText = state.messages.map((message) => message.content).join('\n');
-    expect(stateText).toContain('TRAVELLING WITH KAN: itachi-uchiha (Itachi Uchiha)');
-    expect(stateText).toContain('[travelling with Kan]');
+    expect(stateText).toContain('TRAVELLING WITH YOU: itachi-uchiha (Itachi Uchiha)');
+    expect(stateText).toContain('[travelling with you]');
     expect(stateText).toContain('companions_joined');
 
     const alone = buildExtractionPrompt(loadSave(), 'Wait.', 'You wait.');
-    expect(alone.messages[1].content).toContain('TRAVELLING WITH KAN: nobody');
+    expect(alone.messages[1].content).toContain('TRAVELLING WITH YOU: nobody');
   });
 
   test('companions survive a merge and a reload', () => {

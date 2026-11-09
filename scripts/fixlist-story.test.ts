@@ -138,7 +138,7 @@ describe('28. story hooks', () => {
 
     db = play(db, 'At her grave, your eyes change.', { canon_completed: ['kan-mangekyo'] });
     expect(thread(db, "Visit Izumi's grave")?.status).toBe('resolved');
-    expect(db.state.player.abilities?.map((ability) => ability.name)).toEqual(['Mangekyō Sharingan', 'Susanoo']);
+    expect(db.state.player.abilityStages?.map((ability) => ability.name)).toEqual(['Mangekyō Sharingan', 'Susanoo']);
   });
 
   test('joining opens Survive Kakuzu; the Shisui truth closes the Shisui thread', () => {

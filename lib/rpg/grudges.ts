@@ -34,6 +34,7 @@ import { applyFactDiff, applyThreadDiff } from './facts';
 import { isOriginalCharacter } from './returning';
 import { clamp, hashText, playerTurnCount } from './util';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, Grudge, TurnDiff } from './types';
+import { isPlayerEntity } from './player';
 
 /** A bond this cold turns into a grudge. */
 export const GRUDGE_AFFINITY = -6;
@@ -108,8 +109,7 @@ function canHold(entity: EntityRecord | undefined): entity is EntityRecord {
   return Boolean(
     entity &&
       entity.type === 'character' &&
-      entity.name.trim().toLowerCase() !== 'kan' &&
-      !entity.tags.includes('player') &&
+      !isPlayerEntity(entity) &&
       !isDeceased(entity)
   );
 }

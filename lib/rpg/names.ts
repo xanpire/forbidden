@@ -23,6 +23,7 @@ import type {
   NameParts,
   TurnDiff,
 } from './types';
+import { isPlayerEntity } from './player';
 
 export const NAMES_VERSION = 1;
 
@@ -30,10 +31,6 @@ const PRIORITY: Record<IdentityKind, number> = { true: 3, claimed: 2, persona: 1
 const HISTORY_CAP = 12;
 
 const lower = (value: string) => value.trim().toLowerCase();
-
-function isKan(entity: Pick<EntityRecord, 'name'>) {
-  return lower(entity.name) === 'kan';
-}
 
 // ---------------------------------------------------------------------------
 // Milestones
@@ -50,7 +47,7 @@ export function happened(db: AppDatabase, milestoneId: string | undefined) {
  * he lived is heard as "witnessed"). A personal beat that closed without him
  * taught him nothing.
  */
-export function kanKnowsOf(db: AppDatabase, milestoneId: string | undefined) {
+export function playerKnowsOf(db: AppDatabase, milestoneId: string | undefined) {
   if (!milestoneId || milestoneId === 'start') return true;
 
   return milestoneKnown(db, milestoneId);
@@ -107,8 +104,8 @@ function identityName(identity: Identity, renamedNow: boolean) {
 // What Kan knows
 
 /** Kan knows at least one of their names. */
-export function kanKnowsName(entity: EntityRecord) {
-  if (isKan(entity) || entity.unnamed) return isKan(entity);
+export function playerKnowsName(entity: EntityRecord) {
+  if (isPlayerEntity(entity) || entity.unnamed) return isPlayerEntity(entity);
   if (entity.known === undefined) return true;
   if (hasIdentities(entity)) return identitiesOf(entity).some((identity) => knowsIdentity(entity, identity));
 
@@ -116,8 +113,8 @@ export function kanKnowsName(entity: EntityRecord) {
 }
 
 /** Kan knows their whole name (both parts, or their highest identity). */
-function kanKnowsFully(entity: EntityRecord) {
-  if (isKan(entity)) return true;
+function playerKnowsFully(entity: EntityRecord) {
+  if (isPlayerEntity(entity)) return true;
   if (entity.unnamed) return false;
   if (entity.known === undefined) return true;
 
@@ -144,7 +141,7 @@ export function labelOf(db: AppDatabase, entity: EntityRecord): string {
  */
 export function displayName(db: AppDatabase, entity: EntityRecord | null | undefined): string {
   if (!entity) return 'someone';
-  if (entity.type !== 'character' || isKan(entity)) return entity.name;
+  if (entity.type !== 'character' || isPlayerEntity(entity)) return entity.name;
   if (entity.unnamed) return labelOf(db, entity);
 
   const identities = identitiesOf(entity);
@@ -156,7 +153,7 @@ export function displayName(db: AppDatabase, entity: EntityRecord | null | undef
 
     const best = bestIdentity(known);
 
-    return identityName(best, Boolean(best.renamed && kanKnowsOf(db, best.renamed.after)));
+    return identityName(best, Boolean(best.renamed && playerKnowsOf(db, best.renamed.after)));
   }
 
   if (entity.known === undefined) return entity.name;
@@ -181,7 +178,7 @@ export function displayNameOf(db: AppDatabase, entityId: string | null | undefin
 
 /** Other names Kan has learned for them, for "Also known as". */
 export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
-  if (entity.type !== 'character' || isKan(entity)) return [];
+  if (entity.type !== 'character' || isPlayerEntity(entity)) return [];
 
   const shown = lower(displayName(db, entity));
   const names = new Set<string>();
@@ -189,7 +186,7 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
   for (const identity of identitiesOf(entity)) {
     if (identitiesOf(entity).length > 1 && knowsIdentity(entity, identity)) {
       names.add(identity.name);
-      if (identity.renamed && kanKnowsOf(db, identity.renamed.after)) names.add(identity.renamed.name);
+      if (identity.renamed && playerKnowsOf(db, identity.renamed.after)) names.add(identity.renamed.name);
     }
   }
 
@@ -211,7 +208,7 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
 
 /** Every name the player may search by: only names Kan knows, never a hidden one. */
 export function searchableNames(db: AppDatabase, entity: EntityRecord): string[] {
-  const label = !kanKnowsName(entity) ? [labelOf(db, entity)] : [];
+  const label = !playerKnowsName(entity) ? [labelOf(db, entity)] : [];
 
   return [displayName(db, entity), ...alsoKnownAs(db, entity), ...label];
 }
@@ -223,7 +220,7 @@ export function searchableNames(db: AppDatabase, entity: EntityRecord): string[]
 export function narratorName(db: AppDatabase, entity: EntityRecord): string {
   const shown = displayName(db, entity);
 
-  if (isKan(entity) || entity.unnamed || kanKnowsName(entity)) return shown;
+  if (isPlayerEntity(entity) || entity.unnamed || playerKnowsName(entity)) return shown;
 
   return `${shown} [Kan doesn't know their name; narrator only: ${entity.name}]`;
 }
@@ -292,7 +289,7 @@ function placeWord(location: string) {
 export function uniqueLabel(db: AppDatabase, entity: EntityRecord, label: string): string {
   const taken = new Set(
     db.entities
-      .filter((item) => item.id !== entity.id && item.type === 'character' && !kanKnowsName(item) && item.met !== false)
+      .filter((item) => item.id !== entity.id && item.type === 'character' && !playerKnowsName(item) && item.met !== false)
       .map((item) => lower(labelOf(db, item)))
   );
 
@@ -317,7 +314,7 @@ export function ensureLabels(db: AppDatabase, ids: Iterable<string>): AppDatabas
   let next = db;
 
   for (const entity of db.entities) {
-    if (!wanted.has(entity.id) || entity.type !== 'character' || isKan(entity) || kanKnowsName(entity) || entity.known?.label) {
+    if (!wanted.has(entity.id) || entity.type !== 'character' || isPlayerEntity(entity) || playerKnowsName(entity) || entity.known?.label) {
       continue;
     }
 
@@ -388,7 +385,7 @@ export function learnName(
   const entity = db.entities.find((item) => item.id === entityId);
   const name = learned.name.trim().replace(/^["“”']+|["“”']+$/g, '');
 
-  if (!entity || entity.type !== 'character' || isKan(entity) || !name) return db;
+  if (!entity || entity.type !== 'character' || isPlayerEntity(entity) || !name) return db;
 
   const date = db.state.inStoryDate;
   const knowledge = explicitKnowledge(entity);
@@ -509,7 +506,7 @@ export function learnFromCanon(db: AppDatabase): AppDatabase {
     if (entity.type !== 'character' || !hasIdentities(entity)) continue;
 
     for (const identity of identitiesOf(entity)) {
-      if (identity.learnedWith?.some((id) => kanKnowsOf(db, id))) {
+      if (identity.learnedWith?.some((id) => playerKnowsOf(db, id))) {
         next = learnName(next, entity.id, { name: identity.name, part: 'identity', how: 'news' });
       }
     }
@@ -569,7 +566,7 @@ export function recogniseOnSight(db: AppDatabase, ids: Iterable<string>): AppDat
   for (const id of ids) {
     const entity = next.entities.find((item) => item.id === id);
 
-    if (!entity || entity.type !== 'character' || kanKnowsFully(entity) || fameOf(next, entity) !== 'sight') continue;
+    if (!entity || entity.type !== 'character' || playerKnowsFully(entity) || fameOf(next, entity) !== 'sight') continue;
 
     const identity = hasIdentities(entity)
       ? bestIdentity(identitiesOf(entity).filter((item) => item.kind === 'true' || happened(next, item.publicFrom ?? '-')))
@@ -621,7 +618,7 @@ function owners(db: AppDatabase, name: string) {
 
 /** The names of theirs Kan does not know yet, each with how learning it would count. */
 function unknownNames(entity: EntityRecord): { name: string; part: NamePart }[] {
-  if (entity.type !== 'character' || isKan(entity) || entity.unnamed || entity.known === undefined) return [];
+  if (entity.type !== 'character' || isPlayerEntity(entity) || entity.unnamed || entity.known === undefined) return [];
 
   if (hasIdentities(entity)) {
     return identitiesOf(entity)
@@ -635,7 +632,7 @@ function unknownNames(entity: EntityRecord): { name: string; part: NamePart }[] 
   const parts = namePartsOf(entity);
   const out: { name: string; part: NamePart }[] = [];
 
-  if (!kanKnowsFully(entity)) out.push({ name: fullNameOf(entity), part: 'full' });
+  if (!playerKnowsFully(entity)) out.push({ name: fullNameOf(entity), part: 'full' });
   if (parts.given && !entity.known.given) out.push({ name: parts.given, part: 'given' });
 
   return out;
@@ -702,7 +699,7 @@ function identitiesKnownBy(db: AppDatabase, entity: EntityRecord, viewer: Entity
   for (const identity of identitiesOf(entity)) {
     if (!happened(db, identity.existsFrom)) continue;
 
-    if (isKan(viewer)) {
+    if (isPlayerEntity(viewer)) {
       if (knowsIdentity(entity, identity)) out.push({ identity });
       continue;
     }
@@ -727,7 +724,7 @@ function identitiesKnownBy(db: AppDatabase, entity: EntityRecord, viewer: Entity
 
 /** What one person in the world calls them ("Tobi" for Deidara, "Madara" for Itachi). */
 export function nameKnownBy(db: AppDatabase, entity: EntityRecord, viewer: EntityRecord): string | null {
-  if (isKan(viewer)) return kanKnowsName(entity) ? displayName(db, entity) : null;
+  if (isPlayerEntity(viewer)) return playerKnowsName(entity) ? displayName(db, entity) : null;
   if (!hasIdentities(entity)) return entity.name;
 
   const known = identitiesKnownBy(db, entity, viewer);
@@ -764,10 +761,10 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
   const truth = identities.find((identity) => identity.kind === 'true');
   const claimed = identities.find((identity) => identity.kind === 'claimed');
   const persona = identities.find((identity) => identity.kind === 'persona' && happened(db, identity.existsFrom));
-  const kan = db.entities.find(isKan);
+  const kan = db.entities.find(isPlayerEntity);
   const viewers = [
     ...(kan ? [kan] : []),
-    ...presentIds.map((id) => db.entities.find((item) => item.id === id)).filter((item): item is EntityRecord => Boolean(item) && item!.id !== entity.id && !isKan(item!)),
+    ...presentIds.map((id) => db.entities.find((item) => item.id === id)).filter((item): item is EntityRecord => Boolean(item) && item!.id !== entity.id && !isPlayerEntity(item!)),
   ];
 
   const views = viewers.map((viewer) => {
@@ -775,7 +772,7 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
     const name = nameKnownBy(db, entity, viewer);
     const along = known.find((item) => item.playsAlong);
     const note = known.find((item) => item.note)?.note;
-    const who = isKan(viewer) ? 'Kan' : displayName(db, viewer);
+    const who = isPlayerEntity(viewer) ? 'Kan' : displayName(db, viewer);
 
     return {
       viewer,
@@ -790,14 +787,14 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
   const truthPublic = truth?.publicFrom && happened(db, truth.publicFrom);
   const inUse = truthPublic
     ? truth!
-    : persona && views.some((view) => !isKan(view.viewer) && view.best?.kind === 'persona')
+    : persona && views.some((view) => !isPlayerEntity(view.viewer) && view.best?.kind === 'persona')
       ? persona
       : claimed && (happened(db, claimed.publicFrom) || views.some((view) => view.best?.kind === 'claimed' || view.best?.kind === 'true'))
         ? claimed
         : (persona ?? claimed ?? truth!);
   const voices = VOICES[entity.name];
   const voice = voices?.[inUse.kind];
-  const kanKnowsMask = Boolean(persona && claimed && kan && knowsIdentity(entity, claimed));
+  const playerKnowsMask = Boolean(persona && claimed && kan && knowsIdentity(entity, claimed));
 
   const truthText = truth
     ? `truly ${truth.name}${truth.note ? `, ${truth.note}` : ''}${claimed ? `; claims to be ${claimed.name}` : ''}${persona ? `; plays "${persona.name}"` : ''}`
@@ -807,7 +804,7 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
     `  Truth (narrator only): ${truthText}.`,
     `  Going by "${identityName(inUse, Boolean(inUse.renamed && happened(db, inUse.renamed.after)))}" in this scene${voice ? `, ${voice}` : ''}.${
       voices && persona && claimed ? ' He switches in an instant: Tobi whenever anyone who only knows Tobi is there, Madara when alone with someone who knows him as Madara; the act sometimes slips into his serious side as a joke.' : ''
-    }${kanKnowsMask ? ' Kan knows the act is a mask and may be expected to play along; keeping or breaking that silence has consequences.' : ''}`,
+    }${playerKnowsMask ? ' Kan knows the act is a mask and may be expected to play along; keeping or breaking that silence has consequences.' : ''}`,
     `  Who knows him as what: ${views.map((view) => view.text).join('; ')}.`,
   ].join('\n');
 }
@@ -816,10 +813,10 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
  * For CHARACTERS IN SCENE: how Kan knows them, and what the narrator may
  * call them.
  */
-export function kanKnowsLine(db: AppDatabase, entity: EntityRecord): string {
-  if (isKan(entity)) return '';
+export function playerKnowsLine(db: AppDatabase, entity: EntityRecord): string {
+  if (isPlayerEntity(entity)) return '';
 
-  if (!kanKnowsName(entity)) {
+  if (!playerKnowsName(entity)) {
     const fame = fameOf(db, entity);
 
     return `Kan doesn't know their name: call them "${labelOf(db, entity)}" every time until he learns it${
@@ -827,7 +824,7 @@ export function kanKnowsLine(db: AppDatabase, entity: EntityRecord): string {
     }`;
   }
 
-  if (!kanKnowsFully(entity) && !hasIdentities(entity)) {
+  if (!playerKnowsFully(entity) && !hasIdentities(entity)) {
     return `Kan knows them only as ${displayName(db, entity)} (narrator only: ${fullNameOf(entity)})`;
   }
 
@@ -877,7 +874,7 @@ export function ensureNames(db: AppDatabase): AppDatabase {
       next = rest;
     }
 
-    if (legacy && next.known === undefined && !isKan(next)) {
+    if (legacy && next.known === undefined && !isPlayerEntity(next)) {
       if (next.met === false) {
         next = { ...next, known: startKnowledge(next.name) };
         if (next.known === undefined) delete next.known;

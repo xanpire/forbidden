@@ -103,10 +103,10 @@ export function applyCanonEndgames(db: AppDatabase): AppDatabase {
 
     // Once with Kan, always his ex; an open romance that never became one
     // cools to closeness. Friendship and everything else stay as they are.
-    const wasWithKan = bond.relationship === 'lover' || bond.romanceNote?.startsWith(ENDED) === true;
+    const wasWithPlayer = bond.relationship === 'lover' || bond.romanceNote?.startsWith(ENDED) === true;
     const relationship: RelationshipStage | undefined =
       bond.relationship === 'lover' || bond.relationship === 'romantic interest'
-        ? wasWithKan
+        ? wasWithPlayer
           ? 'ex'
           : 'close'
         : bond.relationship;

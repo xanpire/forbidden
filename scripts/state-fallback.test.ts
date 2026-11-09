@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { normalizeDatabase } from '../lib/rpg/db';
 import { seedDatabase } from '../lib/rpg/seed';
 import { parseJsonObject, repairTruncatedJson } from '../lib/rpg/stateBlock';
-import { fallbackDiffFromProse, kanJutsuFromMessage, preferPlayerJutsuNames, presentFromProse } from '../lib/rpg/proseFallback';
+import { fallbackDiffFromProse, playerJutsuFromMessage, preferPlayerJutsuNames, presentFromProse } from '../lib/rpg/proseFallback';
 import { applyTurnDiff } from '../lib/rpg/services';
 import { deleteJutsuRecord, isBareNatureName, renameJutsuRecord } from '../lib/rpg/jutsu';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
@@ -61,15 +61,15 @@ describe('prose fallback', () => {
 
   test('pulls jutsu from the player message', () => {
     const db = seed();
-    expect(kanJutsuFromMessage(db, 'I weave the signs for Fire Style: Fireball Jutsu.')).toEqual([
+    expect(playerJutsuFromMessage(db, 'I weave the signs for Fire Style: Fireball Jutsu.')).toEqual([
       'Fire Style: Fireball Jutsu',
     ]);
-    expect(kanJutsuFromMessage(db, 'I use Shadow Clone Jutsu and slip away.')).toEqual([
+    expect(playerJutsuFromMessage(db, 'I use Shadow Clone Jutsu and slip away.')).toEqual([
       'Shadow Clone Jutsu',
     ]);
-    expect(kanJutsuFromMessage(db, 'I reach for Thousand Souls.')).toEqual(['Thousand Souls']);
-    expect(kanJutsuFromMessage(db, 'I ask Itachi about the Shadow Clone Jutsu.')).toEqual([]);
-    expect(kanJutsuFromMessage(db, 'I nod and keep walking.')).toEqual([]);
+    expect(playerJutsuFromMessage(db, 'I reach for Thousand Souls.')).toEqual(['Thousand Souls']);
+    expect(playerJutsuFromMessage(db, 'I ask Itachi about the Shadow Clone Jutsu.')).toEqual([]);
+    expect(playerJutsuFromMessage(db, 'I nod and keep walking.')).toEqual([]);
   });
 
   test('an unreadable turn still records jutsu; who the prose shows is only a suggestion', () => {
@@ -130,12 +130,12 @@ describe('state call retry', () => {
 describe('jutsu names stay as the player wrote them', () => {
   test('custom style names are read from the message, any case', () => {
     const db = seed();
-    expect(kanJutsuFromMessage(db, 'I use Fire Style: Hell on them.')).toEqual(['Fire Style: Hell']);
-    expect(kanJutsuFromMessage(db, 'I use fire style: Hell.')).toEqual(['fire style: Hell']);
-    expect(kanJutsuFromMessage(db, 'I slam my palms down. Lava Release: Rubber Wall!')).toEqual([
+    expect(playerJutsuFromMessage(db, 'I use Fire Style: Hell on them.')).toEqual(['Fire Style: Hell']);
+    expect(playerJutsuFromMessage(db, 'I use fire style: Hell.')).toEqual(['fire style: Hell']);
+    expect(playerJutsuFromMessage(db, 'I slam my palms down. Lava Release: Rubber Wall!')).toEqual([
       'Lava Release: Rubber Wall',
     ]);
-    expect(kanJutsuFromMessage(db, 'I breathe out Katon: Gōkakyū no Jutsu.')).toEqual([
+    expect(playerJutsuFromMessage(db, 'I breathe out Katon: Gōkakyū no Jutsu.')).toEqual([
       'Katon: Gōkakyū no Jutsu',
     ]);
   });
@@ -148,7 +148,7 @@ describe('jutsu names stay as the player wrote them', () => {
     expect(records).toHaveLength(1);
     expect(records[0].name).toBe('Fire Style: Hell');
     expect(records[0].timesUsed).toBe(2);
-    expect(kanJutsuFromMessage(db, 'Again: Fire Release: Hell.')).toEqual(['Fire Style: Hell']);
+    expect(playerJutsuFromMessage(db, 'Again: Fire Release: Hell.')).toEqual(['Fire Style: Hell']);
   });
 
   test('a generic name from the state model is replaced by the player name', () => {

@@ -177,7 +177,7 @@ export function parseTitledSummary(raw: string): TitledSummary | null {
   };
 }
 
-const KAN_VERB_BE: Record<string, string> = { is: 'are', was: 'were', has: 'have', does: 'do', "isn't": "aren't", "wasn't": "weren't", "hasn't": "haven't", "doesn't": "don't" };
+const PLAYER_VERB_BE: Record<string, string> = { is: 'are', was: 'were', has: 'have', does: 'do', "isn't": "aren't", "wasn't": "weren't", "hasn't": "haven't", "doesn't": "don't" };
 
 /** "watches" → "watch", "carries" → "carry", "knows" → "know". */
 function baseVerb(verb: string) {
@@ -188,22 +188,36 @@ function baseVerb(verb: string) {
 }
 
 /**
- * Text that reaches the player calls Kan "you". Rewrites the common shapes
- * ("Kan's", "Kan is", "Kan knows", "with Kan") so app-written and canon text
- * reads in second person; ids and the jutsu user field never go through it.
+ * Text that reaches the player calls the player "you". Rewrites the common
+ * shapes of the player's name ("<Name>'s", "<Name> is", "<Name> knows",
+ * "with <Name>") so app-written text reads in second person; ids and the
+ * jutsu user field never go through it. `names` are the player's names
+ * (see playerDisplayNames); without them the text is returned unchanged.
  */
-export function secondPerson(text: string): string {
-  if (!/\bKan\b/.test(text)) {
+export function secondPerson(text: string, names: readonly string[] = []): string {
+  const usable = names.map((name) => name.trim()).filter((name) => name.length > 0);
+
+  if (usable.length === 0) {
+    return text;
+  }
+
+  const alternatives = usable
+    .sort((a, b) => b.length - a.length)
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|');
+  const nameAt = (tail: string) => new RegExp(`\\b(?:${alternatives})${tail}`, 'g');
+
+  if (!nameAt('\\b').test(text)) {
     return text;
   }
 
   let out = text
-    .replace(/\bKan[’']s\b/g, 'your')
-    .replace(/\bKan (is|was|has|does|isn't|wasn't|hasn't|doesn't)\b/g, (_, verb: string) => `you ${KAN_VERB_BE[verb] ?? verb}`)
-    .replace(/\bKan ([a-z]+s)\b/g, (match, verb: string) =>
+    .replace(nameAt("[’']s\\b"), 'your')
+    .replace(nameAt(" (is|was|has|does|isn't|wasn't|hasn't|doesn't)\\b"), (_, verb: string) => `you ${PLAYER_VERB_BE[verb] ?? verb}`)
+    .replace(nameAt(' ([a-z]+s)\\b'), (match, verb: string) =>
       /^(?:and|as|thus|plus|always|perhaps|has|is|was)$/.test(verb) ? match : `you ${baseVerb(verb)}`
     )
-    .replace(/\bKan\b/g, 'you');
+    .replace(nameAt('\\b'), 'you');
 
   // Sentence starts: "you" → "You", "your" → "Your".
   out = out.replace(/(^|[.!?]\s+|["“]\s*)(you|your)\b/g, (_, lead: string, word: string) => `${lead}${word.charAt(0).toUpperCase()}${word.slice(1)}`);

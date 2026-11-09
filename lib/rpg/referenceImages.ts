@@ -1,19 +1,19 @@
 import { Asset } from 'expo-asset';
 
-const kanFaceSheet = require('../../assets/images/kan-face-sheet.jpg');
-const kanOutfitBlack = require('../../assets/images/kan-outfit-black.jpg');
-const kanOutfitAkatsuki = require('../../assets/images/kan-outfit-akatsuki.jpg');
+const playerFaceSheet = require('../../assets/images/kan-face-sheet.jpg');
+const playerOutfitBlack = require('../../assets/images/kan-outfit-black.jpg');
+const playerOutfitAkatsuki = require('../../assets/images/kan-outfit-akatsuki.jpg');
 
 let referencesPromise: Promise<string[]> | null = null;
 
-export type KanReferences = { face: string; outfit: string; alternate: string };
+export type PlayerReferences = { face: string; outfit: string; alternate: string };
 
-export function loadKanReferenceImages(wearsAkatsukiCloak: boolean): Promise<KanReferences> {
+export function loadPlayerReferenceImages(wearsAkatsukiCloak: boolean): Promise<PlayerReferences> {
   if (!referencesPromise) {
     referencesPromise = Promise.all([
-      toDataUri(Asset.fromModule(kanFaceSheet)),
-      toDataUri(Asset.fromModule(kanOutfitBlack)),
-      toDataUri(Asset.fromModule(kanOutfitAkatsuki)),
+      toDataUri(Asset.fromModule(playerFaceSheet)),
+      toDataUri(Asset.fromModule(playerOutfitBlack)),
+      toDataUri(Asset.fromModule(playerOutfitAkatsuki)),
     ]).then((values) => values.filter(Boolean));
   }
 

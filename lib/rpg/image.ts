@@ -6,7 +6,7 @@ import { localizePlaceNames } from './glossary';
 import { completeChat, type CallUsage } from '../openrouter';
 import { wearsAkatsukiCloak } from './portrait';
 import type { PlannedReference } from './referencePlan';
-import { flashbackImageNote, kanAgeAt, latestReplyIsFlashback } from './flashbacks';
+import { flashbackImageNote, playerAgeAt, latestReplyIsFlashback } from './flashbacks';
 import { CANON_CAST } from './canonCast';
 import { entityAge, timeOfDayOf } from './calendar';
 import {
@@ -26,6 +26,7 @@ import {
 } from './imageDirection';
 import { CONDITION_INFO } from './weather';
 import type { AppDatabase, EntityRecord } from './types';
+import { isPlayer, isPlayerName } from './player';
 
 /** At most one earlier scene is sent, for rendering style only (#4). */
 const RECENT_IMAGE_LIMIT = 1;
@@ -36,7 +37,7 @@ export const ENSEMBLE_CAST_LIMIT = 10;
 
 function sceneCast(db: AppDatabase, limit = SCENE_CAST_LIMIT): string[] {
   const fromState = (db.state.sceneCast ?? []).filter(
-    (name) => name.toLowerCase() !== 'kan'
+    (name) => !isPlayerName(db, name)
   );
 
   if (fromState.length > 0) {
@@ -52,7 +53,7 @@ function sceneCast(db: AppDatabase, limit = SCENE_CAST_LIMIT): string[] {
     .filter(
       (entity) =>
         entity.type === 'character' &&
-        entity.name.toLowerCase() !== 'kan' &&
+        !isPlayer(db, entity) &&
         mentionsEntity(text, entity)
     )
     .slice(0, limit)
@@ -98,7 +99,7 @@ export function sceneCharacterReferences(
   const found: Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait'; at: number }> = [];
 
   for (const entity of db.entities) {
-    if (entity.type !== 'character' || entity.name.toLowerCase() === 'kan' || !mentionsEntity(action, entity)) {
+    if (entity.type !== 'character' || isPlayer(db, entity) || !mentionsEntity(action, entity)) {
       continue;
     }
 
@@ -317,7 +318,7 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
 
   return [
     memory || reply.flashback
-      ? `This reply is a memory from Year ${reply.flashback!.date.year}: Kan is ${kanAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
+      ? `This reply is a memory from Year ${reply.flashback!.date.year}: Kan is ${playerAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
       : `Location: ${db.state.location}.`,
     reply.flashback ? '' : `Scene: ${db.state.scene}.`,
     reply.flashback ? '' : `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
@@ -432,7 +433,7 @@ export async function writeImageAction(
   return null;
 }
 
-const KAN_LOOK = 'Kan: a lean young shinobi with black spiky hair and brown eyes.';
+const PLAYER_LOOK = 'Kan: a lean young shinobi with black spiky hair and brown eyes.';
 
 const STYLE_OPENER =
   'A dramatic widescreen anime key frame, like a still from a high-budget Naruto Shippuden fight episode: bold cel shading, clean line art, saturated colour with strong contrast, dynamic composition, film grain.';
@@ -536,7 +537,7 @@ export function buildSceneImagePrompt(
 
   // Kan's look.
   if (!hasFace) {
-    lines.push(KAN_LOOK);
+    lines.push(PLAYER_LOOK);
   }
 
   if (!memoryNote) {

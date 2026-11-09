@@ -36,7 +36,7 @@ export function applyAbilityChanges(db: AppDatabase, diff: TurnDiff): AppDatabas
     });
   }
 
-  const abilities: AbilityRecord[] = [...(db.state.player.abilities ?? [])];
+  const abilities: AbilityRecord[] = [...(db.state.player.abilityStages ?? [])];
 
   for (const item of changed) {
     const name = item.name.trim();
@@ -59,13 +59,13 @@ export function applyAbilityChanges(db: AppDatabase, diff: TurnDiff): AppDatabas
     }
   }
 
-  return { ...db, state: { ...db.state, player: { ...db.state.player, natures, abilities } } };
+  return { ...db, state: { ...db.state, player: { ...db.state.player, natures, abilityStages: abilities } } };
 }
 
 /** One line for the prompts: "Natures: Fire (innate); abilities: Sharingan (2 tomoe)". */
 export function formatAbilities(db: AppDatabase): string {
   const natures = db.state.player.natures ?? [];
-  const abilities = db.state.player.abilities ?? [];
+  const abilities = db.state.player.abilityStages ?? [];
   const natureText = natures.length
     ? natures.map((item) => `${item.nature} (${item.source === 'innate' ? 'innate' : `Thousand Souls${item.from ? `, from ${item.from}` : ''}`})`).join(', ')
     : 'none known yet';

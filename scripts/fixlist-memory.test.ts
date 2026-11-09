@@ -156,7 +156,7 @@ describe('7. lore with conditions', () => {
       ...db,
       state: {
         ...db.state,
-        player: { ...db.state.player, abilities: [{ name: 'Sharingan', stage: '1 tomoe', acquiredOn: db.state.inStoryDate, stageOn: db.state.inStoryDate }] },
+        player: { ...db.state.player, abilityStages: [{ name: 'Sharingan', stage: '1 tomoe', acquiredOn: db.state.inStoryDate, stageOn: db.state.inStoryDate }] },
       },
       threads: db.threads.map((thread) => (thread.title === 'Make Itachi explain' ? { ...thread, status: 'resolved' } : thread)),
       entities: db.entities.map((entity) => (entity.name === 'Izumi Uchiha' ? { ...entity, deceased: { ...entity.deceased, known: true } } : entity)),

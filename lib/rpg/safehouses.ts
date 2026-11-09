@@ -23,7 +23,7 @@ import { isCombatPace } from './canon';
 import { characterRefs } from './characterRefs';
 import { castWithCompanions } from './companions';
 import { plantSeed, seedsOf } from './consequences';
-import { isDeceased, kanKnowsDeath } from './deaths';
+import { isDeceased, playerKnowsDeath } from './deaths';
 import { grudgeKnown } from './disclosure';
 import { resolveEntity } from './entities';
 import { REGION_NAME, isRegion, regionOf, type Region } from './geography';
@@ -44,6 +44,7 @@ import type {
   SafehouseState,
   VillageFaction,
 } from './types';
+import { isPlayerEntity, isPlayerName } from './player';
 
 export const SAFEHOUSE_KINDS: SafehouseKind[] = ['own', 'rented', 'borrowed', 'base', 'camp'];
 export const SAFEHOUSE_ENDS: Exclude<SafehouseEnd, 'left'>[] = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'];
@@ -305,9 +306,9 @@ const OWNER_KEYS: Record<string, RegExp> = {
 };
 const LEFT_WORDS = /\b(left|leave|leaves|leaving|defect(ed|s)?|quit|expelled|cast out|thrown out|abandon(ed|s)?|betray(ed|s)?|desert(ed|s)?|no longer|missing[- ]nin|rogue|traitor|broke with|walked away)\b/i;
 
-function isKanFact(db: AppDatabase, subjectId: string | null, text: string) {
+function isPlayerFact(db: AppDatabase, subjectId: string | null, text: string) {
   const subject = subjectId ? db.entities.find((entity) => entity.id === subjectId) : null;
-  return subject ? isKanEntity(subject) : /^you\b/i.test(text.trim());
+  return subject ? isPlayerEntity(subject) : /^you\b/i.test(text.trim());
 }
 
 /** What Kan's newest membership fact about this owner says: in, out, or nothing. */
@@ -317,7 +318,7 @@ function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
   if (!key) return null;
 
   const facts = db.facts
-    .filter((fact) => fact.type === 'membership' && fact.validTo === null && key.test(fact.text) && isKanFact(db, fact.subjectEntityId, fact.text))
+    .filter((fact) => fact.type === 'membership' && fact.validTo === null && key.test(fact.text) && isPlayerFact(db, fact.subjectEntityId, fact.text))
     .sort((a, b) => dateSortValue(b.validFrom) - dateSortValue(a.validFrom));
 
   if (facts.length === 0) return null;
@@ -352,7 +353,7 @@ function cleanName(text: string) {
 function personRef(db: AppDatabase, raw: string): EntityRecord | null {
   const value = raw.trim();
 
-  if (!value || value.toLowerCase() === 'kan') return null;
+  if (!value || isPlayerName(db, value)) return null;
 
   const found =
     db.entities.find((entity) => entity.id === value) ??
@@ -363,15 +364,11 @@ function personRef(db: AppDatabase, raw: string): EntityRecord | null {
   return found && found.type === 'character' ? found : null;
 }
 
-function isKanEntity(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
-
 function sceneIds(db: AppDatabase): string[] {
   return uniqueList(
     castWithCompanions(db, db.state.sceneCast ?? [])
       .map((name) => resolveEntity(db, name))
-      .filter((entity): entity is EntityRecord => Boolean(entity) && !isKanEntity(entity!))
+      .filter((entity): entity is EntityRecord => Boolean(entity) && !isPlayerEntity(entity!))
       .map((entity) => entity.id)
   );
 }
@@ -452,7 +449,7 @@ type Threat = { entityId?: string; who: string; want: string; faction?: Reputati
 
 /** Would this person come after Kan here, and why? */
 function personThreat(db: AppDatabase, house: Safehouse, entity: EntityRecord): Threat | null {
-  if (isDeceased(entity) || isKanEntity(entity)) return null;
+  if (isDeceased(entity) || isPlayerEntity(entity)) return null;
 
   const bond = db.bonds.find((item) => item.entityId === entity.id);
 
@@ -531,7 +528,7 @@ function learnOf(db: AppDatabase, houseId: string, refs: string[]): AppDatabase 
     const entity = personRef(next, raw);
 
     if (entity) {
-      if (isKanEntity(entity) || house.knownBy.includes(entity.id)) continue;
+      if (isPlayerEntity(entity) || house.knownBy.includes(entity.id)) continue;
       next = updateHouse(next, house.id, (item) => ({ ...item, knownBy: [...item.knownBy, entity.id] }));
       const threat = house.kind === 'base' ? null : personThreat(next, house, entity);
       if (threat) next = plantFound(next, house, threat);
@@ -847,7 +844,7 @@ function restAt(db: AppDatabase, house: Safehouse | null, elapsedSeconds: number
 
     const subject = fact.subjectEntityId ? db.entities.find((entity) => entity.id === fact.subjectEntityId) : null;
 
-    if (subject && !isKanEntity(subject)) return fact;
+    if (subject && !isPlayerEntity(subject)) return fact;
 
     changed = true;
     const expiresAt = shiftDate(fact.expiresAt, -SAFE_REST_HEAL_DAYS * nights);
@@ -887,7 +884,7 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
       const host = next.entities.find((entity) => entity.id === house.hostId);
       const bond = host ? next.bonds.find((item) => item.entityId === host.id) : null;
 
-      if (host && isDeceased(host) && kanKnowsDeath(next, host)) {
+      if (host && isDeceased(host) && playerKnowsDeath(next, host)) {
         next = endHouse(next, house.id, 'withdrawn', `${host.name} died`);
         continue;
       }
@@ -1005,7 +1002,7 @@ function entityName(db: AppDatabase, id: string) {
 export function whoKnows(db: AppDatabase, house: Safehouse): string[] {
   const people = house.knownBy
     .map((id) => db.entities.find((entity) => entity.id === id))
-    .filter((entity): entity is EntityRecord => Boolean(entity) && !(isDeceased(entity!) && kanKnowsDeath(db, entity!)))
+    .filter((entity): entity is EntityRecord => Boolean(entity) && !(isDeceased(entity!) && playerKnowsDeath(db, entity!)))
     .map((entity) => entity.name);
 
   return [...people, ...house.knownGroups];

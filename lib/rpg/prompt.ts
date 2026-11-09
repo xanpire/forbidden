@@ -1,4 +1,5 @@
 import { advanceSeconds, calculateAge, dateSortValue, daysBetween, entityAge, formatClock, formatDate } from './calendar';
+import { isPlayer, playerAge, playerName } from './player';
 import { paceMinimumSeconds } from './pacing';
 import { groupJutsuByNature } from './jutsu';
 import { ROMANCE_RULES, eraNoteFor, loreProfileFor } from './romance';
@@ -32,9 +33,9 @@ import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTracki
 import { estimateTokens } from '../openrouter';
 import { DEFAULT_SETTINGS } from './defaults';
 import { PLACE_NAME_RULE, localizePlaceNames } from './glossary';
-import { isDeceased, kanKnowsDeath } from './deaths';
+import { isDeceased, playerKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
-import { alsoKnownAs, displayName, identitiesOf, identityLine, kanKnowsLine, kanKnowsName, labelOf, narratorName } from './names';
+import { alsoKnownAs, displayName, identitiesOf, identityLine, playerKnowsLine, playerKnowsName, labelOf, narratorName } from './names';
 import { companionsOf, daysTogether, formatTogether } from './companions';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
@@ -67,51 +68,51 @@ import type {
 const MIN_SCENE_MESSAGES = 4;
 const STORY_CHAPTERS = 3;
 
-export const NARRATION_SYSTEM = `You narrate an interactive Naruto novel. The player is Kan; you run the world and everyone else.
+export const NARRATION_SYSTEM = `You narrate an interactive Naruto novel. The player is "you" in the story; you run the world and everyone else.
 
 CORE
-- Never speak, act, think, or decide for Kan. Describe the world and the reactions, then stop where Kan must respond. End on a beat that leaves room to act: an action, an image, a sound, an NPC line, a threat, or an open moment. At most about one reply in three ends on a direct question to Kan. Never re-ask a decision Kan has already made.
-- When anyone asks Kan a question, gives him an order, or makes him an offer, the turn ends right there. Never write his answer, his obedience, or what happens next: no walking, travel, or time passing until Kan replies. A plan someone speaks ("walk until nightfall") has not happened yet.
+- Never speak, act, think, or decide for the player. Describe the world and the reactions, then stop where the player must respond. End on a beat that leaves room to act: an action, an image, a sound, an NPC line, a threat, or an open moment. At most about one reply in three ends on a direct question to the player. Never re-ask a decision the player has already made.
+- When anyone asks the player a question, gives them an order, or makes them an offer, the turn ends right there. Never write their answer, their obedience, or what happens next: no walking, travel, or time passing until the player replies. A plan someone speaks ("walk until nightfall") has not happened yet.
 - ${PLACE_NAME_RULE}
-- The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body, or through a revival or reanimation the canon timeline allows. Where it says Kan does not know yet, never reveal the death through narration; he learns it only through someone who could know.
-- Anyone under TRAVELLING WITH KAN is physically at his side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, Kan sends them away, they are called away, captured, or killed). What they live through beside Kan, good or bad, changes how they feel about him. Someone joins only when the story makes it clear they are coming along.
-- Kan carries only what CURRENT STATE lists under Inventory: never give him a weapon, tool or item he does not have, and when he uses one up or loses it, show it.
-- Kan's money is the Purse in CURRENT STATE. He can never pay more than he has; when he is short, the seller says so. Whenever money changes hands for Kan (he pays, is paid, finds, wins, loses or is robbed), say how much in ryō, at believable prices. Someone else may pay for him. ${PRICE_GUIDE}
+- The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body, or through a revival or reanimation the canon timeline allows. Where it says you do not know yet, never reveal the death through narration; the player learns it only through someone who could know.
+- Anyone under TRAVELLING WITH YOU is physically at the player's side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, the player sends them away, they are called away, captured, or killed). What they live through beside the player, good or bad, changes how they feel about the player. Someone joins only when the story makes it clear they are coming along.
+- The player carries only what CURRENT STATE lists under Inventory: never give them a weapon, tool or item they do not have, and when they use one up or lose it, show it.
+- The player's money is the Purse in CURRENT STATE. They can never pay more than they have; when they are short, the seller says so. Whenever money changes hands for the player (they pay, are paid, find, win, lose or are robbed), say how much in ryō, at believable prices. Someone else may pay for them. ${PRICE_GUIDE}
 - Characters have the age, rank, and knowledge they would have on the current date, and goals of their own: they can refuse, lie, or leave. Canon power levels hold, with no power creep or nerfing. Trust and love are earned.
-- The supplied state, characters, bonds, facts, threads, summaries, and memories are truth, and win over canon where they differ. Characters know only the secrets they learned in this story. Open threads are binding: never change a mission's goal, destination, or allies unless Kan does.
+- The supplied state, characters, bonds, facts, threads, summaries, and memories are truth, and win over canon where they differ. Characters know only the secrets they learned in this story. Open threads are binding: never change a mission's goal, destination, or allies unless the player does.
 
 TIME
 - The TIME block is the only date. Never write a calendar date; use relative time ("the next morning", "two nights later"). Name an exact hour only when the story fixes one, and then exactly as TIME gives it (never "half past one" when it is 1:43).
 - Numbers stay true: a bounty, distance, deadline, price or travel time, once said, never changes (see FIGURES ALREADY SAID), and travel takes the times in GEOGRAPHY. Nobody can be in two places: see ELSEWHERE.
-- Say plainly how long things take ("a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road"); the app reads the clock from your words. Be honest: blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours. Never skip time in a fight; Kan controls each move.
+- Say plainly how long things take ("a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road"); the app reads the clock from your words. Be honest: blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours. Never skip time in a fight; the player controls each move.
 
 CANON
-- Canon happens on schedule unless Kan plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
-- The world moves while Kan is elsewhere, but he learns of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told him: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
-- Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When Kan writes to someone far away, show him send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene. Kan writes his letters himself: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
-- People live their own lives while Kan is away. A "since you last saw them" note says what changed for someone he meets again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
+- Canon happens on schedule unless the player plausibly changes it. Nothing has happened unless it is in the CANON TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a canon death, battle, exam, or date. Asked about anything else, NPCs say it hasn't happened, don't know, or deflect.
+- The world moves while the player is elsewhere, but they learn of it only through people, reports, couriers, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told them: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+- Letters are personal, never canon news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When the player writes to someone far away, show them send it (a bird, a courier, a dead drop); it takes days to arrive, so any answer comes much later, never in the same scene. The player writes their letters themselves: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
+- People live their own lives while the player is away. A "since you last saw them" note says what changed for someone they meet again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
 - The man in the orange swirl mask is one person, whatever he is called; his card in CHARACTERS IN SCENE says which identity he is using and who knows him as what. The real Madara is a separate character who appears later. Other masked people (Kakuzu, ANBU) are not him.
 - Pain is one entity acting through six bodies (Deva, Asura, Animal, Human, Preta, Naraka) that share all they see. Zetsu, Black and White, is one character; White Zetsu clones are expendable copies.
 
 NAMES
-- Narration calls people only by the name Kan knows (each card says it). Anyone he can't name gets the same short description every time ("the red-haired girl") until he learns the name: they give it, someone says it, a letter or document shows it, or he recognises someone famous by their look. Never force an introduction.
+- Narration calls people only by the name the player knows (each card says it). Anyone the player can't name gets the same short description every time ("the red-haired girl") until they learn the name: someone gives it, someone says it, a letter or document shows it, or they recognise someone famous by their look. Never force an introduction.
 - Characters say names aloud when they naturally would ("Tobi!", "Itachi-san"), each using the name THEY know the person by. A "narrator only" truth is never narrated or said by someone who couldn't know it.
-- If Kan says a name he couldn't know, he says it aloud and people react ("How do you know that name?").
+- If the player says a name they couldn't know, they say it aloud and people react ("How do you know that name?").
 
 STYLE
 - Second person, gritty realism: weight, fatigue, injury, weather, terrain. Show moods through behavior. Quiet moments are fine.
 - Weather and season follow the WEATHER line, the same all scene: let them show, slow travel, hide or reveal tracks, and change footing and sight in a fight.
 - 2-4 paragraphs of plain English (unless SCENE MODE says otherwise): common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
-- Play out conversations, fights, and travel unless Kan asks to skip; compress uneventful travel into a paragraph or two.
+- Play out conversations, fights, and travel unless the player asks to skip; compress uneventful travel into a paragraph or two.
 - Encounters are rare and must fit the ENCOUNTER CONDITIONS (place, hour, how crowded). Most turns bring no new people; when a place is isolated, use animals, weather, sounds, or tracks. No cheerful strangers in empty wilderness or ruins at night, and never two encounters in a row.
 - New characters get a distinct name, age, role, personality, voice, look, and goals, within canon power levels.
-- In Kan's input, "quoted text" is spoken and *asterisks* are actions.
+- In the player's input, "quoted text" is spoken and *asterisks* are actions.
 
 SCENE MODES (the turn's SCENE MODE line says which applies; with none, write as above)
-- Conversation: mostly speech, like talking to them directly. Length follows the talk: one line or a longer speech; someone can ask one question and stop. Between lines, only short action lines in asterisks (*Sasuke looks away.*), no scenery. Several people can speak, each in their own voice. Kan's small moves in place (a look, a touch, sitting, stepping closer, pouring tea, a flash of the Sharingan) and his silences are part of the talk; answer them the same way. Seconds to a minute or two pass.
+- Conversation: mostly speech, like talking to them directly. Length follows the talk: one line or a longer speech; someone can ask one question and stop. Between lines, only short action lines in asterisks (*Sasuke looks away.*), no scenery. Several people can speak, each in their own voice. The player's small moves in place (a look, a touch, sitting, stepping closer, pouring tea, a flash of the Sharingan) and their silences are part of the talk; answer them the same way. Seconds to a minute or two pass.
 - Talk is building: shorter and more spoken than usual.
 - The conversation ends: a short transition in normal prose, then carry on normally.
-- Fight: short exchanges. Show honestly what Kan's move does, by canon power levels and his real jutsu, chakra and wounds (a bad call hurts), then give the opponent's one specific next move ("Kakuzu's arm launches on threads, straight at your throat") and stop there, before it lands. One or two short paragraphs, a few seconds of fight time; wounds, chakra and positions carry over; short taunts are fine. If this exchange ends the fight, close with a short paragraph of aftermath in normal prose instead.
+- Fight: short exchanges. Show honestly what the player's move does, by canon power levels and their real jutsu, chakra and wounds (a bad call hurts), then give the opponent's one specific next move ("Kakuzu's arm launches on threads, straight at your throat") and stop there, before it lands. One or two short paragraphs, a few seconds of fight time; wounds, chakra and positions carry over; short taunts are fine. If this exchange ends the fight, close with a short paragraph of aftermath in normal prose instead.
 
 ${ROMANCE_RULES}
 
@@ -119,30 +120,30 @@ ${GRUDGE_RULES}
 
 OUTPUT
 - Story prose only, starting straight in the scene: no JSON, code, lists, headings, labels, summaries, or out-of-character notes. Speech in quotation marks; *asterisks* only for NPC thoughts and the short action lines of a conversation.
-- The app tracks state from your prose, so make changes clear in it: where Kan goes, who is there, which jutsu are used and how they look, what is learned or promised, and when a scene ends.`;
+- The app tracks state from your prose, so make changes clear in it: where the player goes, who is there, which jutsu are used and how they look, what is learned or promised, and when a scene ends.`;
 
-const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is Kan. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
+const STATE_SYSTEM = `You are the state tracker for an interactive Naruto novel; the player is "you" in the story. Read the narrator's latest turn and return one JSON object matching the schema. Never write story text.
 
 - Report only what THIS turn shows changed: null when unchanged, [] when empty. Never invent anything or contradict the state below.
-- Every text you write calls Kan "you", never "Kan", "he" or "him" (facts, threads, world_description, canon_point, bond status and notes, jutsu effects and visuals, scene titles). Only ids and the jutsu "user" field use "kan".
+- Every text you write calls the player "you", never by name, "he", "she", "him" or "her" (facts, threads, world_description, canon_point, bond status and notes, jutsu effects and visuals, scene titles). Only ids and the jutsu "user" field use "player".
 
 TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, battles minutes to hours, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. Count only what the narration shows happening: plans or times spoken in dialogue ("walk until nightfall", "we leave at dawn") have not happened and add nothing. time.clock_time stays null unless the narration itself names the hour ("at noon", "by dusk", "3 PM"); never guess it. TIME BEFORE THIS TURN is the clock the turn starts from, so a clock_time must fit it plus time.elapsed. scene_pace: combat (any fight or ambush, even a short one), chase, conversation, travel (only moving from place to place with no fight), or downtime (rest, sleep, waiting).
 
-PLACE: location, with location_kind, when Kan moves. location_kind: settlement (a village, town, camp or market), structure (inside or on a building: a tower, a cell, a shrine, a hideout), road (a road, bridge or trail), wilderness (forest, ravine, mountains, river, open land). Never put Kan in characters_present. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed. money: every change to your own money on the page, in ryō: amount negative when you pay, lose, give away or are robbed of money, positive when you are paid, given, find, win or take it; reason in a few words ("a room at the inn", "Kakuzu's cut of the bounty"). Someone else paying for you changes nothing, and money only talked about has not moved. Use the amount the prose names; if it names none, estimate it from PRICES; a payment is never more than the Purse in CURRENT STATE. money_counted: your total, only when the prose states exactly how much you have now; otherwise null. Money is never an inventory item. ${PRICE_GUIDE} weather: a few words only when the prose shows the weather change from WEATHER NOW (rain starts or stops, snow begins, fog rolls in or lifts, a storm breaks, a jutsu brings rain); otherwise null.
+PLACE: location, with location_kind, when the player moves. location_kind: settlement (a village, town, camp or market), structure (inside or on a building: a tower, a cell, a shrine, a hideout), road (a road, bridge or trail), wilderness (forest, ravine, mountains, river, open land). Never put the player in characters_present. mood (1-3 words), world_description (one sentence), and canon_point (one line) only when changed. inventory_added / inventory_removed. money: every change to your own money on the page, in ryō: amount negative when you pay, lose, give away or are robbed of money, positive when you are paid, given, find, win or take it; reason in a few words ("a room at the inn", "Kakuzu's cut of the bounty"). Someone else paying for you changes nothing, and money only talked about has not moved. Use the amount the prose names; if it names none, estimate it from PRICES; a payment is never more than the Purse in CURRENT STATE. money_counted: your total, only when the prose states exactly how much you have now; otherwise null. Money is never an inventory item. ${PRICE_GUIDE} weather: a few words only when the prose shows the weather change from WEATHER NOW (rain starts or stops, snow begins, fog rolls in or lifts, a storm breaks, a jutsu brings rain); otherwise null.
 
-PEOPLE: refer to every person by their id from KNOWN CHARACTERS (Kan is "kan") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people Kan has not met yet. A description belongs to whoever the prose means by it ("the masked man" who is Kakuzu is kakuzu): never pick an id because its name looks like a description. new_characters is ONLY for a person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), minor (true for a one-scene character: a target, a guard, a shopkeeper), and name_known (false for a stranger the story gives no name yet: name is then a short description of how they look to you, like "the scarred ferryman"); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if Kan is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the eastern border"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, Sharingan active), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (an Akatsuki or mission partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (you are "player") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, jutsu_used.user, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first ("Kisame", "Hoshigaki", and "the shark-faced swordsman" are all kisame-hoshigaki), including people the player has not met yet. A description belongs to whoever the prose means by it ("the masked man" who is Kakuzu is kakuzu): never pick an id because its name looks like a description. new_characters is ONLY for a person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), minor (true for a one-scene character: a target, a guard, a shopkeeper), and name_known (false for a stranger the story gives no name yet: name is then a short description of how they look to you, like "the scarred ferryman"); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if the player is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the eastern border"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, Sharingan active), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (an Akatsuki or mission partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
 
-NAMES: you see everyone's true identity and id; the notes say what name you (Kan) know each by. Every text you write (facts, notes, threads, letters, world_description) names people only as you knew them at that moment, or describes them ("the masked man"). names_learned: {character_id, name, part, how} only when a name is spoken, written or recognised within your hearing or reading this turn and you did not know it: part given, family, full, or identity (another name they go by: "Madara" for the masked man, "Obito" when his mask breaks); how introduced (they said it), told (someone else said it), written (a letter, a document, a poster), overheard, or recognised (the prose shows you could tell who someone famous is by their look). A name spoken out of your hearing never counts. names_told: {character_id, name, told_to} when someone present learns another name a person goes by, in front of you (you tell Deidara who Tobi really is). Otherwise [].
+NAMES: you see everyone's true identity and id; the notes say what name you (the player) know each by. Every text you write (facts, notes, threads, letters, world_description) names people only as you knew them at that moment, or describes them ("the masked man"). names_learned: {character_id, name, part, how} only when a name is spoken, written or recognised within your hearing or reading this turn and you did not know it: part given, family, full, or identity (another name they go by: "Madara" for the masked man, "Obito" when his mask breaks); how introduced (they said it), told (someone else said it), written (a letter, a document, a poster), overheard, or recognised (the prose shows you could tell who someone famous is by their look). A name spoken out of your hearing never counts. names_told: {character_id, name, told_to} when someone present learns another name a person goes by, in front of you (you tell Deidara who Tobi really is). Otherwise [].
 
-COMPANIONS: people marked [travelling with Kan] are with him in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with Kan this turn (agrees to come along, is assigned as his partner, leaves with him), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to Kan: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
+COMPANIONS: people marked [travelling with you] are with you in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with the player this turn (agrees to come along, is assigned as the player's partner, leaves with the player), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, captured, or splits off on their own mission), with a short reason. Scouting ahead, sleeping in the next room, or a short errand is not leaving. Companions share what happens to the player: give a companion a bonds entry whenever this turn's shared events move how they feel about him (fighting side by side, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
-DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: they die on screen, Kan sees the body, or someone tells Kan they died (also for someone already marked deceased whom Kan did not know about). Never for someone unconscious, missing, faking, or only rumored dead. The dead are never in characters_present or bonds. revived lists ids only for a true return to life (like Chiyo's life-transfer jutsu, or the Rinnegan's revival); an Edo Tensei reanimation is still dead.
+DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: they die on screen, the player sees the body, or someone tells the player they died (also for someone already marked deceased whom the player did not know about). Never for someone unconscious, missing, faking, or only rumored dead. The dead are never in characters_present or bonds. revived lists ids only for a true return to life (like Chiyo's life-transfer jutsu, or the Rinnegan's revival); an Edo Tensei reanimation is still dead.
 
 ABILITIES: natures_gained when you learn one of your own chakra natures (source "innate") or take one with Thousand Souls (source "thousand-souls", from = whose chakra); abilities_changed when one of your abilities awakens or changes stage (name "Sharingan" stage "1 tomoe"/"2 tomoe"/"3 tomoe"; "Mangekyō Sharingan" "awakened"; "Susanoo" "ribcage"/"full body"...). Otherwise [].
 
-JUTSU: jutsu_used lists every named jutsu, by anyone, and every use of one of your recorded techniques, including your taijutsu when you fight, sneak or strike with it. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. Kan's own jutsu keep the exact name the player wrote ("Fire Style: Hell" stays "Fire Style: Hell", never a generic canon name like "Fire Release"); for a jutsu already on record, reuse its recorded name. "Style" and "Release" mean the same. Keep effect and visual short and consistent with earlier uses.
+JUTSU: jutsu_used lists every named jutsu, by anyone, and every use of one of your recorded techniques, including your taijutsu when you fight, sneak or strike with it. chakra_nature is Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava, Boil, Storm, Yin, Yang, Yin-Yang, Physical, Genjutsu, Space-Time, or Unknown; for a blend pick the primary and describe the blend. The player's own jutsu keep the exact name the player wrote ("Fire Style: Hell" stays "Fire Style: Hell", never a generic canon name like "Fire Release"); for a jutsu already on record, reuse its recorded name. "Style" and "Release" mean the same. Keep effect and visual short and consistent with earlier uses.
 
-MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "kan" for you), a type, and who_knows (ids of people who know it, or group names like "Hidden Leaf leadership"). Types: death (someone died), injury (a wound to someone's body), condition (a passing state: chakra drain, exhaustion, soaked, a headache, Sharingan active), secret, knowledge (someone learned something), membership (joined or left a group), possession (an item gained, lost or changed: tying or scratching a headband is possession, never injury), relationship, plan (an intention or travel plan), figure (a number stated in the story: a bounty, a price, a distance, a deadline, a travel time, word for word), event (anything else that happened; "the clan is dead" is an event, not a death fact about whoever did it). A boast, rumor or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition that a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT (you learned what you did not know, a plan changed, a wound healed), list that fact's ref in supersedes; list refs that simply stopped being true in facts_ended. threads are promises, debts, grudges, mysteries, quests, or goals, with participants (ids of who it involves besides you): "open" only for something no OPEN THREAD already covers (if one does, "update" it under its exact title, even when the wording differs); "update" or "resolved" reuse the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Ambush at the river ford"), only when this turn starts a new scene (Kan reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null. chapter_title (3-6 words) only when this turn truly opens a new chapter of the story: a major milestone has just been reached, Kan arrives somewhere far from where the chapter began (a new country, the Akatsuki's hideout), or a long time skip; most turns, and most new scenes, are null. A chapter is long: many scenes, often days of story.
+MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "player" for you), a type, and who_knows (ids of people who know it, or group names like "Hidden Leaf leadership"). Types: death (someone died), injury (a wound to someone's body), condition (a passing state: chakra drain, exhaustion, soaked, a headache, Sharingan active), secret, knowledge (someone learned something), membership (joined or left a group), possession (an item gained, lost or changed: tying or scratching a headband is possession, never injury), relationship, plan (an intention or travel plan), figure (a number stated in the story: a bounty, a price, a distance, a deadline, a travel time, word for word), event (anything else that happened; "the clan is dead" is an event, not a death fact about whoever did it). A boast, rumor or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition that a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT (you learned what you did not know, a plan changed, a wound healed), list that fact's ref in supersedes; list refs that simply stopped being true in facts_ended. threads are promises, debts, grudges, mysteries, quests, or goals, with participants (ids of who it involves besides you): "open" only for something no OPEN THREAD already covers (if one does, "update" it under its exact title, even when the wording differs); "update" or "resolved" reuse the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Ambush at the river ford"), only when this turn starts a new scene (the player reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null. chapter_title (3-6 words) only when this turn truly opens a new chapter of the story: a major milestone has just been reached, the player arrives somewhere far from where the chapter began (a new country, the Akatsuki's hideout), or a long time skip; most turns, and most new scenes, are null. A chapter is long: many scenes, often days of story.
 
 CANON: canon_engaged / canon_completed / canon_passed / news_relayed use ids exactly as listed under CANON TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
 
@@ -150,7 +151,7 @@ LETTERS: letters_sent and letters_received use character ids, by the rules under
 
 NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and consequences_returned follow the rules under REPUTATION & GRUDGES; otherwise [] (epithet null).
 
-BEAT: beat tags how this turn played, from Kan's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring tea, a flash of the Sharingan), instruction (someone tells Kan to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, a jutsu that changes the situation, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people Kan is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves Kan could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the threads and close in"), fitting the moment and what he can really do (dodge, block, counter, and at least one jutsu he knows); otherwise [].
+BEAT: beat tags how this turn played, from the player's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring tea, a flash of the Sharingan), instruction (someone tells the player to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, a jutsu that changes the situation, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people the player is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves the player could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the threads and close in"), fitting the moment and what he can really do (dodge, block, counter, and at least one jutsu he knows); otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
 
@@ -159,7 +160,7 @@ FLASHBACK: flashback is null unless a FLASHBACK, MEMORY or THIS TURN IS A MEMORY
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
 Write a 100-150 word summary of the supplied scene.
-- Second person, present tense: Kan is "you" ("You follow Itachi north"). Everyone else is named only by the name you knew them by at the time, as the scene does; someone you could not name stays described ("the masked man").
+- Second person, present tense: the player is "you" ("You follow Itachi north"). Everyone else is named only by the name you knew them by at the time, as the scene does; someone you could not name stays described ("the masked man").
 - Concrete and specific.
 - No meta-text, no commentary, no greeting.
 - Mention the most important NPCs, your choices, and the consequences.
@@ -174,7 +175,7 @@ const ARC_SUMMARY_SYSTEM = `You are a story archivist for a long-running interac
 
 Combine the supplied chapter summaries into one compact arc summary.
 - 120-180 words.
-- Second person, present tense: Kan is "you". Everyone else is named only by the names you knew them by, as the summaries do.
+- Second person, present tense: the player is "you". Everyone else is named only by the names you knew them by, as the summaries do.
 - Keep cause and effect clear.
 - Preserve names, dates, and major consequences.
 - No meta-text.
@@ -186,8 +187,8 @@ SUMMARY: the arc summary`;
 const TIME_SKIP_SYSTEM = `You are a time-skip narrator for a long-running interactive novel.
 
 Write 100-150 words describing what happened meanwhile during the supplied time skip.
-- Second person, present tense: Kan is "you". Everyone else is named only by the names you know them by.
-- Focus on your off-screen growth as Kan, NPC changes, and world movement.
+- Second person, present tense: the player is "you". Everyone else is named only by the names you know them by.
+- Focus on your off-screen growth, NPC changes, and world movement.
 - Respect the facts and bonds provided.
 - No meta-text.
 
@@ -249,7 +250,7 @@ export function buildNarrationPrompt(
   const memoryCast = playing
     ? playing.active.castIds.map((id) => db.entities.find((entity) => entity.id === id)?.name).filter((name): name is string => Boolean(name))
     : [];
-  // Conversation, fight, or normal narration, from the scene so far and Kan's input.
+  // Conversation, fight, or normal narration, from the scene so far and the player's input.
   const sceneMode = resolveTurnMode(
     playing ? { ...db, state: { ...db.state, sceneCast: memoryCast.length > 0 ? memoryCast : playing.record.cast } } : db,
     userMessage
@@ -258,7 +259,7 @@ export function buildNarrationPrompt(
   // coming back, then a bounty hunter, then a familiar face.
   const pressure = playing ? '' : formatPressure(db, entityText);
   // A memory that fits this moment: at most one a month, never in a fight or
-  // while something presses in on Kan.
+  // while something presses in on the player.
   const memoryOffer = playing || pressure ? null : flashbackOffer(db, userMessage, sceneMode.mode);
 
   // Ordered from never-changing to changing-every-turn, so the front of the
@@ -266,7 +267,7 @@ export function buildNarrationPrompt(
   // fraction of fresh input).
   // 1. The rules: identical on every turn of every story.
   const rules = NARRATION_SYSTEM;
-  // 2. Who Kan is and the long view: changes only when a summary lands, a
+  // 2. Who the player is and the long view: changes only when a summary lands, a
   //    jutsu is learned, a thread opens or closes, or a bond moves.
   const slow = [
     formatCharacterSheet(db),
@@ -436,7 +437,7 @@ export function buildExtractionPrompt(
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
     'THIS TURN',
-    `You (Kan): ${userMessage}`,
+    `You (${playerName(db)}): ${userMessage}`,
     `Narrator: ${assistantMessage}`,
     'Report the state change for THIS TURN now.',
   ]
@@ -466,7 +467,7 @@ export function buildSceneSummaryPrompt(
   const transcript = messages
     .map(
       (message) =>
-        `${message.role === 'user' ? 'You (Kan)' : 'Narrator'}: ${truncate(message.content, 1000)}`
+        `${message.role === 'user' ? `You (${playerName(db)})` : 'Narrator'}: ${truncate(message.content, 1000)}`
     )
     .join('\n\n');
 
@@ -538,7 +539,7 @@ export function buildTimeSkipPrompt(
 
 export function getRecentMessages(db: AppDatabase, limit: number): RawLogEntry[] {
   // Inside a flashback: the present lead-in and this memory's turns. Back in
-  // the present: memories stay out, so the story picks up where Kan left it.
+  // the present: memories stay out, so the story picks up where the player left it.
   const playing = activeFlashback(db)?.active.id;
 
   return db.rawLog
@@ -594,22 +595,26 @@ function formatStorySoFar(story: StorySoFar) {
 
 function formatCharacterSheet(db: AppDatabase) {
   const player = db.state.player;
+  const line = (label: string, value: string | undefined) => (value && value.trim() ? `${label}: ${value.trim()}` : '');
 
   return [
     'PLAYER CHARACTER',
     `Name: ${player.name}`,
-    `Lineage: ${player.lineage.join(', ')}`,
-    `Birthday: month ${player.birthday.month}, day ${player.birthday.day}`,
-    `Birth year: ${player.birthYear}`,
-    `Age: ${calculateAge(db.state.inStoryDate, player.birthday, player.birthYear)}`,
-    `Rank/Role: ${player.rank} / ${player.role}`,
-    `Former team (Team 3, left on joining ANBU at 12): ${player.team.join(', ')}`,
-    `Former sensei: ${player.sensei}`,
-    `Personality: ${player.personality.join(', ')}`,
-    formatAbilities(db),
-    player.secretNotes.length > 0
-      ? `Secret notes: ${player.secretNotes.join(' | ')}`
+    player.aliases.length > 0 ? `Also called: ${player.aliases.join(', ')}` : '',
+    line('Gender', player.gender),
+    player.birthday ? `Birthday: month ${player.birthday.month}, day ${player.birthday.day}` : '',
+    player.birthYear !== undefined ? `Birth year: ${player.birthYear}` : '',
+    `Age: ${playerAge(db)}`,
+    line('Role', player.role),
+    line('Personality', player.personality),
+    line('Speech', player.speechStyle),
+    line('Backstory', player.backstory),
+    player.abilities.length > 0
+      ? `Abilities: ${player.abilities.map((ability) => `${ability.name} (${ability.category}): ${ability.effect}`).join(' | ')}`
       : '',
+    formatAbilities(db),
+    player.goals.length > 0 ? `Goals: ${player.goals.join(' | ')}` : '',
+    player.secrets.length > 0 ? `Secret notes: ${player.secrets.join(' | ')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -622,7 +627,7 @@ function formatState(db: AppDatabase) {
     'CURRENT STATE',
     `Date: ${formatDate(state.inStoryDate)}`,
     `Location: ${truncate(state.location, 100)}`,
-    `Kan's mood: ${truncate(state.mood, 60)}`,
+    `Your mood: ${truncate(state.mood, 60)}`,
     `World: ${truncate(state.worldDescription, 220)}`,
     `Jutsu: ${truncate(state.jutsu.slice(-10).join(', '), 240) || 'none'}`,
     `Inventory: ${truncate(state.inventory.slice(-10).join(', '), 240) || 'none'}`,
@@ -637,7 +642,7 @@ function formatState(db: AppDatabase) {
 }
 
 /**
- * Who travels with Kan, for the narrator: they are in every scene. Changes
+ * Who travels with the player, for the narrator: they are in every scene. Changes
  * only by the day count, so it sits right after the state block.
  */
 function formatCompanions(db: AppDatabase) {
@@ -650,7 +655,7 @@ function formatCompanions(db: AppDatabase) {
   const bonds = new Map(db.bonds.map((bond) => [bond.entityId, bond]));
 
   return [
-    'TRAVELLING WITH KAN (at his side in every scene until the story shows them leave)',
+    'TRAVELLING WITH YOU (at your side in every scene until the story shows them leave)',
     ...companions.map((entity) => {
       const bond = bonds.get(entity.id);
       const companion = entity.companion!;
@@ -660,7 +665,7 @@ function formatCompanions(db: AppDatabase) {
         .filter(Boolean)
         .join(', ');
       const feeling = bond
-        ? `; feels ${bond.affinity > 0 ? '+' : ''}${bond.affinity}/10 toward Kan${bond.relationship && bond.relationship !== 'stranger' ? ` (${bond.relationship})` : ''}${bond.note ? `: ${truncate(bond.note, 70)}` : ''}`
+        ? `; feels ${bond.affinity > 0 ? '+' : ''}${bond.affinity}/10 toward you${bond.relationship && bond.relationship !== 'stranger' ? ` (${bond.relationship})` : ''}${bond.note ? `: ${truncate(bond.note, 70)}` : ''}`
         : '';
 
       return `- ${narratorName(db, entity)}: ${together}${how ? ` (${truncate(how, 80)})` : ''}, ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared${feeling}`;
@@ -673,7 +678,7 @@ function formatCompanionIds(db: AppDatabase) {
   const companions = companionsOf(db);
   const refByEntity = refByEntityId(db);
 
-  return `TRAVELLING WITH KAN: ${
+  return `TRAVELLING WITH YOU: ${
     companions.length > 0
       ? companions.map((entity) => `${refByEntity.get(entity.id)} (${entity.name})`).join(', ')
       : 'nobody'
@@ -697,7 +702,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
       (entity) =>
         entity.type === 'character' &&
         entityIds.has(entity.id) &&
-        entity.name.toLowerCase() !== 'kan'
+        !isPlayer(db, entity)
     )
     // Companions first, so a crowded scene never cuts them.
     .sort((a, b) => Number(Boolean(b.companion)) - Number(Boolean(a.companion)))
@@ -707,7 +712,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     return '';
   }
 
-  // Someone Kan meets again after a long time; how each remembers him.
+  // Someone the player meets again after a long time; how each remembers the player.
   const reunions = reunionNotes(db, characters);
   const remembers = (entity: EntityRecord) => {
     const pov = latestPov(db, entity.id);
@@ -717,22 +722,22 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
 
   const present = sceneCastIdsOf(db);
   const known = (entity: EntityRecord) => {
-    const other = kanKnowsName(entity) ? alsoKnownAs(db, entity)[0] : undefined;
-    const card = kanKnowsName(entity) ? displayName(db, entity) : `${labelOf(db, entity)} [narrator only: ${entity.name}]`;
+    const other = playerKnowsName(entity) ? alsoKnownAs(db, entity)[0] : undefined;
+    const card = playerKnowsName(entity) ? displayName(db, entity) : `${labelOf(db, entity)} [narrator only: ${entity.name}]`;
 
     return `${card}${other ? ` (also called ${other})` : ''}`;
   };
   const truth = (entity: EntityRecord) => {
     const line = identityLine(db, entity, present.includes(entity.id) ? present : [...present, entity.id]);
 
-    return `\n  ${kanKnowsLine(db, entity)}.${line ? `\n${line}` : ''}`;
+    return `\n  ${playerKnowsLine(db, entity)}.${line ? `\n${line}` : ''}`;
   };
 
   return [
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${kanKnowsDeath(db, entity) ? '' : ', Kan does not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
+        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${playerKnowsDeath(db, entity) ? '' : ', you do not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatLoreProfile(db, entity.name)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
     ),
   ].join('\n');
 }
@@ -770,10 +775,10 @@ function formatCharacterRoster(db: AppDatabase) {
     ...refs.map(([ref, entity]) => {
       const others = entity.aliases.filter((alias) => alias.toLowerCase() !== entity.name.toLowerCase()).slice(0, 4);
       const notes = [
-        entity.name.toLowerCase() === 'kan' ? 'the player' : null,
+        isPlayer(db, entity) ? 'the player' : null,
         entity.met === false ? 'not met yet' : null,
-        entity.companion && !isDeceased(entity) ? 'travelling with Kan' : null,
-        isDeceased(entity) ? (kanKnowsDeath(db, entity) ? 'deceased' : 'deceased, Kan does not know yet') : null,
+        entity.companion && !isDeceased(entity) ? 'travelling with you' : null,
+        isDeceased(entity) ? (playerKnowsDeath(db, entity) ? 'deceased' : 'deceased, you do not know yet') : null,
       ].filter(Boolean);
 
       // People with more than one identity: the tracker sees them all.
@@ -786,7 +791,7 @@ function formatCharacterRoster(db: AppDatabase) {
 }
 
 /**
- * Details for the people this turn is about: Kan, the current scene cast,
+ * Details for the people this turn is about: the player, the current scene cast,
  * and anyone named in the turn.
  */
 function formatCharacterDetails(db: AppDatabase, turnText: string) {
@@ -798,7 +803,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
 
   const characters = db.entities
     .filter((entity) => entity.type === 'character')
-    .filter((entity) => entity.name.toLowerCase() === 'kan' || Boolean(entity.companion) || mentioned(entity))
+    .filter((entity) => isPlayer(db, entity) || Boolean(entity.companion) || mentioned(entity))
     .slice(0, 10);
 
   if (characters.length === 0) {
@@ -812,12 +817,12 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
       const role = truncate(entity.role ?? '', 40);
 
       if (isDeceased(entity)) {
-        return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
+        return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${playerKnowsDeath(db, entity) ? '' : ' (you do not know yet)'}`;
       }
 
-      const name = entity.name.toLowerCase() === 'kan' ? '' : `; ${kanKnowsName(entity) ? `you know them as ${displayName(db, entity)}` : `you don't know their name (you see "${labelOf(db, entity)}")`}`;
+      const name = isPlayer(db, entity) ? '' : `; ${playerKnowsName(entity) ? `you know them as ${displayName(db, entity)}` : `you don't know their name (you see "${labelOf(db, entity)}")`}`;
 
-      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with Kan]' : ''}${name}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
+      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with you]' : ''}${name}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
     }),
   ].join('\n');
 }
@@ -856,10 +861,10 @@ function formatBonds(db: AppDatabase) {
   const deadLabel = new Map(
     db.entities
       .filter(isDeceased)
-      .map((entity) => [entity.id, kanKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, Kan does not know yet]'])
+      .map((entity) => [entity.id, playerKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, you do not know yet]'])
   );
   const people = new Map(db.entities.map((entity) => [entity.id, entity]));
-  // The name Kan knows them by, never the record's own name.
+  // The name the player knows them by, never the record's own name.
   const bondName = (bond: BondRecord) => {
     const entity = people.get(bond.entityId);
 
@@ -886,11 +891,11 @@ function formatBonds(db: AppDatabase) {
 /**
  * Everyone who has died, always in the prompt, so no one comes back because
  * their death fact missed the 10-fact cut. Changes only when someone dies or
- * Kan learns of a death, so it sits in the cached part of the prompt.
+ * the player learns of a death, so it sits in the cached part of the prompt.
  */
 function formatTheDead(db: AppDatabase) {
   const dead = db.entities.filter(
-    (entity) => entity.type === 'character' && entity.name.toLowerCase() !== 'kan' && isDeceased(entity)
+    (entity) => entity.type === 'character' && !isPlayer(db, entity) && isDeceased(entity)
   );
 
   if (dead.length === 0) {
@@ -902,11 +907,11 @@ function formatTheDead(db: AppDatabase) {
     ...dead.map((entity) => {
       const cause = entity.deceased?.cause ? `: ${truncate(entity.deceased.cause, 60)}` : '';
 
-      // Someone Kan never met nor heard of has no label worth giving: the name stays the narrator's.
+      // Someone the player never met nor heard of has no label worth giving: the name stays the narrator's.
       const name =
-        kanKnowsName(entity) || entity.met !== false ? narratorName(db, entity) : `${entity.name} (unknown to Kan)`;
+        playerKnowsName(entity) || entity.met !== false ? narratorName(db, entity) : `${entity.name} (unknown to you)`;
 
-      return `- ${name}${cause}${kanKnowsDeath(db, entity) ? '' : ' (Kan does not know yet)'}`;
+      return `- ${name}${cause}${playerKnowsDeath(db, entity) ? '' : ' (you do not know yet)'}`;
     }),
   ].join('\n');
 }
@@ -1036,7 +1041,7 @@ function formatNewsBlock(db: AppDatabase) {
   return block;
 }
 
-/** YOUR NAME OUT THERE, with what strangers here call Kan. */
+/** YOUR NAME OUT THERE, with what strangers here call the player. */
 function formatNameOutThere(db: AppDatabase) {
   const block = formatReputationBlock(db);
   const extra = epithetLines(db).map((line) => `- ${line}`);
@@ -1076,7 +1081,7 @@ function formatCanonBlock(db: AppDatabase) {
       `PERSONAL STORY BEAT — do not assume it happened (era ${beat.era}): ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
     );
     lines.push(
-      '  This only occurs if Kan actually does it in the scene. Never state it has happened because time passed.'
+      '  This only occurs if the player actually does it in the scene. Never state it has happened because time passed.'
     );
   }
 
@@ -1093,7 +1098,7 @@ function formatCanonBlock(db: AppDatabase) {
       }
 
       lines.push(
-        '  If Kan\'s scene reaches this beat, play it out fully on the page.'
+        '  If the player\'s scene reaches this beat, play it out fully on the page.'
       );
     }
   }
@@ -1120,13 +1125,13 @@ function formatCanonTracking(db: AppDatabase) {
   for (const milestone of activeCanonMilestones(db).slice(0, 2)) {
     const accepted = milestone.playerDriven ? ' You accepted it; it is under way.' : '';
     lines.push(
-      `- ${milestone.id}: ${truncate(milestone.title, 70)} (active story beat).${accepted} canon_completed only at the moment it fully plays out on the page${milestone.completesWhen ? `: ${milestone.completesWhen}` : ''}; canon_engaged if Kan's scene took part in it this turn; canon_passed if the chance clearly slipped by (Kan left, time moved on).`
+      `- ${milestone.id}: ${truncate(milestone.title, 70)} (active story beat).${accepted} canon_completed only at the moment it fully plays out on the page${milestone.completesWhen ? `: ${milestone.completesWhen}` : ''}; canon_engaged if the player's scene took part in it this turn; canon_passed if the chance clearly slipped by (the player left, time moved on).`
     );
   }
 
   for (const beat of upcomingCanonMilestones(db, PERSONAL_OFFERS_PER_TURN)) {
     lines.push(
-      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat, offered). canon_engaged when Kan accepts or starts it this turn; canon_completed only when it actually happens on the page${beat.completesWhen ? `: ${beat.completesWhen}` : ''}. Never because time passed.`
+      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat, offered). canon_engaged when the player accepts or starts it this turn; canon_completed only when it actually happens on the page${beat.completesWhen ? `: ${beat.completesWhen}` : ''}. Never because time passed.`
     );
   }
 
@@ -1194,7 +1199,7 @@ function formatLoreProfile(db: AppDatabase, name: string) {
   const era = eraNoteFor(name, db.state.inStoryDate.year);
   const entity = db.entities.find((item) => item.name === name);
   const romance = entity?.romanceAccessibility ?? (entity?.gender === 'male' ? 'not-applicable' : profile.romanceAccessibility);
-  // A man's heart is never a romance option for Kan: only his devotion is told.
+  // Someone not open to romance with the player: only their devotion is told.
   const heart =
     romance === 'not-applicable'
       ? `; heart: ${truncate(profile.canonDevotion, 90)}`
@@ -1283,7 +1288,7 @@ function formatRecentMessages(messages: RawLogEntry[]) {
     'RECENT SCENE (oldest first)',
     ...messages.map((message, index) => {
       if (message.role === 'user') {
-        return `You (Kan): ${headAndTail(message.content, 500)}`;
+        return `You: ${headAndTail(message.content, 500)}`;
       }
 
       const clean = stripNarrationJson(message.content);
@@ -1351,7 +1356,7 @@ function formatElsewhere(db: AppDatabase) {
     .filter(
       (entity) =>
         entity.type === 'character' &&
-        entity.name !== 'Kan' &&
+        !isPlayer(db, entity) &&
         entity.met !== false &&
         entity.tier !== 'minor' &&
         !isDeceased(entity) &&

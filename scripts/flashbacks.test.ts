@@ -36,7 +36,7 @@ import {
   flashbackDateLine,
   flashbackOffer,
   flashbackView,
-  kanAgeAt,
+  playerAgeAt,
   normalizeFlashbacks,
   rememberChip,
 } from '../lib/rpg/flashbacks';
@@ -119,13 +119,13 @@ describe('the eighteen flashbacks', () => {
 
   test('Kan is the right age in each (0-13)', () => {
     const db = quietSave();
-    expect(kanAgeAt(db, FLASHBACK_BY_ID['nine-tails-night'].date)).toBe(5);
-    expect(kanAgeAt(db, FLASHBACK_BY_ID['team-three'].date)).toBe(9);
-    expect(kanAgeAt(db, FLASHBACK_BY_ID['the-mask'].date)).toBe(12);
-    expect(kanAgeAt(db, FLASHBACK_BY_ID['the-fight'].date)).toBe(13);
+    expect(playerAgeAt(db, FLASHBACK_BY_ID['nine-tails-night'].date)).toBe(5);
+    expect(playerAgeAt(db, FLASHBACK_BY_ID['team-three'].date)).toBe(9);
+    expect(playerAgeAt(db, FLASHBACK_BY_ID['the-mask'].date)).toBe(12);
+    expect(playerAgeAt(db, FLASHBACK_BY_ID['the-fight'].date)).toBe(13);
 
     for (const record of FLASHBACKS) {
-      const age = kanAgeAt(db, record.date);
+      const age = playerAgeAt(db, record.date);
       expect(age).toBeGreaterThanOrEqual(0);
       expect(age).toBeLessThanOrEqual(13);
     }
@@ -137,7 +137,7 @@ describe('the eighteen flashbacks', () => {
 
     for (const id of ['team-three', 'hanas-dogs']) {
       const record = FLASHBACK_BY_ID[id];
-      expect(kanAgeAt(db, record.date)).toBeGreaterThanOrEqual(9);
+      expect(playerAgeAt(db, record.date)).toBeGreaterThanOrEqual(9);
       expect(dateSortValue(record.date)).toBeLessThan(dateSortValue(joinsAnbu));
     }
 

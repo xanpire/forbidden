@@ -13,6 +13,7 @@
 
 import { CANON_MILESTONES } from './canonData';
 import type { AppDatabase, CalendarDate, EntityRecord } from './types';
+import { isPlayer } from './player';
 
 /** Tag left by markAlive, so loading a save never kills them again. */
 const REVIVED_TAG = 'revived';
@@ -32,7 +33,7 @@ export function isDeceased(entity: Pick<EntityRecord, 'deceased' | 'status'>): b
 }
 
 /** Dead, and the story has let Kan know. */
-export function kanKnowsDeath(db: AppDatabase, entity: EntityRecord): boolean {
+export function playerKnowsDeath(db: AppDatabase, entity: EntityRecord): boolean {
   if (!isDeceased(entity)) {
     return false;
   }
@@ -60,7 +61,7 @@ export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark)
 
   const entity = db.entities[index];
 
-  if (entity.type !== 'character' || entity.name.toLowerCase() === 'kan') {
+  if (entity.type !== 'character' || isPlayer(db, entity)) {
     return db;
   }
 
@@ -219,7 +220,7 @@ export function markKnownDeathsOnBonds(db: AppDatabase): AppDatabase {
   const bonds = db.bonds.map((bond) => {
     const entity = db.entities.find((item) => item.id === bond.entityId);
 
-    if (!entity || !kanKnowsDeath(db, entity) || /^deceased\b/i.test(bond.status)) {
+    if (!entity || !playerKnowsDeath(db, entity) || /^deceased\b/i.test(bond.status)) {
       return bond;
     }
 

@@ -20,7 +20,7 @@ import { NARRATION_SYSTEM, buildExtractionPrompt, buildNarrationPrompt } from '.
 import {
   CONVERSATION_MODE_MINIMUM_SECONDS,
   fightOptionInput,
-  readKanInput,
+  readPlayerInput,
   resolveTurnMode,
   setSceneModeOverride,
 } from '../lib/rpg/sceneMode';
@@ -85,20 +85,20 @@ function talking() {
 
 describe('reading Kan\'s input', () => {
   test('speech, attacks, scene changes and small moves in place', () => {
-    expect(readKanInput('"Where are we going?"').speaks).toBe(true);
-    expect(readKanInput('*I look deep in Itachi\'s eyes* "This is not like you."')).toMatchObject({
+    expect(readPlayerInput('"Where are we going?"').speaks).toBe(true);
+    expect(readPlayerInput('*I look deep in Itachi\'s eyes* "This is not like you."')).toMatchObject({
       speaks: true,
       attacks: false,
       changesScene: false,
     });
-    expect(readKanInput('*I follow him.*').changesScene).toBe(true);
-    expect(readKanInput('*I throw a kunai at his throat.*').attacks).toBe(true);
-    expect(readKanInput('*I lunge at Kakuzu.*').attacks).toBe(true);
+    expect(readPlayerInput('*I follow him.*').changesScene).toBe(true);
+    expect(readPlayerInput('*I throw a kunai at his throat.*').attacks).toBe(true);
+    expect(readPlayerInput('*I lunge at Kakuzu.*').attacks).toBe(true);
     // Words he says and attacks he refuses are not attacks.
-    expect(readKanInput('"I will kill him one day."').attacks).toBe(false);
-    expect(readKanInput('*I don\'t attack him.*').attacks).toBe(false);
-    expect(readKanInput('*I say nothing and look away.*')).toMatchObject({ attacks: false, changesScene: false });
-    expect(readKanInput('*I stand up and leave.*').changesScene).toBe(true);
+    expect(readPlayerInput('"I will kill him one day."').attacks).toBe(false);
+    expect(readPlayerInput('*I don\'t attack him.*').attacks).toBe(false);
+    expect(readPlayerInput('*I say nothing and look away.*')).toMatchObject({ attacks: false, changesScene: false });
+    expect(readPlayerInput('*I stand up and leave.*').changesScene).toBe(true);
   });
 });
 

@@ -29,6 +29,7 @@ import { canonStoryWeight, isCanonFigure } from './lives';
 import { applyReputationChanges, VILLAGE_NAME } from './reputation';
 import { hashText, playerTurnCount } from './util';
 import type { AppDatabase, ConsequenceKind, ConsequenceSeed, EntityRecord, TurnDiff } from './types';
+import { isPlayerEntity } from './player';
 
 /** Waiting seeds kept at once; the oldest fade first. */
 const MAX_WAITING = 24;
@@ -80,10 +81,6 @@ function windowDays(when: 'weeks' | 'months' | 'years' | undefined, seed: string
     default:
       return 45 + (roll % 120);
   }
-}
-
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
 }
 
 /** Someone whose memory of Kan matters to the story. */
@@ -150,7 +147,7 @@ export function applyConsequences(
 
     const entity = item.entityId ? next.entities.find((person) => person.id === item.entityId) : resolveEntity(next, who);
 
-    if (entity && isKan(entity)) continue;
+    if (entity && isPlayerEntity(entity)) continue;
 
     const duplicate = seedsOf(next).some(
       (seed) =>
@@ -246,7 +243,7 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
   const here = sceneIds(db);
   const kind = db.state.locationKind ?? 'wilderness';
   const peopled = kind === 'road' || kind === 'settlement';
-  const kanRegion = regionOf(db.state.location) ?? regionOf(db.state.scene);
+  const playerRegion = regionOf(db.state.location) ?? regionOf(db.state.scene);
   const person = seed.entityId ? db.entities.find((entity) => entity.id === seed.entityId) ?? null : null;
 
   if (person && (isDeceased(person) || (person.companion && !['lie', 'betrayal', 'promise', 'debt'].includes(seed.kind)))) {
@@ -259,12 +256,12 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
     case 'betrayal':
     case 'promise':
     case 'debt':
-      return person ? here.has(person.id) : peopled && near(kanRegion, seed.region as Region);
+      return person ? here.has(person.id) : peopled && near(playerRegion, seed.region as Region);
     case 'helped':
-      return kanRegion !== null && kanRegion === seed.region && peopled;
+      return playerRegion !== null && playerRegion === seed.region && peopled;
     case 'witness':
       // Without a village to talk to, the talk reaches a town near the place.
-      return peopled && kind === 'settlement' && near(kanRegion, seed.region as Region, 4);
+      return peopled && kind === 'settlement' && near(playerRegion, seed.region as Region, 4);
     case 'found':
       // They come to the place they found, while Kan is there (safehouses.ts searches it while he is away).
       return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId && !db.state.flashbacks?.active;
@@ -278,9 +275,9 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
       if (!peopled) return false;
       if (person) {
         if (here.has(person.id)) return true;
-        return near(kanRegion, whereaboutsRegion(person) ?? (seed.region as Region));
+        return near(playerRegion, whereaboutsRegion(person) ?? (seed.region as Region));
       }
-      return near(kanRegion, seed.region as Region, 3);
+      return near(playerRegion, seed.region as Region, 3);
     }
   }
 }

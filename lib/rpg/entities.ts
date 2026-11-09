@@ -9,6 +9,7 @@ import { isPlaceholderStatus, NEWLY_MET_STATUS, UNMET_STATUS } from './met';
 import { romanceFor } from './romance';
 import { uniqueList } from './util';
 import type { AppDatabase, EntityRecord, TurnDiff } from './types';
+import { isPlayer } from './player';
 
 type CharacterRef = { entityId?: string; name: string };
 
@@ -446,7 +447,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
   const drop = db.entities.find((entity) => entity.id === dropId);
 
   // You are never folded into someone else.
-  if (!keep || !drop || keep.id === drop.id || drop.name.toLowerCase() === 'kan') {
+  if (!keep || !drop || keep.id === drop.id || isPlayer(db, drop)) {
     return db;
   }
 
@@ -891,7 +892,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   };
 
   const nextState =
-    existing.name.toLowerCase() === 'kan' && nextMood
+    isPlayer(db, existing) && nextMood
       ? { ...db.state, mood: nextMood }
       : db.state;
 

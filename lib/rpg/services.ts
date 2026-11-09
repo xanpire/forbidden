@@ -22,10 +22,11 @@ import { applyJutsuDiff, isBareNatureName, jutsuKey } from './jutsu';
 import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
-import { convertStateBlock, parseJsonObject, repairTruncatedJson } from './stateBlock';
+import { convertStateBlock, parseJsonObject, repairTruncatedJson, statePlayerOf } from './stateBlock';
 import { TURN_STATE_SCHEMA, TURN_STATE_SCHEMA_NAME } from './stateSchema';
 import { type TitledSummary, parseTitledSummary, uniqueList } from './util';
 import type { AppDatabase, CalendarDate, RawLogEntry, TurnDiff } from './types';
+import { isPlayer, isPlayerName } from './player';
 
 /** Room for the state reply. Thinking tokens count against this too. */
 const STATE_MAX_TOKENS = 3000;
@@ -211,7 +212,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.mood = state.mood.trim().slice(0, 60);
 
     next.entities = next.entities.map((entity) =>
-      entity.name.toLowerCase() === 'kan'
+      isPlayer(next, entity)
         ? { ...entity, mood: next.state.mood }
         : entity
     );
@@ -261,7 +262,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   // You are never in your own scene cast.
   if (Array.isArray(state.sceneCast)) {
-    next.state.sceneCast = state.sceneCast.filter((name) => name && name.trim().toLowerCase() !== 'kan').slice(0, 6);
+    next.state.sceneCast = state.sceneCast.filter((name) => name && !isPlayerName(db, name)).slice(0, 6);
   }
 
   if (
@@ -391,7 +392,7 @@ export async function extractTurnDiff(options: {
     return null;
   }
 
-  const diff = convertStateBlock(parsed).diff;
+  const diff = convertStateBlock(parsed, statePlayerOf(db)).diff;
 
   return diff ? resolveCharacterRefs(db, diff) : null;
 }

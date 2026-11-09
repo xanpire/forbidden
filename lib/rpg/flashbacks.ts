@@ -18,6 +18,9 @@
  *   one point at most. Each flashback plays once.
  */
 import { advanceSeconds, calculateAge, daysBetween, daysFromCivil, entityAge, formatDate, timeOfDayOf } from './calendar';
+import { isPlayer, playerAgeAt } from './player';
+
+export { playerAgeAt };
 import { FLASHBACKS, FLASHBACK_BY_ID, KAN_PARENTS, type FlashbackRecord } from './flashbackData';
 import { milestoneStage } from './canon';
 import { CANON_MILESTONES } from './canonData';
@@ -155,13 +158,9 @@ export function ageWord(age: number): string {
   return NUMBER_WORDS[age] ?? String(age);
 }
 
-export function kanAgeAt(db: Pick<AppDatabase, 'state'>, date: CalendarDate): number {
-  const player = db.state.player;
-  return calculateAge(date, player.birthday, player.birthYear);
-}
 
 /** What Kan could do at an age, for the narrator. */
-export function kanThen(age: number): string {
+export function playerThen(age: number): string {
   if (age <= 5) {
     return `a small child of ${ageWord(age)}: no jutsu and no chakra training; he can run, climb, hide and cry like any child his age, and his size and strength are a child’s`;
   }
@@ -178,7 +177,7 @@ export function kanThen(age: number): string {
 }
 
 /** How Kan looks at an age, for images (his reference sheets show him at 13 and older). */
-export function kanLookAt(age: number): string {
+export function playerLookAt(age: number): string {
   if (age <= 5) {
     return `Kan as a small child of ${age}: round face, short black spiky hair, the same brown eyes, small and slight, in plain child’s clothes`;
   }
@@ -308,7 +307,7 @@ export function flashbackOffer(db: AppDatabase, input: string, mode: SceneModeNa
 }
 
 function whenLine(db: AppDatabase, record: FlashbackRecord, date: CalendarDate = record.date) {
-  const age = kanAgeAt(db, date);
+  const age = playerAgeAt(db, date);
   return `Year ${date.year}, when you were ${ageWord(age)}`;
 }
 
@@ -322,7 +321,7 @@ export function formatFlashbackOffer(db: AppDatabase, record: FlashbackRecord | 
 /** The date line shown above a flashback in the chat ("Year 5, Oct 10. You are five."). */
 export function flashbackDateLine(db: Pick<AppDatabase, 'state'>, date: CalendarDate): string {
   const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][date.month - 1];
-  const age = kanAgeAt(db, date);
+  const age = playerAgeAt(db, date);
   return `Year ${date.year}, ${month} ${date.day}. You are ${ageWord(age)}.`;
 }
 
@@ -470,7 +469,7 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
   if (!playing) return '';
 
   const { record, active } = playing;
-  const age = kanAgeAt(db, active.date);
+  const age = playerAgeAt(db, active.date);
   const present = lastPresentReply(db);
   const presentTail = present ? present.content.trim().slice(-320).replace(/\s+/g, ' ') : '';
   const hidden = hiddenLines(db, record);
@@ -481,7 +480,7 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
     `WHEN: ${formatDate(active.date)}. You are ${ageWord(age)}. It is ${timeOfDayOf(active.date)}.`,
     `WHERE: ${active.place}.`,
     weatherLine,
-    `KAN THEN: ${kanThen(age)}. No Sharingan: it awakens only in Year 13, when Itachi tells him the truth. His real strength stays hidden; never show its limit. The jutsu, abilities, inventory and wounds listed above belong to the present and do not exist here; Thousand Souls is never used or seen.`,
+    `KAN THEN: ${playerThen(age)}. No Sharingan: it awakens only in Year 13, when Itachi tells him the truth. His real strength stays hidden; never show its limit. The jutsu, abilities, inventory and wounds listed above belong to the present and do not exist here; Thousand Souls is never used or seen.`,
     'WHO IS THERE THEN (everyone at their age on this date, with the personality they had then; the dead are alive in this memory, so THE DEAD list does not apply inside it):',
     ...castLines(db, record, active.date),
     ...(record.castNotes ?? []).map((note) => `- ${note}`),
@@ -513,7 +512,7 @@ export function flashbackTrackingLines(db: AppDatabase, offeredId: string | unde
   const playing = activeFlashback(db);
 
   if (playing) {
-    const age = kanAgeAt(db, playing.active.date);
+    const age = playerAgeAt(db, playing.active.date);
     return [
       `THIS TURN IS A MEMORY (flashback "${playing.record.title}", ${formatDate(playing.active.date)}, you are ${ageWord(age)}). Report time and location as they pass inside the memory. characters_present: who is in the memory scene (the dead are alive in it: list them). bonds: only how someone in the memory feels about you because of it, affinity_change -1..1. Leave inventory, jutsu, facts, threads, canon, news, letters, reputation, consequences, deaths, revived, companions, natures and abilities empty: the memory is recorded separately. flashback: "ended" when the reply closes the memory and brings you back to the present; otherwise null.`,
     ];
@@ -615,7 +614,7 @@ export function applyFlashbackTurn(
 
   const castIds = (extraction?.state?.sceneCast ?? [])
     .map((name) => resolveEntity(latest, name))
-    .filter((entity): entity is EntityRecord => Boolean(entity) && entity!.name.toLowerCase() !== 'kan')
+    .filter((entity): entity is EntityRecord => Boolean(entity) && !isPlayer(latest, entity))
     .map((entity) => entity.id);
   const nudges = { ...active.nudges };
 
@@ -789,7 +788,7 @@ export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'fl
 
   const record = FLASHBACK_BY_ID[entry.flashback.id];
   const date = entry.flashback.date;
-  const age = kanAgeAt(db, date);
+  const age = playerAgeAt(db, date);
   const people = db.entities
     .filter((entity) => entity.type === 'character' && entity.name !== 'Kan' && mentionsEntity(entry.content, entity))
     .slice(0, 5)
@@ -800,7 +799,7 @@ export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'fl
 
   return [
     `THIS IS A MEMORY from Year ${date.year}${record ? ` (${record.title})` : ''}, before the story: draw everyone at their age then.`,
-    `${kanLookAt(age)}. Keep his face recognisable from the face sheet, but make him truly ${age} years old: a child's proportions and size, not a teenager.`,
+    `${playerLookAt(age)}. Keep his face recognisable from the face sheet, but make him truly ${age} years old: a child's proportions and size, not a teenager.`,
     people.length > 0 ? `Others at their age then: ${people.join(', ')}.` : '',
     record ? `Place: ${localizePlaceNames(record.place)}.` : '',
     'A warm, faded, nostalgic tint over the whole image, like an old memory.',

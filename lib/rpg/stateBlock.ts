@@ -2,6 +2,7 @@
 
 import { readRyo } from './money';
 import type {
+  AppDatabase,
   Audience,
   ConsequenceKind,
   FactType,
@@ -15,11 +16,22 @@ import type {
   TurnDiff,
   VillageFaction,
 } from './types';
+import { isPlayerRef, playerName, playerRefs } from './player';
 
 const CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
 const AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
 const KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
 const VILLAGES = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
+
+/** How the state reply may name the player: the name for the jutsu user field, and every ref. */
+export type StatePlayer = { name: string; refs: readonly string[] };
+
+const GENERIC_PLAYER: StatePlayer = { name: 'You', refs: playerRefs(null) };
+
+/** The player's name and refs in this save, for convertStateBlock. */
+export function statePlayerOf(db: AppDatabase): StatePlayer {
+  return { name: playerName(db), refs: playerRefs(db) };
+}
 
 /**
  * Turns the state model's snake_case JSON (see stateSchema.ts) into a
@@ -27,8 +39,11 @@ const VILLAGES = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
  * the older nested `state: { location, ... }` shape is still accepted.
  */
 export function convertStateBlock(
-  block: Record<string, unknown> | null
+  block: Record<string, unknown> | null,
+  player: StatePlayer = GENERIC_PLAYER
 ): { diff: TurnDiff | null; imageWorthy: boolean } {
+  const notPlayer = (value: string) => !isPlayerRef(player.refs, value);
+
   if (!block || typeof block !== 'object') {
     return { diff: null, imageWorthy: false };
   }
@@ -130,7 +145,7 @@ export function convertStateBlock(
         part: (typeof item.part === 'string' && parts.has(item.part) ? item.part : 'full') as NamePart,
         how: (typeof item.how === 'string' && hows.has(item.how) ? item.how : 'told') as NameHow,
       }))
-      .filter((item) => item.character.length > 0 && item.name.length > 0 && item.character.toLowerCase() !== 'kan')
+      .filter((item) => item.character.length > 0 && item.name.length > 0 && notPlayer(item.character))
       .slice(0, 6);
 
     if (learned.length > 0) {
@@ -183,7 +198,7 @@ export function convertStateBlock(
     const events = block.life_events
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({ name: cleanString(item.character_id) ?? '', text: cleanString(item.event)?.slice(0, 160) ?? '' }))
-      .filter((item) => item.name && item.text && item.name.toLowerCase() !== 'kan')
+      .filter((item) => item.name && item.text && notPlayer(item.name))
       .slice(0, 3);
 
     if (events.length > 0) {
@@ -244,7 +259,7 @@ export function convertStateBlock(
         event: (typeof item.event === 'string' ? item.event.trim().toLowerCase() : '') as 'wronged' | 'struck' | 'settled' | 'forgiven',
         reason: cleanString(item.reason)?.slice(0, 160),
       }))
-      .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan' && events.has(item.event))
+      .filter((item) => item.name.length > 0 && notPlayer(item.name) && events.has(item.event))
       .slice(0, 4);
 
     if (grudges.length > 0) {
@@ -339,7 +354,7 @@ export function convertStateBlock(
       kind: beatKind,
       with: Array.isArray(block.beat_with)
         ? block.beat_with
-            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && id.trim().toLowerCase() !== 'kan')
+            .filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && notPlayer(id))
             .map((id) => id.trim())
             .slice(0, 6)
         : [],
@@ -372,7 +387,7 @@ export function convertStateBlock(
 
   const charactersPresent = Array.isArray(block.characters_present)
     ? block.characters_present
-        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0 && name.trim().toLowerCase() !== 'kan')
+        .filter((name): name is string => typeof name === 'string' && name.trim().length > 0 && notPlayer(name))
         .slice(0, 8)
     : [];
 
@@ -506,7 +521,7 @@ export function convertStateBlock(
 
         return {
           name: typeof jutsu.name === 'string' ? jutsu.name : '',
-          user: typeof jutsu.user === 'string' && jutsu.user.trim() ? jutsu.user.trim() : 'Kan',
+          user: typeof jutsu.user === 'string' && jutsu.user.trim() ? jutsu.user.trim() : player.name,
           chakraNature:
             typeof jutsu.chakra_nature === 'string'
               ? jutsu.chakra_nature
@@ -583,7 +598,7 @@ export function convertStateBlock(
           subject: cleanString(fact.entity),
           ...(whoKnows.length > 0 ? { whoKnows } : {}),
           ...(supersedes.length > 0 ? { supersedes } : {}),
-          ...(claimedBy && claimedBy.toLowerCase() !== 'kan' ? { claimedBy } : {}),
+          ...(claimedBy && notPlayer(claimedBy) ? { claimedBy } : {}),
           ...(lasts ? { lasts } : {}),
           ...(typeof fact.days === 'number' && Number.isFinite(fact.days) && fact.days > 0 ? { days: fact.days } : {}),
         };
@@ -602,7 +617,7 @@ export function convertStateBlock(
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => {
         const thread = item as { title?: unknown; description?: unknown; status?: unknown; participants?: unknown };
-        const participants = stringItems(thread.participants).filter((name) => name.toLowerCase() !== 'kan');
+        const participants = stringItems(thread.participants).filter(notPlayer);
         const action: 'open' | 'update' | 'resolve' =
           thread.status === 'resolved' || thread.status === 'resolve'
             ? 'resolve'
@@ -682,7 +697,7 @@ export function convertStateBlock(
         name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
         cause: cleanString(item.cause),
       }))
-      .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan');
+      .filter((item) => item.name.length > 0 && notPlayer(item.name));
 
     if (deaths.length > 0) {
       diff.deaths = deaths;
@@ -695,8 +710,8 @@ export function convertStateBlock(
     diff.revived = revived;
   }
 
-  const companionsJoined = companionRefs(block.companions_joined);
-  const companionsLeft = companionRefs(block.companions_left);
+  const companionsJoined = companionRefs(block.companions_joined, notPlayer);
+  const companionsLeft = companionRefs(block.companions_left, notPlayer);
 
   if (companionsJoined.length > 0) {
     diff.companionsJoined = companionsJoined;
@@ -763,7 +778,7 @@ export function convertStateBlock(
   return { diff: hasChanges ? diff : null, imageWorthy };
 }
 
-function companionRefs(value: unknown): { name: string; reason?: string }[] {
+function companionRefs(value: unknown, notPlayer: (name: string) => boolean): { name: string; reason?: string }[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -779,7 +794,7 @@ function companionRefs(value: unknown): { name: string; reason?: string }[] {
             }
           : { name: '' }
     )
-    .filter((item) => item.name.length > 0 && item.name.toLowerCase() !== 'kan')
+    .filter((item) => item.name.length > 0 && notPlayer(item.name))
     .map((item) => (item.reason ? item : { name: item.name }));
 }
 

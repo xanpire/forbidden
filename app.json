@@ -1,20 +1,20 @@
 {
   "expo": {
-    "name": "Kan",
-    "slug": "kan",
+    "name": "frbddn",
+    "slug": "frbddn",
     "version": "1.24.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "kan",
+    "scheme": "frbddn",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#050505",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kan.story"
+      "bundleIdentifier": "com.frbddn.app"
     },
     "android": {
-      "package": "com.kan.story",
+      "package": "com.frbddn.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#0A0A0A"
@@ -33,14 +33,14 @@
       "bundler": "metro",
       "output": "static",
       "favicon": "./assets/images/favicon.png",
-      "name": "Kan \u2014 Interactive Naruto RPG",
-      "shortName": "Kan",
+      "name": "frbddn \u2014 Sandbox Roleplay",
+      "shortName": "frbddn",
       "lang": "en",
       "scope": "/",
       "startUrl": "/",
       "themeColor": "#050505",
       "backgroundColor": "#050505",
-      "description": "A single-page PWA where you play Kan, an original shinobi in the Naruto universe.",
+      "description": "A sandbox roleplay game: be anyone, in any world you write.",
       "display": "standalone",
       "orientation": "portrait",
       "barStyle": "black-translucent"

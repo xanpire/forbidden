@@ -17,6 +17,7 @@ import { generateImage } from '@/lib/openrouter';
 import { beginPainting, endPainting, portraitKey } from '@/lib/rpg/characterPortrait';
 import { recordDebugImage } from '@/lib/rpg/debug';
 import { calculateAge, formatDayMonth } from '@/lib/rpg/calendar';
+import { playerAge, playerName } from '@/lib/rpg/player';
 import { useGame } from '@/lib/rpg/game';
 import { loadImage, useStoredImage } from '@/lib/rpg/imageStore';
 import {
@@ -30,7 +31,7 @@ import {
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import {
   faceDroppedWarning,
-  loadKanReferenceImages,
+  loadPlayerReferenceImages,
   planReferences,
 } from '@/lib/rpg/referenceImages';
 import type { PortraitRecord } from '@/lib/rpg/types';
@@ -118,15 +119,15 @@ export function PortraitHeader() {
     setBusy(true);
 
     try {
-      const [caps, kanRefs] = await Promise.all([
+      const [caps, playerRefImages] = await Promise.all([
         ensureImageCaps(db, updateSettings),
-        loadKanReferenceImages(wearsAkatsukiCloak(db)),
+        loadPlayerReferenceImages(wearsAkatsukiCloak(db)),
       ]);
       const previous = latest ? await loadImage(latest.image) : null;
       const plan = planReferences(
         [
-          { kind: 'face', uri: kanRefs.face },
-          { kind: 'outfit', uri: kanRefs.outfit },
+          { kind: 'face', uri: playerRefImages.face },
+          { kind: 'outfit', uri: playerRefImages.outfit },
           { kind: 'previous', uri: previous ?? '' },
         ],
         caps.maxReferences
@@ -158,7 +159,7 @@ export function PortraitHeader() {
     return null;
   }
 
-  const age = calculateAge(db.state.inStoryDate, db.state.player.birthday, db.state.player.birthYear);
+  const age = playerAge(db);
   const stale = Boolean(staleReason);
 
   return (
@@ -180,9 +181,9 @@ export function PortraitHeader() {
         </Pressable>
 
         <View style={styles.info}>
-          <Text style={type.pageTitle}>{db.state.player.name || 'Kan'}</Text>
+          <Text style={type.pageTitle}>{playerName(db)}</Text>
           <Text style={styles.role}>
-            Age {age} · {db.state.player.rank || db.state.player.role}
+            Age {age} · {db.state.player.role}
           </Text>
           <Text numberOfLines={2} style={type.rowMeta}>
             {db.state.mood}

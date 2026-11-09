@@ -16,10 +16,10 @@ import { MergeSheet } from '@/components/kan/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
-import { kanKnowsDeath } from '@/lib/rpg/deaths';
+import { playerKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
-import { alsoKnownAs, displayName, kanKnowsName } from '@/lib/rpg/names';
+import { alsoKnownAs, displayName, playerKnowsName } from '@/lib/rpg/names';
 
 function Chip({ label, accent }: { label: string; accent?: boolean }) {
   return (
@@ -65,7 +65,7 @@ export default function BondScreen() {
   const name = displayName(db, entity);
   const otherNames = alsoKnownAs(db, entity);
   // Only once the story has told you: a death still on its way is not spoiled here.
-  const dead = kanKnowsDeath(db, entity);
+  const dead = playerKnowsDeath(db, entity);
   const death = entity.deceased;
   const deathLabel = dead
     ? death?.date
@@ -228,7 +228,7 @@ export default function BondScreen() {
                 <ListRow
                   key={`${event.date.year}-${event.date.month}-${event.date.day}-${index}`}
                   meta={`${formatDayMonth(event.date)}, year ${event.date.year}`}
-                  title={`${kanKnowsName(entity) ? name.split(' ')[0] : name.charAt(0).toUpperCase() + name.slice(1)} ${event.text}`}
+                  title={`${playerKnowsName(entity) ? name.split(' ')[0] : name.charAt(0).toUpperCase() + name.slice(1)} ${event.text}`}
                 />
               ))}
             </ListCard>

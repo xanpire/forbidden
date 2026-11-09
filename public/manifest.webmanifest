@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Kan \u2014 Interactive Naruto RPG",
-  "short_name": "Kan",
-  "description": "A single-page PWA where you play Kan, an original shinobi in the Naruto universe.",
+  "name": "frbddn \u2014 Sandbox Roleplay",
+  "short_name": "frbddn",
+  "description": "A sandbox roleplay game: be anyone, in any world you write.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

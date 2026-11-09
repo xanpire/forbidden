@@ -2,11 +2,11 @@
 // "you have no Sharingan" note ends when it awakens, "Itachi holds back the
 // truth" ends once he has explained, and so on.
 
-import { kanKnowsDeath } from './deaths';
+import { playerKnowsDeath } from './deaths';
 import type { AppDatabase, LoreCondition, LoreFlag, LoreRecord } from './types';
 
 function hasAbility(db: AppDatabase, pattern: RegExp) {
-  return (db.state.player.abilities ?? []).some((ability) => pattern.test(ability.name));
+  return (db.state.player.abilityStages ?? []).some((ability) => pattern.test(ability.name));
 }
 
 /** State flags lore can wait for. */
@@ -15,7 +15,7 @@ export const LORE_FLAGS: Record<LoreFlag, (db: AppDatabase) => boolean> = {
   hasMangekyo: (db) => hasAbility(db, /mangeky/i),
   knowsIzumiDead: (db) => {
     const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha');
-    return Boolean(izumi && kanKnowsDeath(db, izumi));
+    return Boolean(izumi && playerKnowsDeath(db, izumi));
   },
   headbandScratched: (db) =>
     db.state.inventory.some((item) => /(forehead protector|headband)/i.test(item) && /scratch|slash/i.test(item)),

@@ -28,6 +28,7 @@ import type {
   SceneModeState,
   ScenePace,
 } from './types';
+import { isPlayer, isPlayerName } from './player';
 
 /** Exchange beats in a row before conversation mode starts by itself. */
 export const CONVERSATION_STREAK = 2;
@@ -67,7 +68,7 @@ function hasMove(text: string, pattern: RegExp) {
 const LEAVES =
   /\b(leave|leaves|leaving|walk (?:away|off|out|on|back|to|toward|towards|into|through|down|up|north|south|east|west)|walk away|head (?:out|off|back|north|south|east|west|to|toward|towards|for|into|down|up)|go (?:to|back|out|inside|outside|home|north|south|east|west|into|up|down)|set (?:off|out)|travel|journey|run (?:off|away|to|toward|towards|after)|flee|race (?:off|to|after)|follow (?:him|her|them|the|it)|i follow|you follow|climb|enter|step (?:out|outside|inside|into|through)|jump (?:down|off|into|across|from)|leap (?:down|off|into|across|from|away)|sleep|go to bed|lie down to sleep|turn in for the night|rest (?:for|until) |wait (?:until|till|for (?:the|an?|hours?|nightfall|dawn|morning))|train (?:for|until)|keep (?:walking|moving|going|running))\b/gi;
 
-export type KanInput = {
+export type PlayerInput = {
   /** Kan says something out loud. */
   speaks: boolean;
   /** Kan attacks someone. */
@@ -79,7 +80,7 @@ export type KanInput = {
 };
 
 /** What Kan's input is: talk, an attack, a scene change, or a small move in place. */
-export function readKanInput(input: string): KanInput {
+export function readPlayerInput(input: string): PlayerInput {
   const text = input ?? '';
   const speaks = QUOTED.test(text);
   // Only what Kan does counts as action, never the words he says.
@@ -119,16 +120,16 @@ function partnerNames(db: AppDatabase, partners: string[]) {
   return partners
     .map((partner) => {
       const entity = db.entities.find((item) => item.id === partner);
-      return entity ? (entity.name.toLowerCase() === 'kan' ? entity.name : displayName(db, entity)) : partner;
+      return entity ? (isPlayer(db, entity) ? '' : displayName(db, entity)) : partner;
     })
-    .filter((name) => name && name.toLowerCase() !== 'kan')
+    .filter((name) => name && !isPlayerName(db, name))
     .slice(0, 4);
 }
 
 function castNames(db: AppDatabase) {
   return (db.state.sceneCast ?? []).filter((name) => {
     const entity = resolveEntity(db, name);
-    return name.toLowerCase() !== 'kan' && !(entity && isDeceased(entity));
+    return !isPlayerName(db, name) && !(entity && isPlayer(db, entity)) && !(entity && isDeceased(entity));
   });
 }
 
@@ -138,7 +139,7 @@ function castNames(db: AppDatabase) {
  */
 export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   const state = sceneModeOf(db);
-  const kan = readKanInput(input);
+  const kan = readPlayerInput(input);
   const fightOn = fightGoingOn(db);
   const talking = state.exchangeStreak > 0 && !db.state.sceneClosed;
   const talkers = partnerNames(db, state.partners);
@@ -201,14 +202,14 @@ function resolvePartners(db: AppDatabase, raw: string[]): string[] {
       const entity = refs.get(trimmed.toLowerCase()) ?? resolveEntity(db, trimmed) ?? resolveEntity(db, trimmed.replace(/-/g, ' '));
       return entity ? entity.id : trimmed.toLowerCase();
     })
-    .filter((value) => value && value !== 'kan');
+    .filter((value) => value && !isPlayerName(db, value));
 
   return [...new Set(ids)].slice(0, 6);
 }
 
 /** When the tracker gave no beat: read it from the pace and Kan's input. */
 export function fallbackBeat(pace: ScenePace | undefined, input: string, narration: string): SceneBeat {
-  const kan = readKanInput(input);
+  const kan = readPlayerInput(input);
 
   if (pace === 'combat') return 'combat';
   if (pace === 'travel' || pace === 'chase') return 'travel';
@@ -234,7 +235,7 @@ export function applySceneBeat(
 ): AppDatabase {
   const before = sceneModeOf(db);
   const kind = options.beat?.kind ?? fallbackBeat(options.pace, options.input, options.narration);
-  const kan = readKanInput(options.input);
+  const kan = readPlayerInput(options.input);
   let partners = resolvePartners(db, options.beat?.with ?? []);
 
   if (partners.length === 0 && kind === 'exchange') {
@@ -339,13 +340,13 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
 // ---------------------------------------------------------------------------
 // Prompt lines
 
-function kanCondition(db: AppDatabase) {
+function playerCondition(db: AppDatabase) {
   return db.facts
     .filter(
       (fact) =>
         fact.validTo === null &&
         (fact.type === 'injury' || fact.type === 'condition') &&
-        (fact.subjectEntityId === undefined || fact.subjectEntityId === null || db.entities.find((e) => e.id === fact.subjectEntityId)?.name.toLowerCase() === 'kan')
+        (fact.subjectEntityId === undefined || fact.subjectEntityId === null || isPlayer(db, db.entities.find((e) => e.id === fact.subjectEntityId)))
     )
     .slice(-3)
     .map((fact) => (fact.text.length > 80 ? `${fact.text.slice(0, 79)}…` : fact.text));
@@ -357,7 +358,7 @@ export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
   const chosen = turn.manual ? ' (Kan chose this mode: keep it even if the scene moves on)' : '';
 
   if (turn.mode === 'fight') {
-    const condition = kanCondition(db);
+    const condition = playerCondition(db);
     return [
       `SCENE MODE: fight${turn.with.length > 0 ? ` against or beside ${turn.with.join(', ')}` : ''}${chosen}. Short exchange: show what Kan's move does, then the opponent's next specific move, and stop before it lands.`,
       condition.length > 0 ? `Kan right now: ${condition.join('; ')}.` : '',

@@ -5,7 +5,7 @@ const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')
 );
 const version = pkg.version;
-const cacheName = `kan-shell-${version.replace(/\./g, '-')}`;
+const cacheName = `frbddn-shell-${version.replace(/\./g, '-')}`;
 
 const v = `?v=${version}`;
 

@@ -11,18 +11,18 @@ import { PortraitHeader } from '@/components/kan/PortraitHeader';
 import { colors, spacing } from '@/constants/theme';
 import { useGame } from '@/lib/rpg/game';
 
-type KanTab = 'bonds' | 'jutsu' | 'journal' | 'map';
+type YouTab = 'bonds' | 'jutsu' | 'journal' | 'map';
 
-const TABS: { value: KanTab; label: string }[] = [
+const TABS: { value: YouTab; label: string }[] = [
   { value: 'bonds', label: 'Bonds' },
   { value: 'jutsu', label: 'Jutsu' },
   { value: 'journal', label: 'Journal' },
   { value: 'map', label: 'Map' },
 ];
 
-export default function KanScreen() {
+export default function YouScreen() {
   const { db } = useGame();
-  const [tab, setTab] = useState<KanTab>('bonds');
+  const [tab, setTab] = useState<YouTab>('bonds');
 
   if (!db) {
     return (

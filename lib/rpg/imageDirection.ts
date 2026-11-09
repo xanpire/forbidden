@@ -9,6 +9,7 @@ import { mentionsEntity } from './characterRefs';
 import { secondsBetween } from './calendar';
 import { currentWeather } from './weather';
 import type { AppDatabase, CalendarDate, JutsuRecord, RawLogEntry, WeatherCondition } from './types';
+import { isPlayer } from './player';
 
 // ---------------------------------------------------------------------------
 // Shot types
@@ -327,7 +328,7 @@ export function lookTags(
     .filter(
       (entity) =>
         entity.type === 'character' &&
-        entity.name.toLowerCase() !== 'kan' &&
+        !isPlayer(db, entity) &&
         !options.exclude?.has(entity.name) &&
         (entity.appearance?.trim() || entity.currentLook?.trim()) &&
         mentionsEntity(action, entity)

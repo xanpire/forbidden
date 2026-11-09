@@ -6,6 +6,7 @@
 // story log (rawLog[].image and imageMeta), the chapters and your road.
 
 import { calculateAge, dateSortValue } from './calendar';
+import { playerAgeAt, playerDisplayNames } from './player';
 import { CANON_ERA_ORDER, CANON_MILESTONES } from './canonData';
 import { localizePlaceNames } from './glossary';
 import { FLASHBACK_BY_ID } from './flashbackData';
@@ -74,15 +75,15 @@ const CAPTION_LENGTH = 150;
  * The third-person action line is never used: rewriting it word by word
  * leaves slips like "You kneel and sets down" or "You draw his blade".
  */
-export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>): string {
+export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>, playerNames: readonly string[] = []): string {
   const written = entry.imageMeta?.caption?.trim();
 
   if (written) return firstSentences(written, 1, CAPTION_LENGTH);
 
   const opening = firstSentences(entry.content.replace(/\*+/g, '').replace(/\s+/g, ' ').trim(), 1, CAPTION_LENGTH);
 
-  // Only a reply that names Kan needs the swap; the narrator normally writes "you".
-  return secondPerson(opening);
+  // Only a reply that names the player needs the swap; the narrator normally writes "you".
+  return secondPerson(opening, playerNames);
 }
 
 /** Where you were at a moment, from your road. */
@@ -99,7 +100,7 @@ export function placeAt(db: AppDatabase, date: CalendarDate): string | null {
 }
 
 export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
-  const player = db.state.player;
+  const names = playerDisplayNames(db);
 
   return db.rawLog
     .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
@@ -113,9 +114,9 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
         image: entry.image as string,
         date,
         chapter: memory ? -memory.number : entry.chapter,
-        caption: captionOf(entry),
+        caption: captionOf(entry, names),
         place: memory ? localizePlaceNames(memory.place) : placeAt(db, entry.inStoryDate),
-        age: calculateAge(date, player.birthday, player.birthYear),
+        age: playerAgeAt(db, date),
         ...(memory ? { memory: memory.title } : {}),
       };
     })

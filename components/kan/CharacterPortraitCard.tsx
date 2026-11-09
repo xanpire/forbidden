@@ -22,7 +22,7 @@ import {
 import { recordDebugImage } from '@/lib/rpg/debug';
 import { pickImageFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
-import { displayName, kanKnowsName } from '@/lib/rpg/names';
+import { displayName, playerKnowsName } from '@/lib/rpg/names';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { loadImage, useStoredImage } from '@/lib/rpg/imageStore';
 import { planReferences } from '@/lib/rpg/referencePlan';
@@ -182,7 +182,7 @@ export function CharacterPortraitCard({
         >
           <StoredImage
             fallback={
-              <Text style={styles.initial}>{(kanKnowsName(entity) ? name : '?').trim().charAt(0).toUpperCase() || '?'}</Text>
+              <Text style={styles.initial}>{(playerKnowsName(entity) ? name : '?').trim().charAt(0).toUpperCase() || '?'}</Text>
             }
             value={latest?.image ?? null}
           />
@@ -194,7 +194,7 @@ export function CharacterPortraitCard({
         </Pressable>
 
         <View style={styles.info}>
-          <Text style={type.pageTitle}>{kanKnowsName(entity) ? name : name.charAt(0).toUpperCase() + name.slice(1)}</Text>
+          <Text style={type.pageTitle}>{playerKnowsName(entity) ? name : name.charAt(0).toUpperCase() + name.slice(1)}</Text>
           {subtitle ? <Text style={type.rowBody}>{subtitle}</Text> : null}
           <View style={styles.spacer} />
           <View style={styles.statusRow}>

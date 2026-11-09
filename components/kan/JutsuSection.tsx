@@ -68,7 +68,7 @@ export function JutsuSection() {
   }
 
   const natures = db.state.player.natures ?? [];
-  const abilities = db.state.player.abilities ?? [];
+  const abilities = db.state.player.abilityStages ?? [];
   // Your eyes, other abilities and chakra natures, above the jutsu.
   const abilityCard = (
     <View style={styles.section}>

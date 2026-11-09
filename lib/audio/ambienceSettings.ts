@@ -4,6 +4,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 
+import { STORAGE_KEYS } from '../brand';
+
 export type AmbienceSettings = {
   enabled: boolean;
   /** 0–1. */
@@ -12,7 +14,7 @@ export type AmbienceSettings = {
 
 export const DEFAULT_AMBIENCE: AmbienceSettings = { enabled: true, volume: 0.6 };
 
-const KEY = 'kan.ambience.v1';
+const KEY = STORAGE_KEYS.ambience;
 
 let current: AmbienceSettings = DEFAULT_AMBIENCE;
 let loaded = false;

@@ -117,7 +117,7 @@ describe('18. abilities and natures', () => {
       abilities_changed: [{ name: 'Sharingan', stage: '2 tomoe' }],
       natures_gained: [{ nature: 'Earth', source: 'thousand-souls', from: 'Iwa ninja' }],
     });
-    const sharingan = db.state.player.abilities!.find((ability) => ability.name === 'Sharingan')!;
+    const sharingan = db.state.player.abilityStages!.find((ability) => ability.name === 'Sharingan')!;
     expect(sharingan.stage).toBe('2 tomoe');
     expect(sharingan.history?.map((item) => item.stage)).toEqual(['1 tomoe', '2 tomoe']);
     expect(db.state.player.natures).toEqual([expect.objectContaining({ nature: 'Earth', source: 'thousand-souls', from: 'Iwa ninja' })]);
@@ -146,6 +146,6 @@ describe('21. second person', () => {
     expect(db.events[0].summary.startsWith('You wait alone')).toBe(true);
     expect(db.jutsuRecords.find((record) => record.name === 'Thousand Souls')?.visual).toContain('your skin');
     expect(db.facts.every((fact) => !/\bKan\b/.test(fact.text))).toBe(true);
-    expect(secondPerson("Kan's cloak is torn, and Kakuzu watches Kan.")).toBe('Your cloak is torn, and Kakuzu watches you.');
+    expect(secondPerson("Kan's cloak is torn, and Kakuzu watches Kan.", ['Kan'])).toBe('Your cloak is torn, and Kakuzu watches you.');
   });
 });

@@ -1,4 +1,5 @@
 import { calculateAge } from './calendar';
+import { playerAge } from './player';
 import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
 import type { PlannedReference } from './referencePlan';
@@ -59,7 +60,7 @@ export function wearsAkatsukiCloak(db: AppDatabase) {
 
 export function portraitSignature(db: AppDatabase): PortraitSignature {
   return {
-    age: calculateAge(db.state.inStoryDate, db.state.player.birthday, db.state.player.birthYear),
+    age: playerAge(db),
     outfit: wearsAkatsukiCloak(db) ? 'akatsuki' : 'black',
     expression: expressionFromMood(db.state.mood),
     setting: settingOf(db),

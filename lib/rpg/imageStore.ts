@@ -9,11 +9,12 @@
  */
 import { useEffect, useState } from 'react';
 
+import { IDB_NAMES } from '../brand';
 import { makeId } from './id';
 import { compressImage, FACE_IMAGE, SCENE_IMAGE, type CompressOptions } from './imageCompress';
 import type { AppDatabase } from './types';
 
-const DB_NAME = 'kan-images';
+const DB_NAME = IDB_NAMES.images;
 const STORE = 'images';
 const REF_PREFIX = 'img:';
 

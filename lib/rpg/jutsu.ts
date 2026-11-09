@@ -2,6 +2,7 @@ import { dateSortValue } from './calendar';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import type { AppDatabase, JutsuRecord, TurnDiff } from './types';
+import { isPlayerName } from './player';
 
 export const JUTSU_NATURES = [
   'Fire',
@@ -75,11 +76,11 @@ export function groupJutsuByNature(records: JutsuRecord[]) {
       nature,
       jutsu: [...jutsu].sort((a, b) => {
         if (a.user !== b.user) {
-          const aKan = a.user === 'Kan' ? 1 : 0;
-          const bKan = b.user === 'Kan' ? 1 : 0;
+          const aPlayer = a.user === 'Kan' ? 1 : 0;
+          const bPlayer = b.user === 'Kan' ? 1 : 0;
 
-          if (aKan !== bKan) {
-            return bKan - aKan;
+          if (aPlayer !== bPlayer) {
+            return bPlayer - aPlayer;
           }
 
           return a.user.localeCompare(b.user);
@@ -226,7 +227,7 @@ function sameUser(db: AppDatabase, a: string, b: string) {
 }
 
 /** Swaps one name for another in Kan's quick jutsu list. */
-function renameInKanList(db: AppDatabase, oldName: string, newName: string | null) {
+function renameInPlayerList(db: AppDatabase, oldName: string, newName: string | null) {
   const oldKey = jutsuKey(oldName);
   const list = db.state.jutsu ?? [];
 
@@ -287,12 +288,12 @@ export function renameJutsuRecord(db: AppDatabase, recordId: string, rawName: st
     jutsuRecords = db.jutsuRecords.map((item) => (item.id === record.id ? { ...item, name } : item));
   }
 
-  const isKan = record.user.toLowerCase() === 'kan';
+  const mine = isPlayerName(db, record.user);
 
   return {
     ...db,
     jutsuRecords,
-    state: isKan ? renameInKanList(db, record.name, name) : db.state,
+    state: mine ? renameInPlayerList(db, record.name, name) : db.state,
   };
 }
 
@@ -305,15 +306,15 @@ export function deleteJutsuRecord(db: AppDatabase, recordId: string): AppDatabas
   }
 
   const jutsuRecords = db.jutsuRecords.filter((item) => item.id !== record.id);
-  const isKan = record.user.toLowerCase() === 'kan';
+  const mine = isPlayerName(db, record.user);
   const stillHas = jutsuRecords.some(
-    (item) => item.user.toLowerCase() === 'kan' && jutsuKey(item.name) === jutsuKey(record.name)
+    (item) => isPlayerName(db, item.user) && jutsuKey(item.name) === jutsuKey(record.name)
   );
 
   return {
     ...db,
     jutsuRecords,
-    state: isKan && !stillHas ? renameInKanList(db, record.name, null) : db.state,
+    state: mine && !stillHas ? renameInPlayerList(db, record.name, null) : db.state,
   };
 }
 

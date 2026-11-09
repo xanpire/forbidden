@@ -22,7 +22,7 @@ import { checkSceneImage, imageCheckEnabled, sharperActorRule, type ImageCheck }
 import { wantsEnsemble, type ShotChip } from './imageDirection';
 import { loadImage } from './imageStore';
 import { wearsAkatsukiCloak } from './portrait';
-import { faceDroppedWarning, loadKanReferenceImages, planReferences, type PlannedReference } from './referenceImages';
+import { faceDroppedWarning, loadPlayerReferenceImages, planReferences, type PlannedReference } from './referenceImages';
 import type { AppDatabase, SceneImageMeta } from './types';
 
 export type PaintedTake = { dataUri: string; meta: SceneImageMeta };
@@ -59,10 +59,10 @@ export async function paintScene({
 
   const turnId = latestAssistant.id;
   const recentRefs = collectRecentSceneImages(db);
-  const [written, recentLoaded, kanRefs] = await Promise.all([
+  const [written, recentLoaded, playerRefImages] = await Promise.all([
     writeImageAction(apiKey, db, undefined, { chip }),
     Promise.all(recentRefs.map((ref) => loadImage(ref))),
-    loadKanReferenceImages(wearsAkatsukiCloak(db)),
+    loadPlayerReferenceImages(wearsAkatsukiCloak(db)),
   ]);
 
   if (written) {
@@ -100,11 +100,11 @@ export async function paintScene({
 
   const plan = planReferences(
     [
-      { kind: 'face', uri: kanRefs.face },
-      ...(inMemory ? [] : [{ kind: 'outfit' as const, uri: kanRefs.outfit }]),
+      { kind: 'face', uri: playerRefImages.face },
+      ...(inMemory ? [] : [{ kind: 'outfit' as const, uri: playerRefImages.outfit }]),
       ...people,
       ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
-      ...(inMemory ? [] : [{ kind: 'alternate' as const, uri: kanRefs.alternate }]),
+      ...(inMemory ? [] : [{ kind: 'alternate' as const, uri: playerRefImages.alternate }]),
     ],
     caps.maxReferences
   );
@@ -234,11 +234,11 @@ export async function retouchSceneImage({
   }
 
   const entry = db.rawLog.find((item) => item.id === logId);
-  const kanRefs = await loadKanReferenceImages(wearsAkatsukiCloak(db));
+  const playerRefImages = await loadPlayerReferenceImages(wearsAkatsukiCloak(db));
   const plan = planReferences(
     [
       { kind: 'edit', uri: image },
-      { kind: 'face', uri: kanRefs.face },
+      { kind: 'face', uri: playerRefImages.face },
     ],
     caps.maxReferences
   );

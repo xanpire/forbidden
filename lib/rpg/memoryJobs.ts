@@ -41,7 +41,7 @@ import {
   applyFlashbackMarks,
   applyFlashbackTurn,
   applyFlashbackWriteUp,
-  kanAgeAt,
+  playerAgeAt,
 } from './flashbacks';
 import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
 import { newsAllowance } from './newsDelivery';
@@ -75,6 +75,7 @@ import type {
   SummaryRecord,
   TurnDiff,
 } from './types';
+import { isPlayer } from './player';
 
 const TIME_SKIP_DAYS = 180;
 /** Most story messages one chapter summary covers; the rest wait for the next. */
@@ -611,7 +612,7 @@ function stampTurnScene(
     ...new Set(
       (after.state.sceneCast ?? [])
         .map((name) => resolveEntity(after, name))
-        .filter((entity) => entity && entity.name.toLowerCase() !== 'kan')
+        .filter((entity) => entity && !isPlayer(after, entity))
         .map((entity) => entity!.id)
     ),
   ];
@@ -951,7 +952,7 @@ export async function runSummaryJob(
         messages,
         debugTurnId: job.turnLogId,
         memoryNote: record
-          ? `This scene is a memory you lived through again: "${record.title}", Year ${record.date.year}, when you were ${ageWord(kanAgeAt(base, record.date))}. Write it up as that memory, in its own time; the present plays no part in it.`
+          ? `This scene is a memory you lived through again: "${record.title}", Year ${record.date.year}, when you were ${ageWord(playerAgeAt(base, record.date))}. Write it up as that memory, in its own time; the present plays no part in it.`
           : undefined,
       });
       povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
@@ -1221,7 +1222,7 @@ function saveSummaryMemory(
   const present = db.entities.filter((entity) => presentIds.has(entity.id));
   // Names in the text still help recall the memory later (tags only).
   const mentioned = db.entities.filter(
-    (entity) => entity.type === 'character' && entity.name.toLowerCase() !== 'kan' && mentionsEntity(summary.text, entity)
+    (entity) => entity.type === 'character' && !isPlayer(db, entity) && mentionsEntity(summary.text, entity)
   );
 
   const event: EventRecord = {

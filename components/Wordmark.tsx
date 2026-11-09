@@ -1,14 +1,15 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
+import { APP_NAME } from '@/lib/brand';
 
 const vultureMark = require('../assets/images/vulture-mark.png');
 
 export function Wordmark({ compact = false }: { compact?: boolean }) {
   return (
-    <View style={styles.row} accessibilityLabel="Kan">
+    <View style={styles.row} accessibilityLabel={APP_NAME}>
       <Image source={vultureMark} style={[styles.mark, compact && styles.markCompact]} />
-      <Text style={[styles.word, compact && styles.wordCompact]}>KAN</Text>
+      <Text style={[styles.word, compact && styles.wordCompact]}>{APP_NAME}</Text>
     </View>
   );
 }

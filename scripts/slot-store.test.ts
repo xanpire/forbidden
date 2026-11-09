@@ -28,8 +28,9 @@ import { loadSlot, saveSlot } from '../lib/rpg/db';
 import { pushSnapshot } from '../lib/rpg/log';
 import { seedDatabase } from '../lib/rpg/seed';
 import { readSlotJson, resetSlotStoreForTests, slotBackend } from '../lib/rpg/slotStore';
+import { STORAGE_KEYS } from '../lib/brand';
 
-const KEY = 'kan.slot.slot_test.v1';
+const KEY = `${STORAGE_KEYS.slotPrefix}slot_test.v1`;
 
 function bigStory(turns: number) {
   let db = seedDatabase('slot_test', 'Test');

@@ -25,10 +25,13 @@ import { WEATHER_CONDITIONS } from './weather';
 import { normalizeFlashbacks } from './flashbacks';
 import { normalizeSafehouses } from './safehouses';
 import { normalizePurse } from './money';
+import { STORAGE_KEYS } from '../brand';
+import { isPlayerEntity, normalizeCharacter } from './player';
+import { normalizeWorld } from './world';
 
-const META_KEY = 'kan.meta.v1';
-const SLOT_PREFIX = 'kan.slot.';
-const API_KEY_KEY = 'kan.apiKey.v1';
+const META_KEY = STORAGE_KEYS.meta;
+const SLOT_PREFIX = STORAGE_KEYS.slotPrefix;
+const API_KEY_KEY = STORAGE_KEYS.apiKey;
 
 export type StorageMeta = {
   activeSlotId: string;
@@ -460,9 +463,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
             entity.appearance ??
             (entity.type === 'character' ? 'Unknown' : undefined),
           gender: entity.type === 'character' ? (entity.gender ?? genderOf(entity)) : undefined,
-          // Kan is straight: men are never romance options, and he has none himself.
+          // The player has no romance accessibility of their own.
           romanceAccessibility:
-            entity.type !== 'character' || entity.name.toLowerCase() === 'kan'
+            entity.type !== 'character' || isPlayerEntity(entity)
               ? undefined
               : (entity.gender ?? genderOf(entity)) === 'male'
                 ? 'not-applicable'
@@ -511,6 +514,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
             ) === index
         )
       : [],
+    world: normalizeWorld(db.world),
     state: normalizeState(db.state),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
@@ -540,7 +544,6 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
 
 /** A saved person's gender when the save doesn't say: the canon cast's, else unknown. */
 function genderOf(entity: { name: string; tags?: string[] }) {
-  if (entity.name.toLowerCase() === 'kan') return 'male' as const;
   if (FEMALE_CAST.has(entity.name)) return 'female' as const;
   if (CANON_CAST.some((entry) => entry.name === entity.name)) return 'male' as const;
   return 'unknown' as const;
@@ -618,12 +621,7 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
   }
 
   return {
-    player: state.player
-      ? {
-          ...state.player,
-          birthYear: state.player.birthYear ?? seeded.player.birthYear,
-        }
-      : seeded.player,
+    player: normalizeCharacter(state.player, seeded.player),
     mood: state.mood ?? seeded.mood,
     worldDescription: state.worldDescription ?? seeded.worldDescription,
     jutsu: Array.isArray(state.jutsu) ? state.jutsu : seeded.jutsu,

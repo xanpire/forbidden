@@ -14,7 +14,9 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DB_NAME = 'kan-saves';
+import { IDB_NAMES } from '../brand';
+
+const DB_NAME = IDB_NAMES.saves;
 const STORE = 'slots';
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;

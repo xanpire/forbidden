@@ -34,6 +34,7 @@ import { resolveEntity } from './entities';
 import { isOriginalCharacter } from './returning';
 import { hashText, playerTurnCount, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, LocationKind } from './types';
+import { isPlayerEntity } from './player';
 
 /** Kan has heard nothing for this many in-story days: piled-up news comes as one report. */
 export const CATCH_UP_QUIET_DAYS = 14;
@@ -61,10 +62,6 @@ export type OfferedNews = UnheardNews & {
 // ---------------------------------------------------------------------------
 // Bearers
 
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
-
 function sceneEntities(db: AppDatabase): EntityRecord[] {
   const names = castWithCompanions(db, db.state.sceneCast ?? []);
   const seen = new Set<string>();
@@ -73,7 +70,7 @@ function sceneEntities(db: AppDatabase): EntityRecord[] {
   for (const name of names) {
     const entity = resolveEntity(db, name);
 
-    if (!entity || seen.has(entity.id) || isKan(entity) || isDeceased(entity)) {
+    if (!entity || seen.has(entity.id) || isPlayerEntity(entity) || isDeceased(entity)) {
       continue;
     }
 

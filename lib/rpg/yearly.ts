@@ -13,13 +13,15 @@
 // - Offered, never forced: the narrator gets one line.
 
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
+import { playerAge } from './player';
 import { displayName, narratorName } from './names';
 import { isCombatPace } from './canon';
 import { castWithCompanions } from './companions';
-import { isDeceased, kanKnowsDeath } from './deaths';
+import { isDeceased, playerKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
 import { BIRTHDAY_HABITS, FESTIVALS, type BirthdayHabit, type YearlyFestival } from './yearlyData';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, TurnDiff, YearlyState } from './types';
+import { isPlayerEntity } from './player';
 
 export { BIRTHDAY_HABITS, FESTIVALS } from './yearlyData';
 
@@ -81,10 +83,6 @@ function isToday(date: CalendarDate, day: { month: number; day: number }) {
   return date.month === shown.month && date.day === shown.day;
 }
 
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
-
 function bondOf(db: AppDatabase, entityId: string): BondRecord | null {
   return db.bonds.find((bond) => bond.entityId === entityId) ?? null;
 }
@@ -98,7 +96,7 @@ export function isClose(db: AppDatabase, entity: EntityRecord) {
 
 /** Kan knows this birthday: someone he is (or was) close to, or one he learned in the story. */
 export function knowsBirthday(db: AppDatabase, entity: EntityRecord) {
-  if (!entity.birthday || entity.met === false || isKan(entity)) return false;
+  if (!entity.birthday || entity.met === false || isPlayerEntity(entity)) return false;
   return isClose(db, entity) || yearlyOf(db).knownBirthdays.includes(entity.id);
 }
 
@@ -154,13 +152,13 @@ function festivalToday(festival: YearlyFestival, now: CalendarDate) {
 // ---------------------------------------------------------------------------
 // What could come up today, most important first.
 
-function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
+function playerAnniversaries(db: AppDatabase): YearlyOffer[] {
   const now = db.state.inStoryDate;
   const offers: YearlyOffer[] = [];
 
   if (now.year > 13 && isToday(now, MASSACRE)) {
     const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha');
-    const izumiLine = izumi && kanKnowsDeath(db, izumi) ? ', and Izumi with it' : '';
+    const izumiLine = izumi && playerKnowsDeath(db, izumi) ? ', and Izumi with it' : '';
     offers.push({
       key: 'anniversary:massacre',
       kind: 'anniversary',
@@ -179,7 +177,7 @@ function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
   const itachi = db.entities.find((entity) => entity.name === 'Itachi Uchiha');
   const itachiDeath = itachi?.deceased?.date;
 
-  if (itachi && itachiDeath && kanKnowsDeath(db, itachi) && now.year > itachiDeath.year && isToday(now, itachiDeath)) {
+  if (itachi && itachiDeath && playerKnowsDeath(db, itachi) && now.year > itachiDeath.year && isToday(now, itachiDeath)) {
     offers.push({
       key: 'anniversary:itachi-death',
       kind: 'anniversary',
@@ -197,13 +195,13 @@ function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
     });
   }
 
-  if (isToday(now, db.state.player.birthday)) {
+  if (db.state.player.birthday && isToday(now, db.state.player.birthday)) {
     const here = sceneIds(db);
     const rememberers = db.entities
       .filter(
         (entity) =>
           entity.type === 'character' &&
-          !isKan(entity) &&
+          !isPlayerEntity(entity) &&
           entity.met !== false &&
           !isDeceased(entity) &&
           isClose(db, entity)
@@ -218,7 +216,7 @@ function kanAnniversaries(db: AppDatabase): YearlyOffer[] {
     ]
       .filter(Boolean)
       .join('; ');
-    const age = db.state.player.birthYear !== undefined ? now.year - db.state.player.birthYear : undefined;
+    const age: number | undefined = playerAge(db);
     // Who is around changes with the era: the cloak, the road, home again.
     const views = db.entities
       .filter((entity) => here.has(entity.id) && !rememberers.includes(entity) && BIRTHDAY_HABITS[entity.name])
@@ -243,7 +241,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
   const absent: YearlyOffer[] = [];
 
   for (const entity of db.entities) {
-    if (entity.type !== 'character' || isKan(entity) || !entity.birthday || entity.met === false) continue;
+    if (entity.type !== 'character' || isPlayerEntity(entity) || !entity.birthday || entity.met === false) continue;
     if (!isToday(now, entity.birthday)) continue;
 
     const habit = birthdayHabit(entity);
@@ -251,7 +249,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
 
     if (isDeceased(entity)) {
       // Only the dead Kan was close to, and knows are dead.
-      if (knows && kanKnowsDeath(db, entity)) {
+      if (knows && playerKnowsDeath(db, entity)) {
         remembrance.push({
           key: `remembrance:${entity.id}`,
           kind: 'remembrance',
@@ -346,7 +344,7 @@ export function yearlyCandidates(db: AppDatabase): YearlyOffer[] {
   const festivalOffers = festivals(db);
 
   return [
-    ...kanAnniversaries(db),
+    ...playerAnniversaries(db),
     ...birthdayOffers.filter((offer) => offer.kind === 'birthday' || offer.kind === 'birthday-unknown'),
     ...birthdayOffers.filter((offer) => offer.kind === 'remembrance'),
     ...festivalOffers,
@@ -440,7 +438,7 @@ export function upcomingBirthdays(db: AppDatabase, days = 30): UpcomingBirthday[
     if (entity.type !== 'character' || !entity.birthday || !knowsBirthday(db, entity)) continue;
 
     const dead = isDeceased(entity);
-    if (dead && !kanKnowsDeath(db, entity)) continue;
+    if (dead && !playerKnowsDeath(db, entity)) continue;
 
     for (const year of [now.year, now.year + 1]) {
       const shown = birthdayThisYear(entity.birthday, year);
@@ -470,7 +468,7 @@ export function todayNotes(db: AppDatabase): string[] {
 
   if (now.year > 13 && isToday(now, MASSACRE)) notes.push('The anniversary of the massacre');
   if (isToday(now, NINE_TAILS_NIGHT)) notes.push('The Nine-Tails anniversary');
-  if (isToday(now, db.state.player.birthday)) notes.push('Your birthday');
+  if (db.state.player.birthday && isToday(now, db.state.player.birthday)) notes.push('Your birthday');
   if (now.month === 1 && now.day === 1) notes.push("New Year's Day");
 
   for (const birthday of upcomingBirthdays(db, 0)) {

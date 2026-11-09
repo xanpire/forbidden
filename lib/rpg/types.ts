@@ -64,23 +64,6 @@ export type SummaryLevel = 'chapter' | 'arc' | 'year';
 
 export type LogKind = 'story' | 'summary' | 'extraction' | 'diff' | 'error';
 
-export type PlayerSheet = {
-  name: string;
-  lineage: string[];
-  birthday: { month: number; day: number };
-  birthYear: number;
-  rank: string;
-  role: string;
-  team: string[];
-  sensei: string;
-  personality: string[];
-  secretNotes: string[];
-  /** Kan's chakra natures: innate ones, and those taken with Thousand Souls. */
-  natures?: NatureRecord[];
-  /** Dōjutsu and other abilities, each at its current stage. */
-  abilities?: AbilityRecord[];
-};
-
 export type NatureRecord = {
   /** Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava… */
   nature: string;
@@ -105,7 +88,7 @@ export type AbilityRecord = {
 export type LocationKind = 'settlement' | 'road' | 'wilderness' | 'structure';
 
 export type GameState = {
-  player: PlayerSheet;
+  player: CharacterDefinition;
   mood: string;
   worldDescription: string;
   jutsu: string[];
@@ -1023,6 +1006,8 @@ export type AppDatabase = {
   threads: ThreadRecord[];
   loreEntries: LoreRecord[];
   summaries: SummaryRecord[];
+  /** The world the player wrote (see world.ts). */
+  world: WorldDefinition;
   state: GameState;
   indices: MemoryIndex;
   snapshots: TurnSnapshot[];
@@ -1329,4 +1314,228 @@ export type OpenRouterMessage = {
   parts?: { text: string; cache?: boolean }[];
   /** Images sent with a user message (data URIs), for vision calls. */
   images?: string[];
+};
+
+// ---------------------------------------------------------------------------
+// The player's world and character (sandbox). Written by the player; the
+// build step (seed.ts) only turns them into save records.
+// ---------------------------------------------------------------------------
+
+/** A region's weather pattern. `none` = indoors, space, underground: no weather. */
+export type ClimateType =
+  | 'temperate'
+  | 'continental'
+  | 'desert'
+  | 'tundra'
+  | 'tropical'
+  | 'monsoon'
+  | 'rainy'
+  | 'coastal'
+  | 'mountain'
+  | 'none';
+
+/** A group in the world: a kingdom, guild, gang, corporation, order. */
+export type FactionDef = {
+  id: string;
+  name: string;
+  description: string;
+  /** Regions it holds (see reputation.ts: "in their territory"). */
+  territoryRegionIds?: string[];
+  /** Keeps a wanted list and pays bounties in the world's currency. */
+  hasBounties?: boolean;
+  /** How its people send word: "courier", "raven", "radio"… */
+  carriers?: string[];
+  /** 0–1: how likely it reads letters that cross its land. */
+  readsMail?: number;
+};
+
+export type RegionDef = {
+  id: string;
+  name: string;
+  description: string;
+  climate: ClimateType;
+  /** Regions next to this one and how many days' travel apart. */
+  neighbours: { id: string; days: number }[];
+};
+
+export type PlaceDef = {
+  id: string;
+  name: string;
+  regionId: string;
+  kind: LocationKind;
+  description: string;
+};
+
+/** Who could realistically know a timeline event, which decides who can tell the player. */
+export type TimelineKnowledge = 'public' | 'faction' | 'witnesses' | 'secret';
+
+export type TimelineWindow = { year: number; month: number; day?: number };
+
+/** An event the world's timeline runs by date (see the timeline engine). */
+export type TimelineEvent = {
+  id: string;
+  era?: string;
+  title: string;
+  description: string;
+  /** A free world-state line set when it happens. */
+  worldPoint?: string;
+  /** A fixed visual hint for scene images painted at this moment. */
+  artDirection?: string;
+  from: TimelineWindow;
+  to?: TimelineWindow;
+  regionId?: string;
+  location?: string;
+  /** Default 'public'. */
+  knowledge?: TimelineKnowledge;
+  /** For 'faction' knowledge: whose members know. */
+  factionId?: string;
+  /** Named people who can carry the news. */
+  bearers?: string[];
+  major?: boolean;
+  /** A personal beat: offered to the player, never fired by itself. */
+  playerDriven?: boolean;
+  priority?: boolean;
+  /** Offered only once this event has happened. */
+  after?: string;
+  requires?: LoreCondition;
+  /** The moment on the page that completes this beat, for the state tracker. */
+  completesWhen?: string;
+  /** Abilities the player gains (or that reach a stage) when it completes. */
+  grantsAbilities?: { name: string; stage: string }[];
+  /** New ability records the player gains when it completes. */
+  grantsAbilityRecords?: { name: string; category: string; effect: string; visual: string; description: string }[];
+  facts: string[];
+  /** People it kills, by name. */
+  deaths?: string[];
+  /** People whose status it changes, by exact name. */
+  setsStatus?: Record<string, string>;
+  encounter?: { who: string; where: string; context: string };
+  attendanceFact?: string;
+  opensThreads?: {
+    title: string;
+    description: string;
+    type: ThreadType;
+    participants?: string[];
+    importance?: 1 | 2 | 3 | 4 | 5;
+  }[];
+  resolvesThreadTitles?: string[];
+};
+
+export type FestivalDef = {
+  id: string;
+  name: string;
+  /** Words matched against the player's location; empty = everywhere. */
+  where: string[];
+  month: number;
+  day: number;
+  /** How many days it runs (default 1). */
+  days?: number;
+  note: string;
+};
+
+/** The world the player wrote. */
+export type WorldDefinition = {
+  id: string;
+  name: string;
+  /** One-paragraph pitch, in the player's words. */
+  premise: string;
+  genre: string;
+  tone: string;
+  knownUniverse?: { name: string; canonStrictness: 'loose' | 'faithful' | 'strict' };
+  techLevel?: string;
+  magicSystem?: string;
+  /** "Fire magic", "Swordsmanship"… */
+  abilityCategories: string[];
+  /** What abilities are called: "Spells", "Skills"… */
+  abilityLabel: string;
+  currency: { name: string; symbol?: string; priceGuide: string };
+  calendar: { yearLabel: string; start: CalendarDate; monthNames?: string[] };
+  factions: FactionDef[];
+  regions: RegionDef[];
+  places: PlaceDef[];
+  /** The player's own lore entries. */
+  lore: LoreRecord[];
+  timeline: TimelineEvent[];
+  festivals: FestivalDef[];
+  /** How letters travel: "courier", "raven", "radio"… */
+  letterCarriers: string[];
+  /** Image style opener, e.g. "painterly dark-fantasy concept art". */
+  artStyle: string;
+  /** The player's own extra rules for the narrator. */
+  narratorNotes?: string;
+};
+
+/** An ability on the character sheet the player wrote. */
+export type AbilityDef = {
+  name: string;
+  category: string;
+  /** What it does. */
+  effect: string;
+  /** How it looks. */
+  visual: string;
+};
+
+/**
+ * The character the player plays (`db.state.player`). The first fields are
+ * what the player wrote; the last ones the game keeps up to date in play.
+ */
+export type CharacterDefinition = {
+  name: string;
+  aliases: string[];
+  /** Age at the start of the story. */
+  age: number;
+  birthday?: { month: number; day: number };
+  gender: string;
+  appearance: string;
+  outfit: string;
+  personality: string;
+  speechStyle: string;
+  /** The player's own text, kept verbatim. */
+  backstory: string;
+  role: string;
+  abilities: AbilityDef[];
+  inventory: string[];
+  money: number;
+  secrets: string[];
+  goals: string[];
+  /** `img:` references the player uploaded. */
+  faceImage?: string;
+  outfitImage?: string;
+
+  /** In-story year of birth, worked out from `age` and the opening date. */
+  birthYear?: number;
+  /** Ability categories the player has (innate, or gained in play). */
+  natures?: NatureRecord[];
+  /** Abilities that grow in stages, each at its current stage. */
+  abilityStages?: AbilityRecord[];
+};
+
+/** Someone the player adds before the story starts. */
+export type StartingPerson = {
+  name: string;
+  aliases?: string[];
+  age?: number;
+  gender: string;
+  role: string;
+  appearance: string;
+  personality: string;
+  speechStyle: string;
+  relationship: string;
+  yourFeelings: { affinity: number; note: string };
+  theirFeelings: { affinity: number; note: string };
+  attraction?: number;
+  romanceAccessibility?: 'winnable' | 'taken' | 'not-interested' | 'not-applicable';
+  alive: boolean;
+  knownName: boolean;
+  secrets?: string[];
+  whereabouts?: string;
+};
+
+export type OpeningScene = {
+  location: string;
+  placeId?: string;
+  date: CalendarDate;
+  situation: string;
+  castNames: string[];
+  threads?: string[];
 };

@@ -12,7 +12,7 @@
 
 import { daysBetween } from './calendar';
 import { companionsOf } from './companions';
-import { isDeceased, kanKnowsDeath } from './deaths';
+import { isDeceased, playerKnowsDeath } from './deaths';
 import {
   REGION_NAME,
   currentRegion,
@@ -312,7 +312,7 @@ export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
 
   for (const entity of db.entities) {
     if (entity.type !== 'character' || entity.name === 'Kan' || entity.met === false || entity.tier === 'minor') continue;
-    if (isDeceased(entity) && kanKnowsDeath(db, entity)) continue;
+    if (isDeceased(entity) && playerKnowsDeath(db, entity)) continue;
 
     if (companions.has(entity.id)) {
       result.push({ entity, region: here, basis: 'with-you', detail: 'Travelling with you' });

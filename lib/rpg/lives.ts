@@ -25,6 +25,7 @@ import { eraNoteFor } from './romance';
 import { isOriginalCharacter } from './returning';
 import { hashText } from './util';
 import type { AppDatabase, CalendarDate, EntityRecord, LifeEvent, LifeEventKind, TurnDiff } from './types';
+import { isPlayerEntity } from './player';
 
 /** Apart this long, meeting again is a reunion with a "since you last saw them" note. */
 export const REUNION_DAYS = 30;
@@ -41,10 +42,6 @@ const CANON_STORY_MILESTONES = 3;
 
 /** Reunion notes per narrator turn. */
 const REUNION_NOTES_PER_TURN = 2;
-
-function isKan(entity: EntityRecord) {
-  return entity.name.trim().toLowerCase() === 'kan' || entity.tags.includes('player');
-}
 
 function sceneIds(db: AppDatabase): Set<string> {
   const ids = new Set<string>();
@@ -66,7 +63,7 @@ const SEEDED_CANON = new Set(['Itachi Uchiha', 'Hana Inuzuka', 'Suzume', 'Izumi 
 
 /** A Naruto character (from the canon cast or seeded with the story), not one the story made up. */
 export function isCanonFigure(entity: EntityRecord): boolean {
-  return SEEDED_CANON.has(entity.name) || (entity.type === 'character' && !isKan(entity) && !isOriginalCharacter(entity));
+  return SEEDED_CANON.has(entity.name) || (entity.type === 'character' && !isPlayerEntity(entity) && !isOriginalCharacter(entity));
 }
 
 const canonStoryCache = new Map<string, number>();
@@ -91,7 +88,7 @@ export function canonStoryWeight(entity: Pick<EntityRecord, 'name' | 'aliases'>)
 
 /** Someone whose life the canon timeline does not already fill. */
 export function isSideCharacter(entity: EntityRecord): boolean {
-  if (entity.type !== 'character' || isKan(entity)) return false;
+  if (entity.type !== 'character' || isPlayerEntity(entity)) return false;
   if (entity.tags.includes('tailed-beast') || entity.tags.includes('summon')) return false;
 
   return !isCanonFigure(entity) || canonStoryWeight(entity) < CANON_STORY_MILESTONES;
@@ -300,7 +297,7 @@ export function applyLifeEvents(db: AppDatabase, items: TurnDiff['lifeEvents']):
     const entity = item.entityId ? next.entities.find((person) => person.id === item.entityId) : resolveEntity(next, item.name);
     const text = item.text.trim().replace(/\.$/, '');
 
-    if (!entity || isKan(entity) || !text) continue;
+    if (!entity || isPlayerEntity(entity) || !text) continue;
     if (lifeOf(entity).some((event) => event.text.toLowerCase() === text.toLowerCase())) continue;
 
     const events = trimLife([...lifeOf(entity), { date: now, text, kind: 'other', source: 'story', known: true }]);
@@ -356,7 +353,7 @@ export function markReunions(before: AppDatabase, after: AppDatabase): AppDataba
     const old = previous.get(entity.id);
 
     if (!old?.lastSeen || !entity.lastSeen || dateSortValue(entity.lastSeen) === dateSortValue(old.lastSeen)) continue;
-    if (daysBetween(old.lastSeen, entity.lastSeen) < REUNION_DAYS || isKan(entity)) continue;
+    if (daysBetween(old.lastSeen, entity.lastSeen) < REUNION_DAYS || isPlayerEntity(entity)) continue;
 
     next = {
       ...next,
@@ -403,7 +400,7 @@ function canonSince(db: AppDatabase, entity: EntityRecord, since: CalendarDate):
  * (named in the turn) after REUNION_DAYS apart.
  */
 export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
-  if (isKan(entity) || isDeceased(entity) || entity.met === false || entity.companion) return '';
+  if (isPlayerEntity(entity) || isDeceased(entity) || entity.met === false || entity.companion) return '';
 
   const now = db.state.inStoryDate;
   const reunion = entity.reunion && entity.reunion.seq === db.state.sceneSeq ? entity.reunion : null;

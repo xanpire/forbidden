@@ -5,6 +5,7 @@
 
 import { makeId } from './id';
 import type { AppDatabase, BondRecord, EntityRecord } from './types';
+import { isPlayerEntity } from './player';
 
 export const UNMET_STATUS = 'Not yet met';
 export const NEWLY_MET_STATUS = 'Newly met';
@@ -22,7 +23,7 @@ function isUnmetStatus(status: string | undefined) {
 function canMeet(entity: EntityRecord) {
   return (
     entity.type === 'character' &&
-    entity.name.toLowerCase() !== 'kan' &&
+    !isPlayerEntity(entity) &&
     !entity.deceased &&
     entity.status !== 'Deceased'
   );

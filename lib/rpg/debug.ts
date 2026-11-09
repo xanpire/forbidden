@@ -8,6 +8,7 @@
  */
 import { useSyncExternalStore } from 'react';
 
+import { IDB_NAMES } from '../brand';
 import { fetchGenerationCost, type CallUsage } from '../openrouter';
 import { formatDate } from './calendar';
 import type { AppDatabase, OpenRouterMessage, TurnDiff } from './types';
@@ -78,7 +79,7 @@ type DebugLog = { turns: DebugTurn[] };
 const MAX_TURNS = 30;
 /** Full prompts are large; only the newest few keep theirs. */
 const KEEP_PROMPTS = 5;
-const IDB_NAME = 'kan-debug';
+const IDB_NAME = IDB_NAMES.debug;
 const IDB_STORE = 'log';
 const IDB_KEY = 'turns';
 

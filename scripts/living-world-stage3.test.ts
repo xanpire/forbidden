@@ -27,7 +27,7 @@ import { regionOf, travelDaysBetween, whereaboutsRegion } from '../lib/rpg/geogr
 import {
   deliverLetters,
   interceptionRisks,
-  keepKansWords,
+  keepPlayersWords,
   letterArchive,
   letterDays,
   letterOffer,
@@ -141,11 +141,11 @@ describe('better letters', () => {
     expect(tidyLetter('hana , i am alive.i think of you')).toBe('Hana, I am alive. I think of you.');
     const input = '*I write to Hana.* "hana , i am alive and i am sorry i left without a word"';
     // The tracker fixed spelling only: kept.
-    expect(keepKansWords('Hana, I am alive and I am sorry I left without a word.', input)).toBe(
+    expect(keepPlayersWords('Hana, I am alive and I am sorry I left without a word.', input)).toBe(
       'Hana, I am alive and I am sorry I left without a word.'
     );
     // The tracker rewrote it: Kan's own words win.
-    const rewritten = keepKansWords('Dearest Hana, my heart aches with regret for my sudden departure into the night.', input);
+    const rewritten = keepPlayersWords('Dearest Hana, my heart aches with regret for my sudden departure into the night.', input);
     expect(rewritten).toBe('Hana, I am alive and I am sorry I left without a word.');
   });
 

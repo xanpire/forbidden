@@ -73,14 +73,15 @@ export function formatShortDate(date: CalendarDate) {
 
 export function calculateAge(
   date: CalendarDate,
-  birthday: { month: number; day: number },
+  birthday: { month: number; day: number } | undefined,
   birthYear: number
 ) {
   let age = date.year - birthYear;
 
   if (
-    date.month < birthday.month ||
-    (date.month === birthday.month && date.day < birthday.day)
+    birthday &&
+    (date.month < birthday.month ||
+      (date.month === birthday.month && date.day < birthday.day))
   ) {
     age -= 1;
   }
@@ -106,13 +107,7 @@ export function entityAge(
     : Math.max(0, date.year - entity.birthYear);
 }
 
-export function formatStoryDate(
-  date: CalendarDate,
-  birthday: { month: number; day: number },
-  birthYear: number
-) {
-  const age = calculateAge(date, birthday, birthYear);
-
+export function formatStoryDate(date: CalendarDate, age: number) {
   return `Age ${age} · Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
 }
 

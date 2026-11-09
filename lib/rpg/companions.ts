@@ -13,6 +13,7 @@ import { applyFactDiff } from './facts';
 import { resolveEntity } from './entities';
 import { clamp, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, ScenePace, TurnDiff } from './types';
+import { isPlayerEntity } from './player';
 
 /** More than this and scenes stop being readable; the scene cast holds six. */
 export const MAX_COMPANIONS = 4;
@@ -26,16 +27,12 @@ export const SHARED_TIME_AFFINITY_CAP = 6;
 /** Below this, real hostility: familiarity alone does not soften it. */
 export const SHARED_TIME_AFFINITY_FLOOR = -2;
 
-function isKan(entity: Pick<EntityRecord, 'name'>) {
-  return entity.name.trim().toLowerCase() === 'kan';
-}
-
 /** Everyone travelling with Kan right now, longest-standing first. */
 export function companionsOf(db: AppDatabase): EntityRecord[] {
   return db.entities
     .filter(
       (entity) =>
-        entity.type === 'character' && Boolean(entity.companion) && !isKan(entity) && !isDeceased(entity)
+        entity.type === 'character' && Boolean(entity.companion) && !isPlayerEntity(entity) && !isDeceased(entity)
     )
     .sort((a, b) => daysBetween(b.companion!.since, a.companion!.since));
 }
@@ -78,7 +75,7 @@ export function startCompanion(db: AppDatabase, entityId: string, reason?: strin
   if (
     !entity ||
     entity.type !== 'character' ||
-    isKan(entity) ||
+    isPlayerEntity(entity) ||
     isDeceased(entity) ||
     entity.companion ||
     companionsOf(db).length >= MAX_COMPANIONS

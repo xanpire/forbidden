@@ -31,6 +31,7 @@ import { makeId } from './id';
 import { secondPerson } from './util';
 import { conditionHolds } from './lore';
 import { applyAbilityChanges } from './abilities';
+import { isPlayerName, playerDisplayNames, playerEntity } from './player';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
@@ -118,8 +119,8 @@ function addFactOnce(
   subjectEntityId: string | null = factSubject(db, text),
   sourceEventId: string | null = null
 ): AppDatabase {
-  // Canon data says "Kan"; what you read says "you".
-  text = secondPerson(text);
+  // Timeline data may name the player; what you read says "you".
+  text = secondPerson(text, playerDisplayNames(db));
   const lower = text.toLowerCase();
 
   if (db.facts.some((fact) => fact.validTo === null && fact.text.toLowerCase() === lower)) {
@@ -174,16 +175,16 @@ function resolveThread(db: AppDatabase, titleKey: string): AppDatabase {
 
 /** Who a canon fact is about: you when it says "you", else the first person it names, else you. */
 function factSubject(db: AppDatabase, text: string): string | null {
-  const kan = db.entities.find((entity) => entity.name.toLowerCase() === 'kan');
+  const you = playerEntity(db);
 
   if (/\b(you|your)\b/i.test(text)) {
-    return kan?.id ?? null;
+    return you?.id ?? null;
   }
 
   let first: { id: string; at: number } | null = null;
 
   for (const entity of db.entities) {
-    if (entity.type !== 'character' || entity === kan) continue;
+    if (entity.type !== 'character' || entity === you) continue;
 
     for (const name of [entity.name, ...entity.aliases]) {
       const at = text.toLowerCase().indexOf(name.toLowerCase());
@@ -194,7 +195,7 @@ function factSubject(db: AppDatabase, text: string): string | null {
     }
   }
 
-  return first?.id ?? kan?.id ?? null;
+  return first?.id ?? you?.id ?? null;
 }
 
 /** Where a personal beat stands: offered to you, accepted (under way), or completed on the page. */
@@ -301,7 +302,7 @@ function fireMilestone(
           id: `thread_canon_${milestone.id}_${next.threads.length}`,
           type: seed.type,
           title: seed.title,
-          description: secondPerson(seed.description),
+          description: secondPerson(seed.description, playerDisplayNames(next)),
           status: 'open',
           openedAt: happenedAt,
           resolvedAt: null,
@@ -335,7 +336,7 @@ function fireMilestone(
 function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate): AppDatabase {
   const lower = grant.name.toLowerCase();
   const hasRecord = db.jutsuRecords.some(
-    (record) => record.name.toLowerCase() === lower && record.user.toLowerCase() === 'kan'
+    (record) => record.name.toLowerCase() === lower && isPlayerName(db, record.user)
   );
   const jutsuRecords = hasRecord
     ? db.jutsuRecords
