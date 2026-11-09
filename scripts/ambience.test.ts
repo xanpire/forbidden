@@ -134,7 +134,7 @@ describe('ambience: what you hear where you are', () => {
   });
 
   test('indoor beds are the only ones that skip the outdoor muffle', () => {
-    expect([...INDOOR_BEDS].sort()).toEqual(['cave', 'fire', 'murmur', 'rain-roof', 'room']);
+    expect([...INDOOR_BEDS].sort()).toEqual(['bar', 'cave', 'engine', 'fire', 'hum', 'murmur', 'office', 'rain-roof', 'rain-window', 'room']);
     expect(isIndoors({ kind: 'structure', place: 'Shrine courtyard' })).toBe(false);
     expect(isIndoors({ kind: 'settlement', place: 'The noodle bar, inside' })).toBe(true);
   });
@@ -182,5 +182,19 @@ describe('ambience: read from the save', () => {
 
   test('a new save has something to hear', () => {
     expect(Object.keys(currentAmbience(seed()).beds).length).toBeGreaterThan(0);
+  });
+});
+
+
+describe('modern places (session 7)', () => {
+  test('a city street, a bar, a flat, a car, an office and rain on the windows', () => {
+    expect(mix({ kind: 'settlement', place: 'Kell Street', era: 'present' }).beds.traffic).toBeGreaterThan(0);
+    expect(mix({ kind: 'settlement', place: 'Kell Street', era: 'past' }).beds.traffic).toBeUndefined();
+    expect(mix({ kind: 'structure', place: 'The Anchor bar', era: 'present' }).beds.bar).toBeGreaterThan(0);
+    expect(mix({ kind: 'structure', place: 'Your flat on Kell Street', era: 'present' }).beds.hum).toBeGreaterThan(0);
+    expect(mix({ kind: 'road', place: 'In the back seat of a taxi', era: 'present' }).beds.engine).toBeGreaterThan(0);
+    expect(mix({ kind: 'structure', place: 'Marlow & Finch offices', era: 'future' }).beds.office).toBeGreaterThan(0);
+    const wet = mix({ kind: 'structure', place: 'Your flat on Kell Street', era: 'present', condition: 'rain' });
+    expect(wet.beds['rain-window']).toBeGreaterThan(0);
   });
 });

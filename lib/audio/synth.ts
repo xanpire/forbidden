@@ -732,6 +732,143 @@ function cave(kit: Kit): Bed {
   };
 }
 
+// ---- Modern places (session 7) -------------------------------------------
+
+/** A city street: a low traffic rumble, cars passing left to right, a horn now and then. */
+function traffic(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { ctx, noise, random } = kit;
+  const rumble = layer(kit, s, noise.brown, 0.35, filter(kit, 'lowpass', 220));
+  const pass = filter(kit, 'bandpass', 500, 0.6);
+  const env = gain(kit, 0);
+  const side = typeof ctx.createStereoPanner === 'function' ? ctx.createStereoPanner() : null;
+  chain(loop(kit, noise.pink, s), pass, env, ...(side ? [side] : []), kit.out);
+  return {
+    tick: ticks(
+      drifter(rumble.gain, random, 0.25, 0.45, 1, 4),
+      every(random, 2.5, 8, (at) => {
+        const length = between(random, 1.6, 3.2);
+        const peak = between(random, 0.12, 0.3);
+        const from = random() < 0.5 ? -0.9 : 0.9;
+        env.gain.setValueAtTime(0, at);
+        env.gain.linearRampToValueAtTime(peak, at + length / 2);
+        env.gain.linearRampToValueAtTime(0, at + length);
+        pass.frequency.setValueAtTime(between(random, 700, 1100), at);
+        pass.frequency.linearRampToValueAtTime(between(random, 300, 500), at + length);
+        if (side) {
+          side.pan.setValueAtTime(from, at);
+          side.pan.linearRampToValueAtTime(-from, at + length);
+        }
+      }),
+      every(random, 25, 70, (at) => {
+        const f = between(random, 380, 480);
+        tone(kit, at, { from: f, length: between(random, 0.25, 0.6), peak: 0.035, type: 'square', pan: between(random, -0.7, 0.7) });
+      }, 10),
+    ),
+    stop: stopper(s),
+  };
+}
+
+/** A bar: voices, glasses touching, a bottle set down. */
+function bar(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { random } = kit;
+  const roomTone = filter(kit, 'lowpass', 1300);
+  const level = gain(kit, 0.6);
+  chain(roomTone, level, kit.out);
+  layer(kit, s, kit.noise.brown, 0.12, filter(kit, 'lowpass', 180));
+  return {
+    tick: ticks(
+      ...voices(kit, s, 7, roomTone),
+      every(random, 1.5, 6, (at) => {
+        const f = between(random, 2600, 3800);
+        const side = between(random, -0.7, 0.7);
+        tone(kit, at, { from: f, length: 0.35, peak: 0.025, pan: side, attack: 0.001 });
+        tone(kit, at + 0.01, { from: f * 1.5, length: 0.25, peak: 0.012, pan: side, attack: 0.001 });
+      }),
+      every(random, 8, 20, (at) => tone(kit, at, { from: between(random, 160, 240), length: 0.12, peak: 0.05, pan: between(random, -0.5, 0.5), attack: 0.002 })),
+    ),
+    stop: stopper(s),
+  };
+}
+
+/** A home at night: the fridge hum, the building settling now and then. */
+function hum(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { ctx, random } = kit;
+  const buzz = ctx.createOscillator();
+  buzz.type = 'sawtooth';
+  buzz.frequency.value = 50;
+  const soft = filter(kit, 'lowpass', 240);
+  const level = gain(kit, 0.012);
+  chain(buzz, soft, level, kit.out);
+  buzz.start();
+  s.push(buzz);
+  layer(kit, s, kit.noise.brown, 0.1, filter(kit, 'lowpass', 140));
+  return {
+    tick: ticks(
+      drifter(level.gain, random, 0.004, 0.016, 4, 12),
+      every(random, 20, 60, (at) => tone(kit, at, { from: between(random, 90, 140), to: 70, length: 0.18, peak: 0.03, pan: between(random, -0.8, 0.8) }), 8),
+    ),
+    stop: stopper(s),
+  };
+}
+
+/** Inside a car: the engine's drone and road noise under the tyres. */
+function engine(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { ctx, noise, random } = kit;
+  const motor = ctx.createOscillator();
+  motor.type = 'sawtooth';
+  motor.frequency.value = 38;
+  const tone_ = filter(kit, 'lowpass', 160);
+  const level = gain(kit, 0.05);
+  chain(motor, tone_, level, kit.out);
+  motor.start();
+  s.push(motor);
+  const road = layer(kit, s, noise.brown, 0.45, filter(kit, 'lowpass', 420), filter(kit, 'highpass', 60));
+  return {
+    tick: ticks(
+      drifter(motor.frequency, random, 32, 48, 2, 6),
+      drifter(road.gain, random, 0.35, 0.55, 1, 3),
+    ),
+    stop: stopper(s),
+  };
+}
+
+/** An office: air vents, a keyboard somewhere, a phone now and then. */
+function office(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { noise, random } = kit;
+  layer(kit, s, noise.pink, 0.06, filter(kit, 'lowpass', 700), filter(kit, 'highpass', 120));
+  const keys = [-0.4, 0.3].map((side) => striker(kit, s, noise.white, 'bandpass', 3, side));
+  return {
+    tick: ticks(
+      every(random, 3, 10, (at) => {
+        const count = 4 + Math.floor(random() * 14);
+        for (let i = 0; i < count; i += 1) strikeAny(keys, random, at + i * between(random, 0.08, 0.2), between(random, 0.05, 0.1), 0.006, between(random, 2500, 4500));
+      }),
+      every(random, 40, 120, (at) => {
+        for (let ring = 0; ring < 2; ring += 1) tone(kit, at + ring * 0.35, { from: 880, length: 0.25, peak: 0.015, type: 'triangle', pan: between(random, -0.6, 0.6) });
+      }, 20),
+    ),
+    stop: stopper(s),
+  };
+}
+
+/** Rain on the windows: soft taps on glass and runnels, from inside. */
+function rainWindow(kit: Kit): Bed {
+  const s: AudioScheduledSourceNode[] = [];
+  const { noise, random } = kit;
+  layer(kit, s, noise.pink, 0.08, filter(kit, 'bandpass', 1800, 0.4));
+  layer(kit, s, noise.brown, 0.08, filter(kit, 'lowpass', 300));
+  const taps = [-0.6, -0.2, 0.2, 0.6].map((side) => striker(kit, s, noise.white, 'bandpass', 4, side));
+  return {
+    tick: every(random, 0.03, 0.18, (at) => strikeAny(taps, random, at, between(random, 0.04, 0.14), between(random, 0.004, 0.01), between(random, 3000, 6000))),
+    stop: stopper(s),
+  };
+}
+
 export const BED_BUILDERS: Record<AmbienceBed, (kit: Kit) => Bed> = {
   'rain-light': rainLight,
   'rain-heavy': rainHeavy,
@@ -753,6 +890,12 @@ export const BED_BUILDERS: Record<AmbienceBed, (kit: Kit) => Bed> = {
   room,
   fire,
   cave,
+  traffic,
+  bar,
+  hum,
+  engine,
+  office,
+  'rain-window': rainWindow,
 };
 
 export function buildBed(bed: AmbienceBed, ctx: BaseAudioContext, out: AudioNode, noise: Noise, random: () => number = Math.random): Bed {

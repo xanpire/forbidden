@@ -11,6 +11,7 @@ import {
   checkPin,
   loadPrivacy,
   savePrivacy,
+  setTabIcon,
   setTabTitle,
   shownAppName,
   type PrivacySettings,
@@ -30,6 +31,7 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
       setSettings(loaded);
       setLocked(Boolean(loaded.pinHash));
       setTabTitle(shownAppName(loaded));
+      setTabIcon(loaded.neutralName);
     });
   }, []);
 
@@ -70,6 +72,7 @@ export function PrivacyGate({ children }: { children: ReactNode }) {
     settingsRef.current = next;
     setSettings(next);
     setTabTitle(shownAppName(next));
+    setTabIcon(next.neutralName);
     await savePrivacy(next);
   }, []);
 

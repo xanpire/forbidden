@@ -5,7 +5,6 @@
 // encryption (saves are not encrypted yet; see the plan's "before release").
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext } from 'react';
-import { Platform } from 'react-native';
 
 import { APP_NAME, STORAGE_KEYS } from './brand';
 
@@ -82,8 +81,19 @@ export function shownAppName(settings: Pick<PrivacySettings, 'neutralName'>) {
 
 /** Sets the browser tab title (web only). */
 export function setTabTitle(title: string) {
-  if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  if (typeof document !== 'undefined') {
     document.title = title;
+  }
+}
+
+/** Swaps the browser tab icon for the neutral one, and back (web only). */
+export function setTabIcon(neutral: boolean) {
+  if (typeof document === 'undefined') return;
+  for (const rel of ['icon', 'shortcut icon', 'apple-touch-icon']) {
+    document.querySelectorAll<HTMLLinkElement>(`link[rel="${rel}"]`).forEach((link) => {
+      if (!link.dataset.original) link.dataset.original = link.href;
+      link.href = neutral ? (rel === 'apple-touch-icon' ? '/icon-neutral-180.png' : '/favicon-neutral.png') : link.dataset.original;
+    });
   }
 }
 

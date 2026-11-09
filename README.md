@@ -30,7 +30,7 @@ Then open the app, go to **Settings → OpenRouter API key**, paste a key from h
 
 - `bun run build:web` writes a static site to `dist/`. On Vercel, `vercel.json` already sets the build command, the output folder and clean URLs; import the repo and deploy.
 - The service worker (`public/sw.js`) is generated from `package.json`'s version; bump the version to invalidate caches.
-- Icons and the manifest live in `public/`. The app icon is still Kan's red vulture mark (a new icon comes later).
+- Icons and the manifest live in `public/`; `python3 scripts/make-icon.py` redraws them (a red keyhole) plus the neutral "Notes" icon used when the neutral name is on.
 - On Android, installing from the browser and re-adding the shortcut is needed after an icon change.
 
 ---

@@ -41,6 +41,12 @@ export const BED_TRIM: Record<AmbienceBed, number> = {
   room: 0.8,
   fire: 0.75,
   cave: 0.9,
+  traffic: 1.1,
+  bar: 2.2,
+  hum: 1,
+  engine: 0.9,
+  office: 1.2,
+  'rain-window': 1,
 };
 
 /** Glide a parameter from wherever it is now to `target` over `seconds`. */

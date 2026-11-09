@@ -46,12 +46,19 @@ export const AMBIENCE_BEDS = [
   'room',
   'fire',
   'cave',
+  // Modern places
+  'traffic',
+  'bar',
+  'hum',
+  'engine',
+  'office',
+  'rain-window',
 ] as const;
 
 export type AmbienceBed = (typeof AMBIENCE_BEDS)[number];
 
 /** Beds that sit inside with the player; everything else is outside and gets muffled indoors. */
-export const INDOOR_BEDS: ReadonlySet<AmbienceBed> = new Set<AmbienceBed>(['rain-roof', 'murmur', 'room', 'fire', 'cave']);
+export const INDOOR_BEDS: ReadonlySet<AmbienceBed> = new Set<AmbienceBed>(['rain-roof', 'murmur', 'room', 'fire', 'cave', 'bar', 'hum', 'engine', 'office', 'rain-window']);
 
 export type AmbienceInput = {
   condition: WeatherCondition;
@@ -66,6 +73,8 @@ export type AmbienceInput = {
   fight: boolean;
   /** The kind of safehouse the player is at: walls and a roof, or a camp under the sky. */
   shelter?: SafehouseKind;
+  /** The world's era (traffic, engines and office hums only outside the past). */
+  era?: 'past' | 'present' | 'future';
 };
 
 export type AmbienceMix = {
@@ -80,7 +89,7 @@ export type AmbienceMix = {
 };
 
 const INDOOR_WORDS =
-  /\b(inside|indoors|room|rooms|inn|teahouse|tea house|tavern|bar|restaurant|house|home|hut|cabin|shack|attic|cellar|basement|hall|chamber|office|library|kitchen|barracks|hospital|tent|hideout|lair|bunker|tower|palace|mansion|temple hall|shrine hall|dojo|bathhouse|bedroom|corridor|hallway|interior)\b/i;
+  /\b(inside|indoors|room|rooms|inn|teahouse|tea house|tavern|bar|restaurant|house|home|hut|cabin|shack|attic|cellar|basement|hall|chamber|office|library|kitchen|barracks|hospital|tent|hideout|lair|bunker|tower|palace|mansion|temple hall|shrine hall|dojo|bathhouse|bedroom|corridor|hallway|interior|flat|apartment|loft|studio|pub|club|nightclub|lounge|offices|cubicle|boardroom|back seat|front seat|taxi|cab)\b/i;
 const OUTSIDE_WORDS =
   /\b(outside|rooftop|roof of|courtyard|garden|street|streets|square|plaza|market|bridge|road|path|trail|field|forest|woods|treetops?|canopy|clearing|riverbank|shore|beach|dock|docks|cliff|ridge|summit|peak)\b/i;
 const CAVE_WORDS = /\b(cave|cavern|grotto|tunnel|catacomb|underground|mine shaft)\b/i;
@@ -93,6 +102,10 @@ const DESERT_WORDS = /\b(desert|dunes?|sands|wasteland|badlands)\b/i;
 const WATERFALL_WORDS = /\b(waterfall|waterfalls|falls|cascade)\b/i;
 const RIVER_WORDS = /\b(river|riverbank|riverside|rapids)\b/i;
 const STREAM_WORDS = /\b(stream|creek|brook|spring|hot springs?|onsen|pond|lake|lakeshore|lakeside)\b/i;
+const BAR_WORDS = /\b(bar|pub|club|nightclub|lounge|saloon|speakeasy|tavern)\b/i;
+const HOME_WORDS = /\b(flat|apartment|home|house|bedroom|living room|kitchen|studio|loft)\b/i;
+const CAR_WORDS = /\b(car|cab|taxi|van|truck|back seat|front seat|driver'?s seat|passenger seat)\b/i;
+const OFFICE_WORDS = /\b(office|offices|workplace|cubicle|meeting room|boardroom|newsroom|precinct|station house)\b/i;
 const SEA_WORDS = /\b(sea|seaside|ocean|coast|coastal|shore|shoreline|beach|cove|bay|harbou?r|port|docks?|pier|island|cliffs? over the sea|whirlpools?|boat|ship|ferry)\b/i;
 
 
@@ -112,6 +125,7 @@ export function ambienceInputOf(db: AppDatabase): AmbienceInput {
     kind: locationKindOf(db),
     place,
     fight: sceneModeOf(db).current === 'fight',
+    era: db.world?.era?.when,
     ...(house ? { shelter: house.kind } : {}),
   };
 }
@@ -296,6 +310,27 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
     delete beds.village;
   }
 
+  // ---- Modern places --------------------------------------------------------
+  // Only where the era has engines and streets full of them.
+  const modern = input.era !== 'past';
+  if (modern && kind === 'settlement' && !indoors && !MARKET_WORDS.test(place)) add(beds, 'traffic', night ? 0.25 : 0.55);
+  if (modern && CAR_WORDS.test(place)) {
+    add(beds, 'engine', 0.7);
+    delete beds.room;
+    if (rain > 0) add(beds, 'rain-window', 0.3 + rain * 0.4);
+  }
+  if (indoors && BAR_WORDS.test(place)) {
+    add(beds, 'bar', night && input.hour >= 2 && input.hour < 6 ? 0.2 : 0.7);
+    scale(beds, 'murmur', 0.5);
+  }
+  if (indoors && modern && HOME_WORDS.test(place) && !BAR_WORDS.test(place)) add(beds, 'hum', 0.5);
+  if (indoors && modern && OFFICE_WORDS.test(place)) add(beds, 'office', day ? 0.6 : 0.25);
+  // Rain on a home or an office is heard on the windows more than the roof.
+  if (indoors && !cave && rain > 0 && (HOME_WORDS.test(place) || OFFICE_WORDS.test(place) || BAR_WORDS.test(place))) {
+    add(beds, 'rain-window', 0.3 + rain * 0.5);
+    scale(beds, 'rain-roof', 0.6);
+  }
+
   // ---- Inside -------------------------------------------------------------
   if (indoors) {
     // Outside sounds come through the walls, quieter.
@@ -343,6 +378,12 @@ const BED_LABEL: Record<AmbienceBed, string> = {
   room: 'a quiet room',
   fire: 'a fire',
   cave: 'dripping stone',
+  traffic: 'traffic',
+  bar: 'the bar',
+  hum: 'the hum of the flat',
+  engine: 'the engine',
+  office: 'the office',
+  'rain-window': 'rain on the windows',
 };
 
 /** What's playing, loudest first, in a few words ("Rain on the roof, a fire"). */

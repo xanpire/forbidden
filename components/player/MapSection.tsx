@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { WeatherIcon } from '@/components/WeatherIcon';
+import { WorldMap } from '@/components/player/WorldMap';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
@@ -237,6 +238,8 @@ export function MapSection() {
 
   return (
     <>
+      {db.world.regions.length > 0 ? <SectionLabel>Map</SectionLabel> : null}
+      <WorldMap db={db} />
       <SectionLabel>You are here</SectionLabel>
       <ListCard>
         <ListRow
