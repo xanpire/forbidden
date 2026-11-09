@@ -89,7 +89,7 @@ type StoryMessage = {
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
   { value: 'slower', label: 'Slower', intimateOnly: true },
   { value: 'more', label: 'More', intimateOnly: true },
-  { value: 'skip-ahead', label: 'Skip ahead', intimateOnly: false },
+  { value: 'skip-ahead', label: 'Move on', intimateOnly: false },
   { value: 'fade-to-black', label: 'Fade to black', intimateOnly: true },
 ];
 
