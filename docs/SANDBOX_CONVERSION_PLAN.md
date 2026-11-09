@@ -17,7 +17,7 @@ This file is written for an AI coding agent working across **several separate se
 4. **App name: frbddn** (chosen 2026-11-09). It lives in one constant, `APP_NAME` in `lib/brand.ts`, together with every storage key. `app.json`, the manifest, `+html.tsx` and the service worker cache already use it. Only the icon is still Kan's (session 7).
 
 **Before you change anything:**
-- The code lives in the GitHub repo **`xanpire/forbidden`** (default branch `master`). Attach it, branch from the last session's branch (or `master` once it's merged), and push your branch. Keep this plan in both places, updated: `docs/SANDBOX_CONVERSION_PLAN.md` in the repo and `kan-master/docs/SANDBOX_CONVERSION_PLAN.md` in the claude.ai Project.
+- The code lives in the GitHub repo **`xanpire/forbidden`**. Work directly on **`master`** and push there: no branches, no pull requests (Xan's rule). Keep this plan in both places, updated: `docs/SANDBOX_CONVERSION_PLAN.md` in the repo and `kan-master/docs/SANDBOX_CONVERSION_PLAN.md` in the claude.ai Project.
 - Read `docs/PROJECT_GUIDE.md`. It's the full technical map, and its invariants (§13) still apply unless this plan says otherwise.
 - Read the **Progress log** at the bottom of this file to see which sessions are done.
 
@@ -213,7 +213,7 @@ Done when: drafting a known universe produces editable cast + timeline, and the 
 Update this after every session: date, session number, what was done, what's left, notes for the next session.
 
 - 2026-11-09 — Plan written. No code changed yet. Next: session 1.
-- 2026-11-09 — **Session 1 done.** Branch `sandbox-session-1` on `xanpire/forbidden`, app version 2.0.0. `bun test`: 488 pass, 0 fail. `tsc --noEmit`: clean.
+- 2026-11-09 — **Session 1 done.** On `master` of `xanpire/forbidden`, app version 2.0.0. `bun test`: 488 pass, 0 fail. `tsc --noEmit`: clean.
   - **Brand:** `lib/brand.ts` has `APP_NAME = 'frbddn'`, `STORAGE_KEYS` and `IDB_NAMES`. Every `kan.*` key and the `kan-saves` / `kan-images` / `kan-debug` databases now use the `frbddn` prefix. The name is also in `app.json` (slug, scheme, bundle ids `com.frbddn.app`), `package.json`, the manifest, `+html.tsx`, the SW cache (`frbddn-shell-…`), the Wordmark, Settings, export file names and the OpenRouter `X-Title`.
   - **Types:** `types.ts` now has `WorldDefinition`, `CharacterDefinition`, `StartingPerson`, `OpeningScene`, `FactionDef` (with `readsMail?`), `RegionDef`, `PlaceDef`, `TimelineEvent` (+ `TimelineKnowledge`, `TimelineWindow`), `FestivalDef`, `AbilityDef` and `ClimateType`. `AppDatabase.world` is added, and `lib/rpg/world.ts` has `emptyWorld`, `normalizeWorld` and `CLIMATE_TYPE_LIST`. `PlayerSheet` is gone: `state.player` is a `CharacterDefinition`. Its fields that play keeps up to date are `birthYear`, `natures` and `abilityStages`. `abilityStages` was called `player.abilities` before; that name now holds the player's own `AbilityDef[]`.
   - **Player helpers:** `lib/rpg/player.ts` has `playerEntity`, `playerName`, `playerId`, `isPlayerEntity`, `isPlayer`, `isPlayerName`, `playerRefs`, `isPlayerRef`, `playerDisplayNames`, `playerAge`, `playerAgeAt` and `normalizeCharacter`. Every `name === 'kan'` check, every local `isKan` and every `'Kan'` literal in logic now goes through them. In the tracker, the player's id is always `player` (`PLAYER_REF` in characterRefs.ts). `convertStateBlock(block, statePlayerOf(db))` takes the player's refs. `secondPerson(text, names)` needs the player's names (`playerDisplayNames(db)`).
