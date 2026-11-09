@@ -54,6 +54,7 @@ import { setSceneModeOverride } from './sceneMode';
 import { narratorHeldBack } from './refusal';
 import { applyTextPlan, sendText as sendPhoneText, waitForNext, writeTexts } from './phone';
 import { applySkip } from './skip';
+import { lastPlayerMessage, rebuildWithEditedReply, rewindTo as rewindToEntry } from './edit';
 import {
   applyStateStep,
   applySummaryJob,
@@ -188,6 +189,12 @@ type GameContextValue = {
   /** Saves a painted portrait of someone in your bonds. */
   /** Applies a change to the latest copy of the save (explicit pictures, reference sheets, world edits). */
   changeSave: (change: (db: AppDatabase) => AppDatabase) => Promise<void>;
+  /** Rewrites your last message; the turn runs again. */
+  editLastMessage: (text: string) => Promise<void>;
+  /** Rewrites the narrator's last reply by hand; the tracker reads it again. */
+  editReply: (text: string) => Promise<void>;
+  /** Rewinds to before this message of yours: everything since is rolled back. */
+  rewindTo: (userEntryId: string) => Promise<void>;
   /** Skips ahead to this moment; the narrator opens the new moment (skip.ts). */
   skipTo: (to: CalendarDate) => Promise<void>;
   /** Sends a text from the phone; what comes back lands in story time. */
@@ -1323,6 +1330,53 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const editLastMessage = useCallback(
+    async (text: string) => {
+      if (backgroundPromiseRef.current) await backgroundPromiseRef.current;
+      const current = dbRef.current;
+      const player = current ? lastPlayerMessage(current) : null;
+      const restored = current && player ? rewindToEntry(current, player.id) : null;
+
+      if (!restored || !text.trim()) return;
+
+      await commitDb(restored);
+      await sendTurn(text);
+    },
+    [commitDb, sendTurn]
+  );
+
+  const editReply = useCallback(
+    async (text: string) => {
+      if (backgroundPromiseRef.current) await backgroundPromiseRef.current;
+      const current = dbRef.current;
+      const rebuilt = current ? rebuildWithEditedReply(current, text) : null;
+
+      if (!current || !rebuilt) return;
+
+      const activeKey = apiKey.trim() || (await loadApiKey()).trim();
+      await commitDb(rebuilt.db);
+
+      if (!activeKey) {
+        setError('Add your OpenRouter API key in Settings so the edit can be read into the story.');
+        return;
+      }
+
+      trackBackground(runStateStep(activeKey, current.meta.slotId, rebuilt.turn));
+    },
+    [apiKey, commitDb, runStateStep, trackBackground]
+  );
+
+  const rewindTo = useCallback(
+    async (userEntryId: string) => {
+      if (backgroundPromiseRef.current) await backgroundPromiseRef.current;
+      const current = dbRef.current;
+      const restored = current ? rewindToEntry(current, userEntryId) : null;
+
+      if (restored) await commitDb(restored);
+    },
+    [commitDb]
+  );
+
   const skipTo = useCallback(
     async (to: CalendarDate) => {
       const latest = dbRef.current;
@@ -1485,6 +1539,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       correctTurnTime,
       addPortrait,
       changeSave,
+      editLastMessage,
+      editReply,
+      rewindTo,
       skipTo,
       sendText,
       waitForText,
@@ -1499,6 +1556,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       attachImage,
       addPortrait,
       changeSave,
+      editLastMessage,
+      editReply,
+      rewindTo,
       skipTo,
       sendText,
       waitForText,

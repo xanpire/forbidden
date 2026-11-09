@@ -11,8 +11,8 @@ export function currentTurn(db: AppDatabase) {
   return db.rawLog.filter((message) => message.kind === 'story').length + 1;
 }
 
-/** Undo keeps this many turns. Snapshots hold no images, so they stay small. */
-export const SNAPSHOT_LIMIT = 5;
+/** Undo and rewind reach back this many turns. Snapshots hold no images, so they stay small. */
+export const SNAPSHOT_LIMIT = 10;
 
 const isInline = (value: string | null | undefined) => typeof value === 'string' && value.startsWith('data:');
 
@@ -52,12 +52,23 @@ export function pushSnapshot(db: AppDatabase, limit = SNAPSHOT_LIMIT): AppDataba
 export function restoreLastSnapshot(db: AppDatabase): AppDatabase | null {
   const snapshot = db.snapshots[db.snapshots.length - 1];
 
-  if (!snapshot) {
+  return snapshot ? restoreSnapshot(db, snapshot.id) : null;
+}
+
+/**
+ * Rewinds to a snapshot: the save as it was before that turn, with the
+ * snapshots before it. Memory, bonds, the clock and the phone all come back
+ * with it; images come from the live save.
+ */
+export function restoreSnapshot(db: AppDatabase, snapshotId: string): AppDatabase | null {
+  const index = db.snapshots.findIndex((item) => item.id === snapshotId);
+
+  if (index === -1) {
     return null;
   }
 
-  const restored = cloneDatabase(snapshot.database);
-  restored.snapshots = db.snapshots.slice(0, -1);
+  const restored = cloneDatabase(db.snapshots[index].database);
+  restored.snapshots = db.snapshots.slice(0, index);
   // Images are not in snapshots: they come from the live save.
   const liveImages = new Map(db.rawLog.filter((entry) => entry.image).map((entry) => [entry.id, entry.image]));
   restored.rawLog = restored.rawLog.map((entry) =>
@@ -68,6 +79,19 @@ export function restoreLastSnapshot(db: AppDatabase): AppDatabase | null {
   restored.characterFaces = db.characterFaces;
 
   return restored;
+}
+
+/** The snapshot taken just before this player message: rewinding to it undoes that turn and everything after. */
+export function snapshotBefore(db: AppDatabase, userEntryId: string): TurnSnapshot | null {
+  const story = db.rawLog.filter((entry) => entry.kind === 'story');
+  const index = story.findIndex((entry) => entry.id === userEntryId);
+
+  if (index === -1 || story[index].role !== 'user') {
+    return null;
+  }
+
+  // A snapshot remembers the turn number it was taken at: story entries + 1.
+  return [...db.snapshots].reverse().find((snapshot) => snapshot.turn === index + 1) ?? null;
 }
 
 export function appendStoryMessage(

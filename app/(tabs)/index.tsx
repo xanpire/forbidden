@@ -29,6 +29,7 @@ import {
   Clock3,
   RotateCcw,
   FastForward,
+  Pencil,
   Smartphone,
   Sparkles,
   Wand2,
@@ -58,6 +59,8 @@ import { downloadImage } from '@/lib/rpg/file';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { unreadCount } from '@/lib/rpg/phone';
 import { canSkip, parseSkipTarget, presetTarget, type SkipChoice } from '@/lib/rpg/skip';
+import { lastPlayerMessage, rewindableIds } from '@/lib/rpg/edit';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
 import { paintScene, retouchSceneImage, sexualMoment, type PaintedTake } from '@/lib/rpg/paintScene';
@@ -66,7 +69,7 @@ import { WeatherIcon } from '@/components/WeatherIcon';
 import { resolveTurnMode, sceneOptionInput } from '@/lib/rpg/sceneMode';
 import { sexStrip } from '@/lib/rpg/sexMode';
 import { setupDone } from '@/lib/setup';
-import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
+import type { CalendarDate, SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
 import { APP_NAME } from '@/lib/brand';
@@ -80,6 +83,7 @@ type StoryMessage = {
   sceneOptions?: string[];
   heldBack?: 'refused' | 'faded';
   meanwhile?: string;
+  skipTo?: CalendarDate;
 };
 
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
@@ -299,6 +303,9 @@ export default function StoryScreen() {
     changeSave,
     loading,
     skipTo,
+    editLastMessage,
+    editReply,
+    rewindTo,
   } = useGame();
   const { showToast } = useToast();
 
@@ -329,6 +336,9 @@ export default function StoryScreen() {
   const [customUnit, setCustomUnit] = useState<TimeUnit>('min');
   const [modeOpen, setModeOpen] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
+  // Editing your last message or the narrator's last reply, and rewinding to before a message.
+  const [editing, setEditing] = useState<{ kind: 'message' | 'reply'; text: string } | null>(null);
+  const [rewindId, setRewindId] = useState<string | null>(null);
   const [skipText, setSkipText] = useState('');
   const imageScale = useSharedValue(1);
   const imageTranslateX = useSharedValue(0);
@@ -365,6 +375,7 @@ export default function StoryScreen() {
         sceneOptions: message.role === 'assistant' ? message.sceneOptions : undefined,
         heldBack: message.role === 'assistant' ? message.heldBack : undefined,
         meanwhile: message.role === 'user' ? message.meanwhile : undefined,
+        skipTo: message.role === 'user' ? message.skipTo : undefined,
       };
     });
   }, [db]);
@@ -667,7 +678,9 @@ export default function StoryScreen() {
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
-  const unreadTexts = db ? unreadCount(db) : 0;
+  const unreadTexts = unreadCount(db);
+  const rewindable = rewindableIds(db);
+  const lastPlayerId = lastPlayerMessage(db)?.id;
   const latestSceneOptions = !isNarrating ? messages.find((message) => message.id === lastAssistantId)?.sceneOptions ?? [] : [];
   const modeHint =
     shownMode === 'normal' && turnMode?.lean && !override
@@ -745,10 +758,25 @@ export default function StoryScreen() {
           {messages.map((message) => (
             <Fragment key={message.id}>
             {message.role === 'user' ? (
-              <View style={styles.playerBlock}>
+              <Pressable
+                accessibilityHint={rewindable.has(message.id) ? 'Long-press to rewind to before this' : undefined}
+                delayLongPress={350}
+                disabled={isNarrating || !rewindable.has(message.id)}
+                onLongPress={() => setRewindId(message.id)}
+                style={styles.playerBlock}
+              >
                 <PlayerText text={message.content} />
                 {message.meanwhile ? <Text style={styles.meanwhile}>Meanwhile: {message.meanwhile}</Text> : null}
-              </View>
+                {message.id === lastPlayerId && !isNarrating && !message.skipTo ? (
+                  <View style={styles.inlineActions}>
+                    <InlineAction
+                      icon={<Pencil color={colors.textMuted} size={14} strokeWidth={2} />}
+                      label="Edit"
+                      onPress={() => setEditing({ kind: 'message', text: message.content })}
+                    />
+                  </View>
+                ) : null}
+              </Pressable>
             ) : (
               <View style={styles.narration}>
                 {paragraphsOf(message.content).map((paragraph, index) => (
@@ -795,6 +823,11 @@ export default function StoryScreen() {
                       icon={<RotateCcw color={colors.textMuted} size={15} strokeWidth={2} />}
                       label="Retry"
                       onPress={() => void regenerate()}
+                    />
+                    <InlineAction
+                      icon={<Pencil color={colors.textMuted} size={15} strokeWidth={2} />}
+                      label="Edit"
+                      onPress={() => setEditing({ kind: 'reply', text: message.content })}
                     />
                     <InlineAction
                       icon={<Undo2 color={colors.textMuted} size={15} strokeWidth={2} />}
@@ -1151,6 +1184,51 @@ export default function StoryScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal animationType="fade" onRequestClose={() => setEditing(null)} transparent visible={Boolean(editing)}>
+        <View style={styles.sheetOverlay}>
+          <Pressable accessibilityLabel="Close editing" onPress={() => setEditing(null)} style={StyleSheet.absoluteFill} />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <SectionLabel first>{editing?.kind === 'reply' ? 'Edit the reply' : 'Edit your message'}</SectionLabel>
+            <Text style={type.rowMeta}>
+              {editing?.kind === 'reply'
+                ? 'Your version replaces the reply, and the story reads it again: who is here, the time, how people feel.'
+                : 'The turn runs again with your new message.'}
+            </Text>
+            <TextInput
+              accessibilityLabel={editing?.kind === 'reply' ? 'The reply' : 'Your message'}
+              multiline
+              onChangeText={(text) => setEditing((current) => (current ? { ...current, text } : current))}
+              style={[styles.oocInput, styles.editInput]}
+              value={editing?.text ?? ''}
+            />
+            <AppButton
+              disabled={!editing?.text.trim()}
+              label={editing?.kind === 'reply' ? 'Save the reply' : 'Send again'}
+              onPress={() => {
+                const target = editing;
+                setEditing(null);
+                if (!target) return;
+                void (target.kind === 'reply' ? editReply(target.text) : editLastMessage(target.text));
+              }}
+            />
+            <AppButton label="Cancel" onPress={() => setEditing(null)} style={styles.sheetClose} variant="secondary" />
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmDialog
+        body="Everything after it goes: the replies, and what they changed in memory, bonds, the clock and your phone."
+        confirmLabel="Rewind"
+        onCancel={() => setRewindId(null)}
+        onConfirm={() => {
+          const id = rewindId;
+          setRewindId(null);
+          if (id) void rewindTo(id);
+        }}
+        title="Rewind to before this?"
+        visible={Boolean(rewindId)}
+      />
 
       <Modal animationType="fade" onRequestClose={() => setSkipOpen(false)} transparent visible={skipOpen}>
         <View style={styles.sheetOverlay}>
@@ -1731,6 +1809,11 @@ const styles = StyleSheet.create({
   meanwhile: {
     ...type.rowMeta,
     marginTop: 4,
+  },
+  editInput: {
+    minHeight: 160,
+    maxHeight: 360,
+    textAlignVertical: 'top',
   },
   heldBack: {
     padding: spacing.sm,
