@@ -1513,6 +1513,25 @@ export type StartingPerson = {
   whereabouts?: string;
 };
 
+/** Something the player marked as true at the start ("things that are true"). */
+export type StartingTruth = {
+  text: string;
+  /** Who it is about, by name; empty = the player. */
+  about?: string;
+  /** Who knows it, by name; "you" = the player. Empty = only the player. */
+  knownBy?: string[];
+  type?: FactType;
+};
+
+/** Everything the player wrote that a new save is built from (see seed.ts). */
+export type SeedInput = {
+  world: WorldDefinition;
+  character: CharacterDefinition;
+  people: StartingPerson[];
+  opening: OpeningScene;
+  truths?: StartingTruth[];
+};
+
 export type OpeningScene = {
   location: string;
   placeId?: string;

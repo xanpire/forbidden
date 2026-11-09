@@ -35,6 +35,7 @@ import { useToast } from '@/components/Toast';
 import { APP_VERSION } from '@/lib/version';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { fetchImageModelCaps, testOpenRouterKey } from '@/lib/openrouter';
+import { router } from 'expo-router';
 import { describeImageCaps } from '@/lib/rpg/imageCaps';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { DEFAULT_SETTINGS, PROMPT_BUDGET_OPTIONS } from '@/lib/rpg/defaults';
@@ -615,14 +616,23 @@ export default function SettingsScreen() {
                 <AppButton compact label="Start" onPress={() => void handleCreateSlot()} />
               </View>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setCreating(true)}
-                style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
-              >
-                <Plus color={colors.accentText} size={17} strokeWidth={2.2} />
-                <Text style={styles.newStoryLabel}>New story</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/new-story')}
+                  style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
+                >
+                  <Plus color={colors.accentText} size={17} strokeWidth={2.2} />
+                  <Text style={styles.newStoryLabel}>New story</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setCreating(true)}
+                  style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
+                >
+                  <Text style={[styles.newStoryLabel, { color: colors.textMuted }]}>Try the sample story (Harbourside)</Text>
+                </Pressable>
+              </>
             )}
           </ListCard>
 

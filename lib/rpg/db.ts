@@ -14,6 +14,7 @@ import { stripNarrationJson } from './prompt';
 import { TIMELINE_VERSION } from './timeline';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
+import type { SeedInput } from './types';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
@@ -189,9 +190,11 @@ export async function saveSlot(db: AppDatabase) {
   }
 }
 
-export async function createSlot(slotName: string): Promise<AppDatabase> {
+export async function createSlot(slotName: string, input?: SeedInput, settings?: AppDatabase['settings']): Promise<AppDatabase> {
   const slotId = makeId('slot');
-  const db = seedDatabase(slotId, slotName || 'New story');
+  const seeded = seedDatabase(slotId, slotName || 'New story', input);
+  // A new story keeps the player's model choices.
+  const db = settings ? { ...seeded, settings: { ...seeded.settings, ...settings } } : seeded;
   await saveSlot(db);
 
   const meta = await loadStorageMeta();

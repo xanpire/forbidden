@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   slotPrefix: `${STORAGE_PREFIX}.slot.`,
   apiKey: `${STORAGE_PREFIX}.apiKey.v1`,
   ambience: `${STORAGE_PREFIX}.ambience.v1`,
+  wizardDraft: `${STORAGE_PREFIX}.wizardDraft.v1`,
 } as const;
 
 /** IndexedDB database names. */

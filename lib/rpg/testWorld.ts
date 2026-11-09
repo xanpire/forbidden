@@ -5,31 +5,16 @@
 import type {
   CalendarDate,
   CharacterDefinition,
-  FactType,
   OpeningScene,
+  SeedInput,
   StartingPerson,
+  StartingTruth,
   WorldDefinition,
 } from './types';
 
 export const TEST_START: CalendarDate = { year: 2026, month: 10, day: 1, hour: 22, minute: 0, second: 0 };
 
-/** Something the player marked as true at the start ("things that are true"). */
-export type StartingTruth = {
-  text: string;
-  /** Who it is about, by name; empty = the player. */
-  about?: string;
-  /** Who knows it, by name; "you" = the player. Empty = only the player. */
-  knownBy?: string[];
-  type?: FactType;
-};
-
-export type SeedInput = {
-  world: WorldDefinition;
-  character: CharacterDefinition;
-  people: StartingPerson[];
-  opening: OpeningScene;
-  truths?: StartingTruth[];
-};
+export type { SeedInput, StartingTruth } from './types';
 
 export function testWorld(): WorldDefinition {
   return {

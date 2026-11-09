@@ -67,6 +67,7 @@ import {
   type TurnInfo,
 } from './memoryJobs';
 import type {
+  SeedInput,
   AppDatabase,
   BondRecord,
   EventRecord,
@@ -142,7 +143,7 @@ type GameContextValue = {
   undoLastTurn: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
   switchSlotById: (slotId: string) => Promise<void>;
-  createNewSlot: (slotName: string) => Promise<void>;
+  createNewSlot: (slotName: string, input?: SeedInput) => Promise<void>;
   deleteSlotById: (slotId: string) => Promise<void>;
   duplicateSlotById: (slotId: string, slotName: string) => Promise<void>;
   renameSlotById: (slotId: string, slotName: string) => Promise<void>;
@@ -892,8 +893,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const createNewSlot = useCallback(
-    async (slotName: string) => {
-      const next = await createSlot(slotName);
+    async (slotName: string, input?: SeedInput) => {
+      const next = await createSlot(slotName, input, dbRef.current?.settings);
       setDb(next);
       dbRef.current = next;
       setMeta(await loadStorageMeta());

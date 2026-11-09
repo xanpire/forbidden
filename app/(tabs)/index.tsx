@@ -734,6 +734,12 @@ export default function StoryScreen() {
                 onPress={() => void submit('*You take in where you are.*')}
                 style={styles.seedButton}
               />
+              <AppButton
+                label="Create your own story"
+                onPress={() => router.push('/new-story')}
+                style={styles.seedButton}
+                variant="secondary"
+              />
             </View>
           ) : null}
 
