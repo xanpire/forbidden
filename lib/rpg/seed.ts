@@ -59,7 +59,7 @@ export function birthYearOf(age: number, start: CalendarDate, birthday?: { month
   return start.year - age - (notYet ? 1 : 0);
 }
 
-function personEntity(person: StartingPerson, id: string, date: CalendarDate): EntityRecord {
+export function personEntity(person: StartingPerson, id: string, date: CalendarDate): EntityRecord {
   return {
     id,
     name: person.name.trim(),
@@ -83,6 +83,28 @@ function personEntity(person: StartingPerson, id: string, date: CalendarDate): E
     ...(person.met !== false && person.alive ? { lastSeen: date } : {}),
     ...(person.met === false ? { status: person.alive ? 'Not yet met' : 'Deceased' } : {}),
     tags: [],
+  };
+}
+
+/** The bond for someone the player already knows, as they wrote both sides of it. */
+export function personBond(person: StartingPerson, entityId: string, date: CalendarDate, lastKeyEventId: string | null = null): BondRecord {
+  const theirs = { affinity: clampAffinity(person.theirFeelings.affinity), note: person.theirFeelings.note };
+  const yours = { affinity: clampAffinity(person.yourFeelings.affinity), note: person.yourFeelings.note };
+
+  return {
+    id: makeId('bond'),
+    entityId,
+    characterName: person.name.trim(),
+    affinity: theirs.affinity,
+    status: person.alive ? person.relationship || 'Known' : `Deceased · ${person.relationship || 'Known'}`,
+    lastKeyEventId,
+    note: theirs.note,
+    theirFeelings: theirs,
+    yourFeelings: yours,
+    isMajor: true,
+    relationship: normalizeRelationship(person.relationship) ?? 'acquaintance',
+    attraction: attractionOf(person.attraction),
+    updatedInStoryDate: date,
   };
 }
 
@@ -165,26 +187,9 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
   ];
 
   // Someone the player has not met yet has no bond until they meet.
-  const bonds: BondRecord[] = people.flatMap((person, index) => person.met === false ? [] : [{ person, index }]).map(({ person, index }) => {
-    const theirs = { affinity: clampAffinity(person.theirFeelings.affinity), note: person.theirFeelings.note };
-    const yours = { affinity: clampAffinity(person.yourFeelings.affinity), note: person.yourFeelings.note };
-
-    return {
-      id: makeId('bond'),
-      entityId: peopleIds[index],
-      characterName: person.name.trim(),
-      affinity: theirs.affinity,
-      status: person.alive ? person.relationship || 'Known' : `Deceased · ${person.relationship || 'Known'}`,
-      lastKeyEventId: castIds.includes(peopleIds[index]) ? openingEvent.id : null,
-      note: theirs.note,
-      theirFeelings: theirs,
-      yourFeelings: yours,
-      isMajor: true,
-      relationship: normalizeRelationship(person.relationship) ?? 'acquaintance',
-      attraction: attractionOf(person.attraction),
-      updatedInStoryDate: date,
-    };
-  });
+  const bonds: BondRecord[] = people
+    .flatMap((person, index) => (person.met === false ? [] : [{ person, index }]))
+    .map(({ person, index }) => personBond(person, peopleIds[index], date, castIds.includes(peopleIds[index]) ? openingEvent.id : null));
 
   const byName = (name: string | undefined) => {
     const wanted = (name ?? '').trim().toLowerCase();

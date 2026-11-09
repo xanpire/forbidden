@@ -16,6 +16,7 @@ export const STORAGE_KEYS = {
   privacy: `${STORAGE_PREFIX}.privacy.v1`,
   runwareKey: `${STORAGE_PREFIX}.runwareKey.v1`,
   wiroKey: `${STORAGE_PREFIX}.wiroKey.v1`,
+  worldTemplates: `${STORAGE_PREFIX}.worldTemplates.v1`,
 } as const;
 
 /** IndexedDB database names. */

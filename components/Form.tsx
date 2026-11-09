@@ -65,6 +65,14 @@ export function NumberField({
   allowEmpty?: boolean;
   required?: boolean;
 }) {
+  const shown = value === undefined || value === null ? '' : String(value);
+  // Keeps its own text so "0." or "-" survive while typing.
+  const [text, setText] = useState(shown);
+  useEffect(() => {
+    if (Number(text) !== value && !(text === '' && value === undefined)) setText(shown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
   return (
     <View style={[styles.field, styles.numberField]}>
       <Text style={styles.label}>
@@ -73,17 +81,18 @@ export function NumberField({
       </Text>
       <TextInput
         accessibilityLabel={label}
-        inputMode="numeric"
+        inputMode="decimal"
         keyboardType="numeric"
-        onChangeText={(text) => {
-          const trimmed = text.replace(/[^0-9.-]/g, '');
-          if (!trimmed) return onChange(allowEmpty ? undefined : 0);
-          const parsed = Number(trimmed);
-          if (Number.isFinite(parsed)) onChange(parsed);
+        onChangeText={(raw) => {
+          const next = raw.replace(/[^0-9.-]/g, '');
+          setText(next);
+          if (!next) return onChange(allowEmpty ? undefined : 0);
+          const parsed = Number(next);
+          if (Number.isFinite(parsed) && !/[.-]$/.test(next)) onChange(parsed);
         }}
         placeholderTextColor={colors.textDim}
         style={styles.input}
-        value={value === undefined || value === null ? '' : String(value)}
+        value={text}
       />
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>

@@ -3,6 +3,8 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Segmented } from '@/components/List';
+import { AppButton } from '@/components/AppButton';
+import { router } from 'expo-router';
 import { BondsSection } from '@/components/player/BondsSection';
 import { JournalSection } from '@/components/player/JournalSection';
 import { MapSection } from '@/components/player/MapSection';
@@ -46,6 +48,9 @@ export default function YouScreen() {
           {tab === 'bonds' ? <BondsSection /> : null}
           {tab === 'journal' ? <JournalSection /> : null}
           {tab === 'map' ? <MapSection /> : null}
+          <View style={styles.editWrap}>
+            <AppButton label="Edit your world and sheet" onPress={() => router.push('/world-editor')} variant="secondary" />
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -53,6 +58,9 @@ export default function YouScreen() {
 }
 
 const styles = StyleSheet.create({
+  editWrap: {
+    marginTop: 32,
+  },
   root: {
     flex: 1,
     backgroundColor: colors.background,
