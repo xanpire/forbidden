@@ -33,10 +33,10 @@ import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt, buildSceneSummaryPrompt } from '../lib/rpg/prompt';
 import { resolveTurnMode } from '../lib/rpg/sceneMode';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
-import { testSeedInput } from '../lib/rpg/testWorld';
+import { testSeedInput } from './fixtures/testWorld';
 import type { AppDatabase, ContentProfile } from '../lib/rpg/types';
 
 function story(pacing: ContentProfile['pacing'] = 'natural'): AppDatabase {

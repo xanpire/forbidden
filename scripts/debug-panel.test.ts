@@ -8,7 +8,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import {
   beginDebugTurn,

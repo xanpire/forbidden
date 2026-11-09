@@ -33,8 +33,8 @@ import {
 import { notificationText } from '../lib/rpg/intimacy';
 import { appendStoryMessage, pushSnapshot } from '../lib/rpg/log';
 import { paintExplicit } from '../lib/rpg/paintExplicit';
-import { seedDatabase } from '../lib/rpg/seed';
-import { testSeedInput } from '../lib/rpg/testWorld';
+import { seedDatabase } from './fixtures/seed';
+import { testSeedInput } from './fixtures/testWorld';
 import type { AppDatabase } from '../lib/rpg/types';
 
 const PLANTED = 'PURPLE ELEPHANT';

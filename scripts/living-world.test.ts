@@ -32,7 +32,7 @@ import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { latestPov, parsePovLines, povCandidates, povInstruction, resolvePovs } from '../lib/rpg/povMemories';
 import { buildExtractionPrompt, buildNarrationPrompt, buildSceneSummaryPrompt } from '../lib/rpg/prompt';
 import { applyEpithet, knownEpithets, recordDeeds, renownOf } from '../lib/rpg/renown';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import type { AppDatabase, EntityRecord } from '../lib/rpg/types';

@@ -34,7 +34,7 @@ import {
   placesLine,
   rentedUntil,
 } from '../lib/rpg/safehouses';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import type { AppDatabase, CalendarDate } from '../lib/rpg/types';

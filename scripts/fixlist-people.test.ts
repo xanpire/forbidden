@@ -16,7 +16,7 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep, CHAPTER_MIN_TURNS } from '../lib/rpg/memoryJobs';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import type { AppDatabase } from '../lib/rpg/types';
 

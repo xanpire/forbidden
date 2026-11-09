@@ -8,8 +8,8 @@ import { makeId } from './id';
 import { startingPurse } from './money';
 import { PLAYER_TAG } from './player';
 import { normalizeContentProfile, normalizeIntimacy, normalizeRelationship } from './intimacy';
-import { testSeedInput, type SeedInput } from './testWorld';
-import { normalizeWorld } from './world';
+import { DEFAULT_DATE } from './calendar';
+import { emptyWorld, normalizeWorld } from './world';
 import type {
   AppDatabase,
   Attraction,
@@ -20,11 +20,12 @@ import type {
   EventRecord,
   FactRecord,
   Gender,
+  SeedInput,
   StartingPerson,
   ThreadRecord,
 } from './types';
 
-/** The written aliases plus the given name ("Daniel" for "Daniel Okafor"), so the prose can use either. */
+/** The written aliases plus the given name ("Sam" for "Sam Hale"), so the prose can use either. */
 export function withGivenName(name: string, aliases: string[]): string[] {
   const clean = aliases.map((alias) => alias.trim()).filter(Boolean);
   const given = name.trim().split(/\s+/)[0] ?? '';
@@ -32,7 +33,17 @@ export function withGivenName(name: string, aliases: string[]): string[] {
   return [...new Set(out)];
 }
 
-export type { SeedInput } from './testWorld';
+export type { SeedInput } from './types';
+
+/** A blank save's input: an empty world, an unnamed character, nobody else. New stories come from the wizard. */
+export function blankSeedInput(): SeedInput {
+  return {
+    world: emptyWorld(),
+    character: { name: '', aliases: [], age: 25, gender: '', appearance: '', outfit: '', personality: '', speechStyle: '', backstory: '', role: '', skills: '', inventory: [], money: 0, secrets: [], goals: [] },
+    people: [],
+    opening: { location: '', date: { ...DEFAULT_DATE }, situation: '', castNames: [] },
+  };
+}
 
 function genderOf(value: string | undefined): Gender {
   const lower = (value ?? '').trim().toLowerCase();
@@ -111,9 +122,9 @@ export function personBond(person: StartingPerson, entityId: string, date: Calen
 
 /**
  * A new save from the player's world, character, people and opening scene.
- * Without input it uses the built-in test world.
+ * Without input it is a blank save (nothing built in).
  */
-export function seedDatabase(slotId: string, slotName: string, input: SeedInput = testSeedInput()): AppDatabase {
+export function seedDatabase(slotId: string, slotName: string, input: SeedInput = blankSeedInput()): AppDatabase {
   const now = Date.now();
   const world = normalizeWorld(input.world);
   const character = input.character;

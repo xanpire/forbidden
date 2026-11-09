@@ -18,7 +18,7 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { secondPerson } from '../lib/rpg/util';
 import type { AppDatabase } from '../lib/rpg/types';

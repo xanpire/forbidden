@@ -201,7 +201,7 @@ Read the narrator's latest reply and pick the single most dramatic INSTANT from 
 ACTION: exactly who does what to whom at that instant, and where.
 - One or two sentences, at most 45 words (up to 80 words for an ensemble shot, so you can place everyone), present tense, third person.
 - The actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
-- Name people by name (the player by their name, "Mara"). Unnamed people get a short description ("a security guard").
+- Name people by name (the player by their name, "Sam"). Unnamed people get a short description ("a security guard").
 - Only people physically present in that moment. Include body positions, expressions at their peak, and anything visible that matters: a weapon, a vehicle, the weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
 

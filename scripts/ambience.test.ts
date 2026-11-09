@@ -22,7 +22,7 @@ import {
   type AmbienceInput,
 } from '../lib/rpg/ambience';
 import { normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import type { AppDatabase } from '../lib/rpg/types';
 
 const base: AmbienceInput = {

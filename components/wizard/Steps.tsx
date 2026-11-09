@@ -22,8 +22,6 @@ import {
   CLIMATE_LABELS,
   STEP_LABELS,
   WIZARD_STEPS,
-  WORLD_PRESETS,
-  applyPreset,
   applySuggestion,
   clearDraft,
   draftToSeedInput,
@@ -152,14 +150,7 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
         onChange={(period) => setWorld({ era: { ...world.era, period } })}
         value={world.era.period}
       />
-      <Choice
-        hint="Presets only fill in fields; change anything after."
-        label="Start from a preset (optional)"
-        onChange={(id) => update((d) => applyPreset(d, id))}
-        options={WORLD_PRESETS.map((preset) => ({ value: preset.id, label: preset.label }))}
-        value={undefined}
-      />
-      <Field label="World name" onChange={(name) => setWorld({ name })} placeholder="Harbourside" required value={world.name} />
+      <Field label="World name" onChange={(name) => setWorld({ name })} required value={world.name} />
       <Field
         hint="Optional: a real period or a realistic show or novel this world follows (Victorian London, Tokyo 1990s…)."
         label="Known setting"

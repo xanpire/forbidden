@@ -26,7 +26,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { loadSlot, saveSlot } from '../lib/rpg/db';
 import { pushSnapshot } from '../lib/rpg/log';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { readSlotJson, resetSlotStoreForTests, slotBackend } from '../lib/rpg/slotStore';
 import { STORAGE_KEYS } from '../lib/brand';
 

@@ -475,7 +475,7 @@ function nameCandidates(rawName: string) {
 }
 
 // Words that describe or address someone rather than name them: "Lady
-// Voss", "Mara from the docks", "old man Teo".
+// Hale", "Sam from the docks", "old man Teo".
 const DESCRIPTOR_WORDS = new Set([
   'the', 'of', 'from', 'a', 'an', 'lady', 'lord', 'sir', 'old', 'young', 'little',
   'big', 'great', 'granny', 'grandpa', 'master', 'sensei', 'sama', 'san', 'kun',
@@ -525,7 +525,7 @@ export function isGenericDescription(rawName: string) {
 const LEADING_TITLES = /^(?:the|lady|lord|sir|master|granny|grandpa|elder|captain|mister|miss)\s+/i;
 const TRAILING_HONORIFICS = /(?:\s*-\s*|\s+)(?:sama|san|kun|chan|sensei|senpai|dono)$/i;
 
-/** The ways a written name can be the same exact name: "Lady Vance", "Mara-san". */
+/** The ways a written name can be the same exact name: "Lady Hale", "Sam-san". */
 function exactCandidates(rawName: string) {
   const out = new Set<string>();
 
@@ -557,7 +557,7 @@ function matchNames(entity: EntityRecord) {
 
 /**
  * Finds the person a name refers to: only an exact name or visible alias,
- * allowing for titles and honorifics ("Lady Vance", "Mara-san").
+ * allowing for titles and honorifics ("Lady Hale", "Sam-san").
  * Descriptions ("the masked man") and hidden spoiler names never match.
  * `exactOnly` is kept for callers; every lookup is exact now.
  */
@@ -602,7 +602,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     ? (db.entities.find((item) => item.id === entity.entityId) ?? null)
     : null;
   // Someone flagged as new is only a known person under a name they already
-  // go by: "Dan the Fisherman" is not Dan, "Mara Kell" is not Mara Vance.
+  // go by: "Dan the Fisherman" is not Dan, "Sam Kell" is not Sam Hale.
   // A stranger the player cannot name yet is always someone new: their "name" is
   // only how they look to the player, and two strangers can look alike.
   const stranger = !byId && entity.isNew === true && entity.nameKnown === false;

@@ -26,8 +26,6 @@ import {
   CLIMATE_LABELS,
   STEP_LABELS,
   WIZARD_STEPS,
-  WORLD_PRESETS,
-  applyPreset,
   applySuggestion,
   clearDraft,
   draftToSeedInput,

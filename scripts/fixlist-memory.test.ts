@@ -20,7 +20,7 @@ import { appendStoryMessage } from '../lib/rpg/log';
 import { loreActive } from '../lib/rpg/lore';
 import { applyStateStep, correctTurnTime } from '../lib/rpg/memoryJobs';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import type { AppDatabase } from '../lib/rpg/types';
 

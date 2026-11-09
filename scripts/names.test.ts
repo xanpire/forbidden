@@ -27,7 +27,7 @@ import {
   searchableNames,
 } from '../lib/rpg/names';
 import { NARRATION_SYSTEM, buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import type { AppDatabase, EntityRecord } from '../lib/rpg/types';

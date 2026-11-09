@@ -131,8 +131,8 @@ export function labelOf(db: AppDatabase, entity: EntityRecord): string {
 
 /**
  * The one name everything shows: the best identity the player knows, else the parts
- * of the name they have heard (given only: "Mara"; both: "Mara Vance";
- * family only: "Vance"), else their description of them.
+ * of the name they have heard (given only: "Sam"; both: "Sam Hale";
+ * family only: "Hale"), else their description of them.
  */
 export function displayName(db: AppDatabase, entity: EntityRecord | null | undefined): string {
   if (!entity) return 'someone';
@@ -194,7 +194,7 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
     for (const alias of entity.aliases.slice(0, 4)) names.add(alias);
   }
 
-  // "Mara" and "Mara Voss" are only the shown name again; "Mad Dog Mara" is another.
+  // "Sam" and "Sam Hale" are only the shown name again; "Mad Dog Sam" is another.
   const shownWords = new Set(shown.split(/\s+/));
   const sameName = (name: string) => lower(name).split(/\s+/).every((word) => shownWords.has(word));
 
@@ -409,7 +409,7 @@ export function learnName(
 
     let next = withEntity(db, { ...entity, known: { ...knowledge, identities: [...identities, identity.name], history: record('identity') } });
 
-    // Learned, the name now finds them in story text ("Mara Vance" and "Mara").
+    // Learned, the name now finds them in story text ("Sam Hale" and "Sam").
     if (identity.alias !== false) {
       next = addAlias(next, entity.id, identity.name);
       const first = identity.name.split(/\s+/)[0];
@@ -427,7 +427,7 @@ export function learnName(
   let family = Boolean(knowledge.family);
   let part: NamePart | null = null;
 
-  // The whole name ("Mara Vance"), never just a record named by its given name ("Mara").
+  // The whole name ("Sam Hale"), never just a record named by its given name ("Sam").
   const whole = parts.family ? wanted === full || (words.includes(lower(parts.given ?? '')) && words.includes(lower(parts.family))) : wanted === full;
 
   if (whole) {
@@ -441,7 +441,7 @@ export function learnName(
     family = true;
     part = 'family';
   } else if (entity.aliases.some((alias) => lower(alias) === wanted)) {
-    // Another name they go by ("Mad Dog Mara"): it carries the given name with it.
+    // Another name they go by ("Mad Dog Sam"): it carries the given name with it.
     given = true;
     part = 'full';
   }

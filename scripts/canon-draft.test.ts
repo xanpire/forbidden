@@ -17,7 +17,7 @@ import { acceptCanonItem, canonDraftMessages, parseCanonDraft, type CanonRequest
 import { normalizeDatabase } from '../lib/rpg/db';
 import { isDeceased } from '../lib/rpg/deaths';
 import { canBeIntimate } from '../lib/rpg/intimacy';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { advanceTimeline, hasFired } from '../lib/rpg/timeline';
 import { draftToSeedInput, emptyDraft, type WizardDraft } from '../lib/rpg/wizard';
 

@@ -18,7 +18,7 @@ import { compressImage, dataUriBytes } from '../lib/rpg/imageCompress';
 import { appendStoryMessage, pushSnapshot, restoreLastSnapshot, SNAPSHOT_LIMIT } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { formatVarietyBlock, questionEndings, repeatedMotifs } from '../lib/rpg/variety';
 import type { AppDatabase } from '../lib/rpg/types';

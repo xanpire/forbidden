@@ -60,7 +60,6 @@ export default function SettingsScreen() {
     slots,
     setApiKey,
     updateSettings,
-    createNewSlot,
     deleteSlotById,
     duplicateSlotById,
     renameSlotById,
@@ -86,8 +85,6 @@ export default function SettingsScreen() {
   const [exportExplicit, setExportExplicit] = useState(false);
   const [capsState, setCapsState] = useState<'idle' | 'loading' | 'failed'>('idle');
 
-  const [creating, setCreating] = useState(false);
-  const [newSlotName, setNewSlotName] = useState('');
   const [menuSlot, setMenuSlot] = useState<AppDatabase | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
@@ -225,13 +222,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleCreateSlot = async () => {
-    const name = newSlotName.trim() || 'New story';
-    await createNewSlot(name);
-    setNewSlotName('');
-    setCreating(false);
-    showToast(`Started ${name}.`, 'success');
-  };
 
   const closeMenu = () => {
     setMenuSlot(null);
@@ -618,39 +608,14 @@ export default function SettingsScreen() {
               );
             })}
 
-            {creating ? (
-              <View style={styles.createRow}>
-                <TextInput
-                  accessibilityLabel="New story name"
-                  autoFocus
-                  onChangeText={setNewSlotName}
-                  onSubmitEditing={() => void handleCreateSlot()}
-                  placeholder="Story name"
-                  placeholderTextColor={colors.textDim}
-                  style={[styles.input, styles.createInput]}
-                  value={newSlotName}
-                />
-                <AppButton compact label="Start" onPress={() => void handleCreateSlot()} />
-              </View>
-            ) : (
-              <>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => router.push('/new-story')}
-                  style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
-                >
-                  <Plus color={colors.accentText} size={17} strokeWidth={2.2} />
-                  <Text style={styles.newStoryLabel}>New story</Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => setCreating(true)}
-                  style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
-                >
-                  <Text style={[styles.newStoryLabel, { color: colors.textMuted }]}>Try the sample story (Harbourside)</Text>
-                </Pressable>
-              </>
-            )}
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/new-story')}
+              style={({ pressed }) => [styles.newStory, pressed && styles.pressed]}
+            >
+              <Plus color={colors.accentText} size={17} strokeWidth={2.2} />
+              <Text style={styles.newStoryLabel}>New story</Text>
+            </Pressable>
           </ListCard>
 
           <View style={styles.buttonRow}>

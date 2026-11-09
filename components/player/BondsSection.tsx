@@ -37,7 +37,7 @@ export function formatAffinity(affinity: number) {
   return `${affinity > 0 ? '+' : ''}${affinity}`;
 }
 
-/** "Hana · today", "Theo · in 5 days (remembered)". */
+/** "Sam · today", "Jo · in 5 days (remembered)". */
 export function formatUpcomingBirthday(item: UpcomingBirthday, db?: AppDatabase) {
   const when = item.inDays === 0 ? 'today' : item.inDays === 1 ? 'tomorrow' : `in ${item.inDays} days`;
   const first = (db ? displayName(db, item.entity) : item.entity.name).split(' ')[0];

@@ -18,7 +18,7 @@ import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage, storyMessagesSinceLastSummary } from '../lib/rpg/log';
 import { applyStateStep, applySummaryJob, isJobValid, unsummarizedStory } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt, getRecentMessages } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { currentAmbience } from '../lib/rpg/ambience';

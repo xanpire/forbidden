@@ -23,7 +23,7 @@ import { knownWhereabouts, normalizeTravelLog, placeIdOf, placeVisits, recordTra
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import { captionOf, eraOfDate, placeAt, scrapbook, STORY_ERA } from '../lib/rpg/scrapbook';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import type { AppDatabase, CalendarDate, ClimateType, EntityRecord } from '../lib/rpg/types';

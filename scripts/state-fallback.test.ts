@@ -13,7 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { parseJsonObject, repairTruncatedJson } from '../lib/rpg/stateBlock';
 import { fallbackDiffFromProse, presentFromProse } from '../lib/rpg/proseFallback';
 import { applyTurnDiff } from '../lib/rpg/services';

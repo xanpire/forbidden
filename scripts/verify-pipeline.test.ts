@@ -13,7 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { advanceSeconds, dateSortValue, daysBetween, daysInMonth, formatClock, paceCapSeconds, timeOfDayOf } from '../lib/rpg/calendar';
 import { applyEntityDiff, entityGroup, entityHints, mergeEntityPair, resolveCharacterRefs, resolveEntity } from '../lib/rpg/entities';
 import { appendStoryMessage, cloneDatabase, storyMessagesSinceLastSummary } from '../lib/rpg/log';

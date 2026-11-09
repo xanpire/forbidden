@@ -16,7 +16,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { normalizeDatabase } from '../lib/rpg/db';
 import { playerName } from '../lib/rpg/player';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { draftToSeedInput, emptyPerson, newFaction, newLore, newPlace, newRegion } from '../lib/rpg/wizard';
 import {
   addPersonToSave,

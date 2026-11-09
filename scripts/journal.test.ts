@@ -16,7 +16,7 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applySummaryJob, unsummarizedStory } from '../lib/rpg/memoryJobs';
 import { applyTurnDiff } from '../lib/rpg/services';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import { parseTitledSummary, shortTitle, titleAndBody } from '../lib/rpg/util';

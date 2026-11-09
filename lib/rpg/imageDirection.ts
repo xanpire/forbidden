@@ -279,7 +279,7 @@ export function timelineArtDirection(db: AppDatabase): string | null {
 // Look tags for the people in a shot (#6c)
 // ---------------------------------------------------------------------------
 
-/** "Mara: short dark-red hair…" for each person named in the action. */
+/** "Sam: short dark-red hair…" for each person named in the action. */
 export function lookTags(
   db: AppDatabase,
   action: string,

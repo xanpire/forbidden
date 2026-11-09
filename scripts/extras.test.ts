@@ -17,7 +17,7 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { approveFlashback, flashbackDraftMessages, parseFlashbackDraft } from '../lib/rpg/flashbackDraft';
 import { flashbacksOf } from '../lib/rpg/flashbacks';
 import { layoutWorld } from '../lib/rpg/mapLayout';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { checkPin, shownAppName, validPin, withPin } from '../lib/privacy';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_extras', 'Extras'));

@@ -741,7 +741,13 @@ export default function StoryScreen() {
             Chapter {db.state.chapter} · {db.state.scene}
           </Text>
 
-          {!storyStarted ? (
+          {!storyStarted && !db.state.player.name.trim() ? (
+            <View style={styles.seed}>
+              <Text style={styles.seedTitle}>No story yet</Text>
+              <Text style={type.prose}>Make your world, who you are and where it starts.</Text>
+              <AppButton label="Create your own story" onPress={() => router.push('/new-story')} style={styles.seedButton} />
+            </View>
+          ) : !storyStarted ? (
             <View style={styles.seed}>
               <Text style={styles.seedTitle}>{db.state.location}</Text>
               <Text style={type.prose}>

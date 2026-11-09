@@ -13,7 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { shiftDate } from '../lib/rpg/calendar';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { resolveCharacterRefs } from '../lib/rpg/entities';

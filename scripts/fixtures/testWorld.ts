@@ -1,6 +1,5 @@
-// A small hand-written, present-day setting used by New story until the
-// creation wizard exists (session 4), and by the tests. Everything here is
-// ordinary player-written input: seedDatabase only turns it into save records.
+// The test fixture: a small hand-written present-day setting used only by the
+// tests in scripts/. It lives outside lib/ so it can never ship in the app.
 
 import type {
   CalendarDate,
@@ -10,11 +9,11 @@ import type {
   StartingPerson,
   StartingTruth,
   WorldDefinition,
-} from './types';
+} from '../../lib/rpg/types';
 
 export const TEST_START: CalendarDate = { year: 2026, month: 10, day: 1, hour: 22, minute: 0, second: 0 };
 
-export type { SeedInput, StartingTruth } from './types';
+export type { SeedInput, StartingTruth } from '../../lib/rpg/types';
 
 export function testWorld(): WorldDefinition {
   return {

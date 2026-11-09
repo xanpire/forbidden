@@ -16,7 +16,7 @@ import { buildCharacterPortraitPrompt, characterPortraitSignature } from '../lib
 import { normalizeDatabase } from '../lib/rpg/db';
 import { grudgeKnown, howTheySeem, shownField, shownProfile } from '../lib/rpg/disclosure';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import type { AppDatabase, EntityRecord } from '../lib/rpg/types';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_immersion', 'Immersion'));

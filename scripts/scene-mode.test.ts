@@ -24,7 +24,7 @@ import {
   resolveTurnMode,
   setSceneModeOverride,
 } from '../lib/rpg/sceneMode';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import type { AppDatabase } from '../lib/rpg/types';

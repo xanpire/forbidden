@@ -15,7 +15,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { appendStoryMessage } from '../lib/rpg/log';
 import {
   NARRATION_SYSTEM,

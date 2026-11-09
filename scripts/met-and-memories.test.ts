@@ -17,7 +17,7 @@ import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep, applySummaryJob } from '../lib/rpg/memoryJobs';
 import { presentFromProse } from '../lib/rpg/proseFallback';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { sharedMemories } from '../lib/rpg/sharedMemories';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import type { AppDatabase, EntityRecord, MemoryJob } from '../lib/rpg/types';

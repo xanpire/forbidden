@@ -116,102 +116,6 @@ export function emptyDraft(): WizardDraft {
 // ---------------------------------------------------------------------------
 // Presets: grounded starting points. They only prefill fields.
 
-export type WorldPreset = {
-  id: string;
-  label: string;
-  apply: (world: WorldDefinition) => WorldDefinition;
-};
-
-const today = (): CalendarDate => ({ ...DEFAULT_DATE, year: new Date().getFullYear() });
-
-export const WORLD_PRESETS: WorldPreset[] = [
-  {
-    id: 'city-today',
-    label: 'Big city today',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'contemporary drama',
-      era: { when: 'present', period: world.era.period && world.era.period !== 'today' ? world.era.period : 'today, a big city', techNotes: 'Phones, cars, the internet: the real world as it is now.' },
-      currency: { name: 'dollars', symbol: '$', priceGuide: 'coffee 4-6; a cheap meal 12-20; a drink at a bar 8-15; a taxi across town 20-40; a month of rent 1,800-3,000; a hotel night 150-300' },
-      calendar: { ...world.calendar, start: today() },
-      letterCarriers: ['text message', 'phone', 'email', 'post'],
-      artStyle: 'cinematic photo, 35mm film, natural light',
-    }),
-  },
-  {
-    id: 'small-town',
-    label: 'Small town',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'small-town drama',
-      era: { when: 'present', period: 'today, a small town where everyone knows everyone', techNotes: 'Phones and cars; the nearest city is an hour away.' },
-      currency: { name: 'dollars', symbol: '$', priceGuide: 'coffee 3-4; a diner meal 10-15; a beer 5-7; a month of rent 900-1,300' },
-      calendar: { ...world.calendar, start: today() },
-      letterCarriers: ['text message', 'phone', 'post'],
-      artStyle: 'cinematic photo, warm natural light',
-    }),
-  },
-  {
-    id: 'historical-court',
-    label: 'Historical court',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'historical court intrigue',
-      era: { when: 'past', period: 'a royal court, 1700s', techNotes: 'Candles, horses and carriages, letters by courier; no electricity, no phones.' },
-      currency: { name: 'crowns', priceGuide: 'a loaf of bread 1; a meal at an inn 3-5; a room for the night 10; a good horse 300; a servant\'s yearly wage 200' },
-      calendar: { yearLabel: 'Year', start: { year: 1750, month: 5, day: 1, hour: 18, minute: 0 } },
-      letterCarriers: ['courier', 'messenger on horseback', 'sealed letter'],
-      artStyle: 'oil painting, candlelit, rich period detail',
-    }),
-  },
-  {
-    id: 'twenties',
-    label: '1920s',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'jazz-age drama',
-      era: { when: 'past', period: 'a big city, 1920s', techNotes: 'Telephones in homes and booths, telegrams, motor cars and trains; radio is new.' },
-      currency: { name: 'dollars', symbol: '$', priceGuide: 'a coffee 5 cents; a diner meal 50 cents; a bootleg drink 1; a taxi 1-2; a month of rent 50-80; a good suit 40' },
-      calendar: { yearLabel: 'Year', start: { year: 1925, month: 10, day: 1, hour: 21, minute: 0 } },
-      letterCarriers: ['telephone', 'telegram', 'post', 'courier boy'],
-      artStyle: 'black-and-white film still, 1920s, grainy',
-    }),
-  },
-  {
-    id: 'near-future',
-    label: 'Near future',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'near-future drama',
-      era: { when: 'future', period: '2060, a crowded megacity', techNotes: 'Better phones, self-driving cabs, everywhere cameras; nothing impossible, no robots that think like people.' },
-      currency: { name: 'credits', priceGuide: 'a coffee 8; a meal 25-40; a drink 15; a cab ride 30; a month of rent for a tiny flat 3,000' },
-      calendar: { yearLabel: 'Year', start: { year: 2060, month: 3, day: 1, hour: 20, minute: 0 } },
-      letterCarriers: ['message', 'call', 'video call'],
-      artStyle: 'cinematic photo, neon and rain, shallow depth of field',
-    }),
-  },
-  {
-    id: 'post-collapse',
-    label: 'After the collapse',
-    apply: (world) => ({
-      ...world,
-      genre: world.genre || 'survival drama',
-      era: { when: 'future', period: 'a few years after the collapse of everything', techNotes: 'No working grid or networks; hand radios, old cars when there is fuel, barter.' },
-      currency: { name: 'rounds', priceGuide: 'a can of food 2; a night under a roof 5; a litre of fuel 10; a working radio 40' },
-      calendar: { yearLabel: 'Year', start: { year: 2041, month: 9, day: 1, hour: 17, minute: 0 } },
-      letterCarriers: ['hand radio', 'note left at a drop', 'a traveller'],
-      artStyle: 'cinematic photo, dusty, desaturated',
-    }),
-  },
-];
-
-export function applyPreset(draft: WizardDraft, presetId: string): WizardDraft {
-  const preset = WORLD_PRESETS.find((item) => item.id === presetId);
-  if (!preset) return draft;
-  const world = preset.apply(draft.world);
-  return { ...draft, world, opening: { ...draft.opening, date: { ...world.calendar.start } } };
-}
-
 export const CLIMATE_LABELS: Record<ClimateType, string> = {
   temperate: 'Temperate',
   continental: 'Continental',
@@ -292,7 +196,7 @@ function cleanList(values: string[] | undefined) {
   return (values ?? []).map((value) => value.trim()).filter(Boolean);
 }
 
-/** Readable ids from names ("The Anchor" → "the-anchor"), unique within the list. */
+/** Readable ids from names ("The Blue Door" → "the-blue-door"), unique within the list. */
 function withReadableIds<T extends { id: string; name: string }>(items: T[]): { items: T[]; idMap: Map<string, string> } {
   const used = new Set<string>();
   const idMap = new Map<string, string>();

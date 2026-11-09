@@ -13,11 +13,10 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { seedDatabase } from '../lib/rpg/seed';
+import { seedDatabase } from './fixtures/seed';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import { playerName } from '../lib/rpg/player';
 import {
-  applyPreset,
   applySuggestion,
   draftToSeedInput,
   emptyDraft,
@@ -35,7 +34,6 @@ import {
 /** A story built entirely by hand, the way the wizard screens fill a draft. */
 function handMadeDraft(): WizardDraft {
   let draft = emptyDraft();
-  draft = applyPreset(draft, 'twenties');
   const quarter = { ...newRegion(), name: 'The French Quarter', description: 'Jazz clubs and narrow streets.', climate: 'rainy' as const };
   const uptown = { ...newRegion(), name: 'Uptown', description: 'Old money and big houses.' };
   quarter.neighbours = [{ id: uptown.id, days: 0.1 }];
@@ -220,5 +218,18 @@ describe('creation wizard', () => {
     const broken = normalizeDraft({ step: 'nowhere', people: 'x' })!;
     expect(broken.step).toBe('world');
     expect(broken.people).toEqual([]);
+  });
+});
+
+describe('nothing built in', () => {
+  test('a save without input is blank: no people, places, lore or story', async () => {
+    const { seedDatabase: seedApp } = await import('../lib/rpg/seed');
+    const db = seedApp('blank', 'Blank');
+    expect(db.entities.filter((entity) => entity.type === 'character' && !entity.tags.includes('player'))).toHaveLength(0);
+    expect(db.world.places).toHaveLength(0);
+    expect(db.world.lore).toHaveLength(0);
+    expect(db.loreEntries).toHaveLength(0);
+    expect(db.bonds).toHaveLength(0);
+    expect(db.state.player.name).toBe('');
   });
 });
