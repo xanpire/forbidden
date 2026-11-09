@@ -1,6 +1,6 @@
 # frbddn — Engineering & AI Handoff Guide
 
-> **Conversion in progress.** frbddn (`APP_NAME` in `lib/brand.ts`) was Kan, a Naruto-only RPG, and is becoming a grounded sandbox roleplay game. The session plan and progress log live in the claude.ai Project (`kan-master/docs/SANDBOX_CONVERSION_PLAN.md`), not in this repo. Session 2 removed all Naruto data: every system now reads the player's world (`db.world`). Session 3 gave the narrator the player-written THE WORLD and WHO YOU ARE blocks and moved every test onto the test world (`lib/rpg/testWorld.ts`).
+> **Conversion done (sessions 1–7, A, B).** frbddn (`APP_NAME` in `lib/brand.ts`) was Kan, a Naruto-only RPG; it is now an adults-only, grounded sandbox roleplay game. The plan and progress log live in the claude.ai Project (`kan-master/docs/SANDBOX_CONVERSION_PLAN.md`), not in this repo. Before any public release: user age verification, hosting terms, a payment provider, a privacy policy, encrypted saves and account/data deletion (plan, Adult layer §10).
 
 This document is the complete technical map of the app. It is written so a developer **or an AI coding agent** can understand, debug and extend it without prior context.
 
