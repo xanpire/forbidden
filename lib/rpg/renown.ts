@@ -447,7 +447,7 @@ export function posterLine(db: AppDatabase): string {
 
   const name = renownOf(db).epithets[village as VillageFaction]?.name;
 
-  return `WANTED POSTERS: ${VILLAGE_NAME[village]}'s poster for you hangs here (inns, the notice board, the checkpoint): ${listing.rank}-rank, ${formatRyo(listing.bounty)}${name ? `, as "${name}"` : ''}, with a ${SKETCH[listing.rank]} sketch. Only if Kan looks at one does he learn what it says.`;
+  return `WANTED POSTERS: ${VILLAGE_NAME[village]}'s poster for you hangs here (inns, the notice board, the checkpoint): ${listing.rank}-rank, ${formatRyo(listing.bounty)}${name ? `, as "${name}"` : ''}, with a ${SKETCH[listing.rank]} sketch. Only if you look at one do you learn what it says.`;
 }
 
 export type RumourOffer = { deed: Deed; level: 0 | 1 | 2; daysAgo: number; from: Region | null };

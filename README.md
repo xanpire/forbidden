@@ -1,6 +1,8 @@
-# Kan — Interactive Naruto RPG
+# frbddn — Sandbox Roleplay
 
-A single-page **Progressive Web App** (Expo + React Native Web) that plays like an interactive novel set in the Naruto world. The player controls **Kan**, an original Uchiha-Uzumaki character, and an LLM narrator streams the story while a deterministic engine keeps memory, canon, time, bonds, jutsu, images and saves consistent.
+A single-page **Progressive Web App** (Expo + React Native Web) that plays like an interactive novel. You choose who you are and which world you live in, and an LLM narrator streams the story while a deterministic engine keeps memory, time, bonds, abilities, images and saves consistent.
+
+> Being converted from **Kan**, a Naruto-only RPG. Until sessions 2–3 of `docs/SANDBOX_CONVERSION_PLAN.md` land, a new story still starts in the old Naruto world.
 
 There is **no backend**. Everything runs in the browser and is stored in `localStorage` through `AsyncStorage`. The only external service is the **OpenRouter API** (chat completions + image generation) using a key the player enters in Settings.
 
@@ -28,7 +30,7 @@ Then open the app, go to **Settings → OpenRouter API key**, paste a key from h
 
 - `bun run build:web` writes a static site to `dist/` — deploy that folder anywhere (Vercel etc.).
 - The service worker (`public/sw.js`) is generated from `package.json`'s version; bump the version to invalidate caches.
-- Icons and the manifest live in `public/`. The app icon is the red vulture mark.
+- Icons and the manifest live in `public/`. The app icon is still Kan's red vulture mark (a new icon comes later).
 - On Android, installing from the browser and re-adding the shortcut is needed after an icon change.
 
 ---
@@ -37,11 +39,11 @@ Then open the app, go to **Settings → OpenRouter API key**, paste a key from h
 
 | Area | Files |
 |---|---|
-| Screens (Expo Router) | `app/(tabs)/index.tsx` (Story), `kan.tsx` (portrait + Bonds / Jutsu / Journal), `bond/[id].tsx`, `settings.tsx`; shared list kit in `components/List.tsx`, Kan sections in `components/kan/` |
+| Screens (Expo Router) | `app/(tabs)/index.tsx` (Story), `you.tsx` (portrait + Bonds / Jutsu / Journal), `bond/[id].tsx`, `settings.tsx`; shared list kit in `components/List.tsx`, player sections in `components/player/` |
 | Game engine | `lib/rpg/game.tsx`, `services.ts` (applies a turn), `entities.ts`, `bonds.ts`, `facts.ts`, `clock.ts`, `log.ts`, `stateBlock.ts`, `db.ts`, `prompt.ts`, `retrieval.ts`, `seed.ts` |
 | Simulation systems | `calendar.ts` (clock), `timeparse.ts` (narration time), `pacing.ts` (scene tempo), `canonData.ts` (90 canon milestones, data only) + `canon.ts` (scheduler + news queue) + `newsDelivery.ts` (bearers, delivery styles, catch-up reports) + `letters.ts` (personal letters), `encounters.ts` (location/time realism), `romance.ts` (hearts + lore), `reputation.ts` (bingo books, bounties, Akatsuki standing, bounty hunters), `grudges.ts` (enemies who hunt you) |
 | AI client | `lib/openrouter.ts` (streaming chat, JSON completion, image generation, model lists) |
-| Images | `lib/rpg/image.ts`, `referenceImages.ts`, `portrait.ts` (Kan's portraits), `imageStore.ts` (IndexedDB storage) |
+| Images | `lib/rpg/image.ts`, `referenceImages.ts`, `portrait.ts` (your portraits), `imageStore.ts` (IndexedDB storage) |
 | Shared UI | `components/*`, `constants/theme.ts` |
 | Tests | `scripts/verify-pipeline.test.ts` |
 | Docs | `docs/PROJECT_GUIDE.md` (deep engineering handoff) |
