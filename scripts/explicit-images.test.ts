@@ -60,7 +60,7 @@ function story(): AppDatabase {
     knownName: true,
   });
   input.world = { ...input.world, premise: `${PLANTED} premise`, narratorNotes: `${PLANTED} notes`, artStyle: 'cinematic photo, 35mm film' };
-  input.content = { pacing: 'fast', interests: [{ label: `${PLANTED} interest`, weight: 'love' }], limits: [], vagueRecaps: true };
+  input.content = { pacing: 'fast', interests: [{ label: `${PLANTED} interest`, weight: 'love' }], limits: [] };
   let db = normalizeDatabase(seedDatabase('slot_explicit', 'Explicit', input));
   const mara = db.entities.find((e) => e.name === 'Mara Vance')!;
   // Story text, the player's own words and tracker-written state all carry the planted phrase.

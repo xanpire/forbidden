@@ -319,27 +319,20 @@ export function IntimacyFields({ person, set }: { person: StartingPerson; set: (
   const check = canBeIntimate({ age: person.age, appearance: person.appearance, role: person.role, personality: person.personality, realPerson: person.realPerson });
   return (
     <>
-      <Toggle hint="A real, identifiable person (a celebrity, someone you know). They can appear, but never in an intimate scene." label="Real person" onChange={(realPerson) => set({ realPerson })} value={Boolean(person.realPerson)} />
-      <Toggle
-        hint="Their own desires and boundaries. Needs a stated age of 18 or older."
-        label="Can be part of intimate scenes"
-        onChange={(on) => set({ intimacy: on ? { orientation: '', interestedInPlayer: 'could-grow', desires: [], boundaries: [] } : undefined })}
-        value={Boolean(profile)}
-      />
-      {profile ? (
-        <View style={styles.nested}>
-          {!check.ok ? <Text style={styles.missing}>{person.name || 'This person'} {CHECK_REASONS[check.reason]}: they can't be part of intimate scenes until that changes.</Text> : null}
-          <Field label="Drawn to" onChange={(orientation) => setProfile({ orientation })} placeholder="men, women, anyone…" value={profile.orientation} />
-          <Choice label="Toward you" onChange={(interestedInPlayer) => setProfile({ interestedInPlayer })} options={INTEREST_OPTIONS} value={profile.interestedInPlayer} />
-          {profile.interestedInPlayer === 'taken' ? <Field label="Whose heart is it" onChange={(devotion) => setProfile({ devotion })} value={profile.devotion ?? ''} /> : null}
-          <ListField label="What they like" onChange={(desires) => setProfile({ desires })} values={profile.desires} />
-          <ListField hint="One per line. Empty means none written: the narrator plays them from their personality." label="What they won't do" onChange={(boundaries) => setProfile({ boundaries })} values={profile.boundaries} />
-          <FieldRow>
-            <Field label="Style" onChange={(style) => setProfile({ style })} placeholder="shy, bold, teasing, tender…" value={profile.style ?? ''} />
-            <Field label="Experience" onChange={(experience) => setProfile({ experience })} value={profile.experience ?? ''} />
-          </FieldRow>
-        </View>
-      ) : null}
+      <Toggle hint="A real, identifiable person (a celebrity, someone you know). They can appear, but never in anything sexual." label="Real person" onChange={(realPerson) => set({ realPerson })} value={Boolean(person.realPerson)} />
+      <View style={styles.nested}>
+        <Text style={type.sectionLabel}>In bed (optional)</Text>
+        {!check.ok ? <Text style={styles.missing}>{person.name || 'This person'} {CHECK_REASONS[check.reason]}: they can't be part of anything sexual until that changes.</Text> : null}
+        <Field label="Drawn to" onChange={(orientation) => setProfile({ orientation })} placeholder="men, women, anyone…" value={profile?.orientation ?? ''} />
+        <Choice label="Toward you" onChange={(interestedInPlayer) => setProfile({ interestedInPlayer })} options={INTEREST_OPTIONS} value={profile?.interestedInPlayer ?? 'could-grow'} />
+        {profile?.interestedInPlayer === 'taken' ? <Field label="Whose heart is it" onChange={(devotion) => setProfile({ devotion })} value={profile.devotion ?? ''} /> : null}
+        <ListField hint="One per line." label="Turn-ons, what they want" onChange={(desires) => setProfile({ desires })} values={profile?.desires ?? []} />
+        <ListField hint="One per line. Empty means none written: the narrator plays them from their personality." label="Limits, what they won't do" onChange={(boundaries) => setProfile({ boundaries })} values={profile?.boundaries ?? []} />
+        <FieldRow>
+          <Field label="How they are in bed" onChange={(style) => setProfile({ style })} placeholder="shy, bold, teasing, tender…" value={profile?.style ?? ''} />
+          <Field label="Experience" onChange={(experience) => setProfile({ experience })} value={profile?.experience ?? ''} />
+        </FieldRow>
+      </View>
     </>
   );
 }
@@ -396,11 +389,10 @@ export function IntimacyStep({ draft, update }: { draft: WizardDraft; update: Up
         body="Romance and sex are part of this story, built up over time like anything else. Scenes are written fully explicit. Everything here is optional and yours: an empty list means nothing is off the table. You can change it later."
         title="Intimacy"
       />
-      <Choice hint="How fast relationships move. The story only moves a step when a scene shows it." label="Pacing" onChange={(pacing) => set({ pacing })} options={PACING_OPTIONS} value={c.pacing} />
+      <Choice hint="How fast things tend to move. It never blocks what both people want." label="Pacing" onChange={(pacing) => set({ pacing })} options={PACING_OPTIONS} value={c.pacing} />
       <TagList kind="interest" onChange={(interests) => set({ interests })} tags={c.interests} title="What you want more of" />
       <TagList kind="limit" onChange={(limits) => set({ limits })} tags={c.limits} title="Your limits" />
       <Field hint="Free text: lush and slow, blunt and short…" label="Narrator voice for these scenes" onChange={(narratorVoice) => set({ narratorVoice })} value={c.narratorVoice ?? ''} />
-      <Toggle hint={'Keeps intimate details out of "previously…" recaps and summaries.'} label="Keep recaps vague" onChange={(vagueRecaps) => set({ vagueRecaps })} value={c.vagueRecaps} />
       <Hint>Two rules always hold and can't be changed: everyone in an intimate scene is an adult (18+), and never a real person.</Hint>
     </>
   );

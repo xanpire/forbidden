@@ -17,8 +17,8 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
-import { applyStateStep } from '../lib/rpg/memoryJobs';
-import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
+import { applyStateStep, applySummaryJob } from '../lib/rpg/memoryJobs';
+import { buildExtractionPrompt, buildNarrationPrompt, buildSceneSummaryPrompt } from '../lib/rpg/prompt';
 import { normalizeSceneMode, resolveTurnMode, setSceneModeOverride } from '../lib/rpg/sceneMode';
 import { SEX_OPTION_COUNT, sexOptions, sexStrip, sexualMove } from '../lib/rpg/sexMode';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
@@ -265,5 +265,45 @@ describe('the tracker', () => {
     expect(text).toContain('exactly 4 short next moves');
     const schema = TURN_STATE_SCHEMA as unknown as { properties: Record<string, { properties?: Record<string, unknown> }> };
     expect(Object.keys(schema.properties.sex.properties ?? {})).toEqual(['on', 'with', 'phase', 'done', 'ended', 'options']);
+  });
+});
+
+describe('everything is remembered (step 7)', () => {
+  test('an intimate scene is summarised in full detail, and the details reach the narrator later', () => {
+    let db = play(story(), '*I undress her.*', 'She pulls you down onto the bed and tells you exactly what she wants.', {
+      sex: { ...off, on: true, with: ['mara-vance'] },
+    });
+    db = play(db, '*I go slower.*', 'She comes with your name on her lips.', { sex: { ...off, on: true, with: ['mara-vance'], ended: 'finished' } });
+    db = play(db, '*I hold her.*', 'Afterwards she stays the night, curled into you.', { sex: off });
+    const job = (db.memoryJobs ?? []).find((item) => item.kind === 'scene')!;
+    const logs = db.rawLog.filter((entry) => job.logIds?.includes(entry.id));
+
+    // The summarizer is asked for the details, never for a vague line.
+    const summaryPrompt = buildSceneSummaryPrompt(db, logs).messages.map((m) => m.content).join('\n');
+    expect(summaryPrompt).toContain('keep every detail that matters');
+    expect(summaryPrompt).toContain('what each person did and liked');
+    expect(summaryPrompt).toContain('how it ended');
+    expect(summaryPrompt).not.toMatch(/non-explicit|vague/i);
+
+    const detail = 'You and Mara Vance sleep together for the first time in your flat; she likes it slow and takes the lead, and stays the night.';
+    db = applySummaryJob(db, job, { text: detail, title: 'First night with Mara', memory: 'Your first night with Mara: slow, her leading, and she stayed.', logIds: job.logIds })!.db;
+    const later = buildNarrationPrompt(db, '*I make her coffee.*').messages.map((m) => m.content).join('\n');
+    expect(later).toContain('she likes it slow and takes the lead');
+  });
+
+  test('two strangers can sleep together in one scene if both want to', () => {
+    let db = story();
+    // Sam has never met the player, and the ladder says nothing yet.
+    db = { ...db, state: { ...db.state, sceneCast: ['Sam Hale'] } };
+    const sam = db.entities.find((entity) => entity.name === 'Sam Hale')!;
+    const turn = resolveTurnMode(db, '*I pull her dress off.*');
+    expect(turn.mode).toBe('intimate');
+    db = play(db, '*I pull her dress off.*', 'Sam laughs and drags you to the bed.', {
+      characters_present: ['sam-hale'],
+      sex: { ...off, on: true, with: ['sam-hale'] },
+      intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'lovers' }],
+    });
+    expect(db.state.sceneMode?.sex?.with).toEqual([sam.id]);
+    expect(db.bonds.find((bond) => bond.entityId === sam.id)?.intimacyStage).toBe(4);
   });
 });

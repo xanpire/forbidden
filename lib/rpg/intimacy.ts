@@ -203,30 +203,24 @@ export function interestFor(
 
 // Prompt rules: injected into the narration system prompt. Kept compact to
 // protect the token budget.
-export const ROMANCE_RULES = `ROMANCE
-- Romance is earned over scenes, and can fail. People have loves and lives of their own. Bonds show a stage, an attraction, and whether their heart could open to the player.
-- Only someone whose heart is open to the player can become a romance; anyone not drawn to the player stays a friend at most, whatever their bond, and friendship, loyalty and closeness still grow.
-- Someone whose heart belongs elsewhere (a devoted partner, a vow, a grief) does not turn to the player unless the story gives them a real reason over time; friendship can still grow.
-- Romance and intimacy only between adults: everyone involved is 18 or older in-story. Anyone under 18, or whose age is not stated, is never romantic or sexual, in any scene, flashback or framing.
-- A rejection holds by default: the refusal stands, and the player pushing again only hardens it. Over a long stretch of in-story time someone can change their mind as they truly come to know the player; the change comes from their side, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest).`;
+export const ROMANCE_RULES = `ROMANCE AND SEX
+- Sex happens when both people want it: a slow romance, a fling, or a one-night stand with someone the player just met. Whether someone wants it comes from who they are, their mood and their card (what draws them, what they like, what they won't do), never from how long they have known the player.
+- Someone not drawn to the player, or whose heart belongs elsewhere, says no unless the story gives them a real reason; friendship can still grow.
+- Love is earned over time and can fail. Bonds show where things stand between people.
+- Only adults: everyone involved is 18 or older in the story. Anyone under 18, or whose age is not stated, is never romantic or sexual, in any scene or framing.
+- A no holds: pushing again only hardens it. People can change their minds, from their own side and for a reason the story shows.
+- People remember what they did together: what they liked, what they didn't want, how it ended. Let it shape what they say and want next time.`;
 
 // ---------------------------------------------------------------------------
 // The intimacy ladder and pacing
 
 export const DEFAULT_STAGE_LABELS = ['none', 'interest', 'flirting', 'first kiss', 'lovers', 'established'];
 
-/** Scene beats on the page a stage needs before the next one, by pacing. */
-export const PACING_BEATS: Record<ContentProfile['pacing'], number> = {
-  'slow-burn': 4,
-  natural: 2,
-  fast: 1,
-};
-
 /** The first stage that is physical: from here on both sides must pass canBeIntimate. */
 export const FIRST_PHYSICAL_STAGE = 3;
 
 export function defaultContentProfile(): ContentProfile {
-  return { pacing: 'natural', interests: [], limits: [], vagueRecaps: true };
+  return { pacing: 'natural', interests: [], limits: [] };
 }
 
 function cleanText(value: unknown, max = 200): string {
@@ -267,7 +261,6 @@ export function normalizeContentProfile(value: unknown): ContentProfile {
     interests: cleanTags(raw.interests, 'interest'),
     limits: cleanTags(raw.limits, 'limit'),
     ...(cleanText(raw.narratorVoice) ? { narratorVoice: cleanText(raw.narratorVoice) } : {}),
-    vagueRecaps: raw.vagueRecaps !== false,
     ...(labels.length === DEFAULT_STAGE_LABELS.length ? { stageLabels: labels } : {}),
   };
 }
@@ -384,35 +377,20 @@ function updateBond(db: AppDatabase, id: string, patch: (bond: BondRecord) => Bo
 }
 
 /**
- * Stages move one step at a time and only when the page has shown enough
- * beats for the story's pacing; a step back (a breakup, a cooling) is
- * immediate. Physical stages need both sides to pass the hard checks.
+ * The ladder only describes where things stand: it moves to whatever step
+ * the page showed, forward (even straight to lovers after one night) or back.
+ * A physical step needs both sides to pass the hard checks.
  */
 export function applyIntimacyStages(db: AppDatabase, items: TurnDiff['intimacyStages']): AppDatabase {
   let next = db;
-  const need = PACING_BEATS[db.content?.pacing ?? 'natural'];
 
   for (const item of items ?? []) {
     const bond = bondFor(next, item.entityId);
     const target = stageIndex(next, item.stage);
-    if (!bond || target === undefined) continue;
-    const current = bond.intimacyStage ?? 0;
-
-    if (target < current) {
-      next = updateBond(next, bond.id, (b) => ({ ...b, intimacyStage: target, stageBeats: 0 }));
-      continue;
-    }
-    if (target === current) continue;
-
+    if (!bond || target === undefined || target === (bond.intimacyStage ?? 0)) continue;
     const entity = next.entities.find((e) => e.id === bond.entityId);
-    if (current + 1 >= FIRST_PHYSICAL_STAGE && (!entity || !intimacyAllowed(next, [entity.id]))) continue;
-    const interest = entity?.intimacy?.interestedInPlayer;
-    if ((interest === 'no' || interest === 'taken') && current + 1 >= 2) continue;
-
-    const beats = (bond.stageBeats ?? 0) + 1;
-    next = updateBond(next, bond.id, (b) =>
-      beats >= need ? { ...b, intimacyStage: current + 1, stageBeats: 0 } : { ...b, stageBeats: beats }
-    );
+    if (target >= FIRST_PHYSICAL_STAGE && (!entity || !intimacyAllowed(next, [entity.id]))) continue;
+    next = updateBond(next, bond.id, (b) => ({ ...b, intimacyStage: target }));
   }
 
   return next;
@@ -485,10 +463,10 @@ export function formatIntimacyBlock(db: AppDatabase): string {
   const profile = db.content ?? defaultContentProfile();
   const pacing =
     profile.pacing === 'slow-burn'
-      ? 'Slow burn: attraction builds over many scenes; let tension, looks and almost-moments carry it long before anything happens.'
+      ? 'Slow burn: the player enjoys tension, looks and almost-moments; let attraction simmer before it boils over, unless both people clearly want it now.'
       : profile.pacing === 'fast'
-        ? 'Fast: once both people want it, things can move quickly.'
-        : 'Natural: things move at the pace real people would, scene by scene.';
+        ? 'Fast: once both people want it, things move quickly.'
+        : 'Natural: things move at the pace these people would, scene by scene.';
   const byWeight = (weight: NonNullable<ContentTag['weight']>) =>
     profile.interests.filter((tag) => (tag.weight ?? 'like') === weight).map(tagText);
   const interests = (['love', 'like', 'okay'] as const)

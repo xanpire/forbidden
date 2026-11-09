@@ -163,7 +163,7 @@ describe('creation wizard', () => {
     expect(parseHelpReply('no json here')).toBeNull();
   });
 
-  test('anyone with an intimacy section needs a stated adult age, and the profile reaches the save', () => {
+  test('anyone with an "In bed" section needs a stated adult age, and the profile reaches the save', () => {
     const draft = handMadeDraft();
     const withIntimacy: WizardDraft = {
       ...draft,
@@ -177,7 +177,7 @@ describe('creation wizard', () => {
       ),
     };
     expect(missingFields(withIntimacy).map((item) => item.message)).toEqual([
-      'Rose has no stated age: give an age of 18 or older, or remove their intimacy section.',
+      'Rose has no stated age: give an age of 18 or older, or clear their "In bed" section.',
     ]);
     const input = draftToSeedInput(withIntimacy);
     expect(input.people.find((person) => person.name === 'Rose')?.intimacy).toBeUndefined();

@@ -1178,9 +1178,8 @@ export function carryOverMemory(current: AppDatabase, restored: AppDatabase): Ap
 
 
 /**
- * Marks the turn's reply as part of an intimate scene: its memory is tagged
- * `intimate` (summarised, never stored verbatim) and summaries keep it vague
- * when the player's content profile says so.
+ * Marks the turn's reply as part of an intimate scene: its summary keeps
+ * every detail that matters (who, what each liked, firsts, how it ended).
  */
 export function markIntimateMemory(db: AppDatabase, turnLogId: string): AppDatabase {
   return {

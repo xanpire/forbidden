@@ -513,8 +513,6 @@ export type BondRecord = {
   grudge?: Grudge;
   /** Index into the story's intimacy ladder (intimacy.ts); 0 = none. */
   intimacyStage?: number;
-  /** Scene beats shown on the page toward the next stage. */
-  stageBeats?: number;
   /** Firsts and big moments, in the player's story. */
   firsts?: IntimacyFirst[];
   /** What they have learned the player likes (and the player about them), in plain words. */
@@ -556,8 +554,6 @@ export type ContentProfile = {
   interests: ContentTag[];
   limits: ContentTag[];
   narratorVoice?: string;
-  /** Keep intimate details vague in recaps and summaries (default on). */
-  vagueRecaps: boolean;
   /** The intimacy ladder's labels for this story. */
   stageLabels?: string[];
 };

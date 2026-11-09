@@ -133,13 +133,17 @@ TITLE: a 2-6 word name for this stretch of story, no ending punctuation
 MEMORY: one or two short sentences (under 40 words), second person, on what you will remember of it
 SUMMARY: the 100-150 word summary`;
 
+/** For a scene with sex in it: everything that matters is kept, in the summarizer's own words. */
+const INTIMATE_SUMMARY =
+  'Part of this is a sexual scene. Summarise it like any other part of the story and keep every detail that matters, in your own words (never copy its lines): where and when, who was there, any first, what each person did and liked, anything someone did not want, what was said, how it ended (stayed the night, left, a promise made or broken), and how it changed things between them. Up to 200 words for the summary; the MEMORY line names who, where and how it ended.';
+
 const ARC_SUMMARY_SYSTEM = `You are a story archivist for a long-running interactive novel.
 
 Combine the supplied chapter summaries into one compact arc summary.
 - 120-180 words.
 - Second person, present tense: the player is "you". Everyone else is named only by the names you knew them by, as the summaries do.
 - Keep cause and effect clear.
-- Preserve names, dates, and major consequences.
+- Preserve names, dates, and major consequences, including intimate history: who slept with whom, firsts, what each liked or didn't want, and how things stand between them now.
 - No meta-text.
 
 Reply in exactly this format, nothing else:
@@ -394,11 +398,7 @@ export function buildSceneSummaryPrompt(db: AppDatabase, messages: RawLogEntry[]
 
   // The people it mattered to most also get their own side of it.
   const pov = povInstruction(povCandidates(db, messages));
-  const intimate = messages.some((message) => message.intimate)
-    ? db.content?.vagueRecaps === false
-      ? 'Part of this is an intimate scene: summarise it in your own words like any other moment (who, what it meant, how it changed things); never copy its lines.\n\n'
-      : 'Part of this is an intimate scene: give it one plain, non-explicit sentence (who, that it happened, how it changed things between them), never its details.\n\n'
-    : '';
+  const intimate = messages.some((message) => message.intimate) ? `${INTIMATE_SUMMARY}\n\n` : '';
   const user = `${intimate}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
   const promptMessages: OpenRouterMessage[] = [
     { role: 'system', content: system },

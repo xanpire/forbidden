@@ -20,7 +20,6 @@ import { resolveCharacterRefs } from '../lib/rpg/entities';
 import {
   CORRECTIVE_NOTE,
   FADE_TO_BLACK_LINE,
-  PACING_BEATS,
   canBeIntimate,
   entityCanBeIntimate,
   formatIntimacyBlock,
@@ -45,7 +44,6 @@ function story(pacing: ContentProfile['pacing'] = 'natural'): AppDatabase {
     interests: [{ label: 'slow teasing', weight: 'love' }, { label: 'banter', weight: 'like' }],
     limits: [{ label: 'cheating', kind: 'hard' }, { label: 'bruises', kind: 'soft' }],
     narratorVoice: 'warm and unhurried',
-    vagueRecaps: true,
   };
   input.people = input.people.map((person) =>
     person.name === 'Mara Vance'
@@ -206,27 +204,14 @@ describe('content profile in the narrator prompt', () => {
 });
 
 describe('relationship progression', () => {
-  test('stages advance only at the pacing threshold, one step at a time', () => {
-    const beats = PACING_BEATS.natural;
-    expect(beats).toBe(2);
-    let db = story('natural');
-    // Jumping straight to "lovers" is one step forward, and only after enough beats.
-    db = play(db, 'Mara holds your gaze.', { intimacy_stage_changed: [{ character_id: 'mara-vance', stage: 'lovers' }] });
-    expect(bond(db, 'Mara Vance').intimacyStage ?? 0).toBe(0);
-    db = play(db, 'Mara holds your gaze.', { intimacy_stage_changed: [{ character_id: 'mara-vance', stage: 'lovers' }] });
-    expect(bond(db, 'Mara Vance').intimacyStage).toBe(1);
-
-    let fast = story('fast');
-    fast = play(fast, 'Sam grins.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'interest' }] });
-    expect(bond(fast, 'Sam Hale').intimacyStage).toBe(1);
-
-    let slow = story('slow-burn');
-    for (let i = 0; i < 3; i += 1) slow = play(slow, 'Sam grins.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'interest' }] });
-    expect(bond(slow, 'Sam Hale').intimacyStage ?? 0).toBe(0);
-    slow = play(slow, 'Sam grins.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'interest' }] });
-    expect(bond(slow, 'Sam Hale').intimacyStage).toBe(1);
-
+  test('the ladder describes, never gates: it moves to whatever step the page showed', () => {
+    for (const pacing of ['slow-burn', 'natural', 'fast'] as const) {
+      // One night with someone you just met can take it straight to lovers.
+      const db = play(story(pacing), 'Sam takes you home.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'lovers' }] });
+      expect(stageLabel(db, bond(db, 'Sam Hale').intimacyStage)).toBe('lovers');
+    }
     // A step back is immediate.
+    const fast = play(story('fast'), 'Sam grins.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'flirting' }] });
     const cooled = play(fast, 'Sam turns away.', { intimacy_stage_changed: [{ character_id: 'sam-hale', stage: 'none' }] });
     expect(bond(cooled, 'Sam Hale').intimacyStage).toBe(0);
   });
@@ -235,14 +220,12 @@ describe('relationship progression', () => {
     let db = story('natural');
     const steps = ['interest', 'flirting', 'first kiss', 'lovers'];
     for (const stage of steps) {
-      for (let i = 0; i < PACING_BEATS.natural; i += 1) {
-        db = play(db, `Mara and you, ${stage}.`, {
-          intimacy_stage_changed: [
-            { character_id: 'mara-vance', stage },
-            { character_id: 'sam-hale', stage },
-          ],
-        });
-      }
+      db = play(db, `Mara and you, ${stage}.`, {
+        intimacy_stage_changed: [
+          { character_id: 'mara-vance', stage },
+          { character_id: 'sam-hale', stage },
+        ],
+      });
     }
     expect(stageLabel(db, bond(db, 'Mara Vance').intimacyStage)).toBe('lovers');
     expect(stageLabel(db, bond(db, 'Sam Hale').intimacyStage)).toBe('lovers');

@@ -146,7 +146,7 @@ export function missingFields(draft: WizardDraft): MissingField[] {
   if (!draft.world.premise.trim()) missing.push({ step: 'world', field: 'premise', message: 'Write a short premise for your world.' });
   if (!draft.character.name.trim()) missing.push({ step: 'you', field: 'name', message: 'Give your character a name.' });
   if (!draft.opening.situation.trim()) missing.push({ step: 'opening', field: 'situation', message: 'Say what is happening when the story opens.' });
-  // Adults only: anyone with an intimacy section needs a stated age of 18+.
+  // Adults only: anyone with an "In bed" section needs a stated age of 18+.
   draft.people.forEach((person, index) => {
     if (!person.intimacy || !person.name.trim()) return;
     const check = canBeIntimate({ age: person.age, appearance: person.appearance, role: person.role, personality: person.personality, realPerson: person.realPerson });
@@ -154,7 +154,7 @@ export function missingFields(draft: WizardDraft): MissingField[] {
       missing.push({
         step: 'people',
         field: `people.${index}.age`,
-        message: `${person.name.trim()} ${CHECK_REASONS[check.reason]}: give an age of 18 or older, or remove their intimacy section.`,
+        message: `${person.name.trim()} ${CHECK_REASONS[check.reason]}: give an age of 18 or older, or clear their "In bed" section.`,
       });
     }
   });
@@ -308,7 +308,7 @@ const HELP_SHAPES: Record<HelpSection, string> = {
   backstory: '{"backstory": string, "truths": string[], "secrets": string[]}',
   intimacy: '{"interests": string[], "narratorVoice": string}',
   people:
-    '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string}]}',
+    '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string, "drawnTo": string, "turnOns": string[], "wontDo": string[], "inBed": string}]}',
   opening: '{"location": string, "situation": string, "threads": string[]}',
 };
 
@@ -441,12 +441,30 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
     }
     case 'people': {
       const people = [...draft.people];
+      // Desires, turn-ons, limits and how they are in bed: only where still empty.
+      const withDesires = (person: StartingPerson, record: Record<string, unknown>): StartingPerson => {
+        const current = person.intimacy ?? { orientation: '', interestedInPlayer: 'could-grow' as const, desires: [], boundaries: [] };
+        const next = {
+          ...current,
+          orientation: fill(current.orientation, record.drawnTo),
+          desires: fillList(current.desires, record.turnOns),
+          boundaries: fillList(current.boundaries, record.wontDo),
+          style: fill(current.style, record.inBed) || undefined,
+        };
+        const any = next.orientation || next.desires.length || next.boundaries.length || next.style;
+        return any ? { ...person, intimacy: next } : person;
+      };
       for (const item of Array.isArray(s.people) ? s.people : []) {
         const record = item as Record<string, unknown>;
         const name = str(record.name);
-        if (!name || people.some((person) => person.name.toLowerCase() === name.toLowerCase())) continue;
+        const existing = people.findIndex((person) => person.name.toLowerCase() === name.toLowerCase());
+        if (name && existing >= 0) {
+          people[existing] = withDesires(people[existing], record);
+          continue;
+        }
+        if (!name) continue;
         const age = Number(record.age);
-        people.push({
+        people.push(withDesires({
           ...emptyPerson(),
           name,
           age: Number.isFinite(age) && age >= 18 ? Math.round(age) : undefined,
@@ -456,7 +474,7 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
           personality: str(record.personality),
           speechStyle: str(record.speechStyle),
           relationship: str(record.relationship) || 'acquaintance',
-        });
+        }, record));
       }
       return { ...draft, people };
     }
