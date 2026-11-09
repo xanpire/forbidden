@@ -15,7 +15,7 @@ import { playerAge } from './player';
 import type { AppDatabase, BondRecord, ContentProfile, ContentTag, EntityRecord, IntimacyProfile, TurnDiff } from './types';
 
 /**
- * The fixed set of relationship labels. "partner" means a work or mission
+ * The fixed set of relationship labels. "partner" means a work
  * partner; a romantic partner is "lover".
  */
 export type RelationshipStage =

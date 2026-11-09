@@ -196,7 +196,7 @@ export function defaultShot(db: AppDatabase): ExplicitShot {
   const castIds = [...(player ? [player.id] : []), ...partners];
   const location = db.state.location.toLowerCase();
   const setting: ExplicitShot['setting'] =
-    /hotel|motel|inn/.test(location) ? 'hotel' : /bath|shower/.test(location) ? 'bathroom' : /car\b/.test(location) ? 'car' : db.state.locationKind === 'wilderness' ? 'outdoors' : 'bedroom';
+    /hotel|motel/.test(location) ? 'hotel' : /bath|shower/.test(location) ? 'bathroom' : /car\b/.test(location) ? 'car' : db.state.locationKind === 'wilderness' ? 'outdoors' : 'bedroom';
   return { castIds, position: partners.length ? 'embrace' : 'solo', clothing: 'partly', setting, framing: 'medium', shot: 'eye', focusId: partners[0] };
 }
 

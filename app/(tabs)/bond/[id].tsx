@@ -34,7 +34,7 @@ function Chip({ label, accent }: { label: string; accent?: boolean }) {
 export default function BondScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { db, mergeCharacters, setCharacterDeceased, setTravelling } = useGame();
+  const { db, mergeCharacters, setCharacterDeceased, setWithYou } = useGame();
   const [merging, setMerging] = useState(false);
 
   const entity = db?.entities.find((item) => item.id === id) ?? null;
@@ -172,7 +172,7 @@ export default function BondScreen() {
               </View>
               <View style={styles.chips}>
                 {dead ? <Chip label="Deceased" /> : null}
-                {companion ? <Chip accent label="Travelling with you" /> : null}
+                {companion ? <Chip accent label="With you" /> : null}
                 {relationship ? <Chip label={relationship} /> : null}
                 {bond.isMajor ? <Chip accent label="Major bond" /> : null}
                 {seen ? <Chip label={seen} /> : null}
@@ -253,7 +253,7 @@ export default function BondScreen() {
           <>
             {!dead ? (
               <>
-                <SectionLabel>Travelling</SectionLabel>
+                <SectionLabel>With you</SectionLabel>
                 <ListCard>
                   {companion ? (
                     <ListRow
@@ -266,18 +266,18 @@ export default function BondScreen() {
                         .join(' ')}
                       leading={<Footprints color={colors.accentText} size={18} strokeWidth={2} />}
                       meta={`${togetherLabel} · ${companion.sharedScenes} scene${companion.sharedScenes === 1 ? '' : 's'} shared`}
-                      title="Travelling with you"
+                      title="With you right now"
                     />
                   ) : null}
                   <ListRow
                     accessibilityLabel={
-                      companion ? `Part ways with ${name}` : `Travel together with ${name}`
+                      companion ? `Part ways with ${name}` : `Keep ${name} with you`
                     }
                     body={
                       companion
                         ? 'If they left in the story and it was missed, let them go.'
                         : partyFull
-                          ? `You already travel with ${MAX_COMPANIONS} people. Part ways with someone first.`
+                          ? `${MAX_COMPANIONS} people are already with you. Part ways with someone first.`
                           : 'If they are coming along and the story missed it, keep them at your side.'
                     }
                     leading={
@@ -287,8 +287,8 @@ export default function BondScreen() {
                         <Footprints color={colors.textMuted} size={18} strokeWidth={2} />
                       )
                     }
-                    onPress={partyFull ? undefined : () => setTravelling(entity.id, !companion)}
-                    title={companion ? 'Part ways' : 'Travel together'}
+                    onPress={partyFull ? undefined : () => setWithYou(entity.id, !companion)}
+                    title={companion ? 'Part ways' : 'Keep them with you'}
                   />
                 </ListCard>
               </>

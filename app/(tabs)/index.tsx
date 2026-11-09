@@ -1105,7 +1105,7 @@ export default function StoryScreen() {
               ) : null}
               {db && companionsOf(db).length > 0 ? (
                 <ListRow
-                  meta="Travelling with you"
+                  meta="With you"
                   title={companionsOf(db).map((entity) => displayName(db, entity)).join(', ')}
                 />
               ) : null}

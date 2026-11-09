@@ -41,7 +41,7 @@ export type EventEntityRole = 'present' | 'mentioned' | 'participant';
 
 /**
  * The fixed set of fact types (see FACT_TYPE_RULES in prompt.ts for what each
- * one is for): a tied scarf is not an injury, and "the clan is dead" is an
+ * one is for): a tied scarf is not an injury, and "the shop burned down" is an
  * event, not a death fact about whoever did it.
  */
 export type FactType =
@@ -63,7 +63,7 @@ export type ThreadType =
   | 'debt'
   | 'grudge'
   | 'mystery'
-  | 'quest'
+  | 'plan'
   | 'goal'
   | 'other';
 
@@ -82,8 +82,6 @@ export type GameState = {
   locationKind?: LocationKind;
   inStoryDate: CalendarDate;
   turnsWithoutTimeChange?: number;
-  /** A free line on where the world stands now. */
-  worldPoint: string;
   /** The current chapter: a narrative unit, moved on only by real breaks (see applyChapterBreak). */
   chapter: number;
   /** The current chapter's title, from its break. */
@@ -194,7 +192,7 @@ export type ConsequenceSeed = {
   createdOn: CalendarDate;
   /** The person it comes back through, when the save knows them. */
   entityId?: string;
-  /** Who it is, in words: a name, or "the bandit you spared at the ford". */
+  /** Who it is, in words: a name, or "the guy you shoved outside the bar". */
   who: string;
   /** What the player did. */
   what: string;
@@ -386,7 +384,6 @@ export type LifeEvent = {
 };
 
 export type LifeEventKind =
-  | 'mission'
   | 'injury'
   | 'posting'
   | 'team'
@@ -426,7 +423,7 @@ export type NameKnowledge = {
 };
 
 export type Companion = {
-  /** When they started travelling with the player. */
+  /** When they came along with the player. */
   since: CalendarDate;
   /** Where they joined (state.location at the time). */
   sinceLocation?: string;
@@ -747,7 +744,7 @@ export type PortraitOutfit = string;
 
 export type PortraitExpression = 'calm' | 'grim' | 'angry' | 'tired' | 'warm' | 'sad';
 
-export type PortraitSetting = 'village' | 'wilds' | 'road' | 'indoors';
+export type PortraitSetting = 'street' | 'outdoors' | 'road' | 'indoors';
 
 export type PortraitSignature = {
   age: number;
@@ -820,7 +817,6 @@ export type TurnDiff = {
     elapsedSeconds?: number;
     clockTime?: { hour: number; minute: number };
     scenePace?: ScenePace;
-    worldPoint?: string;
     chapter?: number;
     scene?: string;
     sceneCast?: string[];
@@ -909,7 +905,7 @@ export type TurnDiff = {
   deaths?: { entityId?: string; name: string; cause?: string }[];
   /** People who turned out to be alive after all (a wrong report, a faked death). */
   revived?: { entityId?: string; name: string }[];
-  /** People who start travelling with the player this turn. */
+  /** People who come along with the player this turn. */
   companionsJoined?: { entityId?: string; name: string; reason?: string }[];
   /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];

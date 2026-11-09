@@ -31,22 +31,22 @@ const STOPWORDS = new Set([
   'the', 'and', 'for', 'near', 'outside', 'inside', 'edge', 'side', 'just',
   'north', 'south', 'east', 'west', 'northern', 'southern', 'eastern', 'western',
   'upper', 'lower', 'old', 'new', 'small', 'little', 'great', 'big', 'deep',
-  'village', 'land', 'country', 'area', 'region', 'border', 'somewhere',
-  'town', 'city', 'street', 'road', 'path', 'trail', 'forest', 'woods', 'outskirts',
+  'neighbourhood', 'neighborhood', 'area', 'downtown', 'uptown', 'somewhere',
+  'town', 'city', 'street', 'road', 'avenue', 'lane', 'park', 'outskirts',
   'room', 'house', 'home', 'place', 'there', 'from', 'with', 'into',
   'toward', 'towards', 'between', 'along', 'beyond', 'above', 'below', 'under',
-  'district', 'market', 'river',
-  'clearing', 'gate', 'gates', 'square', 'plaza', 'shop', 'cafe', 'bar', 'office', 'flat', 'apartment',
+  'district', 'market', 'station',
+  'corner', 'block', 'square', 'plaza', 'shop', 'cafe', 'bar', 'office', 'flat', 'apartment',
 ]);
 
-const TRAVELLER_ROLE =
+const OUT_AND_ABOUT_ROLE =
   /\b(salesman|saleswoman|sales rep|courier|driver|delivery|rider|performer|musician|busker|journalist|reporter|photographer|trucker|tour guide|street vendor)\b/i;
 
 export type ReturningOffer = {
   entity: EntityRecord;
   bond: BondRecord;
   daysAway: number;
-  reason: 'last-seen-here' | 'tied-to-place' | 'traveller';
+  reason: 'last-seen-here' | 'tied-to-place' | 'out-and-about';
 };
 
 function hash(text: string) {
@@ -117,8 +117,8 @@ function fitFor(
     return { score: 2, reason: 'tied-to-place' };
   }
 
-  if ((kind === 'road' || kind === 'settlement') && TRAVELLER_ROLE.test(entity.role ?? '')) {
-    return { score: 1, reason: 'traveller' };
+  if ((kind === 'road' || kind === 'settlement') && OUT_AND_ABOUT_ROLE.test(entity.role ?? '')) {
+    return { score: 1, reason: 'out-and-about' };
   }
 
   return null;

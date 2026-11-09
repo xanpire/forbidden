@@ -42,9 +42,9 @@ export const STEW_CAP = 20;
 export type GrudgeStage = 'resentful' | 'vengeful';
 
 
-export const GRUDGE_RULES = `ENEMIES
-- Hatred is the dark mirror of love: slow, earned, and lasting. Someone the player truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, their revenge, or death.
-- People with a grudge act in character and within what they can really do in an ordinary life: a cold shoulder, gossip, a scene when your paths cross, a text, telling someone a secret. They are rarely stupid, and they never stalk the player across town.`;
+export const GRUDGE_RULES = `GRUDGES
+- Someone the player truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, or getting even.
+- They act in character and within an ordinary life: a cold shoulder, gossip, a scene when your paths cross, a sharp text, telling someone a secret.`;
 
 export function stageFor(heat: number): GrudgeStage {
   return heat >= VENGEFUL_HEAT ? 'vengeful' : 'resentful';

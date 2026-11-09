@@ -53,28 +53,28 @@ function sceneJob(db: AppDatabase, logIds: string[]): { db: AppDatabase; job: Me
 }
 
 const SUMMARY =
-  'You follow Mara north through the rain. He says little, and you do not press him. By nightfall you reach an empty shrine and sleep under its broken roof.';
+  'You follow Mara north through the rain. He says little, and you do not press him. By nightfall you reach an empty motel and sleep under its broken roof.';
 
 describe('summary replies', () => {
   test('reads TITLE / MEMORY / SUMMARY', () => {
     const parsed = parseTitledSummary(
-      `TITLE: North through the rain\nMEMORY: You walk north with Mara and sleep in a ruined shrine.\nSUMMARY: ${SUMMARY}`
+      `TITLE: North through the rain\nMEMORY: You walk north with Mara and sleep in a cheap motel.\nSUMMARY: ${SUMMARY}`
     );
     expect(parsed?.title).toBe('North through the rain');
-    expect(parsed?.memory).toBe('You walk north with Mara and sleep in a ruined shrine.');
+    expect(parsed?.memory).toBe('You walk north with Mara and sleep in a cheap motel.');
     expect(parsed?.summary).toBe(SUMMARY);
   });
 
   test('accepts bold labels and a reply without labels', () => {
-    expect(parseTitledSummary(`**TITLE:** The shrine\n**SUMMARY:** ${SUMMARY}`)?.title).toBe('The shrine');
+    expect(parseTitledSummary(`**TITLE:** The motel\n**SUMMARY:** ${SUMMARY}`)?.title).toBe('The motel');
     const plain = parseTitledSummary(SUMMARY);
     expect(plain?.title).toBeNull();
     expect(plain?.summary).toBe(SUMMARY);
   });
 
   test('a reply cut off before its summary is empty, and a cut-off summary ends on a sentence', () => {
-    expect(parseTitledSummary('TITLE: The shrine\nMEMORY: You sleep.')).toBeNull();
-    const cut = parseTitledSummary(`TITLE: The shrine\nSUMMARY: ${SUMMARY} Before dawn you wake to`);
+    expect(parseTitledSummary('TITLE: The motel\nMEMORY: You sleep.')).toBeNull();
+    const cut = parseTitledSummary(`TITLE: The motel\nSUMMARY: ${SUMMARY} Before dawn you wake to`);
     expect(cut?.summary).toBe(SUMMARY);
   });
 });
@@ -143,7 +143,7 @@ describe('chapter summaries', () => {
     const next = applySummaryJob(queued, job, {
       text: SUMMARY,
       title: 'North through the rain',
-      memory: 'You walk north with Mara and sleep in a ruined shrine.',
+      memory: 'You walk north with Mara and sleep in a cheap motel.',
       logIds: ids,
     })!.db;
 
@@ -156,7 +156,7 @@ describe('chapter summaries', () => {
     const memory = next.events.find((event) => event.summaryId === summary.id)!;
     expect(summary.eventIds).toEqual([memory.id]);
     expect(memory.title).toBe('North through the rain');
-    expect(memory.summary).toBe('You walk north with Mara and sleep in a ruined shrine.');
+    expect(memory.summary).toBe('You walk north with Mara and sleep in a cheap motel.');
   });
 
   test('without a title or memory from the model, both are cut from the summary', () => {

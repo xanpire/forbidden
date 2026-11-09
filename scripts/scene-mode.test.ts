@@ -226,7 +226,7 @@ describe('prompts and schema', () => {
     db.rawLog[db.rawLog.length - 1] = { ...db.rawLog[db.rawLog.length - 1], sceneMode: 'conversation' };
     const text = buildExtractionPrompt(db, '"Hi"', '"Hello."').messages.map((message) => message.content).join('\n');
     expect(text).toContain('SCENE MODE THIS TURN: conversation');
-    expect(text).toContain('TURN: turn_kind tags how this turn played');
+    expect(text).toContain('TURN: turn_kind');
   });
 
   test('a turn with no state reply still keeps the streak sensible', () => {

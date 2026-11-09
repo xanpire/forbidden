@@ -270,7 +270,6 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
       location: opening.location || place?.name || 'Somewhere',
       ...(place ? { locationKind: place.kind } : {}),
       inStoryDate: date,
-      worldPoint: '',
       chapter: 1,
       chapterStart: { turn: 1, date },
       scene: opening.location || 'The beginning',

@@ -42,13 +42,13 @@ export function expressionFromMood(mood: string): PortraitExpression {
 function settingOf(db: AppDatabase): PortraitSetting {
   switch (locationKindOf(db)) {
     case 'settlement':
-      return 'village';
+      return 'street';
     case 'road':
       return 'road';
     case 'structure':
       return 'indoors';
     default:
-      return 'wilds';
+      return 'outdoors';
   }
 }
 
@@ -67,9 +67,9 @@ export function portraitSignature(db: AppDatabase): PortraitSignature {
 }
 
 const SETTING_LABEL: Record<PortraitSetting, string> = {
-  village: 'a village',
-  wilds: 'the wilds',
-  road: 'on the road',
+  street: 'out in town',
+  outdoors: 'outdoors',
+  road: 'on the move',
   indoors: 'indoors',
 };
 

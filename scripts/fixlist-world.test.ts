@@ -72,7 +72,7 @@ describe('16. minor characters', () => {
     expect(bondOf(db, 'Goro')).toBeUndefined();
 
     db = play(db, 'You leave.', { scene_ended: true });
-    db = play(db, 'Goro is waiting at the inn.', { location: 'Roadside inn', characters_present: ['goro'] });
+    db = play(db, 'Goro is waiting at the motel.', { location: 'Roadside motel', characters_present: ['goro'] });
     expect(person(db, 'Goro').tier).toBeUndefined();
     expect(bondOf(db, 'Goro')).toBeDefined();
   });

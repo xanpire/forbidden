@@ -534,7 +534,6 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
       typeof state.turnsWithoutTimeChange === 'number'
         ? Math.max(0, Math.round(state.turnsWithoutTimeChange))
         : 0,
-    worldPoint: typeof state.worldPoint === 'string' ? state.worldPoint : seeded.worldPoint,
     chapter: state.chapter ?? seeded.chapter,
     chapterTitle: typeof state.chapterTitle === 'string' ? state.chapterTitle : undefined,
     chapterStart: state.chapterStart,

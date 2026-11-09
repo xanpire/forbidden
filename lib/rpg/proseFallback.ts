@@ -42,7 +42,7 @@ export function presentFromProse(db: AppDatabase, narration: string): string[] {
     }
 
     // A single passing mention ("rumours about the mayor") isn't enough for
-    // someone new; it is for someone already here or travelling with the player.
+    // someone new; it is for someone already here or with the player.
     const alreadyHere =
       isCompanion(entity) ||
       cast.has(entity.name.toLowerCase()) ||

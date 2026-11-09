@@ -243,10 +243,6 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   next = applyClockChange(next, state);
 
-  if (typeof state.worldPoint === 'string' && state.worldPoint.trim()) {
-    next.state.worldPoint = state.worldPoint.trim().slice(0, 220);
-  }
-
   if (typeof state.chapter === 'number' && Number.isFinite(state.chapter)) {
     next.state.chapter = Math.max(1, Math.round(state.chapter));
   }

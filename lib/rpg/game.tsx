@@ -165,8 +165,8 @@ type GameContextValue = {
   mergeCharacters: (keepId: string, dropId: string) => Promise<void>;
   /** Hand correction when the story got someone's death wrong. */
   setCharacterDeceased: (entityId: string, deceased: boolean) => Promise<void>;
-  /** Hand correction: starts or ends someone travelling with the player. */
-  setTravelling: (entityId: string, travelling: boolean) => Promise<void>;
+  /** Hand correction: starts or ends someone being with the player. */
+  setWithYou: (entityId: string, withYou: boolean) => Promise<void>;
   /** The mode chip: force conversation, fight or normal narration, or null for automatic. */
   setSceneMode: (mode: SceneModeName | null) => Promise<void>;
   updateThread: (threadId: string, patch: Partial<ThreadRecord>) => Promise<void>;
@@ -1060,15 +1060,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
-  const setTravelling = useCallback(
-    async (entityId: string, travelling: boolean) => {
+  const setWithYou = useCallback(
+    async (entityId: string, withYou: boolean) => {
       const current = dbRef.current;
 
       if (!current) {
         return;
       }
 
-      const next = setCompanion(current, entityId, travelling);
+      const next = setCompanion(current, entityId, withYou);
 
       if (next === current) {
         return;
@@ -1377,7 +1377,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       updateBond,
       mergeCharacters,
       setCharacterDeceased,
-      setTravelling,
+      setWithYou,
       setSceneMode,
       updateThread,
       toggleMemoryPin,
@@ -1427,7 +1427,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       updateBond,
       mergeCharacters,
       setCharacterDeceased,
-      setTravelling,
+      setWithYou,
       setSceneMode,
       updateSettings,
       updateThread,

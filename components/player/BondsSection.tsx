@@ -192,8 +192,8 @@ export function BondsSection() {
   const birthdays = useMemo(() => (db ? upcomingBirthdays(db, 30).slice(0, 4) : []), [db]);
 
   // People with you lead the list; everyone else by last contact.
-  const travelling = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
-  const living = entries.filter((entry) => !entry.dead && !travelling.includes(entry));
+  const withYou = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
+  const living = entries.filter((entry) => !entry.dead && !withYou.includes(entry));
   const dead = entries.filter((entry) => entry.dead);
 
   if (!db) {
@@ -230,8 +230,8 @@ export function BondsSection() {
   );
 
   // People who hold a grudge, under their own heading.
-  const enemies = query ? [] : living.filter((entry) => Boolean(entry.bond?.grudge));
-  const others = living.filter((entry) => !enemies.includes(entry));
+  const holdingGrudge = query ? [] : living.filter((entry) => Boolean(entry.bond?.grudge));
+  const others = living.filter((entry) => !holdingGrudge.includes(entry));
 
   return (
     <View style={styles.section}>
@@ -270,17 +270,17 @@ export function BondsSection() {
         </>
       ) : null}
 
-      {travelling.length > 0 ? (
+      {withYou.length > 0 ? (
         <>
-          <SectionLabel>Travelling with you</SectionLabel>
-          <ListCard>{travelling.map(renderRow)}</ListCard>
+          <SectionLabel>With you</SectionLabel>
+          <ListCard>{withYou.map(renderRow)}</ListCard>
         </>
       ) : null}
 
-      {enemies.length > 0 ? (
+      {holdingGrudge.length > 0 ? (
         <>
           <SectionLabel>Holding a grudge</SectionLabel>
-          <ListCard>{enemies.map(renderRow)}</ListCard>
+          <ListCard>{holdingGrudge.map(renderRow)}</ListCard>
         </>
       ) : null}
 

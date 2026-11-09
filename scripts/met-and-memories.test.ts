@@ -63,7 +63,7 @@ describe('only the scene cast meets people', () => {
     db = play(db, 'Jonah slides a flyer across the bar. "Ricky Sloane. Skipped bail, and someone is paying twenty thousand dollars for him."', {
       characters_present: ['jonah-pike'],
       new_characters: [{ is_new: true, name: 'Ricky Sloane', age: 24, role: 'Bail jumper with a price on him', personality: 'reckless', speech_style: 'loud', appearance: 'scarred jaw' }],
-      bonds: [{ character_id: 'Ricky Sloane', affinity_change: -2, status: 'Target', note: 'Your bounty', relationship: null, attraction: null, romance_note: null }],
+      bonds: [{ character_id: 'Ricky Sloane', affinity_change: -2, status: 'Owes you', note: 'Owes you money', relationship: null, attraction: null, romance_note: null }],
       grudges: [{ character_id: 'Ricky Sloane', event: 'wronged', reason: 'You are hunting him' }],
       character_updates: [{ character_id: 'Ricky Sloane', mood: 'hunted', appearance: null }],
     });

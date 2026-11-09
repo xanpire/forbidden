@@ -337,16 +337,14 @@ export function convertStateBlock(
 
   const flatLocation = cleanString(block.location);
   const flatLocationKind = asLocationKind(block.location_kind);
-  const flatWorldPoint = cleanString(block.world_point);
   const inventoryAdded = stringItems(block.inventory_added);
   const inventoryRemoved = stringItems(block.inventory_removed);
 
-  if (flatLocation || flatLocationKind || flatWorldPoint || inventoryAdded.length || inventoryRemoved.length) {
+  if (flatLocation || flatLocationKind || inventoryAdded.length || inventoryRemoved.length) {
     diff.state = {
       ...diff.state,
       ...(flatLocation ? { location: flatLocation } : {}),
       ...(flatLocationKind ? { locationKind: flatLocationKind } : {}),
-      ...(flatWorldPoint ? { worldPoint: flatWorldPoint } : {}),
       ...(inventoryAdded.length ? { inventoryAdded } : {}),
       ...(inventoryRemoved.length ? { inventoryRemoved } : {}),
     };
@@ -357,7 +355,6 @@ export function convertStateBlock(
   if (state && typeof state === 'object' && !Array.isArray(state)) {
     const rawState = state as {
       location?: unknown;
-      world_point?: unknown;
       inventory_changes?: unknown;
       location_kind?: unknown;
     };
@@ -382,10 +379,6 @@ export function convertStateBlock(
         rawState.location_kind === 'wilderness' ||
         rawState.location_kind === 'structure'
           ? rawState.location_kind
-          : undefined,
-      worldPoint:
-        typeof rawState.world_point === 'string' && rawState.world_point.trim()
-          ? rawState.world_point.trim()
           : undefined,
       inventoryAdded: inventoryChanges,
     };

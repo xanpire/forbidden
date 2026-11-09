@@ -458,17 +458,17 @@ const DESCRIPTOR_WORDS = new Set([
 // description and never matches anyone.
 const GENERIC_WORDS = new Set([
   ...DESCRIPTOR_WORDS,
-  'masked', 'mask', 'hooded', 'cloaked', 'tall', 'short', 'stranger', 'leader',
+  'masked', 'mask', 'hooded', 'tall', 'short', 'stranger', 'leader',
   'person', 'figure', 'someone', 'guard', 'man\'s', 'men',
   'women', 'other', 'one', 'that', 'this', 'his', 'her', 'their', 'your',
-  'partner', 'boss', 'traveler', 'merchant', 'hunter', 'stitched', 'scarred',
-  'red-haired', 'dark-haired', 'blond', 'hidden', 'cloak', 'orange',
+  'partner', 'boss', 'driver', 'bartender', 'waiter', 'waitress', 'cashier', 'scarred',
+  'red-haired', 'dark-haired', 'blond', 'tattooed', 'suited', 'orange',
 ]);
 
 const SINGLE_GENERIC_WORDS = new Set([
   'man', 'woman', 'boy', 'girl', 'kid', 'stranger', 'leader', 'person', 'figure',
-  'someone', 'guard', 'partner', 'boss', 'traveler', 'merchant',
-  'hunter', 'masked', 'mask', 'elder', 'captain', 'officer', 'master', 'lord', 'lady',
+  'someone', 'guard', 'partner', 'boss', 'driver', 'bartender', 'waiter', 'waitress',
+  'cashier', 'masked', 'mask', 'neighbour', 'neighbor', 'officer', 'manager', 'doctor', 'nurse', 'lady',
 ]);
 
 /** True for a description ("the masked man") rather than a name. */

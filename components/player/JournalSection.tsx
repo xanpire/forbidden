@@ -65,9 +65,9 @@ function ThreadRows({ threads }: { threads: ThreadRecord[] }) {
 
 function NowView({ db }: { db: AppDatabase }) {
   const open = db.threads.filter((thread) => thread.status === 'open');
-  const plans = open.filter((thread) => thread.type === 'quest');
+  const plans = open.filter((thread) => thread.type === 'plan');
   const goals = open.filter((thread) => thread.type === 'goal');
-  const other = open.filter((thread) => thread.type !== 'quest' && thread.type !== 'goal');
+  const other = open.filter((thread) => thread.type !== 'plan' && thread.type !== 'goal');
   // Birthdays, anniversaries and festivals on today's date, as far as you know.
   const today = todayNotes(db);
 
@@ -182,7 +182,6 @@ function WorldView({ db }: { db: AppDatabase }) {
       <SectionLabel>The world as you know it</SectionLabel>
       <ListCard>
         <ListRow body={db.state.worldDescription} title="The world" />
-        {db.state.worldPoint ? <ListRow body={db.state.worldPoint} title="Where things stand" /> : null}
       </ListCard>
 
       {visibleLore.length > 0 ? (

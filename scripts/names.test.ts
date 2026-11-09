@@ -163,8 +163,8 @@ describe('the prompts', () => {
     const prompt = buildNarrationPrompt(db, '*You watch her.*').messages.map((message) => message.content).join('\n');
 
     expect(prompt).toContain('the woman with the red umbrella [narrator only: Nadia Kerr]');
-    expect(NARRATION_SYSTEM).toContain('Narration calls people only by the name the player knows');
-    expect(NARRATION_SYSTEM).toContain('How do you know that name?');
+    expect(NARRATION_SYSTEM).toContain('Call people only by the name the player knows');
+    expect(NARRATION_SYSTEM).toContain("a name they couldn't know, people react");
   });
 
   test('the tracker is asked for names_learned', () => {

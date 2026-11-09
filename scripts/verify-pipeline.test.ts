@@ -107,7 +107,6 @@ describe('inline diff wiring', () => {
       const diff: TurnDiff = {
         state: {
           worldDescription: 'A very long world description. '.repeat(30),
-          worldPoint: 'A very long world point. '.repeat(30),
           location: `Location variant ${turn}`,
           inventoryAdded: [`item ${turn}`],
         },
@@ -119,7 +118,6 @@ describe('inline diff wiring', () => {
 
     expect(db.state.inventory.length).toBeLessThanOrEqual(12);
     expect(db.state.worldDescription.length).toBeLessThanOrEqual(220);
-    expect(db.state.worldPoint.length).toBeLessThanOrEqual(220);
     expect(db.state.location.length).toBeLessThanOrEqual(100);
   });
 });
@@ -716,7 +714,7 @@ describe('portraits', () => {
     const withPortrait = {
       ...db,
       portraits: [
-        { id: 'p1', image: 'img:abc', signature: { age: 13, outfit: 'black' as const, expression: 'tired' as const, setting: 'wilds' as const }, inStoryDate: db.state.inStoryDate, location: 'x', createdAt: 1 },
+        { id: 'p1', image: 'img:abc', signature: { age: 13, outfit: 'black' as const, expression: 'tired' as const, setting: 'outdoors' as const }, inStoryDate: db.state.inStoryDate, location: 'x', createdAt: 1 },
       ],
     };
     const normalized = normalizeDatabase(withPortrait);
@@ -1223,7 +1221,7 @@ describe('characters who come back', () => {
   test('people out and about for work can turn up in town', () => {
     const db = withOriginal({ lastSeenAt: 'a gym across town', role: 'Delivery driver' });
 
-    expect(returningCandidates(db)[0]?.reason).toBe('traveller');
+    expect(returningCandidates(db)[0]?.reason).toBe('out-and-about');
   });
 
   test('offers are occasional, deterministic and skipped in fights or empty places', () => {
@@ -1379,7 +1377,7 @@ describe('companions', () => {
   test('a person introduced this turn can join at once; Alex Reyes and the dead never join', () => {
     const db = loadSave();
     const raw = convertStateBlock({
-      new_characters: [{ is_new: true, name: 'Rokuro Tanabe', age: 30, role: 'Ferryman', personality: null, speech_style: null, appearance: null }],
+      new_characters: [{ is_new: true, name: 'Rokuro Tanabe', age: 30, role: 'Water taxi driver', personality: null, speech_style: null, appearance: null }],
       companions_joined: [{ character_id: 'Rokuro Tanabe', reason: 'hired as a guide' }],
       characters_present: ['Rokuro Tanabe'],
     }).diff!;
@@ -1415,7 +1413,7 @@ describe('companions', () => {
     const system = narration.messages[0].content;
     const user = narration.messages[1].content;
 
-    expect(system).toContain("Anyone under WITH YOU is physically at the player's side in every scene");
+    expect(system).toContain('Anyone under WITH YOU is with the player in every scene');
     expect(user).toContain('WITH YOU (at your side');
     expect(user).toMatch(/- Mara Vance: joined today \(leaving town together/);
     expect(user).toContain('CHARACTERS IN SCENE');
@@ -1698,7 +1696,7 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
     let db = loadSave();
     const before = db.entities.length;
     const { diff } = convertStateBlock({
-      characters_present: ['jonah-pike', 'mara-vance', 'Haku the Fisherman'],
+      characters_present: ['jonah-pike', 'mara-vance', 'Hal the Fisherman'],
       bonds: [
         { character_id: 'jonah-pike', affinity_change: 1, status: 'Wary', note: null, relationship: null, attraction: null, romance_note: null },
         { character_id: 'some-stranger', affinity_change: 2, status: null, note: null, relationship: null, attraction: null, romance_note: null },
@@ -1706,7 +1704,7 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
       new_characters: [
         { is_new: false, name: 'Jonah', age: 30, role: null, personality: null, speech_style: null, appearance: null },
         { is_new: true, name: 'Jonah Pike', age: null, role: 'Foreman', personality: null, speech_style: null, appearance: null },
-        { is_new: true, name: 'Haku the Fisherman', age: 50, role: 'Ferryman', personality: null, speech_style: null, appearance: null },
+        { is_new: true, name: 'Hal the Fisherman', age: 50, role: 'Water taxi driver', personality: null, speech_style: null, appearance: null },
       ],
       character_updates: [
         { character_id: 'mara-vance', mood: 'tired', appearance: null },
@@ -1723,9 +1721,9 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
     expect(db.bonds.find((bond) => bond.entityId === jonah?.id)?.status).toBe('Wary');
     expect(db.bonds.some((bond) => bond.characterName === 'some-stranger')).toBe(false);
     expect(db.entities.length).toBe(before + 1);
-    expect(db.entities.some((entity) => entity.name === 'Haku the Fisherman')).toBe(true);
+    expect(db.entities.some((entity) => entity.name === 'Hal the Fisherman')).toBe(true);
     expect(db.entities.find((entity) => entity.name === 'Mara Vance')?.mood).toBe('tired');
-    expect(db.state.sceneCast).toEqual(['Jonah Pike', 'Mara Vance', 'Haku the Fisherman']);
+    expect(db.state.sceneCast).toEqual(['Jonah Pike', 'Mara Vance', 'Hal the Fisherman']);
   });
 
 
@@ -1762,7 +1760,7 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
     expect(text).not.toContain('d20');
     expect(text).not.toContain('STYLE GUARD');
     expect(text).not.toContain('ENCOUNTER CONDITIONS');
-    expect(NARRATION_SYSTEM).toContain('never reuse a description');
+    expect(NARRATION_SYSTEM).toContain('Never reuse a description');
   });
 
 

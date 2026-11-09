@@ -32,7 +32,7 @@ const CAPTION_LENGTH = 150;
  * A photo's caption: the one written for it in your words when the image was
  * made, else the reply's opening sentence (the narrator already says "you").
  * The third-person action line is never used: rewriting it word by word
- * leaves slips like "You kneel and sets down" or "You draw his blade".
+ * leaves slips like "You kneel and sets down" or "You pour his drink".
  */
 export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>, playerNames: readonly string[] = []): string {
   const written = entry.imageMeta?.caption?.trim();

@@ -91,7 +91,6 @@ export const TURN_STATE_SCHEMA = object({
   location_kind: nullableEnum(LOCATION_KINDS),
   mood: nullableString,
   world_description: nullableString,
-  world_point: nullableString,
   inventory_added: stringList,
   inventory_removed: stringList,
   // Every change to the player's own money this turn, in the world's currency
@@ -155,7 +154,7 @@ export const TURN_STATE_SCHEMA = object({
     // A one-scene character: a waiter, a guard, a shopkeeper.
     minor: { type: 'boolean' },
     // false for a stranger whose name the player has not learned: name is then a
-    // short description of how they look to the player ("the scarred ferryman").
+    // short description of how they look to the player ("the woman in the green coat").
     name_known: { type: 'boolean' },
   }),
   // appearance: how they look right now (clothes, wet, bloodied, dressed up). lasting_appearance: only a real lasting change to their base look.
