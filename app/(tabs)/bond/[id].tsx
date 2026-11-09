@@ -16,7 +16,7 @@ import { MergeSheet } from '@/components/player/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
-import { playerKnowsDeath } from '@/lib/rpg/deaths';
+import { isDeceased } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import { alsoKnownAs, displayName, playerKnowsName } from '@/lib/rpg/names';
@@ -66,7 +66,7 @@ export default function BondScreen() {
   const name = displayName(db, entity);
   const otherNames = alsoKnownAs(db, entity);
   // Only once the story has told you: a death still on its way is not spoiled here.
-  const dead = playerKnowsDeath(db, entity);
+  const dead = isDeceased(entity);
   const death = entity.deceased;
   const deathLabel = dead
     ? death?.date
@@ -76,7 +76,7 @@ export default function BondScreen() {
   // Your own feelings you know exactly; theirs only as they seem to you.
   const affinity = bond?.yourFeelings?.affinity ?? bond?.affinity ?? 0;
   const theySeem = howTheySeem(bond?.theirFeelings?.affinity ?? bond?.affinity ?? 0);
-  // What the player can know of them: no canon secret before the story tells them.
+  // What the player can know of them.
   const profile = shownProfile(db, entity);
   // Their mood now only if they are here; otherwise how they were when you last saw them.
   const hereNow =

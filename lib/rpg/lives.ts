@@ -1,25 +1,19 @@
 // People with their own lives (living-world Stage 3, section 8).
 //
 // - Side characters do not freeze between the player's visits. As story time passes,
-//   the people the player knows who have little timeline story of their own get
-//   small life events: a hard stretch at work, an injury, a new job, a move,
-//   a promotion, a wedding. People the world's timeline already follows
-//   (named in several of its events) only get events that cannot touch that
-//   path; romance, moves and promotions are for everyone else.
+//   the people the player knows get small life events: a hard stretch at work,
+//   an injury, a new job, a move, a promotion, a wedding.
 // - When the player meets someone again after a long time, the narrator gets a short
-//   "since you last saw them" note: the timeline events since then that name
-//   them, their life events, and, where nothing is known, room for one small
+//   "since you last saw them" note: their life events and, where nothing is known, room for one small
 //   change of the narrator's own that the state tracker then keeps (life_events).
 //
 // Everything is deterministic per save and person, so a regenerated turn
 // gets the same world.
 
 import { dateSortValue, daysBetween, entityAge, shiftDate } from './calendar';
-import { mentionsEntity } from './characterRefs';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
-import { TIMELINE_TAG } from './timeline';
 import { hashText } from './util';
 import type { AppDatabase, CalendarDate, EntityRecord, LifeEvent, LifeEventKind, TurnDiff } from './types';
 import { isPlayerEntity } from './player';
@@ -33,9 +27,6 @@ export const LIFE_EVENT_SPREAD_DAYS = 90;
 
 /** Each person keeps at most this many life events. */
 const LIFE_EVENTS_KEPT = 8;
-
-/** Someone named in this many world timeline events has a story of their own there. */
-const TIMELINE_STORY_EVENTS = 3;
 
 /** Reunion notes per narrator turn. */
 const REUNION_NOTES_PER_TURN = 2;
@@ -52,29 +43,9 @@ function sceneIds(db: AppDatabase): Set<string> {
   return ids;
 }
 
-// ---------------------------------------------------------------------------
-// Who has a story on the world's timeline
-
-/** How many world (not personal) timeline events name this person. */
-export function timelineStoryWeight(db: AppDatabase, entity: Pick<EntityRecord, 'name' | 'aliases'>): number {
-  return (db.world?.timeline ?? []).filter((event) => {
-    if (event.playerDriven) return false;
-    const text = [event.title, event.description, ...(event.facts ?? []), ...(event.deaths ?? [])].join(' ');
-
-    return mentionsEntity(text, entity);
-  }).length;
-}
-
-/** Someone the world's timeline already follows: their path is not the narrator's to change. */
-export function onTimelinePath(db: AppDatabase, entity: EntityRecord): boolean {
-  return entity.type === 'character' && !isPlayerEntity(entity) && timelineStoryWeight(db, entity) >= TIMELINE_STORY_EVENTS;
-}
-
-/** Someone whose life the timeline does not already fill. */
-export function isSideCharacter(db: AppDatabase, entity: EntityRecord): boolean {
-  if (entity.type !== 'character' || isPlayerEntity(entity)) return false;
-
-  return !onTimelinePath(db, entity);
+/** Anyone but the player. */
+export function isSideCharacter(_db: AppDatabase, entity: EntityRecord): boolean {
+  return entity.type === 'character' && !isPlayerEntity(entity);
 }
 
 // ---------------------------------------------------------------------------
@@ -83,8 +54,6 @@ export function isSideCharacter(db: AppDatabase, entity: EntityRecord): boolean 
 type Template = {
   kind: LifeEventKind;
   text: string;
-  /** Safe for people on the timeline: cannot touch their path. */
-  safe: boolean;
   /** Only from this age. */
   minAge?: number;
 };
@@ -93,56 +62,56 @@ type Walk = 'service' | 'medic' | 'teacher' | 'trade' | 'office' | 'civilian' | 
 
 const TEMPLATES: Record<Walk, Template[]> = {
   service: [
-    { kind: 'work', text: 'spent weeks on a hard assignment far from home and came back thinner and quieter', safe: true },
-    { kind: 'injury', text: 'was hurt on the job; it has healed, but they favour that side now', safe: true },
-    { kind: 'posting', text: 'was moved to night shifts for a season', safe: true },
-    { kind: 'team', text: 'worked with a new partner for a stretch', safe: true },
-    { kind: 'loss', text: 'lost a colleague and does not talk about it', safe: true },
-    { kind: 'skill', text: 'passed a hard qualification and is quietly proud of it', safe: true },
-    { kind: 'promotion', text: 'was promoted', safe: false, minAge: 20 },
-    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', safe: false, minAge: 18 },
+    { kind: 'work', text: 'spent weeks on a hard assignment far from home and came back thinner and quieter' },
+    { kind: 'injury', text: 'was hurt on the job; it has healed, but they favour that side now' },
+    { kind: 'posting', text: 'was moved to night shifts for a season' },
+    { kind: 'team', text: 'worked with a new partner for a stretch' },
+    { kind: 'loss', text: 'lost a colleague and does not talk about it' },
+    { kind: 'skill', text: 'passed a hard qualification and is quietly proud of it' },
+    { kind: 'promotion', text: 'was promoted', minAge: 20 },
+    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', minAge: 18 },
   ],
   medic: [
-    { kind: 'work', text: 'worked through a bad flu season at the hospital, short on sleep for weeks', safe: true },
-    { kind: 'work', text: 'has been training a junior colleague, and complains about it fondly', safe: true },
-    { kind: 'loss', text: 'lost a patient they had fought hard for', safe: true },
-    { kind: 'skill', text: 'finished a specialist course', safe: true },
-    { kind: 'romance', text: 'has started seeing someone from work', safe: false, minAge: 18 },
+    { kind: 'work', text: 'worked through a bad flu season at the hospital, short on sleep for weeks' },
+    { kind: 'work', text: 'has been training a junior colleague, and complains about it fondly' },
+    { kind: 'loss', text: 'lost a patient they had fought hard for' },
+    { kind: 'skill', text: 'finished a specialist course' },
+    { kind: 'romance', text: 'has started seeing someone from work', minAge: 18 },
   ],
   teacher: [
-    { kind: 'team', text: 'took on a new class, and already has opinions about every one of them', safe: true },
-    { kind: 'work', text: 'had a former student come back to thank them', safe: true },
-    { kind: 'work', text: 'fought the school board over something and lost', safe: true },
-    { kind: 'posting', text: 'was asked to run the exams this year', safe: true },
+    { kind: 'team', text: 'took on a new class, and already has opinions about every one of them' },
+    { kind: 'work', text: 'had a former student come back to thank them' },
+    { kind: 'work', text: 'fought the school board over something and lost' },
+    { kind: 'posting', text: 'was asked to run the exams this year' },
   ],
   trade: [
-    { kind: 'work', text: 'had a bad season and is still making up for it', safe: true },
-    { kind: 'work', text: 'took on an apprentice', safe: true },
-    { kind: 'work', text: 'opened a second place across town', safe: false },
-    { kind: 'move', text: 'moved their business to another part of town', safe: false },
-    { kind: 'family', text: 'got married in a small ceremony', safe: false, minAge: 18 },
-    { kind: 'injury', text: 'was robbed and still has the scar', safe: true },
+    { kind: 'work', text: 'had a bad season and is still making up for it' },
+    { kind: 'work', text: 'took on an apprentice' },
+    { kind: 'work', text: 'opened a second place across town' },
+    { kind: 'move', text: 'moved their business to another part of town' },
+    { kind: 'family', text: 'got married in a small ceremony', minAge: 18 },
+    { kind: 'injury', text: 'was robbed and still has the scar' },
   ],
   office: [
-    { kind: 'work', text: 'survived a round of layoffs and is still nervous about it', safe: true },
-    { kind: 'work', text: 'landed a big project and has been working late', safe: true },
-    { kind: 'team', text: 'got a new boss they cannot stand', safe: true },
-    { kind: 'promotion', text: 'was promoted', safe: false, minAge: 20 },
-    { kind: 'move', text: 'moved to a new flat', safe: false },
-    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', safe: false, minAge: 18 },
+    { kind: 'work', text: 'survived a round of layoffs and is still nervous about it' },
+    { kind: 'work', text: 'landed a big project and has been working late' },
+    { kind: 'team', text: 'got a new boss they cannot stand' },
+    { kind: 'promotion', text: 'was promoted', minAge: 20 },
+    { kind: 'move', text: 'moved to a new flat' },
+    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', minAge: 18 },
   ],
   civilian: [
-    { kind: 'move', text: 'moved to another part of town', safe: false },
-    { kind: 'loss', text: 'lost someone in the family over the winter', safe: true },
-    { kind: 'work', text: 'found new work and seems steadier for it', safe: true },
-    { kind: 'family', text: 'got married', safe: false, minAge: 18 },
-    { kind: 'romance', text: 'has started seeing someone', safe: false, minAge: 18 },
-    { kind: 'move', text: 'moved away to another town', safe: false },
+    { kind: 'move', text: 'moved to another part of town' },
+    { kind: 'loss', text: 'lost someone in the family over the winter' },
+    { kind: 'work', text: 'found new work and seems steadier for it' },
+    { kind: 'family', text: 'got married', minAge: 18 },
+    { kind: 'romance', text: 'has started seeing someone', minAge: 18 },
+    { kind: 'move', text: 'moved away to another town' },
   ],
   child: [
-    { kind: 'growth', text: 'has grown a head taller', safe: true },
-    { kind: 'skill', text: 'is proud of something new they learned to do', safe: true },
-    { kind: 'growth', text: 'made a new best friend and talks about them constantly', safe: true },
+    { kind: 'growth', text: 'has grown a head taller' },
+    { kind: 'skill', text: 'is proud of something new they learned to do' },
+    { kind: 'growth', text: 'made a new best friend and talks about them constantly' },
   ],
 };
 
@@ -181,10 +150,8 @@ function livesOnOwn(db: AppDatabase, entity: EntityRecord, here: Set<string>): b
 
 function pickTemplate(db: AppDatabase, entity: EntityRecord, date: CalendarDate, past: LifeEvent[]): Template | null {
   const age = entityAge(date, entity) ?? null;
-  const onPath = onTimelinePath(db, entity);
   const options = TEMPLATES[walkOf(entity, age)].filter(
     (template) =>
-      (!onPath || template.safe) &&
       (template.minAge === undefined || (age !== null && age >= template.minAge)) &&
       // The same thing twice in a row reads like a loop.
       past[past.length - 1]?.text !== template.text &&
@@ -365,24 +332,6 @@ function apartLabel(days: number) {
   return `${Math.round(days / 7)} weeks`;
 }
 
-/** The fired world events since then that name this person, oldest first. */
-function timelineSince(db: AppDatabase, entity: EntityRecord, since: CalendarDate): string[] {
-  const now = dateSortValue(db.state.inStoryDate);
-  const from = dateSortValue(since);
-
-  return db.events
-    .filter(
-      (event) =>
-        event.tags.includes(TIMELINE_TAG) &&
-        dateSortValue(event.inStoryDate) > from &&
-        dateSortValue(event.inStoryDate) <= now &&
-        mentionsEntity(event.summary, entity)
-    )
-    .sort((a, b) => dateSortValue(a.inStoryDate) - dateSortValue(b.inStoryDate))
-    .map((event) => event.summary.split(':')[0].trim())
-    .slice(-3);
-}
-
 /**
  * The "since you last saw them" note for one person, or '' when it does not
  * apply: they are a reunion in this scene, or the player is about to meet them
@@ -401,10 +350,6 @@ export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
   const days = daysBetween(lastSeen, now);
   const where = reunion?.lastSeenAt ?? entity.lastSeenAt;
   const parts: string[] = [];
-  const world = timelineSince(db, entity, lastSeen);
-
-  if (world.length) parts.push(`in the world: ${world.join('; ')}`);
-
   const life = lifeOf(entity).filter(
     (event) => dateSortValue(event.date) > dateSortValue(lastSeen) && dateSortValue(event.date) <= dateSortValue(now)
   );
@@ -418,10 +363,9 @@ export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
 
   // Named but not here yet: only if they turn up.
   const opening = `${reunion ? '' : 'Only if they appear: '}Since you last saw them (${apartLabel(days)} ago${where ? `, at ${where}` : ''})`;
-  const onPath = onTimelinePath(db, entity) ? ' Nothing that changes their path on the world timeline.' : '';
 
   if (parts.length === 0) {
-    return `${opening}: nothing is known of their life since. Give them one small change of their own that fits who they are (new work, an injury, a move, a new habit), and make it plain on the page so it is kept.${onPath}`;
+    return `${opening}: nothing is known of their life since. Give them one small change of their own that fits who they are (new work, an injury, a move, a new habit), and make it plain on the page so it is kept.`;
   }
 
   return `${opening}: ${parts.join('. ')}. Let it show in how they look and talk; they tell you only what they would share.`;
@@ -449,13 +393,3 @@ export function knownLife(entity: EntityRecord): LifeEvent[] {
     .sort((a, b) => dateSortValue(b.date) - dateSortValue(a.date));
 }
 
-export function normalizeLifeEvents(raw: unknown): LifeEvent[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-
-  const events = raw.filter(
-    (event): event is LifeEvent =>
-      Boolean(event) && typeof event === 'object' && typeof event.text === 'string' && Boolean(event.date)
-  );
-
-  return events.length ? events.slice(-LIFE_EVENTS_KEPT) : undefined;
-}

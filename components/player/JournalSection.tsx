@@ -7,12 +7,10 @@ import { dateSortValue, formatClock, formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
-import { loreActive } from '@/lib/rpg/lore';
 import { todayNotes } from '@/lib/rpg/yearly';
 import { grudgeKnown } from '@/lib/rpg/disclosure';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { audienceName, knownEpithets } from '@/lib/rpg/renown';
-import { TIMELINE_TAG } from '@/lib/rpg/timeline';
 import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
 import { PrivateGallery } from '@/components/player/PrivateGallery';
@@ -146,7 +144,6 @@ function RecapView({ db }: { db: AppDatabase }) {
     }
 
     return [...db.events]
-      .filter((event) => !event.tags.includes(TIMELINE_TAG))
       .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
       .slice(0, 20)
       .map((event) => {
@@ -193,52 +190,12 @@ function RecapView({ db }: { db: AppDatabase }) {
 }
 
 function WorldView({ db }: { db: AppDatabase }) {
-  const news = useMemo(() => {
-    const now = dateSortValue(db.state.inStoryDate);
-    const heard = db.state.timelineProgress?.heard ?? {};
-
-    return db.events
-      .filter(
-        (event) =>
-          event.tags.includes(TIMELINE_TAG) &&
-          Boolean(heard[event.id]) &&
-          dateSortValue(event.inStoryDate) <= now
-      )
-      .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
-      .slice(0, 40);
-  }, [db]);
-  const heard = db.state.timelineProgress?.heard ?? {};
-  const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && loreActive(db, lore));
+  const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && lore.enabled);
   // Only the names you have heard yourself called.
   const names = knownEpithets(db);
 
   return (
     <>
-      <SectionLabel>Word on the road</SectionLabel>
-      {news.length === 0 ? (
-        <EmptyRow
-          body="News reaches you through people and messengers, never all at once."
-          title="No word yet"
-        />
-      ) : (
-        <ListCard>
-          {news.map((event) => {
-            const { title, body } = titleAndBody(event.summary);
-            const source = heard[event.id]?.from;
-            const how = source === 'witnessed' ? 'witnessed' : source ? `heard from ${source}` : null;
-
-            return (
-              <ListRow
-                body={body}
-                key={event.id}
-                meta={[formatDayMonth(event.inStoryDate), how].filter(Boolean).join(' · ')}
-                title={title}
-              />
-            );
-          })}
-        </ListCard>
-      )}
-
       {names.length > 0 ? (
         <>
           <SectionLabel>What they call you</SectionLabel>
@@ -282,8 +239,7 @@ function WorldView({ db }: { db: AppDatabase }) {
 function MemoriesView({ db }: { db: AppDatabase }) {
   const memories = useMemo<EventRecord[]>(
     () =>
-      db.events
-        .filter((event) => !event.tags.includes(TIMELINE_TAG))
+      [...db.events]
         .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
         .slice(0, 80),
     [db]

@@ -73,12 +73,8 @@ export async function paintScene({
   const shot = written?.shot;
   const shotType = written?.shotType ?? null;
   const ensemble = wantsEnsemble(chip, shotType);
-  // A memory: the player is a child there, so their present outfits stay out.
-  const inMemory = Boolean(latestAssistant.flashback);
-
-  // People named in the action with a face reference or a portrait; people
-  // the model can't already know come first.
-  const sceneRefs = sceneCharacterReferences(db, action, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT, true);
+  // People named in the action with a face reference or a portrait.
+  const sceneRefs = sceneCharacterReferences(db, action, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
   const loaded = await Promise.all(
     sceneRefs.map(async (person) => ({
       name: person.name,
@@ -87,7 +83,7 @@ export async function paintScene({
       ref: person.image,
     }))
   );
-  const people = await packPeopleReferences(loaded, personReferenceSlots(caps.maxReferences, !inMemory));
+  const people = await packPeopleReferences(loaded, personReferenceSlots(caps.maxReferences));
 
   // Which stored image each sent reference came from, for the image's record.
   const refOf = new Map<string, string>();
@@ -101,10 +97,10 @@ export async function paintScene({
   const plan = planReferences(
     [
       { kind: 'face', uri: playerRefImages.face },
-      ...(inMemory ? [] : [{ kind: 'outfit' as const, uri: playerRefImages.outfit }]),
+      { kind: 'outfit', uri: playerRefImages.outfit },
       ...people,
       ...recentImages.map((uri) => ({ kind: 'previous' as const, uri })),
-      ...(inMemory ? [] : [{ kind: 'alternate' as const, uri: playerRefImages.alternate }]),
+      { kind: 'alternate', uri: playerRefImages.alternate },
     ],
     caps.maxReferences
   );

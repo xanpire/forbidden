@@ -15,9 +15,9 @@
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
 import { playerAge } from './player';
 import { displayName, narratorName } from './names';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { castWithCompanions } from './companions';
-import { isDeceased, playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, FestivalDef, TurnDiff, YearlyState } from './types';
 import { isPlayerEntity } from './player';
@@ -171,7 +171,7 @@ function playerAnniversaries(db: AppDatabase): YearlyOffer[] {
     const died = entity.deceased?.date;
 
     if (entity.type !== 'character' || isPlayerEntity(entity) || !died || !isClose(db, entity)) continue;
-    if (!playerKnowsDeath(db, entity) || now.year <= died.year || !isToday(now, died)) continue;
+    if (!isDeceased(entity) || now.year <= died.year || !isToday(now, died)) continue;
 
     offers.push({
       key: `anniversary:death:${entity.id}`,
@@ -231,12 +231,12 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
 
     if (isDeceased(entity)) {
       // Only the dead the player was close to, and knows are dead.
-      if (knows && playerKnowsDeath(db, entity)) {
+      if (knows && isDeceased(entity)) {
         remembrance.push({
           key: `remembrance:${entity.id}`,
           kind: 'remembrance',
           entity,
-          line: `It would have been ${narratorName(db, entity)}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.${sharedMemoryLine(db, entity)}`,
+          line: `It would have been ${narratorName(db, entity)}'s birthday today. A remembrance day: a quiet moment of your own, or a visit to the grave if you are near it.`,
         });
       }
       continue;
@@ -306,16 +306,6 @@ function festivals(db: AppDatabase): YearlyOffer[] {
 }
 
 /** Everything the calendar holds for today, most important first (offered or not). */
-/** A flashback the player lived through with someone who is gone, for their remembrance day. */
-function sharedMemoryLine(db: AppDatabase, entity: EntityRecord): string {
-  const linked = new Set(db.eventEntities.filter((link) => link.entityId === entity.id).map((link) => link.eventId));
-  const memory = db.events
-    .filter((event) => linked.has(event.id) && event.tags.includes('flashback'))
-    .sort((a, b) => b.importance - a.importance)[0];
-
-  return memory ? ` A memory you lived again with them may come back today: ${memory.title ?? memory.scene} (${memory.summary.replace(/\.$/, '')}).` : '';
-}
-
 export function yearlyCandidates(db: AppDatabase): YearlyOffer[] {
   const birthdayOffers = birthdays(db);
   const festivalOffers = festivals(db);
@@ -415,7 +405,7 @@ export function upcomingBirthdays(db: AppDatabase, days = 30): UpcomingBirthday[
     if (entity.type !== 'character' || !entity.birthday || !knowsBirthday(db, entity)) continue;
 
     const dead = isDeceased(entity);
-    if (dead && !playerKnowsDeath(db, entity)) continue;
+    if (dead && !isDeceased(entity)) continue;
 
     for (const year of [now.year, now.year + 1]) {
       const shown = birthdayThisYear(entity.birthday, year);

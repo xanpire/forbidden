@@ -12,7 +12,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronRight, RefreshCw, Search, X } from 'lucide-react-native';
 
-import { AppButton } from '@/components/AppButton';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import {
   fetchOpenRouterImageModels,

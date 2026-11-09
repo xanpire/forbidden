@@ -59,9 +59,6 @@ export const RELATIONSHIP_STAGES: RelationshipStage[] = [
   'ex',
 ];
 
-/** The romantic stages, for code that cares whether a bond is a romance. */
-export const ROMANTIC_STAGES = new Set<RelationshipStage>(['romantic interest', 'lover']);
-
 const ATTRACTIONS: Attraction[] = ['none', 'warm', 'strong'];
 
 export function normalizeRelationship(value: string | undefined): RelationshipStage | undefined {
@@ -315,17 +312,6 @@ export function normalizeIntimacy(value: unknown): IntimacyProfile | undefined {
   };
 }
 
-/** Older saves kept romanceAccessibility / canonDevotion / orientation; fold them in. */
-export function intimacyFromLegacy(entity: Record<string, unknown>): IntimacyProfile | undefined {
-  const access = entity.romanceAccessibility;
-  const devotion = cleanText(entity.canonDevotion, 160);
-  const orientation = cleanText(entity.orientation, 120);
-  if (!access && !devotion && !orientation) return undefined;
-  const interestedInPlayer: IntimacyProfile['interestedInPlayer'] =
-    access === 'winnable' ? 'could-grow' : access === 'lore-locked' ? 'taken' : access === 'not-applicable' ? 'no' : devotion ? 'taken' : 'could-grow';
-  return { orientation, interestedInPlayer, desires: [], boundaries: [], ...(devotion ? { devotion } : {}) };
-}
-
 // ---------------------------------------------------------------------------
 // Hard limits (code, not settings)
 
@@ -432,14 +418,14 @@ export function applyIntimacyStages(db: AppDatabase, items: TurnDiff['intimacySt
   return next;
 }
 
-export function applyMilestones(db: AppDatabase, items: TurnDiff['milestones']): AppDatabase {
+export function applyFirsts(db: AppDatabase, items: TurnDiff['firsts']): AppDatabase {
   let next = db;
   for (const item of items ?? []) {
     const bond = bondFor(next, item.entityId);
     const what = cleanText(item.what, 120);
     if (!bond || !what) continue;
-    const milestone = { what, when: next.state.inStoryDate, where: next.state.location };
-    next = updateBond(next, bond.id, (b) => ({ ...b, milestones: [...(b.milestones ?? []), milestone].slice(-12) }));
+    const first = { what, when: next.state.inStoryDate, where: next.state.location };
+    next = updateBond(next, bond.id, (b) => ({ ...b, firsts: [...(b.firsts ?? []), first].slice(-12) }));
   }
   return next;
 }

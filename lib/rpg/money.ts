@@ -5,9 +5,7 @@
  * The narrator sees one Purse line in CURRENT STATE and the world's price
  * guide; the state tracker reports every change to the player's own money
  * (`money`) and, when the prose states the total, the total
- * (`money_counted`). Someone else paying for them changes nothing. A
- * flashback never touches the present purse (its turns go through
- * applyMemoryStep).
+ * (`money_counted`). Someone else paying for them changes nothing.
  */
 
 import type { AppDatabase, CalendarDate, PurseEntry, PurseState, WorldDefinition } from './types';

@@ -1,43 +1,26 @@
 // The creation wizard's step screens, shared by the wizard (app/new-story.tsx)
 // and the world editor during play (app/world-editor.tsx).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { X } from 'lucide-react-native';
+import { useMemo } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { AddButton, Choice, Field, FieldRow, Hint, ItemCard, ListField, MultiChoice, NumberField, Toggle } from '@/components/Form';
 import { useToast } from '@/components/Toast';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
-import { completeChat } from '@/lib/openrouter';
 import { pickImageFile } from '@/lib/rpg/file';
-import { useGame } from '@/lib/rpg/game';
 import { FACE_IMAGE } from '@/lib/rpg/imageCompress';
 import { storeImage } from '@/lib/rpg/imageStore';
 import { RELATIONSHIP_STAGES } from '@/lib/rpg/intimacy';
-import type { CalendarDate, ClimateType, ContentProfile, ContentTag, IntimacyProfile, PlaceDef, StartingPerson, TimelineKnowledge } from '@/lib/rpg/types';
+import type { CalendarDate, ClimateType, ContentProfile, ContentTag, IntimacyProfile, PlaceDef, StartingPerson } from '@/lib/rpg/types';
 import { CHECK_REASONS, canBeIntimate } from '@/lib/rpg/intimacy';
 import {
   CLIMATE_LABELS,
-  STEP_LABELS,
-  WIZARD_STEPS,
-  applySuggestion,
-  clearDraft,
-  draftToSeedInput,
-  emptyDraft,
   emptyPerson,
-  helpFillMessages,
-  loadDraft,
   missingFields,
   newFaction,
   newLore,
   newPlace,
   newRegion,
-  newTimelineEvent,
-  parseHelpReply,
-  saveDraft,
-  type HelpSection,
   type HelpSuggestion,
   type WizardDraft,
   type WizardStep,
@@ -53,12 +36,6 @@ const KIND_OPTIONS: { value: PlaceDef['kind']; label: string }[] = [
   { value: 'settlement', label: 'Town or street' },
   { value: 'road', label: 'Road or station' },
   { value: 'wilderness', label: 'Outdoors' },
-];
-const KNOWLEDGE_OPTIONS: { value: TimelineKnowledge; label: string }[] = [
-  { value: 'public', label: 'Everyone hears' },
-  { value: 'faction', label: 'One group' },
-  { value: 'witnesses', label: 'Only those there' },
-  { value: 'secret', label: 'Secret' },
 ];
 const INTEREST_OPTIONS: { value: IntimacyProfile['interestedInPlayer']; label: string }[] = [
   { value: 'yes', label: 'Drawn to you' },
@@ -151,24 +128,6 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
         value={world.era.period}
       />
       <Field label="World name" onChange={(name) => setWorld({ name })} required value={world.name} />
-      <Field
-        hint="Optional: a real period or a realistic show or novel this world follows (Victorian London, Tokyo 1990s…)."
-        label="Known setting"
-        onChange={(name) => setWorld({ knownUniverse: name.trim() ? { name, canonStrictness: world.knownUniverse?.canonStrictness ?? 'faithful' } : undefined })}
-        value={world.knownUniverse?.name ?? ''}
-      />
-      {world.knownUniverse ? (
-        <Choice
-          label="How closely to follow it"
-          onChange={(canonStrictness) => setWorld({ knownUniverse: { ...world.knownUniverse!, canonStrictness } })}
-          options={[
-            { value: 'loose' as const, label: 'Loosely' },
-            { value: 'faithful' as const, label: 'Faithfully' },
-            { value: 'strict' as const, label: 'Strictly' },
-          ]}
-          value={world.knownUniverse.canonStrictness}
-        />
-      ) : null}
       <Field label="Premise" lines={4} multiline onChange={(premise) => setWorld({ premise })} placeholder="A paragraph about this world and what makes it interesting." required value={world.premise} />
       <FieldRow>
         <Field label="Genre" onChange={(genre) => setWorld({ genre })} placeholder="noir crime drama" value={world.genre} />
@@ -544,37 +503,6 @@ export function OpeningStep({ draft, update }: { draft: WizardDraft; update: Upd
   );
 }
 
-export function TimelineStep({ draft, update }: { draft: WizardDraft; update: Updater }) {
-  const timeline = draft.world.timeline;
-  const setTimeline = (next: typeof timeline) => update((d) => ({ ...d, world: { ...d.world, timeline: next } }));
-  const regionOptions = draft.world.regions.filter((r) => r.name.trim()).map((r) => ({ value: r.id, label: r.name }));
-  const factionOptions = draft.world.factions.filter((f) => f.name.trim()).map((f) => ({ value: f.id, label: f.name }));
-  return (
-    <>
-      <StepIntro body="Optional. Things that will happen in the world on their own dates, whether you're there or not. News reaches you only through people who could know." title="Timeline" />
-      {timeline.map((event) => {
-        const set = (patch: Partial<typeof event>) => setTimeline(timeline.map((item) => (item.id === event.id ? { ...item, ...patch } : item)));
-        const from = { year: event.from.year, month: event.from.month, day: event.from.day ?? 1, hour: 0, minute: 0 };
-        return (
-          <ItemCard key={event.id} onRemove={() => setTimeline(timeline.filter((item) => item.id !== event.id))} title={event.title || 'New event'}>
-            <Field label="Title" onChange={(title) => set({ title })} value={event.title} />
-            <Field label="What happens" multiline lines={3} onChange={(description) => set({ description })} value={event.description} />
-            <Text style={styles.label}>When</Text>
-            <DateFields onChange={(date) => set({ from: { year: date.year, month: date.month, day: date.day } })} value={from} withTime={false} />
-            <Choice label="Where" onChange={(regionId) => set({ regionId })} options={regionOptions} value={event.regionId} />
-            <Choice label="Who hears of it" onChange={(knowledge) => set({ knowledge })} options={KNOWLEDGE_OPTIONS} value={event.knowledge ?? 'public'} />
-            {event.knowledge === 'faction' ? <Choice label="Which group" onChange={(factionId) => set({ factionId })} options={factionOptions} value={event.factionId} /> : null}
-            <Toggle hint="It's offered to you and only happens if you take part." label="Involves you" onChange={(playerDriven) => set({ playerDriven })} value={Boolean(event.playerDriven)} />
-            {event.playerDriven ? <Field label="It's done when…" onChange={(completesWhen) => set({ completesWhen })} value={event.completesWhen ?? ''} /> : null}
-            <Toggle label="Big news" onChange={(major) => set({ major })} value={Boolean(event.major)} />
-          </ItemCard>
-        );
-      })}
-      <AddButton label="Add an event" onPress={() => setTimeline([...timeline, newTimelineEvent(draft.opening.date)])} />
-    </>
-  );
-}
-
 export function ReviewStep({ draft, update, goTo }: { draft: WizardDraft; update: Updater; goTo: (step: WizardStep) => void }) {
   const missing = useMemo(() => missingFields(draft), [draft]);
   const w = draft.world;
@@ -588,7 +516,6 @@ export function ReviewStep({ draft, update, goTo }: { draft: WizardDraft; update
     ['backstory', 'Backstory', `${c.backstory.trim() ? `${c.backstory.trim().split(/\s+/).length} words` : 'none'} · ${draft.truths.length} facts · ${c.secrets.length} secrets`],
     ['people', 'People', draft.people.map((p) => p.name).filter(Boolean).join(', ') || 'none yet'],
     ['opening', 'Opening', draft.opening.situation ? `${draft.opening.location || 'somewhere'} · ${draft.opening.situation.slice(0, 80)}` : '—'],
-    ['timeline', 'Timeline', `${w.timeline.length} events`],
   ];
   return (
     <>

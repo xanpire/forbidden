@@ -137,17 +137,9 @@ describe('letters and messages', () => {
 });
 
 describe('people with their own lives', () => {
-  test('the people the player wrote are side characters; someone the timeline follows is not', () => {
+  test('the people the player wrote are side characters', () => {
     const db = seed();
     expect(isSideCharacter(db, person(db, 'Mara Vance'))).toBe(true);
-    const followed = {
-      ...db,
-      world: {
-        ...db.world,
-        timeline: [1, 2, 3].map((n) => ({ id: `mara-${n}`, title: `Mara Vance, part ${n}`, description: 'Mara Vance does something big.', from: { year: 2026, month: 11, day: n }, facts: [] })),
-      },
-    };
-    expect(isSideCharacter(followed, person(db, 'Mara Vance'))).toBe(false);
   });
 
   test('a life moves on while the player is away, the same way every time, unknown until they meet', () => {

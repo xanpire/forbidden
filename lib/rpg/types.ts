@@ -82,9 +82,8 @@ export type GameState = {
   locationKind?: LocationKind;
   inStoryDate: CalendarDate;
   turnsWithoutTimeChange?: number;
-  /** A free line on where the world stands now; the timeline can set it. */
+  /** A free line on where the world stands now. */
   worldPoint: string;
-  timelineProgress?: TimelineProgress;
   /** The current chapter: a narrative unit, moved on only by real breaks (see applyChapterBreak). */
   chapter: number;
   /** The current chapter's title, from its break. */
@@ -120,8 +119,6 @@ export type GameState = {
   weather?: WeatherLock;
   /** Every place the player has been, oldest first (see mapData.ts). */
   travelLog?: TravelStop[];
-  /** Playable flashbacks: offers, the one playing now, and those already lived (see flashbacks.ts). */
-  flashbacks?: FlashbackState;
   /** Places the player stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
   safehouses?: SafehouseState;
   /** The money the player carries, and what moved it (see money.ts). */
@@ -189,47 +186,6 @@ export type SafehouseState = {
   places: Safehouse[];
   /** The one the player is at now. */
   current?: string;
-};
-
-/**
- * The player's playable memories of their life before the story (see flashbacks.ts).
- * A flashback has its own clock and place; the present stands still while
- * it plays.
- */
-export type FlashbackState = {
-  /** Flashback ids already lived through; each plays once. */
-  played: string[];
-  /** When each flashback was last offered (present date). */
-  offered: Record<string, CalendarDate>;
-  /** The last offer of any flashback: at most one per in-story month. */
-  lastOfferOn?: CalendarDate;
-  /** An offer the reply showed, which the player can still follow. */
-  pending?: { id: string; logId: string; turnsLeft: number };
-  /** The flashback playing now. */
-  active?: ActiveFlashback;
-  /** The flashback that just ended: the next present turn picks up from it. */
-  returned?: { id: string; ending: string; forced?: boolean };
-};
-
-export type ActiveFlashback = {
-  id: string;
-  /** The memory's own clock. */
-  date: CalendarDate;
-  place: string;
-  locationKind: LocationKind;
-  /** The present moment the player left. */
-  startedOn: CalendarDate;
-  /** Flashback turns narrated and applied so far. */
-  turns: number;
-  /** Everyone who was in the memory's scene (entity ids). */
-  castIds: string[];
-  /** How the memory moved people's feelings, summed; applied, capped, when it ends. */
-  nudges: Record<string, number>;
-  /** Weather the memory's own prose set. */
-  weather?: { condition: WeatherCondition; text?: string };
-  /** The present scene's pace and mode, put back when it ends. */
-  presentPace?: ScenePace;
-  presentSceneMode?: SceneModeState;
 };
 
 export type WeatherCondition =
@@ -484,10 +440,6 @@ export type RawLogEntry = {
   fightOptions?: string[];
   /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
   intimate?: boolean;
-  /** A turn played inside a flashback: which one, and the memory's clock when it began. */
-  flashback?: { id: string; date: CalendarDate };
-  /** A flashback offered to the narrator on this reply (see flashbacks.ts). */
-  flashbackOffer?: string;
 };
 
 export type SceneImageMeta = {
@@ -545,14 +497,11 @@ export type EntityRecord = {
   lastSeenAt?: string;
   /**
    * Set once this person has died in the story (see deaths.ts). `known` is
-   * whether the player has seen it or been told; a timeline death also becomes known
-   * when the news of `timelineEventId` reaches them.
+   * whether the player has seen it or been told.
    */
   deceased?: {
     date?: CalendarDate;
     cause?: string;
-    known?: boolean;
-    timelineEventId?: string;
   };
   /** male, female, or unknown when the story hasn't said. */
   gender?: Gender;
@@ -577,15 +526,12 @@ export type EntityRecord = {
    * More than one identity (a persona, a claimed name, the true one), with
    * who in the world knows each (names.ts).
    */
-  identities?: Identity[];
   /**
    * What the player knows of their name. Missing means he knows it (older saves, and
    * anyone the story introduced by name). `{}` means nothing yet: he sees
    * only their label.
    */
   known?: NameKnowledge;
-  /** Recognised on sight, or known by name, without having met the player (names.ts). */
-  fame?: 'sight' | 'heard';
   /** The story has not given them a name yet: `name` is only their label. */
   unnamed?: true;
   /**
@@ -649,52 +595,15 @@ export type Gender = 'male' | 'female' | 'unknown';
 
 export type NameParts = { given?: string; family?: string; full?: string };
 
-export type NamePart = 'given' | 'family' | 'full' | 'identity';
+export type NamePart = 'given' | 'family' | 'full';
 
-export type NameHow = 'introduced' | 'told' | 'written' | 'overheard' | 'recognised' | 'news' | 'start';
-
-export type FameLevel = 'sight' | 'heard' | 'unknown';
-
-export type IdentityKind = 'true' | 'claimed' | 'persona';
-
-export type IdentityKnower = {
-  /** Names or entity ids. */
-  who: string[];
-  /** From this timeline event (in the world, not the player's hearing of it). */
-  from?: string;
-  /** Or from this in-story date (the player told them). */
-  on?: CalendarDate;
-  /** They know the truth but use the name the person goes by. */
-  playsAlong?: boolean;
-  note?: string;
-};
-
-export type Identity = {
-  name: string;
-  kind: IdentityKind;
-  /** The player learns this identity when one of these timeline events reaches them. */
-  learnedWith?: string[];
-  /** Who in the world knows them by this name, and from when. */
-  knownBy?: IdentityKnower[];
-  /** Everyone knows it from this timeline event ("start": from the beginning). */
-  publicFrom?: string;
-  /** The identity exists only from this timeline event. */
-  existsFrom?: string;
-  /** Once this timeline event has happened, the name reads differently. */
-  renamed?: { after: string; name: string };
-  /** false: never added to aliases for matching (a name another person owns). */
-  alias?: false;
-  /** For the narrator only. */
-  note?: string;
-};
+export type NameHow = 'introduced' | 'told' | 'written' | 'overheard' | 'start';
 
 export type NameKnowledge = {
   /** A short description for someone the player cannot name yet ("the red-haired girl"). */
   label?: string;
   given?: boolean;
   family?: boolean;
-  /** Names of the identities the player has learned. */
-  identities?: string[];
   history?: { name: string; part: NamePart; how: NameHow; date: CalendarDate }[];
 };
 
@@ -773,13 +682,13 @@ export type BondRecord = {
   /** Scene beats shown on the page toward the next stage. */
   stageBeats?: number;
   /** Firsts and big moments, in the player's story. */
-  milestones?: IntimacyMilestone[];
+  firsts?: IntimacyFirst[];
   /** What they have learned the player likes (and the player about them), in plain words. */
   learnedPreferences?: string[];
   updatedInStoryDate: CalendarDate;
 };
 
-export type IntimacyMilestone = { what: string; when: CalendarDate; where: string };
+export type IntimacyFirst = { what: string; when: CalendarDate; where: string };
 
 /** A person's own desires and boundaries (see intimacy.ts). */
 export type IntimacyProfile = {
@@ -874,28 +783,7 @@ export type LoreRecord = {
   hidden?: boolean;
   /** Always in the narrator's prompt, whatever the turn mentions. */
   always?: boolean;
-  /** Only once this holds (see loreActive). */
-  activeAfter?: LoreCondition;
-  /** Only until this holds. */
-  activeUntil?: LoreCondition;
 };
-
-/**
- * Something the story reaches. Every field given must hold.
- * - milestone: a timeline event the player completed or took part in
- * - thread / threadStatus: a thread (by title) with that status (default resolved)
- * - fact: an active fact containing this text
- * - flag: a state flag the app works out (see LORE_FLAGS in lore.ts)
- */
-export type LoreCondition = {
-  milestone?: string;
-  thread?: string;
-  threadStatus?: 'open' | 'resolved';
-  fact?: string;
-  flag?: LoreFlag;
-};
-
-export type LoreFlag = 'inRomance';
 
 export type SummaryRecord = {
   id: string;
@@ -925,7 +813,7 @@ export type SummaryRecord = {
  * Jobs live in the save so a failed or interrupted step survives a reload
  * and can be retried from the story screen.
  */
-export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year' | 'flashback';
+export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year';
 
 export type MemoryJob = {
   id: string;
@@ -940,8 +828,6 @@ export type MemoryJob = {
   logIds?: string[];
   /** arc / year: the chapter summaries to roll up. */
   summaryIds?: string[];
-  /** flashback: the memory being written up (see flashbacks.ts). */
-  flashbackId?: string;
   /** timeSkip: the jump being summarized. */
   fromDate?: CalendarDate;
   toDate?: CalendarDate;
@@ -971,8 +857,6 @@ export type Settings = {
   autoSummarizeThreshold: number;
   temperature: number;
   maxTokens: number;
-  /** Run the world timeline (default on). */
-  worldTimeline: boolean;
   /** Upper bound on the narrator prompt, in estimated tokens. */
   promptTokenBudget: number;
   /** Frames each scene image (the "director"); empty = the narrator model. */
@@ -985,18 +869,6 @@ export type Settings = {
   imageCheck?: boolean;
   /** Paint two takes and let you keep one (default off). */
   imageTwoTakes?: boolean;
-};
-
-export type TimelineProgress = {
-  version?: number;
-  baselineDate?: CalendarDate;
-  completed: string[];
-  active: string[];
-  engaged: string[];
-  expired?: string[];
-  heard?: Record<string, { from: string; date: CalendarDate }>;
-  /** True when the last advance was held back because the player was mid-fight. */
-  heldForCombat?: boolean;
 };
 
 export type { RelationshipStage } from './intimacy';
@@ -1143,8 +1015,6 @@ export type TurnDiff = {
   fightOptions?: string[];
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
-  /** A flashback offered this turn showed its trigger, the player followed one into the memory, or the memory ended. */
-  flashback?: 'offered' | 'started' | 'ended';
   /**
    * People the prose seems to show, read by the app when the state reply was
    * unreadable. Only a suggestion: it never marks anyone met or seen, and
@@ -1227,10 +1097,6 @@ export type TurnDiff = {
   companionsJoined?: { entityId?: string; name: string; reason?: string }[];
   /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];
-  timelineCompleted?: string[];
-  timelineEngaged?: string[];
-  timelinePassed?: string[];
-  newsRelayed?: { id: string; from?: string }[];
   /** Letters or messages the player sent this turn to someone far away (or wrote to the dead). */
   lettersSent?: {
     entityId?: string;
@@ -1247,7 +1113,7 @@ export type TurnDiff = {
   lifeEvents?: { entityId?: string; name: string; text: string }[];
   /** Intimacy (intimacy.ts): what the page showed between the player and someone. */
   intimacyStages?: { entityId?: string; name: string; stage: string }[];
-  milestones?: { entityId?: string; name: string; what: string }[];
+  firsts?: { entityId?: string; name: string; what: string }[];
   preferencesLearned?: { entityId?: string; name: string; preference: string; aboutPlayer: boolean }[];
   outfits?: { entityId?: string; name: string; outfit?: string; position?: string }[];
   /** true: an intimate scene starts or goes on; false: it ends; undefined: no change. */
@@ -1285,8 +1151,6 @@ export type TurnDiff = {
   birthdaysLearned?: { entityId?: string; name: string }[];
   /** Names the player heard, read or recognised this turn (names.ts). */
   namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
-  /** Someone in the scene learned another identity of a person (the player told them who someone really is). */
-  namesTold?: { entityId?: string; character: string; name: string; toldTo: string[] }[];
   /** Factions whose wanted entry on the player they saw or were told of this turn. */
   bountySeen?: string[];
   /** Grudges started, acted on, settled or forgiven this turn. */
@@ -1313,24 +1177,6 @@ export type SafehouseDiff = {
   residentsJoined?: string[];
   residentsLeft?: string[];
   ended?: Exclude<SafehouseEnd, 'left'>;
-};
-
-export type PromptBundle = {
-  stable: {
-    system: string;
-    characterSheet: string;
-    state: string;
-    bonds: string;
-    facts: string;
-    threads: string;
-    lore: string;
-  };
-  dynamic: {
-    arcSummary: string | null;
-    retrievedMemories: EventRecord[];
-    recentMessages: RawLogEntry[];
-  };
-  estimatedTokens: number;
 };
 
 export type OpenRouterMessage = {
@@ -1397,57 +1243,6 @@ export type PlaceDef = {
   description: string;
 };
 
-/** Who could realistically know a timeline event, which decides who can tell the player. */
-export type TimelineKnowledge = 'public' | 'faction' | 'witnesses' | 'secret';
-
-export type TimelineWindow = { year: number; month: number; day?: number };
-
-/** An event the world's timeline runs by date (see the timeline engine). */
-export type TimelineEvent = {
-  id: string;
-  era?: string;
-  title: string;
-  description: string;
-  /** A free world-state line set when it happens. */
-  worldPoint?: string;
-  /** A fixed visual hint for scene images painted at this moment. */
-  artDirection?: string;
-  from: TimelineWindow;
-  to?: TimelineWindow;
-  regionId?: string;
-  location?: string;
-  /** Default 'public'. */
-  knowledge?: TimelineKnowledge;
-  /** For 'faction' knowledge: whose members know. */
-  factionId?: string;
-  /** Named people who can carry the news. */
-  bearers?: string[];
-  major?: boolean;
-  /** A personal beat: offered to the player, never fired by itself. */
-  playerDriven?: boolean;
-  priority?: boolean;
-  /** Offered only once this event has happened. */
-  after?: string;
-  requires?: LoreCondition;
-  /** The moment on the page that completes this beat, for the state tracker. */
-  completesWhen?: string;
-  facts: string[];
-  /** People it kills, by name. */
-  deaths?: string[];
-  /** People whose status it changes, by exact name. */
-  setsStatus?: Record<string, string>;
-  encounter?: { who: string; where: string; context: string };
-  attendanceFact?: string;
-  opensThreads?: {
-    title: string;
-    description: string;
-    type: ThreadType;
-    participants?: string[];
-    importance?: 1 | 2 | 3 | 4 | 5;
-  }[];
-  resolvesThreadTitles?: string[];
-};
-
 export type FestivalDef = {
   id: string;
   name: string;
@@ -1474,8 +1269,6 @@ export type WorldDefinition = {
    * plausible technology only.
    */
   era: WorldEra;
-  /** A known grounded setting (a real period, a realistic show or novel). */
-  knownUniverse?: { name: string; canonStrictness: 'loose' | 'faithful' | 'strict' };
   currency: { name: string; symbol?: string; priceGuide: string };
   calendar: { yearLabel: string; start: CalendarDate; monthNames?: string[] };
   factions: FactionDef[];
@@ -1483,10 +1276,7 @@ export type WorldDefinition = {
   places: PlaceDef[];
   /** The player's own lore entries. */
   lore: LoreRecord[];
-  timeline: TimelineEvent[];
   festivals: FestivalDef[];
-  /** Playable memories of the player's life before the story (see flashbacks.ts). Empty = none offered. */
-  flashbacks: FlashbackRecord[];
   /** How letters and messages travel, fitting the era: "courier", "post", "phone", "text message"… */
   letterCarriers: string[];
   /** Image style opener, e.g. "cinematic photo, 35mm film". */
@@ -1501,51 +1291,6 @@ export type WorldEra = {
   period: string;
   /** What exists and what doesn't, in plain words. */
   techNotes?: string;
-};
-
-/** What sets a flashback off in the present (all matching is plain words, case-insensitive). */
-export type FlashbackTriggers = {
-  /** Words in the present scene (the last reply and the player's input). */
-  words?: string[];
-  /** People in the present scene, by their entity name. */
-  people?: string[];
-  /** Place ids or place words in the present location. */
-  places?: { ids?: string[]; words?: string[] };
-  /** Days of the year it fits, within FLASHBACK_DATE_WINDOW days. */
-  dates?: { month: number; day: number }[];
-  /** Timeline events reached in the last few days. */
-  beats?: string[];
-  /** Only right after a fight. */
-  afterFight?: boolean;
-};
-
-/** A playable memory of the player's life before the story. */
-export type FlashbackRecord = {
-  id: string;
-  /** Its place in the player's life, 1, 2, 3… */
-  number: number;
-  title: string;
-  date: CalendarDate;
-  place: string;
-  locationKind: LocationKind;
-  /** Who is in it, by entity name. */
-  cast: string[];
-  /** What the scene is, for the narrator. */
-  scene: string;
-  /** How some of them were at the time. */
-  castNotes?: string[];
-  /** Ideas for the trigger the narrator lets touch the player in the present. */
-  hint: string;
-  triggers: FlashbackTriggers;
-  /** What the memory cannot change. */
-  fixed: string[];
-  /** What it must never show or tell the player. */
-  hidden?: string[];
-  /** Timeline events the player must have reached first. */
-  requires?: string[];
-  /** The memory a sentence long, until its write-up lands. */
-  memoryLine: string;
-  importance: 3 | 4 | 5;
 };
 
 /**
@@ -1599,8 +1344,6 @@ export type StartingPerson = {
   intimacy?: IntimacyProfile;
   /** A real, identifiable person: never in an intimate scene. */
   realPerson?: boolean;
-  /** Famous enough that the player knows them on sight, or by name only. */
-  fame?: 'sight' | 'heard';
   alive: boolean;
   knownName: boolean;
   /** Has the player met them before the story? Default true. */

@@ -1,13 +1,12 @@
 // The scrapbook (living-world Stage 4, section 15).
 //
 // Every scene image you asked for, kept like photos of your life: sorted by
-// era and chapter, each with a short caption, its in-story date, where you
+// date and chapter, each with a short caption, its in-story date, where you
 // were and how old you were. Nothing is stored twice: it is read from the
 // story log (rawLog[].image and imageMeta), the chapters and your road.
 
-import { calculateAge, dateSortValue } from './calendar';
+import { dateSortValue } from './calendar';
 import { playerAgeAt, playerDisplayNames } from './player';
-import { flashbackById } from './flashbacks';
 import type { AppDatabase, CalendarDate, RawLogEntry } from './types';
 import { firstSentences, secondPerson } from './util';
 
@@ -19,63 +18,13 @@ export type ScrapbookPhoto = {
   caption: string;
   place: string | null;
   age: number;
-  /** A photo from a flashback: shown under its own past date and its memory's title. */
-  memory?: string;
 };
-
-/** Flashback photos sit in an era of their own, before the story. */
-export const MEMORY_ERA = 'Before the story';
 
 export type ScrapbookChapter = {
   chapter: number;
   title: string | null;
   photos: ScrapbookPhoto[];
-  /** A flashback, not a chapter: shown by its title. */
-  memory?: boolean;
 };
-export type ScrapbookEra = { era: string; chapters: ScrapbookChapter[]; count: number };
-
-function dateValue(date: { year: number; month: number; day?: number }) {
-  return (date.year * 12 + date.month) * 32 + (date.day ?? 1);
-}
-
-/** The era every photo falls in when the world's timeline names none. */
-export const STORY_ERA = 'The story';
-
-/**
- * The era a date falls in: the era of the last world timeline event that had
- * begun by then (world events only: personal beats have wide windows and
- * would blur the line). Eras only move forward, in the order the timeline
- * first reaches them.
- */
-export function eraOfDate(db: Pick<AppDatabase, 'world'>, date: CalendarDate): string {
-  const starts = (db.world?.timeline ?? [])
-    .filter((event) => !event.playerDriven && event.era?.trim())
-    .map((event) => ({ era: event.era!.trim(), at: dateValue(event.from) }))
-    .sort((a, b) => a.at - b.at);
-  const order: string[] = [];
-
-  for (const start of starts) {
-    if (!order.includes(start.era)) order.push(start.era);
-  }
-
-  const at = dateValue(date);
-  let era = STORY_ERA;
-  let rank = -1;
-
-  for (const start of starts) {
-    if (start.at > at) break;
-
-    const startRank = order.indexOf(start.era);
-
-    if (startRank >= rank) {
-      era = start.era;
-      rank = startRank;
-    }
-  }
-
-  return era;
-}
 
 const CAPTION_LENGTH = 150;
 
@@ -114,22 +63,15 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
 
   return db.rawLog
     .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
-    .map((entry) => {
-      // A flashback photo keeps the memory's own date, place and the player's age then.
-      const memory = entry.flashback ? flashbackById(db, entry.flashback.id) : undefined;
-      const date = entry.flashback?.date ?? entry.inStoryDate;
-
-      return {
-        logId: entry.id,
-        image: entry.image as string,
-        date,
-        chapter: memory ? -memory.number : entry.chapter,
-        caption: captionOf(entry, names),
-        place: memory ? memory.place : placeAt(db, entry.inStoryDate),
-        age: playerAgeAt(db, date),
-        ...(memory ? { memory: memory.title } : {}),
-      };
-    })
+    .map((entry) => ({
+      logId: entry.id,
+      image: entry.image as string,
+      date: entry.inStoryDate,
+      chapter: entry.chapter,
+      caption: captionOf(entry, names),
+      place: placeAt(db, entry.inStoryDate),
+      age: playerAgeAt(db, entry.inStoryDate),
+    }))
     .sort((a, b) => dateSortValue(a.date) - dateSortValue(b.date));
 }
 
@@ -142,31 +84,20 @@ function chapterTitle(db: AppDatabase, chapter: number): string | null {
   return null;
 }
 
-/** The scrapbook: eras in story order, chapters inside them, photos oldest first. */
-export function scrapbook(db: AppDatabase): ScrapbookEra[] {
-  const eras: ScrapbookEra[] = [];
+/** The scrapbook: chapters in story order, photos oldest first. */
+export function scrapbook(db: AppDatabase): ScrapbookChapter[] {
+  const chapters: ScrapbookChapter[] = [];
 
   for (const photo of scrapbookPhotos(db)) {
-    const era = photo.memory ? MEMORY_ERA : eraOfDate(db, photo.date);
-    let group = eras[eras.length - 1];
-
-    if (!group || group.era !== era) {
-      group = { era, chapters: [], count: 0 };
-      eras.push(group);
-    }
-
-    let chapter = group.chapters[group.chapters.length - 1];
+    let chapter = chapters[chapters.length - 1];
 
     if (!chapter || chapter.chapter !== photo.chapter) {
-      chapter = photo.memory
-        ? { chapter: photo.chapter, title: photo.memory, photos: [], memory: true }
-        : { chapter: photo.chapter, title: chapterTitle(db, photo.chapter), photos: [] };
-      group.chapters.push(chapter);
+      chapter = { chapter: photo.chapter, title: chapterTitle(db, photo.chapter), photos: [] };
+      chapters.push(chapter);
     }
 
     chapter.photos.push(photo);
-    group.count += 1;
   }
 
-  return eras;
+  return chapters;
 }

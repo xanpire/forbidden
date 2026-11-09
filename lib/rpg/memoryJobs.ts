@@ -5,7 +5,7 @@
  *  1. The narrator streams prose only (no JSON). The prose is saved as soon as
  *     it finishes.
  *  2. The state step: a cheap model reads that prose and returns the state
- *     change (clock, bonds, facts, timeline) as structured JSON, which is applied
+ *     change (clock, bonds, facts) as structured JSON, which is applied
  *     and saved straight away. It never waits on a summary.
  *  3. Summaries (time skip, scene, arc, year) run afterwards as separate jobs.
  *     Each job reads the latest copy of the save, calls the model, and then
@@ -17,13 +17,11 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
-import { applyIntimacyStages, applyIntimateScene, applyMilestones, applyOutfits, applyPreferences } from './intimacy';
+import { applyIntimacyStages, applyIntimateScene, applyFirsts, applyOutfits, applyPreferences } from './intimacy';
 import { WANTED_LABEL, wantedListings } from './reputation';
-import { timelineEventById } from './timeline';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
-import { advanceTimeline, applyTimelineMarks, isCombatPace, markNewsHeard, TIMELINE_EVENT_PREFIX, eventIdFor } from './timeline';
 import { deliverLetters, receiveLetters, sendLetters, turnLetterOffer } from './letters';
 import { advanceLives, applyLifeEvents, markReunions } from './lives';
 import { advanceConsequences, applyConsequences, markConsequenceOffered, turnConsequenceOffer } from './consequences';
@@ -33,17 +31,7 @@ import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
 import { applySafehouses } from './safehouses';
 import { applyPurse, currencyOf, formatMoney } from './money';
-import {
-  flashbackById,
-  activeFlashback,
-  ageWord,
-  applyFlashbackMarks,
-  applyFlashbackTurn,
-  applyFlashbackWriteUp,
-  playerAgeAt,
-} from './flashbacks';
 import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
-import { newsAllowance } from './newsDelivery';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
@@ -130,8 +118,7 @@ export function unsummarizedStory(db: AppDatabase): RawLogEntry[] {
     ...chapters.filter((summary) => !summary.sourceLogIds?.length).map((summary) => summary.createdAt)
   );
 
-  // Flashback turns are written up as their own memory, never as a chapter.
-  return storyLog(db).filter((entry) => !entry.flashback && !covered.has(entry.id) && entry.createdAt > untracedAt);
+  return storyLog(db).filter((entry) => !covered.has(entry.id) && entry.createdAt > untracedAt);
 }
 
 function sameIds(a: string[] | undefined, b: string[] | undefined) {
@@ -170,12 +157,6 @@ export function isJobValid(db: AppDatabase, job: MemoryJob): boolean {
       return hasLog(db, job.turnLogId) && Boolean(job.fromDate && job.toDate);
     case 'scene':
       return (job.logIds ?? []).filter((id) => hasLog(db, id)).length >= 2;
-    case 'flashback':
-      // Its memory must still exist (an undone ending removes it).
-      return (
-        (job.logIds ?? []).filter((id) => hasLog(db, id)).length >= 2 &&
-        db.events.some((event) => event.tags.includes('flashback') && event.tags.includes(job.flashbackId ?? ''))
-      );
     case 'arc':
     case 'year': {
       const ids = job.summaryIds ?? [];
@@ -241,14 +222,14 @@ export type TurnInfo = {
   userMessage: string;
   narration: string;
   /** The one-turn extras the turn was sent with (steer, OOC note, rewrite count). */
-  options?: { remember?: string; steer?: SteerChip; oocNote?: string; retry?: number };
+  options?: { steer?: SteerChip; oocNote?: string; retry?: number };
 };
 
 export type StateStepResult = {
   db: AppDatabase;
   /** Follow-up summary jobs that were queued by this step. */
   followUpIds: string[];
-  /** Short "world news" line to show, if a timeline event was relayed. */
+  /** A short line to show under the reply (a letter arrived, …). */
   notice: string | null;
   /** The diff that was applied, after the app settled the clock. */
   appliedDiff: TurnDiff | null;
@@ -266,13 +247,6 @@ export function applyStateStep(
   turn: TurnInfo,
   activeIds: ReadonlySet<string>
 ): StateStepResult {
-  // A turn played inside a flashback moves only the memory (see flashbacks.ts).
-  const turnEntry = latest.rawLog.find((entry) => entry.id === turn.turnLogId);
-
-  if (turnEntry?.flashback) {
-    return applyMemoryStep(latest, stateReply, turn);
-  }
-
   // Unreadable state reply: still record who the prose shows.
   // Clock and pace come from the prose below.
   const extraction = stateReply ?? fallbackDiffFromProse(latest, turn);
@@ -343,7 +317,6 @@ export function applyStateStep(
   const chapterBefore = next.state.chapter;
   next = applyChapterBreak(latest, next, turn.turnLogId, {
     title: extraction?.chapterTitle,
-    majorCompleted: (extraction?.timelineCompleted ?? []).some((id) => timelineEventById(latest, id)?.major === true),
     elapsedSeconds: clock.elapsedSeconds,
   });
 
@@ -354,29 +327,12 @@ export function applyStateStep(
   next = recordTravel(next);
   next = applyWeather(next, extraction?.weather);
 
-  // One piece of news per turn (or one catch-up report); nothing in the
-  // world fires mid-fight. The allowance comes from the state the turn's
-  // prompt was built on.
-  const allowance = newsAllowance(latest);
-  const relays = (extraction?.newsRelayed ?? []).slice(0, allowance);
-  const inCombat = isCombatPace(pace) && !sceneEnded;
-
-  next = applyTimelineMarks(
-    next,
-    extraction?.timelineCompleted ?? [],
-    extraction?.timelineEngaged ?? [],
-    extraction?.timelinePassed ?? []
-  );
-  next = markNewsHeard(next, relays, allowance);
-  next = advanceTimeline(next, { inCombat });
-  // Names the player heard, read or recognised this turn, and identities the world
-  // revealed to him (the mask breaking); labels for anyone he can't name.
+  // Names the player heard or read this turn; labels for anyone he can't name.
   const presentIds =
     next.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneCastIds ??
     (next.state.sceneCast ?? []).map((name) => resolveEntity(next, name)?.id).filter((id): id is string => Boolean(id));
   next = applyNameStep(next, {
     learned: extraction?.namesLearned,
-    told: extraction?.namesTold,
     narration: turn.narration,
     presentIds,
   });
@@ -386,7 +342,7 @@ export function applyStateStep(
   // about each other, clothes and positions, and the intimate scene itself.
   const wasIntimate = (latest.state.sceneMode?.intimateWith?.length ?? 0) > 0 || modeUsed === 'intimate';
   next = applyIntimacyStages(next, extraction?.intimacyStages);
-  next = applyMilestones(next, extraction?.milestones);
+  next = applyFirsts(next, extraction?.firsts);
   next = applyPreferences(next, extraction?.preferencesLearned);
   next = applyOutfits(next, extraction?.outfits);
   next = applyIntimateScene(next, extraction?.intimateScene, presentIds, sceneEnded);
@@ -424,33 +380,10 @@ export function applyStateStep(
   // The day's birthday or anniversary was offered (once a year), and any
   // birthday the player learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
-  // A memory offered on this reply waits for the player; one he follows starts next turn.
-  next = applyFlashbackMarks(next, {
-    offeredId: turnEntry?.flashbackOffer,
-    mark: extraction?.flashback,
-    turnLogId: turn.turnLogId,
-  });
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
 
   let notice: string | null = null;
-
-  if (relays.length > 0) {
-    const id = relays[0].id.startsWith(TIMELINE_EVENT_PREFIX) ? relays[0].id : eventIdFor(relays[0].id);
-    const delivered = next.events.find((event) => event.id === id);
-
-    if (delivered) {
-      const title = delivered.summary.split(':')[0].trim();
-      const bearer = relays[0].from?.trim() ? resolveEntity(next, relays[0].from.trim()) : null;
-      // As the player knows them; never an id or a name he hasn't learned.
-      const from = bearer ? displayName(next, bearer) : relays[0].from?.trim() || 'a rumor';
-      notice = `${title} — from ${from}`.slice(0, 110);
-
-      if (relays.length > 1) {
-        notice = `${notice} (+${relays.length - 1} more)`.slice(0, 120);
-      }
-    }
-  }
 
   if (!notice && extraction?.lettersReceived?.length) {
     const writer = extraction.lettersReceived[0].entityId
@@ -502,38 +435,6 @@ export function applyStateStep(
   return { db: next, followUpIds, notice, appliedDiff: effectiveDiff, nameLeaks: nameLeaks(next, turn.narration) };
 }
 
-/**
- * The state step for a turn inside a flashback: the memory's clock, place,
- * cast and mode move; nothing in the present does. When the memory ends it
- * is saved as a past memory and written up by a `flashback` job.
- */
-function applyMemoryStep(latest: AppDatabase, stateReply: TurnDiff | null, turn: TurnInfo): StateStepResult {
-  const entry = latest.rawLog.find((item) => item.id === turn.turnLogId);
-  const playing = activeFlashback(latest);
-  const settle = (db: AppDatabase) =>
-    withJobs(db, jobsOf(db).filter((job) => !(job.kind === 'state' && job.turnLogId === turn.turnLogId)));
-
-  // A memory turn whose flashback is no longer playing changes nothing.
-  if (!playing || playing.active.id !== entry?.flashback?.id) {
-    return { db: settle(latest), followUpIds: [], notice: null, appliedDiff: null };
-  }
-
-  const result = applyFlashbackTurn(latest, stateReply, turn);
-  let next = settle(syncBondSides(result.db));
-  const followUpIds: string[] = [];
-
-  if (result.ended && result.ended.logIds.length >= 2) {
-    const job = newJob('flashback', turn.turnLogId, {
-      logIds: result.ended.logIds,
-      flashbackId: result.ended.flashbackId,
-    });
-    next = withJobs(next, [...jobsOf(next), job]);
-    followUpIds.push(job.id);
-  }
-
-  return { db: next, followUpIds, notice: null, appliedDiff: stateReply };
-}
-
 /** A chapter is long: a break only counts once this much story has passed in it. */
 export const CHAPTER_MIN_TURNS = 6;
 export const CHAPTER_MIN_HOURS = 12;
@@ -544,8 +445,8 @@ const CHAPTER_SKIP_SECONDS = 2 * 86400;
 
 /**
  * Chapters are narrative units, not summary chunks. A new one opens with
- * this turn when the state reply marks a chapter break, a major milestone
- * completes, or a long time skip passes, but only once the current chapter
+ * this turn when the state reply marks a chapter break or a long time skip
+ * passes, but only once the current chapter
  * has run at least CHAPTER_MIN_TURNS turns or CHAPTER_MIN_HOURS in-story
  * hours; one that reaches CHAPTER_MAX_TURNS closes regardless.
  */
@@ -553,13 +454,13 @@ export function applyChapterBreak(
   before: AppDatabase,
   after: AppDatabase,
   turnLogId: string,
-  reason: { title?: string; majorCompleted?: boolean; elapsedSeconds?: number }
+  reason: { title?: string; elapsedSeconds?: number }
 ): AppDatabase {
   const chapter = before.state.chapter;
   const turnsIn = storyLog(before).filter((entry) => entry.role === 'assistant' && entry.chapter === chapter).length;
   const start = before.state.chapterStart?.date ?? storyLog(before).find((entry) => entry.chapter === chapter)?.inStoryDate ?? before.state.inStoryDate;
   const hoursIn = secondsBetween(start, before.state.inStoryDate) / 3600;
-  const wanted = Boolean(reason.title) || reason.majorCompleted === true || (reason.elapsedSeconds ?? 0) >= CHAPTER_SKIP_SECONDS;
+  const wanted = Boolean(reason.title) || (reason.elapsedSeconds ?? 0) >= CHAPTER_SKIP_SECONDS;
   const longEnough = turnsIn >= CHAPTER_MIN_TURNS || hoursIn >= CHAPTER_MIN_HOURS;
 
   if (!((wanted && longEnough) || turnsIn >= CHAPTER_MAX_TURNS)) {
@@ -752,7 +653,7 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
 
   const nextDate = shiftSeconds(db.state.inStoryDate, delta);
   // One clock: everything this turn and later turns stamped (facts, bonds,
-  // events, portraits, timeline "heard" dates, letters...) moves with it.
+  // events, portraits, letters...) moves with it.
   const { rawLog, snapshots, meta, settings, state, ...records } = db;
   const shifted = shiftDatesAfter(
     { ...records, state: { ...state, inStoryDate: undefined } },
@@ -783,7 +684,7 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
     ),
   };
 
-  return delta > 0 ? advanceTimeline(next) : next;
+  return next;
 }
 
 /**
@@ -942,23 +843,6 @@ export async function runSummaryJob(
       const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
       logIds = messages.map((entry) => entry.id);
       result = await summarizeScene({ apiKey, db: base, messages, debugTurnId: job.turnLogId });
-      povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
-      break;
-    }
-    case 'flashback': {
-      const wanted = new Set(job.logIds ?? []);
-      const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
-      const record = flashbackById(base, job.flashbackId);
-      logIds = messages.map((entry) => entry.id);
-      result = await summarizeScene({
-        apiKey,
-        db: base,
-        messages,
-        debugTurnId: job.turnLogId,
-        memoryNote: record
-          ? `This scene is a memory you lived through again: "${record.title}", Year ${record.date.year}, when you were ${ageWord(playerAgeAt(base, record.date))}. Write it up as that memory, in its own time; the present plays no part in it.`
-          : undefined,
-      });
       povs = result?.pov ? resolvePovs(povCandidates(base, messages), parsePovLines(result.pov)) : undefined;
       break;
     }
@@ -1146,14 +1030,6 @@ export function applySummaryJob(
       next = rollups.db;
       followUpIds = [...followUpIds, ...rollups.jobIds];
       return { db: next, followUpIds };
-    }
-    case 'flashback': {
-      const updated = applyFlashbackWriteUp(next, job.flashbackId ?? '', output);
-
-      if (updated) {
-        next = updated;
-      }
-      break;
     }
     case 'arc':
     case 'year': {

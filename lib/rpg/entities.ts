@@ -1,4 +1,4 @@
-// People and places: name/identity resolution, the state tracker's character
+// People and places: name resolution, the state tracker's character
 // IDs, entity updates, presence, and duplicate merging.
 
 import { dateSortValue } from './calendar';
@@ -142,10 +142,6 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     next.companionsLeft = companions(diff.companionsLeft);
   }
 
-  if (diff.newsRelayed) {
-    next.newsRelayed = diff.newsRelayed.map((news) => ({ ...news, from: nameOf(news.from) }));
-  }
-
   // Letters only go to and come from people the save knows.
   if (diff.lettersSent) {
     next.lettersSent = diff.lettersSent.flatMap((letter) => {
@@ -195,15 +191,6 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
-  if (diff.namesTold) {
-    next.namesTold = diff.namesTold.flatMap((item) => {
-      const ref = resolve(item.entityId ?? item.character);
-      const toldTo = item.toldTo.map((raw) => resolve(raw)?.entityId).filter((id): id is string => Boolean(id));
-
-      return ref?.entityId && toldTo.length > 0 ? [{ ...item, character: ref.name, entityId: ref.entityId, toldTo }] : [];
-    });
-  }
-
   // Life events belong to people the save knows.
   if (diff.lifeEvents) {
     next.lifeEvents = diff.lifeEvents.flatMap((item) => {
@@ -220,7 +207,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
       return ref?.entityId ? [{ ...item, name: ref.name, entityId: ref.entityId }] : [];
     });
   if (diff.intimacyStages) next.intimacyStages = known(diff.intimacyStages);
-  if (diff.milestones) next.milestones = known(diff.milestones);
+  if (diff.firsts) next.firsts = known(diff.firsts);
   if (diff.preferencesLearned) next.preferencesLearned = known(diff.preferencesLearned);
   if (diff.outfits) next.outfits = known(diff.outfits);
 
@@ -287,7 +274,6 @@ function mergeKnown(keep: EntityRecord, drop: EntityRecord): EntityRecord['known
     ...(a.label ?? b.label ? { label: a.label ?? b.label } : {}),
     ...(a.given || b.given ? { given: true } : {}),
     ...(a.family || b.family ? { family: true } : {}),
-    ...(a.identities || b.identities ? { identities: uniqueList([...(a.identities ?? []), ...(b.identities ?? [])]) } : {}),
     ...(a.history || b.history ? { history: [...(a.history ?? []), ...(b.history ?? [])].slice(-12) } : {}),
   };
 }
@@ -330,7 +316,6 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     // What the player knew of either name carries over to the one person.
     known: mergeKnown(keep, drop),
     unnamed: keep.unnamed && drop.unnamed ? true : undefined,
-    identities: keep.identities ?? drop.identities,
     age: keep.age ?? drop.age,
     birthday: keep.birthday ?? drop.birthday,
     birthYear: keep.birthYear ?? drop.birthYear,
@@ -455,10 +440,6 @@ export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
 }
 
 type EntityDiff = NonNullable<TurnDiff['entities']>[number];
-
-function escapeRegExp(text: string) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function normalizeName(rawName: string) {
   return rawName.replace(/\s*\([^)]*\)\s*/g, '').trim();
@@ -666,16 +647,9 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   const nextMood = entity.mood?.trim() || existing.mood;
 
-  // An identity the player has not learned never becomes a matchable alias.
-  const hidden = new Set(
-    (existing.identities ?? [])
-      .filter((identity) => !existing.aliases.some((alias) => alias.toLowerCase() === identity.name.toLowerCase()))
-      .map((identity) => identity.name.toLowerCase())
-  );
   const extraAlias =
     name.toLowerCase() !== existing.name.toLowerCase() &&
     !isGenericDescription(name) &&
-    !hidden.has(name.toLowerCase()) &&
     !existing.aliases.some((alias) => alias.toLowerCase() === name.toLowerCase())
       ? [name]
       : [];
@@ -715,13 +689,3 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   };
 }
 
-/** Whether the player has learned what a timeline event reveals: its news reached them, or they were part of it. */
-export function milestoneKnown(db: AppDatabase, milestoneId: string) {
-  const progress = db.state.timelineProgress;
-
-  return Boolean(
-    progress?.heard?.[`event_timeline_${milestoneId}`] ||
-      progress?.heard?.[milestoneId] ||
-      progress?.engaged?.includes(milestoneId)
-  );
-}

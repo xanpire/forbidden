@@ -61,34 +61,6 @@ export function convertStateBlock(
   const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
 
-  if (Array.isArray(block.timeline_completed)) {
-    diff.timelineCompleted = block.timeline_completed.filter(
-      (id): id is string => typeof id === 'string' && id.trim().length > 0
-    );
-  }
-
-  if (Array.isArray(block.timeline_engaged)) {
-    diff.timelineEngaged = block.timeline_engaged.filter(
-      (id): id is string => typeof id === 'string' && id.trim().length > 0
-    );
-  }
-
-  if (Array.isArray(block.timeline_passed)) {
-    diff.timelinePassed = block.timeline_passed.filter(
-      (id): id is string => typeof id === 'string' && id.trim().length > 0
-    );
-  }
-
-  if (Array.isArray(block.news_relayed)) {
-    diff.newsRelayed = block.news_relayed
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({
-        id: typeof item.id === 'string' ? item.id : '',
-        from: typeof item.from === 'string' ? item.from : undefined,
-      }))
-      .filter((item) => item.id.trim().length > 0);
-  }
-
   if (Array.isArray(block.letters_sent)) {
     const sent = block.letters_sent
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
@@ -140,8 +112,8 @@ export function convertStateBlock(
   }
 
   if (Array.isArray(block.names_learned)) {
-    const parts = new Set(['given', 'family', 'full', 'identity']);
-    const hows = new Set(['introduced', 'told', 'written', 'overheard', 'recognised']);
+    const parts = new Set(['given', 'family', 'full']);
+    const hows = new Set(['introduced', 'told', 'written', 'overheard']);
     const learned = block.names_learned
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
@@ -155,22 +127,6 @@ export function convertStateBlock(
 
     if (learned.length > 0) {
       diff.namesLearned = learned;
-    }
-  }
-
-  if (Array.isArray(block.names_told)) {
-    const told = block.names_told
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({
-        character: cleanString(item.character_id) ?? '',
-        name: cleanString(item.name)?.slice(0, 60) ?? '',
-        toldTo: stringItems(item.told_to),
-      }))
-      .filter((item) => item.character.length > 0 && item.name.length > 0 && item.toldTo.length > 0)
-      .slice(0, 3);
-
-    if (told.length > 0) {
-      diff.namesTold = told;
     }
   }
 
@@ -224,11 +180,11 @@ export function convertStateBlock(
     .slice(0, 4);
   if (stages.length > 0) diff.intimacyStages = stages;
 
-  const milestones = records(block.milestone)
+  const firsts = records(block.first)
     .map((item) => ({ name: cleanString(item.character_id) ?? '', what: cleanString(item.what)?.slice(0, 120) ?? '' }))
     .filter((item) => item.name && item.what && notPlayer(item.name))
     .slice(0, 3);
-  if (milestones.length > 0) diff.milestones = milestones;
+  if (firsts.length > 0) diff.firsts = firsts;
 
   const preferences = records(block.preference_learned)
     .map((item) => ({ name: cleanString(item.character_id) ?? '', preference: cleanString(item.preference)?.slice(0, 140) ?? '', aboutPlayer: item.about_player !== false }))
@@ -448,12 +404,6 @@ export function convertStateBlock(
 
   if (chapterTitle && chapterTitle.length >= 2) {
     diff.chapterTitle = chapterTitle.slice(0, 60);
-  }
-
-  const flashbackMark = cleanString(block.flashback)?.toLowerCase();
-
-  if (flashbackMark === 'offered' || flashbackMark === 'started' || flashbackMark === 'ended') {
-    diff.flashback = flashbackMark;
   }
 
   const money = convertMoney(block.money);

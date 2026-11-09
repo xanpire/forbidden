@@ -81,7 +81,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
         : resolveEntity(next, death.name);
 
       if (entity) {
-        next = markDeceased(next, entity.id, { cause: death.cause, known: true });
+        next = markDeceased(next, entity.id, { cause: death.cause });
       }
     }
   }
@@ -400,16 +400,14 @@ export async function summarizeScene(options: {
   db: AppDatabase;
   messages: RawLogEntry[];
   debugTurnId?: string;
-  /** For a flashback: what memory this scene is, so it is written up as one. */
-  memoryNote?: string;
 }): Promise<TitledSummary | null> {
-  const { apiKey, db, messages, debugTurnId, memoryNote } = options;
+  const { apiKey, db, messages, debugTurnId } = options;
 
   if (messages.length === 0) {
     return null;
   }
 
-  const prompt = buildSceneSummaryPrompt(db, messages, { memoryNote });
+  const prompt = buildSceneSummaryPrompt(db, messages);
 
   return summaryChat('scene', debugTurnId, {
     apiKey,

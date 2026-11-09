@@ -2,7 +2,7 @@
 
 import { dateSortValue, normalizeDate, shiftSeconds } from './calendar';
 import { displayName } from './names';
-import { playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import { secondPerson, trimToSentence, uniqueList } from './util';
@@ -249,7 +249,7 @@ export function expireFacts(db: AppDatabase, options: { rested: boolean }): AppD
     const subject = fact.subjectEntityId ? db.entities.find((entity) => entity.id === fact.subjectEntityId) : undefined;
     const ran = fact.expiresAt !== undefined && dateSortValue(fact.expiresAt) <= nowValue;
     const rested = options.rested && fact.untilRest === true;
-    const learned = subject !== undefined && NOT_YET.test(fact.text) && fact.type === 'death' && playerKnowsDeath(db, subject);
+    const learned = subject !== undefined && NOT_YET.test(fact.text) && fact.type === 'death' && isDeceased(subject);
 
     if (ran || rested || learned) {
       changed = true;

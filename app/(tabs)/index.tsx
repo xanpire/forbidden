@@ -27,7 +27,6 @@ import {
   Download,
   Image as ImageIcon,
   Clock3,
-  History,
   Paintbrush,
   RotateCcw,
   Sparkles,
@@ -61,14 +60,6 @@ import { paintScene, retouchSceneImage, type PaintedTake } from '@/lib/rpg/paint
 import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { fightOptionInput, resolveTurnMode } from '@/lib/rpg/sceneMode';
-import {
-  flashbackById,
-  REMEMBER_INPUT,
-  activeFlashback,
-  flashbackDateLine,
-  flashbackView,
-  rememberChip,
-} from '@/lib/rpg/flashbacks';
 import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
@@ -83,10 +74,6 @@ type StoryMessage = {
   imageWorthy?: boolean;
   elapsedSeconds?: number;
   fightOptions?: string[];
-  /** A turn inside a flashback (shown with the warm tint). */
-  memory?: boolean;
-  /** The first turn of a flashback: the date line shown above it. */
-  memoryHeading?: { title: string; dateLine: string };
 };
 
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
@@ -152,9 +139,9 @@ function paragraphsOf(text: string) {
 }
 
 /** A narration paragraph: *action lines* and thoughts in italics. */
-function NarrationParagraph({ text, memory }: { text: string; memory?: boolean }) {
+function NarrationParagraph({ text }: { text: string }) {
   const parts = text.split(/(\*[^*\n]+\*)/g).filter(Boolean);
-  const prose = memory ? [type.prose, styles.memoryProse] : type.prose;
+  const prose = type.prose;
 
   if (parts.length === 1) {
     return <Text style={prose}>{text}</Text>;
@@ -164,7 +151,7 @@ function NarrationParagraph({ text, memory }: { text: string; memory?: boolean }
     <Text style={prose}>
       {parts.map((part, index) =>
         part.startsWith('*') && part.endsWith('*') && part.length > 2 ? (
-          <Text key={index} style={[styles.narrationAction, memory && styles.memoryAction]}>
+          <Text key={index} style={styles.narrationAction}>
             {part.slice(1, -1)}
           </Text>
         ) : (
@@ -176,11 +163,11 @@ function NarrationParagraph({ text, memory }: { text: string; memory?: boolean }
 }
 
 /** Renders the player's turn with *actions* in italics and everything else plain. */
-function PlayerText({ text, memory }: { text: string; memory?: boolean }) {
+function PlayerText({ text }: { text: string }) {
   const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean);
 
   return (
-    <Text style={[styles.playerText, memory && styles.memoryProse]}>
+    <Text style={styles.playerText}>
       {parts.map((part, index) =>
         part.startsWith('*') && part.endsWith('*') && part.length > 2 ? (
           <Text key={index} style={styles.playerAction}>
@@ -321,8 +308,6 @@ export default function StoryScreen() {
   const [customAmount, setCustomAmount] = useState('');
   const [customUnit, setCustomUnit] = useState<TimeUnit>('min');
   const [modeOpen, setModeOpen] = useState(false);
-  /** The turn being narrated steps into a memory (the Remember chip). */
-  const [enteringMemory, setEnteringMemory] = useState(false);
   const imageScale = useSharedValue(1);
   const imageTranslateX = useSharedValue(0);
   const imageTranslateY = useSharedValue(0);
@@ -346,12 +331,7 @@ export default function StoryScreen() {
 
     const story = db.rawLog.filter((message) => message.kind === 'story');
 
-    return story.map((message, index) => {
-      const memory = message.flashback;
-      // A flashback opens with its date line, so it is never taken for the present.
-      const opens = memory && story[index - 1]?.flashback?.id !== memory.id;
-      const record = memory ? flashbackById(db, memory.id) : undefined;
-
+    return story.map((message) => {
       return {
         id: message.id,
         role: message.role === 'user' ? 'user' : 'assistant',
@@ -363,10 +343,6 @@ export default function StoryScreen() {
         ...(message.role === 'assistant' && message.imageWorthy ? { imageWorthy: true } : {}),
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
         fightOptions: message.role === 'assistant' ? message.fightOptions : undefined,
-        ...(memory ? { memory: true } : {}),
-        ...(opens && memory
-          ? { memoryHeading: { title: record?.title ?? 'A memory', dateLine: flashbackDateLine(db, memory.date) } }
-          : {}),
       };
     });
   }, [db]);
@@ -413,7 +389,7 @@ export default function StoryScreen() {
   }, [isNarrating]);
 
   const submit = useCallback(
-    async (value: string, remember?: string) => {
+    async (value: string) => {
       const action = value.trim();
 
       if (!action || isNarrating) {
@@ -423,18 +399,13 @@ export default function StoryScreen() {
       lastActionRef.current = action;
       setInput('');
       selectionRef.current = null;
-      setEnteringMemory(Boolean(remember));
       // The steer chip and the OOC note count for this one turn.
-      const extras = { ...(remember ? { remember } : {}), ...(steer ? { steer } : {}), ...(oocNote.trim() ? { oocNote: oocNote.trim() } : {}) };
+      const extras = { ...(steer ? { steer } : {}), ...(oocNote.trim() ? { oocNote: oocNote.trim() } : {}) };
       setSteer(null);
       setOocNote('');
       setOocOpen(false);
 
-      try {
-        await sendTurn(action, Object.keys(extras).length > 0 ? extras : undefined);
-      } finally {
-        setEnteringMemory(false);
-      }
+      await sendTurn(action, Object.keys(extras).length > 0 ? extras : undefined);
     },
     [isNarrating, sendTurn, steer, oocNote]
   );
@@ -660,14 +631,10 @@ export default function StoryScreen() {
   })();
 
   const storyStarted = messages.length > 0;
-  // While a memory plays, the header shows its clock, place and weather.
-  const playing = activeFlashback(db);
-  const state = (playing ? flashbackView(db) ?? db : db).state;
-  const liveMemory = Boolean(playing) || enteringMemory;
-  const remember = !isNarrating ? rememberChip(db, [...messages].reverse().find((m) => m.role === 'assistant')?.id) : null;
+  const state = db.state;
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
   const night = ['night', 'evening'].includes(timeOfDayOf(state.inStoryDate));
-  const weather = db ? currentWeather(playing ? flashbackView(db) ?? db : db) : { condition: 'clear' as const, seasonLabel: '', night, climate: 'none' as const };
+  const weather = db ? currentWeather(db) : { condition: 'clear' as const, seasonLabel: '', night, climate: 'none' as const };
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
@@ -694,14 +661,11 @@ export default function StoryScreen() {
           <Pressable
             accessibilityLabel="Show your status"
             accessibilityRole="button"
-            delayLongPress={700}
-            onLongPress={() => router.push('/world-clock')}
             onPress={() => setStatusOpen(true)}
             style={({ pressed }) => [styles.statusButton, pressed && styles.pressed]}
           >
             <View style={styles.statusCopy}>
-              <Text numberOfLines={1} style={[styles.statusTime, playing && styles.memoryHeader]}>
-                {playing ? `Memory · Year ${state.inStoryDate.year} · ` : ''}
+              <Text numberOfLines={1} style={styles.statusTime}>
                 {formatClock(state.inStoryDate)} · {formatDayMonth(state.inStoryDate)}
               </Text>
               <Text numberOfLines={1} style={styles.statusPlace}>
@@ -770,24 +734,14 @@ export default function StoryScreen() {
 
           {messages.map((message) => (
             <Fragment key={message.id}>
-            {message.memoryHeading ? (
-              <View accessibilityRole="header" style={styles.memoryHeading}>
-                <History color={colors.memoryAccent} size={14} strokeWidth={2} />
-                <Text style={styles.memoryHeadingText}>
-                  <Text style={styles.memoryHeadingTitle}>{message.memoryHeading.title}</Text>
-                  {'  '}
-                  {message.memoryHeading.dateLine}
-                </Text>
-              </View>
-            ) : null}
             {message.role === 'user' ? (
-              <View style={[styles.playerBlock, message.memory && styles.memoryPlayerBlock]}>
-                <PlayerText memory={message.memory} text={message.content} />
+              <View style={styles.playerBlock}>
+                <PlayerText text={message.content} />
               </View>
             ) : (
-              <View style={[styles.narration, message.memory && styles.memoryNarration]}>
+              <View style={styles.narration}>
                 {paragraphsOf(message.content).map((paragraph, index) => (
-                  <NarrationParagraph key={index} memory={message.memory} text={paragraph} />
+                  <NarrationParagraph key={index} text={paragraph} />
                 ))}
                 {message.image ? (
                   <SceneImage
@@ -802,14 +756,6 @@ export default function StoryScreen() {
                       <TimeChip
                         onPress={() => openTimeSheet(message.id, message.elapsedSeconds ?? 0)}
                         seconds={message.elapsedSeconds}
-                      />
-                    ) : null}
-                    {remember ? (
-                      <InlineAction
-                        disabled={!apiKey}
-                        icon={<History color={colors.memoryAccent} size={15} strokeWidth={2} />}
-                        label="Remember"
-                        onPress={() => void submit(REMEMBER_INPUT, remember.id)}
                       />
                     ) : null}
                     <InlineAction
@@ -860,15 +806,15 @@ export default function StoryScreen() {
           ))}
 
           {isNarrating && pendingAction ? (
-            <View style={[styles.playerBlock, liveMemory && styles.memoryPlayerBlock]}>
-              <PlayerText memory={liveMemory} text={pendingAction} />
+            <View style={styles.playerBlock}>
+              <PlayerText text={pendingAction} />
             </View>
           ) : null}
 
           {isNarrating ? (
-            <View style={[styles.narration, liveMemory && styles.memoryNarration]}>
+            <View style={styles.narration}>
               {liveParagraphs.map((paragraph, index) => (
-                <NarrationParagraph key={index} memory={liveMemory} text={paragraph} />
+                <NarrationParagraph key={index} text={paragraph} />
               ))}
               {liveParagraphs.length === 0 ? (
                 <View style={styles.typingRow}>
@@ -1630,44 +1576,6 @@ const styles = StyleSheet.create({
   narrationAction: {
     fontStyle: 'italic',
     color: colors.textMuted,
-  },
-  memoryNarration: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: radius.lg,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.memoryBorder,
-    backgroundColor: colors.memoryTint,
-  },
-  memoryPlayerBlock: {
-    borderColor: colors.memoryBorder,
-    backgroundColor: colors.memoryTint,
-  },
-  memoryProse: {
-    color: colors.memoryText,
-  },
-  memoryAction: {
-    color: colors.memoryMuted,
-  },
-  memoryHeading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: spacing.sm,
-  },
-  memoryHeadingText: {
-    flexShrink: 1,
-    fontFamily: fonts.medium,
-    fontSize: 12,
-    letterSpacing: 0.3,
-    color: colors.memoryMuted,
-  },
-  memoryHeadingTitle: {
-    fontFamily: fonts.bold,
-    color: colors.memoryAccent,
-  },
-  memoryHeader: {
-    color: colors.memoryAccent,
   },
   modeRow: {
     flexDirection: 'row',

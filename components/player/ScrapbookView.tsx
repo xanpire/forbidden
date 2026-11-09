@@ -5,7 +5,6 @@ import {
   Image,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -114,11 +113,11 @@ function Viewer({
   );
 }
 
-/** Journal → Scrapbook: your scene images by era and chapter. */
+/** Journal → Scrapbook: your scene images by chapter, oldest first. */
 export function ScrapbookView({ db }: { db: AppDatabase }) {
   const { width } = useWindowDimensions();
-  const eras = useMemo(() => scrapbook(db), [db]);
-  const photos = useMemo(() => eras.flatMap((era) => era.chapters.flatMap((chapter) => chapter.photos)), [eras]);
+  const chapters = useMemo(() => scrapbook(db), [db]);
+  const photos = useMemo(() => chapters.flatMap((chapter) => chapter.photos), [chapters]);
   const [open, setOpen] = useState<number | null>(null);
   // The the player screen is at most 680 wide with 20 padding each side.
   const inner = Math.min(width, 680) - spacing.xl * 2;
@@ -129,7 +128,7 @@ export function ScrapbookView({ db }: { db: AppDatabase }) {
       <>
         <SectionLabel>Scrapbook</SectionLabel>
         <EmptyRow
-          body="Every scene image you make is kept here, by era and chapter, like photos of your life."
+          body="Every picture you make is kept here, by chapter, like photos of your life."
           title="No photos yet"
         />
       </>
@@ -140,43 +139,36 @@ export function ScrapbookView({ db }: { db: AppDatabase }) {
 
   return (
     <>
-      {eras.map((era) => (
-        <View key={era.era} style={styles.era}>
-          <SectionLabel>{`${era.era} · ${era.count} ${era.count === 1 ? 'photo' : 'photos'}`}</SectionLabel>
-          {era.chapters.map((chapter) => {
-            const start = offset;
-            offset += chapter.photos.length;
+      <SectionLabel>{`Scrapbook · ${photos.length} ${photos.length === 1 ? 'photo' : 'photos'}`}</SectionLabel>
+      {chapters.map((chapter) => {
+        const start = offset;
+        offset += chapter.photos.length;
 
-            return (
-              <View key={`${era.era}-${chapter.chapter}`} style={styles.chapter}>
-                <Text style={styles.chapterTitle}>
-                  {chapter.memory ? `A memory: ${chapter.title}` : `Chapter ${chapter.chapter}`}
-                  {!chapter.memory && chapter.title ? `: ${chapter.title}` : ''}
-                </Text>
-                <View style={styles.grid}>
-                  {chapter.photos.map((photo, index) => (
-                    <Thumb key={photo.logId} onOpen={() => setOpen(start + index)} photo={photo} size={size} />
-                  ))}
-                </View>
-                {chapter.photos.length === 1 ? (
-                  <Text numberOfLines={2} style={styles.single}>
-                    {chapter.photos[0].caption}
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      ))}
+        return (
+          <View key={chapter.chapter} style={styles.chapter}>
+            <Text style={styles.chapterTitle}>
+              {`Chapter ${chapter.chapter}`}
+              {chapter.title ? `: ${chapter.title}` : ''}
+            </Text>
+            <View style={styles.grid}>
+              {chapter.photos.map((photo, index) => (
+                <Thumb key={photo.logId} onOpen={() => setOpen(start + index)} photo={photo} size={size} />
+              ))}
+            </View>
+            {chapter.photos.length === 1 ? (
+              <Text numberOfLines={2} style={styles.single}>
+                {chapter.photos[0].caption}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
       <Viewer index={open} onClose={() => setOpen(null)} onIndex={setOpen} photos={photos} />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  era: {
-    gap: spacing.md,
-  },
   chapter: {
     gap: spacing.sm,
   },

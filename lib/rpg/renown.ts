@@ -20,7 +20,7 @@
 // NAME OUT THERE) and, now and then, an optional TALK OF YOU line.
 
 import { daysBetween, timeOfDayOf } from './calendar';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { encounterRisk, locationKindOf } from './encounters';
 import { regionName, regionOf, travelDaysBetween, type Region } from './geography';
 import { makeId } from './id';

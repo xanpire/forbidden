@@ -16,7 +16,6 @@ import {
   PersonFields,
   PlacesStep,
   StepIntro,
-  TimelineStep,
   WorldStep,
   YouStep,
   wizardStyles as styles,
@@ -40,34 +39,28 @@ import {
   saveWorldAsTemplate,
   type WorldTemplate,
 } from '@/lib/rpg/worldEdit';
-import type { FlashbackRecord, StartingPerson } from '@/lib/rpg/types';
-import { completeChat } from '@/lib/openrouter';
-import { approveFlashback, flashbackDraftMessages, parseFlashbackDraft } from '@/lib/rpg/flashbackDraft';
+import type { StartingPerson } from '@/lib/rpg/types';
 
-const TABS = ['world', 'places', 'lore', 'timeline', 'you', 'intimacy', 'person', 'memories', 'templates'] as const;
+const TABS = ['world', 'places', 'lore', 'you', 'intimacy', 'person', 'templates'] as const;
 type Tab = (typeof TABS)[number];
 const LABELS: Record<Tab, string> = {
   world: 'World',
   places: 'Places',
   lore: 'Lore',
-  timeline: 'Timeline',
   you: 'You',
   intimacy: 'Intimacy',
   person: 'Add a person',
-  memories: 'Memories',
   templates: 'Templates',
 };
 
 export default function WorldEditorScreen() {
-  const { db, changeSave, apiKey } = useGame();
+  const { db, changeSave } = useGame();
   const { showToast } = useToast();
   const [draft, setDraft] = useState<WizardDraft | null>(null);
   const [tab, setTab] = useState<Tab>('world');
   const [person, setPerson] = useState<StartingPerson>({ ...emptyPerson(), met: true });
   const [templates, setTemplates] = useState<WorldTemplate[]>([]);
   const [saving, setSaving] = useState(false);
-  const [proposing, setProposing] = useState(false);
-  const [proposals, setProposals] = useState<FlashbackRecord[]>([]);
 
   useEffect(() => {
     if (db && !draft) setDraft(draftFromSave(db));
@@ -124,7 +117,6 @@ export default function WorldEditorScreen() {
           {tab === 'world' ? <WorldStep draft={draft} update={update} /> : null}
           {tab === 'places' ? <PlacesStep draft={draft} update={update} /> : null}
           {tab === 'lore' ? <LoreStep draft={draft} update={update} /> : null}
-          {tab === 'timeline' ? <TimelineStep draft={draft} update={update} /> : null}
           {tab === 'you' ? <YouStep draft={draft} update={update} /> : null}
           {tab === 'intimacy' ? <IntimacyStep draft={draft} update={update} /> : null}
           {tab === 'person' ? (
@@ -135,65 +127,6 @@ export default function WorldEditorScreen() {
               </ItemCard>
               <Toggle hint="Off: they exist in the world, but you haven't met them yet." label="You know them already" onChange={(met) => setPerson((current) => ({ ...current, met }))} value={person.met !== false} />
               <AppButton label="Add to the story" onPress={() => void addPerson()} />
-            </>
-          ) : null}
-          {tab === 'memories' ? (
-            <>
-              <StepIntro
-                body="Scenes from your life before the story, from your backstory. Approve the ones you want: the story offers each one once, at a moment that fits."
-                title="Memories"
-              />
-              <AppButton
-                label="Propose memories from my backstory"
-                loading={proposing}
-                onPress={() => {
-                  if (!apiKey) {
-                    showToast('Add your OpenRouter key in Settings first.', 'error');
-                    return;
-                  }
-                  setProposing(true);
-                  void completeChat({ apiKey, model: db.settings.summaryModel, messages: flashbackDraftMessages(db), temperature: 0.7, maxTokens: 2000, responseFormatJson: true })
-                    .then((reply) => {
-                      const found = parseFlashbackDraft(db, reply.text);
-                      setProposals(found);
-                      if (found.length === 0) showToast('No memories came back. Write a bit more backstory and try again.', 'error');
-                    })
-                    .catch((error: unknown) => showToast(error instanceof Error ? error.message : 'That failed.', 'error'))
-                    .finally(() => setProposing(false));
-                }}
-                variant="secondary"
-              />
-              <View style={{ height: 16 }} />
-              {proposals.map((memory) => (
-                <ItemCard key={memory.id} title={`${memory.title} · ${memory.date.year}`}>
-                  <Text style={type.rowBody}>{memory.scene}</Text>
-                  <Text style={type.rowMeta}>{memory.place}{memory.cast.length ? ` · with ${memory.cast.join(', ')}` : ''}</Text>
-                  <View style={{ flexDirection: 'row', gap: 12, marginVertical: 12 }}>
-                    <AppButton compact label="Skip" onPress={() => setProposals((current) => current.filter((item) => item.id !== memory.id))} style={styles.flex} variant="ghost" />
-                    <AppButton
-                      compact
-                      label="Approve"
-                      onPress={() =>
-                        void changeSave((latest) => approveFlashback(latest, memory)).then(() => {
-                          setProposals((current) => current.filter((item) => item.id !== memory.id));
-                          showToast('Kept. It will come back to you at the right moment.', 'success');
-                        })
-                      }
-                      style={styles.flex}
-                    />
-                  </View>
-                </ItemCard>
-              ))}
-              {db.world.flashbacks.length > 0 ? <Text style={[type.sectionLabel, { marginTop: 16 }]}>Kept</Text> : null}
-              {db.world.flashbacks.map((memory) => (
-                <ItemCard
-                  key={memory.id}
-                  onRemove={() => void changeSave((latest) => ({ ...latest, world: { ...latest.world, flashbacks: latest.world.flashbacks.filter((item) => item.id !== memory.id) } }))}
-                  title={`${memory.title} · ${memory.date.year}`}
-                >
-                  <Text style={[type.rowBody, { marginBottom: 12 }]}>{memory.memoryLine}</Text>
-                </ItemCard>
-              ))}
             </>
           ) : null}
           {tab === 'templates' ? (
@@ -241,7 +174,7 @@ export default function WorldEditorScreen() {
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
-      {tab !== 'person' && tab !== 'templates' && tab !== 'memories' ? (
+      {tab !== 'person' && tab !== 'templates' ? (
         <View style={styles.footer}>
           <AppButton label="Cancel" onPress={close} style={styles.flex} variant="secondary" />
           <AppButton label="Save changes" loading={saving} onPress={() => void save()} style={styles.flex} />

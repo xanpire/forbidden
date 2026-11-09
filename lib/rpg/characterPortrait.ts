@@ -17,8 +17,7 @@ import type {
  * when you ask, remembers the few traits it was painted with, and says when
  * the person has changed enough to repaint.
  *
- * Canon characters have no built-in reference sheet, so you can give anyone a
- * face reference (an image you choose, kept only on this device). It is sent
+ * You can give anyone a face reference (an image you choose, kept only on this device). It is sent
  * with every portrait of them, so their face stays on-model.
  */
 
@@ -27,7 +26,7 @@ export const PORTRAITS_PER_CHARACTER = 4;
 
 /** Their base look, plus how they look right now when that is known. */
 function cleanAppearance(db: AppDatabase, entity: EntityRecord) {
-  // As the player has seen them: no canon secret painted before he knows it.
+  // As the player has seen them.
   const text = shownField(db, entity, 'appearance')?.trim() ?? '';
   const base = text && text !== 'Unknown' ? text : '';
   const now = entity.currentLook?.trim();
@@ -151,12 +150,6 @@ export function buildCharacterPortraitPrompt(
       );
     }
   });
-
-  if (!references.some((reference) => reference.kind === 'face') && db.world?.knownUniverse && entity.fame) {
-    lines.push(
-      `If ${name} is a known character from ${db.world.knownUniverse.name}, draw them with their known design. Otherwise, follow the description below.`
-    );
-  }
 
   if (signature.appearance) {
     lines.push(`Appearance: ${signature.appearance}`);

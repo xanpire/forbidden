@@ -1,25 +1,13 @@
-import { advanceSeconds, calculateAge, dateSortValue, daysBetween, entityAge, formatClock, formatDate } from './calendar';
+import { advanceSeconds, dateSortValue, daysBetween, entityAge, formatClock, formatDate } from './calendar';
 import { isPlayer, playerName } from './player';
 import { paceMinimumSeconds } from './pacing';
 import { CHECK_REASONS, ROMANCE_RULES, entityCanBeIntimate, formatIntimacyBlock, playerCanBeIntimate, formatOocNote, heartLine, stageLabel, STEER_LINES } from './intimacy';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
-import {
-  activeTimelineEvents,
-  recentTimelineEvents,
-  recentlyConcludedTimelineEvents,
-  upcomingTimelineBeats,
-  PERSONAL_OFFERS_PER_TURN,
-  upcomingWorldEvents,
-  isCombatPace,
-  hasHeardNews,
-} from './timeline';
-import { formatNewsOffer, newsOffer, newsTrackingLines } from './newsDelivery';
 import { formatLetterOffer, letterTrackingLines, turnLetterOffer } from './letters';
 import { reunionNotes } from './lives';
 import { latestPov, povCandidates, povInstruction } from './povMemories';
 import { consequenceTrackingLines, formatConsequenceOffer, turnConsequenceOffer } from './consequences';
 import { epithetLines, formatRenownBlock, renownTrackingLine } from './renown';
-import { regionOf, travelDaysBetween } from './geography';
 import {
   formatEncounterConditions,
   locationKindOf,
@@ -31,9 +19,9 @@ import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTracki
 import { estimateTokens } from '../openrouter';
 import { formatWhoYouAre, formatWorldBlock } from './worldBlocks';
 import { DEFAULT_SETTINGS } from './defaults';
-import { isDeceased, playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
-import { alsoKnownAs, displayName, identitiesOf, identityLine, playerKnowsLine, playerKnowsName, labelOf, narratorName } from './names';
+import { alsoKnownAs, displayName, playerKnowsLine, playerKnowsName, labelOf, narratorName } from './names';
 import { companionsOf, daysTogether, formatTogether } from './companions';
 import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
@@ -42,15 +30,6 @@ import { formatWeatherLine, formatWeatherTracking } from './weather';
 import { formatSafehouseLine, formatSafehouseTracking, letterAddress, placesLine } from './safehouses';
 import { formatPurseLine, priceGuideOf } from './money';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
-import {
-  activeFlashback,
-  flashbackOffer,
-  flashbackTrackingLines,
-  flashbackView,
-  formatFlashbackBlock,
-  formatFlashbackOffer,
-  formatFlashbackReturn,
-} from './flashbacks';
 import type {
   AppDatabase,
   SteerChip,
@@ -71,7 +50,7 @@ export const NARRATION_SYSTEM = `You narrate an interactive novel. The player is
 CORE
 - Never speak, act, think, or decide for the player. Describe the world and the reactions, then stop where the player must respond. End on a beat that leaves room to act: an action, an image, a sound, an NPC line, a threat, or an open moment. At most about one reply in three ends on a direct question to the player. Never re-ask a decision the player has already made.
 - When anyone asks the player a question, gives them an order, or makes them an offer, the turn ends right there. Never write their answer, their obedience, or what happens next: no walking, travel, or time passing until the player replies. A plan someone speaks ("walk until nightfall") has not happened yet.
-- The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body. Where it says you do not know yet, never reveal the death through narration; the player learns it only through someone who could know.
+- The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body.
 - Anyone under TRAVELLING WITH YOU is physically at the player's side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, the player sends them away, they are called away, arrested, or killed). What they live through beside the player, good or bad, changes how they feel about the player. Someone joins only when the story makes it clear they are coming along.
 - The player carries only what CURRENT STATE lists under Inventory: never give them a weapon, tool or item they do not have, and when they use one up or lose it, show it.
 - The player's money is the Purse in CURRENT STATE. They can never pay more than they have; when they are short, the seller says so. Whenever money changes hands for the player (they pay, are paid, find, win, lose or are robbed), say how much, in the world's currency, at believable prices (see PRICES). Someone else may pay for them.
@@ -88,12 +67,10 @@ TIME
 - Numbers stay true: a price, distance, deadline, debt or travel time, once said, never changes (see FIGURES ALREADY SAID), and travel takes realistic time for the era. Nobody can be in two places: see ELSEWHERE.
 - Say plainly how long things take ("a few heartbeats", "an hour later", "by dusk", "after a full night's sleep", "three days on the road"); the app reads the clock from your words. Be honest: blows take seconds, talks minutes, fights seconds to minutes, a nap under an hour, a night's sleep 8-9 hours. Never skip time in a fight; the player controls each move.
 
-WORLD TIMELINE
-- Nothing big has happened in the world unless it is in the WORLD TIMELINE, NEWS & RUMORS, RUMORS OF WHAT'S COMING, or the facts: never invent a world event, a death of a known person, or a date. Asked about anything else, people say it hasn't happened, don't know, or deflect. In a known setting, stay true to it as far as WORLD says.
-- The world moves while the player is elsewhere, but they learn of it only through people, papers, screens, messages, or gossip, never omniscient narration. Deliver NEWS & RUMORS through a plausible bearer, preferring someone already in the scene, in the delivery given, and make clear who told them: at most one piece of news per turn (a CATCH-UP report is one report covering several), and none in the middle of a fight. Never re-narrate a finished event. If the scene reaches an ACTIVE STORY BEAT, play it out fully.
+THE WORLD
+- Nothing is planned ahead: the story moves only from what the player does and what people would really do about it. Never invent a death of someone the player knows.
 - Letters and messages are personal, never world news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When the player writes to someone far away, show them send it; it takes as long as its way of travel takes, so any answer comes later, never sooner than it could. The player writes their letters themselves: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
 - People live their own lives while the player is away. A "since you last saw them" note says what changed for someone they meet again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
-- Someone with more than one identity is one person, whatever they are called; their card in CHARACTERS IN SCENE says which identity they are using and who knows them as what.
 
 NAMES
 - Narration calls people only by the name the player knows (each card says it). Anyone the player can't name gets the same short description every time ("the red-haired woman") until they learn the name: someone gives it, someone says it, a letter or document shows it, or they recognise someone famous by their look. Never force an introduction.
@@ -143,8 +120,6 @@ DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: t
 
 MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "player" for you), a type, and who_knows (ids of people who know it, or group names like "the police"). Types: death (someone died), injury (a wound to someone's body), condition (a passing state: exhaustion, drunk, soaked, a headache), secret, knowledge (someone learned something), membership (joined or left a group), possession (an item gained, lost or changed), relationship, plan (an intention or travel plan), figure (a number stated in the story: a price, a debt, a distance, a deadline, a travel time, word for word), event (anything else that happened). A boast, rumor or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition that a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT (you learned what you did not know, a plan changed, a wound healed), list that fact's ref in supersedes; list refs that simply stopped being true in facts_ended. threads are promises, debts, grudges, mysteries, quests, or goals, with participants (ids of who it involves besides you): "open" only for something no OPEN THREAD already covers (if one does, "update" it under its exact title, even when the wording differs); "update" or "resolved" reuse the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Rain at the harbour"), only when this turn starts a new scene (the player reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null. chapter_title (3-6 words) only when this turn truly opens a new chapter of the story: a big turn in the story, the player arrives somewhere far from where the chapter began, or a long time skip; most turns, and most new scenes, are null. A chapter is long: many scenes, often days of story.
 
-WORLD TIMELINE: timeline_engaged / timeline_completed / timeline_passed / news_relayed use ids exactly as listed under WORLD TIMELINE TRACKING, only when that id's rule is met; otherwise []. A catch-up report can relay several listed news ids in one turn.
-
 LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise []. life_events: {character_id, event} for something that happened in a person's own life away from you that this turn reveals as true (a promotion, an injury, a move, a new job, a wedding; their letter, or they tell you); event in a few words, third person without their name ("got promoted to manager"); otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
 
 NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and consequences_returned follow the rules under REPUTATION & GRUDGES; otherwise [] (epithet null).
@@ -153,9 +128,7 @@ BEAT: beat tags how this turn played, from the player's input and the reply toge
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
 
-INTIMACY: intimate_scene true when this turn is (or turns into) a sexual or intimate scene between the player and someone, false when such a scene ends or the scene moves on, null otherwise. intimacy_stage_changed: {character_id, stage} only when the page shows the relationship with the player reach a new step on the ladder (none, interest, flirting, first kiss, lovers, established) or fall back; otherwise []. milestone: {character_id, what} for a first or a big moment between them shown this turn (a first kiss, a first night, saying "I love you"); otherwise []. preference_learned: {character_id, preference, about_player} when someone clearly learns what the player likes (about_player true) or the player learns what they like (false), in a few plain words; otherwise []. outfit_changed: {character_id, outfit, position} when someone's clothes or position in the scene change on the page ("player" for you); otherwise []. limit_crossed: true only if the reply writes something listed under the player's hard limits. age_rule_crossed: true only if the reply makes anyone under 18, anyone without a stated adult age, or anyone described as a child part of anything sexual. Both false otherwise.
-
-FLASHBACK: flashback is null unless a FLASHBACK, MEMORY or THIS TURN IS A MEMORY line below says how to set it.`;
+INTIMACY: intimate_scene true when this turn is (or turns into) a sexual or intimate scene between the player and someone, false when such a scene ends or the scene moves on, null otherwise. intimacy_stage_changed: {character_id, stage} only when the page shows the relationship with the player reach a new step on the ladder (none, interest, flirting, first kiss, lovers, established) or fall back; otherwise []. first: {character_id, what} for a first or a big moment between them shown this turn (a first kiss, a first night, saying "I love you"); otherwise []. preference_learned: {character_id, preference, about_player} when someone clearly learns what the player likes (about_player true) or the player learns what they like (false), in a few plain words; otherwise []. outfit_changed: {character_id, outfit, position} when someone's clothes or position in the scene change on the page ("player" for you); otherwise []. limit_crossed: true only if the reply writes something listed under the player's hard limits. age_rule_crossed: true only if the reply makes anyone under 18, anyone without a stated adult age, or anyone described as a child part of anything sexual. Both false otherwise.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -164,7 +137,6 @@ Write a 100-150 word summary of the supplied scene.
 - Concrete and specific.
 - No meta-text, no commentary, no greeting.
 - Mention the most important NPCs, your choices, and the consequences.
-- Preserve any timeline information.
 
 Reply in exactly this format, nothing else:
 TITLE: a 2-6 word name for this stretch of story, no ending punctuation
@@ -245,23 +217,11 @@ export function buildNarrationPrompt(
       !(memory.summaryId && storySoFar.ids.includes(memory.summaryId))
   );
   const arcSummary = storySoFar.arc ?? storySoFar.chapters[storySoFar.chapters.length - 1] ?? null;
-  // A flashback playing now: the narrator gets the memory instead of the present.
-  const playing = activeFlashback(db);
-  const memoryView = playing ? flashbackView(db) : null;
-  const memoryCast = playing
-    ? playing.active.castIds.map((id) => db.entities.find((entity) => entity.id === id)?.name).filter((name): name is string => Boolean(name))
-    : [];
   // Conversation, fight, or normal narration, from the scene so far and the player's input.
-  const sceneMode = resolveTurnMode(
-    playing ? { ...db, state: { ...db.state, sceneCast: memoryCast.length > 0 ? memoryCast : playing.record.cast } } : db,
-    userMessage
-  );
+  const sceneMode = resolveTurnMode(db, userMessage);
   // At most one outside pressure per turn: a grudge first, then something
   // coming back, then a bounty hunter, then a familiar face.
-  const pressure = playing ? '' : formatPressure(db, entityText);
-  // A memory that fits this moment: at most one a month, never in a fight or
-  // while something presses in on the player.
-  const memoryOffer = playing || pressure ? null : flashbackOffer(db, userMessage, sceneMode.mode);
+  const pressure = formatPressure(db, entityText);
 
   // Ordered from never-changing to changing-every-turn, so the front of the
   // prompt is a stable prefix that providers can cache (cache reads cost a
@@ -280,24 +240,9 @@ export function buildNarrationPrompt(
     formatTheDead(db),
   ].filter(Boolean).join('\n\n');
 
-  // 4. Everything that moves turn to turn. Inside a flashback the present
-  //    stands still: no news, letters, timeline, pressure or present state.
-  const buildMemoryDynamic = (messagesForScene: RawLogEntry[]) =>
-    [
-      formatFlashbackBlock(db, formatWeatherLine(memoryView ?? db, sceneMode.mode)),
-      formatMemories(db, freshMemories),
-      formatRecentMessages(messagesForScene),
-      formatLastBeat(messagesForScene),
-      'CONTINUITY: continue directly from the last narrated beat of the memory. Never repeat a beat you already wrote and never contradict it.',
-      // Present wounds don't exist in the memory.
-      formatSceneModeLine({ ...db, facts: [] }, sceneMode),
-      `YOU DO OR SAY:\n${userMessage}`,
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-
+  // 4. Everything that moves turn to turn.
   const buildDynamic = (messagesForScene: RawLogEntry[]) =>
-    playing ? buildMemoryDynamic(messagesForScene) : [
+    [
       formatState(db),
       formatCompanions(db),
       formatTimeLine(db, 'narrator', sceneMode.mode),
@@ -308,11 +253,8 @@ export function buildNarrationPrompt(
       formatFigures(db),
       formatElsewhere(db),
       formatLore(lore),
-      formatNewsBlock(db),
       formatLetterBlock(db),
       formatYearlyBlock(yearlyOffer(db)),
-      formatUpcomingWorldBlock(db),
-      formatTimelineBlock(db),
       formatMemories(db, freshMemories),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
@@ -321,8 +263,6 @@ export function buildNarrationPrompt(
       formatNameOutThere(db),
       formatRenownBlock(db),
       pressure,
-      formatFlashbackOffer(db, memoryOffer),
-      formatFlashbackReturn(db),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       formatSceneModeLine(db, sceneMode),
       options.steer ? STEER_LINES[options.steer] : '',
@@ -387,11 +327,6 @@ export function buildNarrationPrompt(
     recentMessages: sceneMessages,
     arcSummary,
     sceneMode,
-    /** The flashback this reply belongs to (stamped on its entries), or the one offered on it. */
-    flashback: {
-      ...(playing ? { active: { id: playing.active.id, date: playing.active.date } } : {}),
-      ...(memoryOffer ? { offerId: memoryOffer.id } : {}),
-    },
   };
 }
 
@@ -417,28 +352,21 @@ export function buildExtractionPrompt(
   ].join('\n\n');
 
   const reply = [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.content === assistantMessage);
-  // A turn inside a flashback: the memory's clock and place, and none of the
-  // present's timeline, letters or enemies to mark.
-  const memoryView = activeFlashback(db) ? flashbackView(db) : null;
   const dynamic = [
     // Facts move every turn, so they sit outside the cached part, with refs
     // the tracker can end or replace.
-    memoryView ? '' : formatFacts(db, stateFacts(db, `${userMessage}\n${assistantMessage}`), { refs: true }),
-    memoryView
-      ? `CURRENT STATE (inside the memory)\nDate: ${formatDate(memoryView.state.inStoryDate)}\nLocation: ${truncate(memoryView.state.location, 100)}`
-      : formatState(db),
-    memoryView ? '' : formatCompanionIds(db),
+    formatFacts(db, stateFacts(db, `${userMessage}\n${assistantMessage}`), { refs: true }),
+    formatState(db),
+    formatCompanionIds(db),
     formatCharacterDetails(db, `${userMessage}\n${assistantMessage}`),
-    formatTimeLine(memoryView ?? db, 'state'),
-    formatWeatherTracking(memoryView ?? db),
+    formatTimeLine(db, 'state'),
+    formatWeatherTracking(db),
     formatSceneModeTracking(null, reply?.sceneMode),
     formatIntimacyTracking(db),
-    ...flashbackTrackingLines(db, reply?.flashbackOffer),
-    memoryView ? '' : formatTimelineTracking(db),
-    memoryView ? '' : formatLetterTracking(db),
-    memoryView ? '' : formatSafehouseTracking(db),
-    memoryView ? '' : formatYearlyTracking(db),
-    memoryView ? '' : formatEnemyTracking(db),
+    formatLetterTracking(db),
+    formatSafehouseTracking(db),
+    formatYearlyTracking(db),
+    formatEnemyTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
@@ -465,11 +393,7 @@ export function buildExtractionPrompt(
   };
 }
 
-export function buildSceneSummaryPrompt(
-  db: AppDatabase,
-  messages: RawLogEntry[],
-  options: { memoryNote?: string } = {}
-) {
+export function buildSceneSummaryPrompt(db: AppDatabase, messages: RawLogEntry[]) {
   const transcript = messages
     .map(
       (message) =>
@@ -485,13 +409,12 @@ export function buildSceneSummaryPrompt(
 
   // The people it mattered to most also get their own side of it.
   const pov = povInstruction(povCandidates(db, messages));
-  const memory = options.memoryNote ? `${options.memoryNote}\n\n` : '';
   const intimate = messages.some((message) => message.intimate)
     ? db.content?.vagueRecaps === false
       ? 'Part of this is an intimate scene: summarise it in your own words like any other moment (who, what it meant, how it changed things); never copy its lines.\n\n'
       : 'Part of this is an intimate scene: give it one plain, non-explicit sentence (who, that it happened, how it changed things between them), never its details.\n\n'
     : '';
-  const user = `${memory}${intimate}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
+  const user = `${intimate}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
   const promptMessages: OpenRouterMessage[] = [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -549,13 +472,7 @@ export function buildTimeSkipPrompt(
 }
 
 export function getRecentMessages(db: AppDatabase, limit: number): RawLogEntry[] {
-  // Inside a flashback: the present lead-in and this memory's turns. Back in
-  // the present: memories stay out, so the story picks up where the player left it.
-  const playing = activeFlashback(db)?.active.id;
-
-  return db.rawLog
-    .filter((message) => message.kind === 'story' && (!message.flashback || message.flashback.id === playing))
-    .slice(-limit);
+  return db.rawLog.filter((message) => message.kind === 'story').slice(-limit);
 }
 
 type StorySoFar = {
@@ -703,24 +620,19 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     return pov ? `; remembers of you: "${truncate(pov, 120)}"` : '';
   };
 
-  const present = sceneCastIdsOf(db);
   const known = (entity: EntityRecord) => {
     const other = playerKnowsName(entity) ? alsoKnownAs(db, entity)[0] : undefined;
     const card = playerKnowsName(entity) ? displayName(db, entity) : `${labelOf(db, entity)} [narrator only: ${entity.name}]`;
 
     return `${card}${other ? ` (also called ${other})` : ''}`;
   };
-  const truth = (entity: EntityRecord) => {
-    const line = identityLine(db, entity, present.includes(entity.id) ? present : [...present, entity.id]);
-
-    return `\n  ${playerKnowsLine(db, entity)}.${line ? `\n${line}` : ''}`;
-  };
+  const truth = (entity: EntityRecord) => `\n  ${playerKnowsLine(db, entity)}.`;
 
   return [
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${playerKnowsDeath(db, entity) ? '' : ', you do not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatHeart(db, entity)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
+        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatHeart(db, entity)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
     ),
   ].join('\n');
 }
@@ -737,7 +649,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
  * under CHARACTERS IN THIS TURN. Anyone who dies during the story stays.
  */
 function inBackground(entity: EntityRecord) {
-  const longDead = isDeceased(entity) && !entity.deceased?.date && !entity.deceased?.timelineEventId;
+  const longDead = isDeceased(entity) && !entity.deceased?.date;
 
   return entity.met === false && !entity.companion && longDead;
 }
@@ -757,14 +669,10 @@ function formatCharacterRoster(db: AppDatabase) {
         isPlayer(db, entity) ? 'the player' : null,
         entity.met === false ? 'not met yet' : null,
         entity.companion && !isDeceased(entity) ? 'travelling with you' : null,
-        isDeceased(entity) ? (playerKnowsDeath(db, entity) ? 'deceased' : 'deceased, you do not know yet') : null,
+        isDeceased(entity) ? 'deceased' : null,
       ].filter(Boolean);
 
-      // People with more than one identity: the tracker sees them all.
-      const identities = identitiesOf(entity);
-      const truth = identities.length > 1 ? `; identities: ${identities.map((identity) => `${identity.name} (${identity.kind})`).join(', ')}` : '';
-
-      return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}${truth}`;
+      return `- ${ref}: ${entity.name}${others.length > 0 ? ` (${others.join(', ')})` : ''}${notes.length > 0 ? ` [${notes.join(', ')}]` : ''}`;
     }),
   ].join('\n');
 }
@@ -796,7 +704,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
       const role = truncate(entity.role ?? '', 40);
 
       if (isDeceased(entity)) {
-        return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED${playerKnowsDeath(db, entity) ? '' : ' (you do not know yet)'}`;
+        return `- ${refByEntity.get(entity.id)}: ${entity.name}, DECEASED`;
       }
 
       const name = isPlayer(db, entity) ? '' : `; ${playerKnowsName(entity) ? `you know them as ${displayName(db, entity)}` : `you don't know their name (you see "${labelOf(db, entity)}")`}`;
@@ -829,7 +737,7 @@ function formatBonds(db: AppDatabase) {
   const deadLabel = new Map(
     db.entities
       .filter(isDeceased)
-      .map((entity) => [entity.id, playerKnowsDeath(db, entity) ? ' [deceased]' : ' [deceased, you do not know yet]'])
+      .map((entity) => [entity.id, ' [deceased]'])
   );
   const people = new Map(db.entities.map((entity) => [entity.id, entity]));
   // The name the player knows them by, never the record's own name.
@@ -879,7 +787,7 @@ function formatTheDead(db: AppDatabase) {
       const name =
         playerKnowsName(entity) || entity.met !== false ? narratorName(db, entity) : `${entity.name} (unknown to you)`;
 
-      return `- ${name}${cause}${playerKnowsDeath(db, entity) ? '' : ' (you do not know yet)'}`;
+      return `- ${name}${cause}`;
     }),
   ].join('\n');
 }
@@ -968,47 +876,6 @@ function formatLore(lore: AppDatabase['loreEntries']) {
   ].join('\n');
 }
 
-function formatUpcomingWorldBlock(db: AppDatabase) {
-  if (isCombatPace(db.state.scenePace)) {
-    return '';
-  }
-
-  const upcoming = upcomingWorldEvents(db, 10);
-
-  if (upcoming.length === 0) {
-    return '';
-  }
-
-  const lines = [
-    "RUMORS OF WHAT'S COMING (planned, NOT yet happened). The world is preparing; NPCs may mention preparations or rumors, never that it happened.",
-  ];
-
-  for (const item of upcoming) {
-    lines.push(`- ${item.event.title}: about ${item.daysUntil} day(s) away${item.event.era ? ` (${item.event.era})` : ''}.`);
-  }
-
-  return lines.join('\n');
-}
-
-function formatNewsBlock(db: AppDatabase) {
-  // No news mid-fight; one piece per turn, or one catch-up report.
-  const offer = newsOffer(db);
-  const block = formatNewsOffer(offer);
-  const item = offer?.mode === 'single' ? offer.items[0] : null;
-
-  // Public news from far away arrives second-hand, and grows on the road.
-  if (block && item && item.knowledge === 'public') {
-    const here = regionOf(db, db.state.location) ?? regionOf(db, db.state.scene);
-    const there = regionOf(db, `${item.location} ${item.region}`);
-
-    if (here && there && travelDaysBetween(db, here, there) >= 3) {
-      return `${block}\n- It happened far from here: if a stranger or gossip tells it, it comes garbled by distance (the core is true, the details have grown).`;
-    }
-  }
-
-  return block;
-}
-
 /** YOUR NAME OUT THERE, with what strangers here call the player. */
 function formatNameOutThere(db: AppDatabase) {
   const block = formatReputationBlock(db);
@@ -1024,92 +891,6 @@ function formatLetterBlock(db: AppDatabase) {
   const address = offer ? letterAddress(db, offer.entity.id) : null;
 
   return formatLetterOffer(offer, address ? address.name : undefined, offer ? narratorName(db, offer.entity) : undefined);
-}
-
-function formatTimelineBlock(db: AppDatabase) {
-  const active = activeTimelineEvents(db).slice(0, 2);
-  const upcoming = upcomingTimelineBeats(db, PERSONAL_OFFERS_PER_TURN);
-  const concluded = recentlyConcludedTimelineEvents(db, 3);
-  const recent = recentTimelineEvents(db, 6).filter((event) => hasHeardNews(db, event.id)).slice(0, 3);
-  const lines: string[] = ['WORLD TIMELINE'];
-
-  if (recent.length > 0) {
-    lines.push(
-      ...recent.map(
-        (event) =>
-          `- World event (${formatDate(event.inStoryDate)}): ${truncate(event.summary, 110)}`
-      )
-    );
-  } else {
-    lines.push('- No world events recorded yet; the world is quiet.');
-  }
-
-  for (const beat of upcoming) {
-    lines.push(
-      `PERSONAL STORY BEAT — do not assume it happened${beat.era ? ` (${beat.era})` : ''}: ${truncate(beat.title, 70)} — ${truncate(beat.description, 130)}`
-    );
-    lines.push(
-      '  This only occurs if the player actually does it in the scene. Never state it has happened because time passed.'
-    );
-  }
-
-  if (active.length > 0) {
-    for (const milestone of active) {
-      lines.push(
-        `ACTIVE STORY BEAT: ${truncate(milestone.title, 70)}`
-      );
-
-      if (milestone.encounter) {
-        lines.push(
-          `  Encounter opportunity: ${milestone.encounter.who} — ${milestone.encounter.where}. ${truncate(milestone.encounter.context, 180)}`
-        );
-      }
-
-      lines.push(
-        '  If the player\'s scene reaches this beat, play it out fully on the page.'
-      );
-    }
-  }
-
-  if (concluded.length > 0) {
-    lines.push(
-      'RECENTLY CONCLUDED (finished — never replay these): ' +
-        concluded
-          .map((milestone) => `${milestone.id} (${truncate(milestone.title, 50)})`)
-          .join('; ')
-    );
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * Timeline ids for the state call. The narrator never sees ids; the state model
- * decides from the prose whether a beat played out or news was delivered.
- */
-function formatTimelineTracking(db: AppDatabase) {
-  const lines: string[] = [];
-
-  for (const event of activeTimelineEvents(db).slice(0, 2)) {
-    const accepted = event.playerDriven ? ' You accepted it; it is under way.' : '';
-    lines.push(
-      `- ${event.id}: ${truncate(event.title, 70)} (active story beat).${accepted} timeline_completed only at the moment it fully plays out on the page${event.completesWhen ? `: ${event.completesWhen}` : ''}; timeline_engaged if the player's scene took part in it this turn; timeline_passed if the chance clearly slipped by (the player left, time moved on).`
-    );
-  }
-
-  for (const beat of upcomingTimelineBeats(db, PERSONAL_OFFERS_PER_TURN)) {
-    lines.push(
-      `- ${beat.id}: ${truncate(beat.title, 70)} (personal beat, offered). timeline_engaged when the player accepts or starts it this turn; timeline_completed only when it actually happens on the page${beat.completesWhen ? `: ${beat.completesWhen}` : ''}. Never because time passed.`
-    );
-  }
-
-  lines.push(...newsTrackingLines(newsOffer(db)));
-
-  if (lines.length === 0) {
-    return '';
-  }
-
-  return ['WORLD TIMELINE TRACKING', ...lines].join('\n');
 }
 
 function formatPressure(db: AppDatabase, recentText: string) {
@@ -1210,9 +991,7 @@ function formatMemories(db: AppDatabase, memories: EventRecord[]) {
         ? db.summaries.find((summary) => summary.id === memory.summaryId)?.text
         : undefined;
       const text = full ?? memory.summary;
-      // A flashback is a memory of the past, lived again, not something that just happened.
-      const past = memory.tags.includes('flashback') ? `(from Year ${memory.inStoryDate.year}, before the story) ` : '';
-      return `- ${past}${memory.title ? `${memory.title}: ` : ''}${truncate(text, 400)}`;
+      return `- ${memory.title ? `${memory.title}: ` : ''}${truncate(text, 400)}`;
     }),
   ].join('\n');
 }

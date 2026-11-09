@@ -9,7 +9,7 @@
 
 import { daysBetween } from './calendar';
 import { companionsOf } from './companions';
-import { isDeceased, playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { currentRegion, isRegion, regionName, regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
 import type { AppDatabase, CalendarDate, EntityRecord, PlaceDef, TravelStop } from './types';
 import { regionWeather, weatherTravelFactor } from './weather';
@@ -179,7 +179,7 @@ export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
 
   for (const entity of db.entities) {
     if (entity.type !== 'character' || isPlayer(db, entity) || entity.met === false || entity.tier === 'minor') continue;
-    if (isDeceased(entity) && playerKnowsDeath(db, entity)) continue;
+    if (isDeceased(entity)) continue;
 
     if (companions.has(entity.id)) {
       result.push({ entity, region: here, basis: 'with-you', detail: 'With you' });

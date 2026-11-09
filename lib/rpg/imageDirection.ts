@@ -1,12 +1,9 @@
 // How scene images are framed: the director's shot vocabulary, the light
-// line built from the real weather and clock, timeline art direction, and
-// the variety tracker. Pure, so it can be tested.
+// line built from the real weather and clock, and the variety tracker. Pure, so it can be tested.
 //
 // See docs: claude/image-generator-cinematic.md.
 
-import { eventIdFor, timelineOf } from './timeline';
 import { mentionsEntity } from './characterRefs';
-import { secondsBetween } from './calendar';
 import { currentWeather } from './weather';
 import type { AppDatabase, CalendarDate, RawLogEntry, WeatherCondition } from './types';
 import { isPlayer } from './player';
@@ -173,24 +170,13 @@ export function colourAccent(text: string): string | null {
   return found.length > 0 ? found.slice(0, 2).join(' and ') : null;
 }
 
-/** The scene's clock and weather: the memory's own in a flashback. */
-export function sceneMoment(db: AppDatabase, inMemory: boolean): {
+/** The scene's clock and weather. */
+export function sceneMoment(db: AppDatabase): {
   date: CalendarDate;
   condition: WeatherCondition;
   weatherText?: string;
   indoors: boolean;
 } {
-  const memory = inMemory ? db.state.flashbacks?.active ?? null : null;
-
-  if (memory) {
-    return {
-      date: memory.date,
-      condition: memory.weather?.condition ?? 'clear',
-      weatherText: memory.weather?.text,
-      indoors: memory.locationKind === 'structure',
-    };
-  }
-
   const now = currentWeather(db);
 
   return {
@@ -202,8 +188,8 @@ export function sceneMoment(db: AppDatabase, inMemory: boolean): {
 }
 
 /** One line of light and atmosphere from the real weather and time of day. */
-export function lightLine(db: AppDatabase, sceneText: string, inMemory = false): string {
-  const moment = sceneMoment(db, inMemory);
+export function lightLine(db: AppDatabase, sceneText: string): string {
+  const moment = sceneMoment(db);
   const hour = Math.max(0, Math.min(23, moment.date.hour ?? 12));
   const night = hour >= 22 || hour <= 3;
   const visual = WEATHER_VISUAL[moment.condition];
@@ -216,63 +202,6 @@ export function lightLine(db: AppDatabase, sceneText: string, inMemory = false):
     accent ? `; colour accent: ${accent}` : '',
     '.',
   ].join('');
-}
-
-// ---------------------------------------------------------------------------
-// Timeline art direction (#13)
-// ---------------------------------------------------------------------------
-
-const STOPWORDS = new Set(['the', 'of', 'land', 'village', 'an', 'a', 'near', 'outside', 'in', 'at']);
-
-function placeWords(text: string) {
-  return text
-    .toLowerCase()
-    .split(/[^a-z]+/)
-    .filter((word) => word.length > 2 && !STOPWORDS.has(word));
-}
-
-/** Within this long after a timeline event happened, its art direction still applies. */
-const ART_DIRECTION_WINDOW_SECONDS = 2 * 24 * 3600;
-
-/**
- * A fixed visual hint when the story is at, or just past, a timeline event
- * that carries one (`artDirection`): the beat the player took on, or an event
- * that happened in the last two days where they are.
- */
-export function timelineArtDirection(db: AppDatabase): string | null {
-  const date = db.state.inStoryDate;
-  const progress = db.state.timelineProgress;
-
-  if (!progress) return null;
-
-  const here = new Set(placeWords(db.state.location ?? ''));
-
-  for (const event of timelineOf(db)) {
-    if (!event.artDirection) continue;
-
-    if (progress.engaged.includes(event.id) && !progress.completed.includes(event.id)) {
-      return event.artDirection;
-    }
-
-    if (!progress.completed.includes(event.id)) continue;
-
-    const record = db.events.find((item) => item.id === eventIdFor(event.id));
-
-    if (!record) continue;
-
-    const since = secondsBetween(record.inStoryDate, date);
-
-    if (since < 0 || since > ART_DIRECTION_WINDOW_SECONDS) continue;
-
-    const region = event.regionId ? db.world.regions.find((item) => item.id === event.regionId)?.name ?? '' : '';
-    const there = placeWords(`${event.location ?? ''} ${region}`);
-
-    if (there.some((word) => here.has(word))) {
-      return event.artDirection;
-    }
-  }
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------

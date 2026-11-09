@@ -126,20 +126,4 @@ describe('the purse', () => {
     expect(purseOf(db).estimatedStart).toBeUndefined();
     expect(purseOf(db).history.at(-1)).toMatchObject({ change: 412 - START, counted: true });
   });
-
-  test('a turn inside a flashback never touches the present purse', () => {
-    const db = play(
-      save(),
-      '*You buy candy.*',
-      'Your mother pays two dollars for candy.',
-      { ...minutes, money: [{ amount: -2, reason: 'candy' }], money_counted: null },
-      (next) => ({
-        ...next,
-        rawLog: next.rawLog.map((entry, index) =>
-          index >= next.rawLog.length - 2 ? { ...entry, flashback: { id: 'old-days', date: next.state.inStoryDate } } : entry
-        ),
-      })
-    );
-    expect(purseOf(db).amount).toBe(START);
-  });
 });

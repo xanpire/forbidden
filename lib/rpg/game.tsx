@@ -52,7 +52,6 @@ import { mergeEntityPair } from './entities';
 import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortrait';
 import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
-import { beginFlashback } from './flashbacks';
 import {
   applyStateStep,
   applySummaryJob,
@@ -125,7 +124,6 @@ function endsMidSentence(text: string) {
 
 /** One-turn extras the player picks by the input. */
 export type TurnOptions = {
-  remember?: string;
   steer?: SteerChip;
   oocNote?: string;
   /** Internal: this turn is a rewrite after a reply crossed a hard limit. */
@@ -151,7 +149,7 @@ type GameContextValue = {
   worldEventNotice: string | null;
   dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
-  /** Sends the player's input. `remember` follows the offered flashback into the memory (the "Remember" chip). */
+  /** Sends the player's input. */
   sendTurn: (input: string, options?: TurnOptions) => Promise<void>;
   regenerate: () => Promise<void>;
   undoLastTurn: () => Promise<void>;
@@ -646,7 +644,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
 
       const current = dbRef.current;
-      const remember = turnOptions.remember;
 
       if (!current) {
         setError('Your story is still loading. Try again in a moment.');
@@ -661,14 +658,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
       let narratorRecorded = false;
 
       try {
-        // Following an offered memory: the flashback plays from this turn.
         // "Fade to black" holds for the rest of the scene.
         const fade = (db: AppDatabase) =>
           turnOptions.steer === 'fade-to-black' && db.state.sceneMode
             ? { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode, fadeToBlack: true } } }
             : db;
-        const start = (db: AppDatabase) => fade(remember ? beginFlashback(db, remember) : db);
-        const snapshotDb = start(pushSnapshot(current));
+        const snapshotDb = fade(pushSnapshot(current));
         const withUser = appendStoryMessage(
           snapshotDb,
           'user',
@@ -757,8 +752,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         let turnLogId = '';
 
         const saved = await updateLatest(slotId, (latest) => {
-          // The snapshot is taken first, so undo also undoes stepping into a memory.
-          const withSnapshot = start(pushSnapshot(latest));
+          // The snapshot is taken first, so undo restores the turn before.
+          const withSnapshot = fade(pushSnapshot(latest));
           const withPlayer = appendStoryMessage(withSnapshot, 'user', action, null, 0, 0);
           const withReply = appendStoryMessage(
             withPlayer,
@@ -774,16 +769,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           withReply.rawLog[withReply.rawLog.length - 1] = {
             ...withReply.rawLog[withReply.rawLog.length - 1],
             sceneMode: prompt.sceneMode.mode,
-            ...(prompt.flashback.offerId ? { flashbackOffer: prompt.flashback.offerId } : {}),
           };
-
-          // A turn inside a memory: both entries carry it, with the memory's clock.
-          if (prompt.flashback.active) {
-            const memory = prompt.flashback.active;
-            const last = withReply.rawLog.length - 1;
-            withReply.rawLog[last] = { ...withReply.rawLog[last], flashback: memory };
-            withReply.rawLog[last - 1] = { ...withReply.rawLog[last - 1], flashback: memory };
-          }
           // Clear the live text in the same tick the saved reply appears, so
           // the turn never shows twice.
           setStreamingText('');
@@ -844,7 +830,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const sendTurn = useCallback(
     async (input: string, options?: TurnOptions) => {
       const action = input.trim();
-      const remember = options;
 
       if (!action) {
         return;
@@ -859,11 +844,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
 
         setApiKeyState(storedKey);
-        await sendTurnInner(action, storedKey, remember);
+        await sendTurnInner(action, storedKey, options);
         return;
       }
 
-      await sendTurnInner(action, apiKey.trim(), remember);
+      await sendTurnInner(action, apiKey.trim(), options);
     },
     [apiKey, sendTurnInner]
   );
@@ -910,16 +895,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const lastUser = [...current.rawLog].reverse().find((entry) => entry.kind === 'story' && entry.role === 'user');
     const snapshot = restoreLastSnapshot(current);
     const restored = snapshot ? carryOverMemory(current, snapshot) : current;
     await commitDb(restored);
-    // The turn that stepped into a memory steps into it again.
-    const remember =
-      lastUser?.flashback && restored.state.flashbacks?.active?.id !== lastUser.flashback.id
-        ? lastUser.flashback.id
-        : undefined;
-    await sendTurn(userMessage, remember ? { remember } : undefined);
+    await sendTurn(userMessage);
   }, [commitDb, sendTurn]);
 
   const updateSettings = useCallback(
@@ -1084,7 +1063,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       // The dead stop travelling with you.
       const next = deceased
-        ? endCompanion(markDeceased(current, entityId, { known: true }), entityId, 'died')
+        ? endCompanion(markDeceased(current, entityId, {}), entityId, 'died')
         : markAlive(current, entityId);
 
       if (next === current) {

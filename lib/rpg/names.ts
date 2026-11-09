@@ -1,22 +1,16 @@
 // Names the player knows. The narrator and the UI only ever call someone by a name
 // the player has actually learned: strangers are described by how they look until
-// they give their name, someone else says it, a letter or document shows it,
-// or the player recognises them because they are famous. People with more than one
-// identity (a persona, a claimed name, the true one) are shown by the best one
-// the player knows, and everyone in the world calls them by the name *they* know.
+// they give their name, someone else says it, or a text or document shows it.
+// A person can still lie about their name in the prose.
 //
-// Everything comes from the entity itself: `identities`, `fame`, `nameParts`
-// and `known` (what the player knows of their name).
+// Everything comes from the entity itself: `nameParts` and `known` (what the
+// player knows of their name).
 
-import { dateSortValue, entityAge } from './calendar';
-import { milestoneKnown, resolveEntity } from './entities';
+import { entityAge } from './calendar';
+import { resolveEntity } from './entities';
 import type {
   AppDatabase,
-  CalendarDate,
   EntityRecord,
-  FameLevel,
-  Identity,
-  IdentityKind,
   NameHow,
   NameKnowledge,
   NamePart,
@@ -26,34 +20,12 @@ import type {
 import { isPlayerEntity } from './player';
 
 
-const PRIORITY: Record<IdentityKind, number> = { true: 3, claimed: 2, persona: 1 };
 const HISTORY_CAP = 12;
 
 const lower = (value: string) => value.trim().toLowerCase();
 
 // ---------------------------------------------------------------------------
-// Timeline events
-
-/** Whether a timeline event has happened in the world ("start": always). */
-export function happened(db: AppDatabase, milestoneId: string | undefined) {
-  if (!milestoneId || milestoneId === 'start') return true;
-
-  return Boolean(db.state.timelineProgress?.completed?.includes(milestoneId));
-}
-
-/**
- * Whether a timeline event has reached the player: its news, or they were part
- * of it (a beat they lived is heard as "witnessed"). A personal beat that
- * closed without them taught them nothing.
- */
-export function playerKnowsOf(db: AppDatabase, milestoneId: string | undefined) {
-  if (!milestoneId || milestoneId === 'start') return true;
-
-  return milestoneKnown(db, milestoneId);
-}
-
-// ---------------------------------------------------------------------------
-// Name parts and identities
+// Name parts
 
 /** How a name splits: given, family, and the whole name shown once both are known. */
 export function namePartsOf(entity: Pick<EntityRecord, 'name' | 'nameParts'>): NameParts {
@@ -68,33 +40,6 @@ function fullNameOf(entity: Pick<EntityRecord, 'name' | 'nameParts'>) {
   return namePartsOf(entity).full ?? entity.name;
 }
 
-export function identitiesOf(entity: Pick<EntityRecord, 'name' | 'identities'>): Identity[] {
-  return entity.identities ?? [];
-}
-
-/** People shown by identity rather than by name parts. */
-function hasIdentities(entity: Pick<EntityRecord, 'name' | 'identities'>) {
-  return identitiesOf(entity).length > 1;
-}
-
-function knowsIdentity(entity: EntityRecord, identity: Identity) {
-  if (entity.known === undefined) {
-    // Older saves and story-introduced people: the names already on their record.
-    return [entity.name, ...entity.aliases].some((name) => lower(name) === lower(identity.name));
-  }
-
-  return (entity.known.identities ?? []).some((name) => lower(name) === lower(identity.name));
-}
-
-function bestIdentity(identities: Identity[]) {
-  return [...identities].sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind])[0];
-}
-
-/** The name an identity reads as: a claimed one changes once its rename has happened. */
-function identityName(identity: Identity, renamedNow: boolean) {
-  return identity.renamed && renamedNow && identity.kind !== 'true' ? identity.renamed.name : identity.name;
-}
-
 // ---------------------------------------------------------------------------
 // What the player knows
 
@@ -102,22 +47,15 @@ function identityName(identity: Identity, renamedNow: boolean) {
 export function playerKnowsName(entity: EntityRecord) {
   if (isPlayerEntity(entity) || entity.unnamed) return isPlayerEntity(entity);
   if (entity.known === undefined) return true;
-  if (hasIdentities(entity)) return identitiesOf(entity).some((identity) => knowsIdentity(entity, identity));
 
   return Boolean(entity.known.given || entity.known.family);
 }
 
-/** The player knows their whole name (both parts, or their highest identity). */
+/** The player knows their whole name (both parts). */
 function playerKnowsFully(entity: EntityRecord) {
   if (isPlayerEntity(entity)) return true;
   if (entity.unnamed) return false;
   if (entity.known === undefined) return true;
-
-  if (hasIdentities(entity)) {
-    const truth = identitiesOf(entity).find((identity) => identity.kind === 'true');
-
-    return truth ? knowsIdentity(entity, truth) : identitiesOf(entity).every((identity) => knowsIdentity(entity, identity));
-  }
 
   const parts = namePartsOf(entity);
 
@@ -130,27 +68,13 @@ export function labelOf(db: AppDatabase, entity: EntityRecord): string {
 }
 
 /**
- * The one name everything shows: the best identity the player knows, else the parts
- * of the name they have heard (given only: "Sam"; both: "Sam Hale";
+ * The one name everything shows: the parts of the name they have heard (given only: "Sam"; both: "Sam Hale";
  * family only: "Hale"), else their description of them.
  */
 export function displayName(db: AppDatabase, entity: EntityRecord | null | undefined): string {
   if (!entity) return 'someone';
   if (entity.type !== 'character' || isPlayerEntity(entity)) return entity.name;
   if (entity.unnamed) return labelOf(db, entity);
-
-  const identities = identitiesOf(entity);
-
-  if (identities.length > 1) {
-    const known = identities.filter((identity) => knowsIdentity(entity, identity));
-
-    if (known.length === 0) return labelOf(db, entity);
-
-    const best = bestIdentity(known);
-
-    return identityName(best, Boolean(best.renamed && playerKnowsOf(db, best.renamed.after)));
-  }
-
   if (entity.known === undefined) return entity.name;
 
   const parts = namePartsOf(entity);
@@ -178,19 +102,12 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
   const shown = lower(displayName(db, entity));
   const names = new Set<string>();
 
-  for (const identity of identitiesOf(entity)) {
-    if (identitiesOf(entity).length > 1 && knowsIdentity(entity, identity)) {
-      names.add(identity.name);
-      if (identity.renamed && playerKnowsOf(db, identity.renamed.after)) names.add(identity.renamed.name);
-    }
-  }
-
   for (const item of entity.known?.history ?? []) {
-    if (item.part === 'identity' || item.part === 'full') names.add(item.name);
+    if (item.part === 'full') names.add(item.name);
   }
 
   // Older saves and story people: the aliases they already had are names the player knew.
-  if (entity.known === undefined && !entity.unnamed && !hasIdentities(entity)) {
+  if (entity.known === undefined && !entity.unnamed) {
     for (const alias of entity.aliases.slice(0, 4)) names.add(alias);
   }
 
@@ -318,44 +235,21 @@ export function ensureLabels(db: AppDatabase, ids: Iterable<string>): AppDatabas
 }
 
 // ---------------------------------------------------------------------------
-// Fame
-
-export function fameOf(_db: AppDatabase, entity: EntityRecord): FameLevel {
-  return entity.fame ?? 'unknown';
-}
-
-// ---------------------------------------------------------------------------
 // Learning names
 
 function withEntity(db: AppDatabase, entity: EntityRecord): AppDatabase {
   return { ...db, entities: db.entities.map((item) => (item.id === entity.id ? entity : item)) };
 }
 
-function findIdentity(entity: EntityRecord, name: string): Identity | undefined {
-  const wanted = lower(name);
-  const identities = identitiesOf(entity);
-
-  return (
-    identities.find((identity) => lower(identity.name) === wanted || (identity.renamed && lower(identity.renamed.name) === wanted)) ??
-    identities.find((identity) => identity.name.split(/\s+/).some((word) => lower(word) === wanted)) ??
-    identities.find((identity) => wanted.split(/\s+/).some((word) => word.length > 2 && lower(identity.name).includes(word)))
-  );
-}
-
 /** Everything the player knows of them, made explicit (an older record with no `known` knows its name). */
 function explicitKnowledge(entity: EntityRecord): NameKnowledge {
   if (entity.known) return entity.known;
-
-  if (hasIdentities(entity)) {
-    return { identities: identitiesOf(entity).filter((identity) => knowsIdentity(entity, identity)).map((identity) => identity.name) };
-  }
 
   return entity.unnamed ? {} : { given: true, family: true };
 }
 
 /**
- * The player learns a name: a part of it, the whole of it, or one of their
- * identities. A stranger the story never named takes the name. Silent: no
+ * The player learns a name: a part of it or the whole of it. A stranger the story never named takes the name. Silent: no
  * notice, as in life.
  */
 export function learnName(
@@ -398,27 +292,6 @@ export function learnName(
     };
   }
 
-  if (hasIdentities(entity)) {
-    const identity = findIdentity(entity, name);
-
-    if (!identity) return db;
-
-    const identities = knowledge.identities ?? [];
-
-    if (identities.some((item) => lower(item) === lower(identity.name))) return db;
-
-    let next = withEntity(db, { ...entity, known: { ...knowledge, identities: [...identities, identity.name], history: record('identity') } });
-
-    // Learned, the name now finds them in story text ("Sam Hale" and "Sam").
-    if (identity.alias !== false) {
-      next = addAlias(next, entity.id, identity.name);
-      const first = identity.name.split(/\s+/)[0];
-      if (first !== identity.name && owners(next, first) <= 1) next = addAlias(next, entity.id, first);
-    }
-
-    return next;
-  }
-
   const parts = namePartsOf(entity);
   const wanted = lower(name);
   const full = lower(fullNameOf(entity));
@@ -451,16 +324,6 @@ export function learnName(
   return withEntity(db, { ...entity, known: { ...knowledge, given, family, history: record(part) } });
 }
 
-function addAlias(db: AppDatabase, entityId: string, name: string | null): AppDatabase {
-  if (!name) return db;
-
-  const entity = db.entities.find((item) => item.id === entityId)!;
-
-  if ([entity.name, ...entity.aliases].some((item) => lower(item) === lower(name))) return db;
-
-  return withEntity(db, { ...entity, aliases: [...entity.aliases, name].slice(0, 12) });
-}
-
 /** The state tracker's names_learned for this turn. */
 export function applyNamesLearned(db: AppDatabase, learned: TurnDiff['namesLearned']): AppDatabase {
   let next = db;
@@ -470,90 +333,6 @@ export function applyNamesLearned(db: AppDatabase, learned: TurnDiff['namesLearn
     const id = item.entityId ?? resolveEntity(next, item.character)?.id;
 
     if (id) next = learnName(next, id, item);
-  }
-
-  return next;
-}
-
-/**
- * Identities that reach the player through the world timeline (a mask coming
- * off, a true name made public), and names others learned because the player or someone
- * in the scene told them.
- */
-export function learnFromTimeline(db: AppDatabase): AppDatabase {
-  let next = db;
-
-  for (const entity of db.entities) {
-    if (entity.type !== 'character' || !hasIdentities(entity)) continue;
-
-    for (const identity of identitiesOf(entity)) {
-      if (identity.learnedWith?.some((id) => playerKnowsOf(db, id))) {
-        next = learnName(next, entity.id, { name: identity.name, part: 'identity', how: 'news' });
-      }
-    }
-  }
-
-  return next;
-}
-
-/** Someone in the scene learned another identity of a person (the player told them who someone really is). */
-export function applyNamesTold(db: AppDatabase, told: TurnDiff['namesTold']): AppDatabase {
-  let next = db;
-
-  for (const item of told ?? []) {
-    const entity = item.entityId ? next.entities.find((entry) => entry.id === item.entityId) : undefined;
-
-    if (!entity || !hasIdentities(entity)) continue;
-
-    const identity = findIdentity(entity, item.name);
-    const toldTo = item.toldTo.filter((id) => id !== entity.id);
-
-    if (!identity || toldTo.length === 0) continue;
-
-    const identities = identitiesOf(entity).map((current) =>
-      current === identity
-        ? { ...current, knownBy: [...(current.knownBy ?? []), { who: toldTo, on: next.state.inStoryDate }] }
-        : current
-    );
-    const names = toldTo.map((id) => next.entities.find((entry) => entry.id === id)).filter(Boolean).map((person) => displayName(next, person));
-
-    next = withEntity(next, { ...entity, identities });
-    next = {
-      ...next,
-      facts: [
-        ...next.facts,
-        {
-          id: `fact_names_${entity.id}_${dateSortValue(next.state.inStoryDate)}_${identity.name.replace(/\W+/g, '')}`,
-          subjectEntityId: entity.id,
-          type: 'secret',
-          text: `${names.join(' and ')} learned that ${displayName(next, entity)} is ${identity.name}.`,
-          whoKnows: toldTo,
-          validFrom: next.state.inStoryDate,
-          validTo: null,
-          confidence: 'confirmed',
-          sourceEventId: null,
-        },
-      ],
-    };
-  }
-
-  return next;
-}
-
-/** Someone famous whose look gives them away is known on sight. */
-export function recogniseOnSight(db: AppDatabase, ids: Iterable<string>): AppDatabase {
-  let next = db;
-
-  for (const id of ids) {
-    const entity = next.entities.find((item) => item.id === id);
-
-    if (!entity || entity.type !== 'character' || playerKnowsFully(entity) || fameOf(next, entity) !== 'sight') continue;
-
-    const identity = hasIdentities(entity)
-      ? bestIdentity(identitiesOf(entity).filter((item) => item.kind === 'true' || happened(next, item.publicFrom ?? '-')))
-      : undefined;
-
-    next = learnName(next, entity.id, { name: identity?.name ?? fullNameOf(entity), part: identity ? 'identity' : 'full', how: 'recognised' });
   }
 
   return next;
@@ -592,23 +371,13 @@ function owners(db: AppDatabase, name: string) {
   return db.entities.filter(
     (entity) =>
       entity.type === 'character' &&
-      ([entity.name, ...entity.aliases, namePartsOf(entity).given ?? ''].some((item) => lower(item) === wanted) ||
-        identitiesOf(entity).some((identity) => lower(identity.name) === wanted || identity.name.split(/\s+/).some((word) => lower(word) === wanted)))
+      [entity.name, ...entity.aliases, namePartsOf(entity).given ?? ''].some((item) => lower(item) === wanted)
   ).length;
 }
 
 /** The names of theirs the player does not know yet, each with how learning it would count. */
 function unknownNames(entity: EntityRecord): { name: string; part: NamePart }[] {
   if (entity.type !== 'character' || isPlayerEntity(entity) || entity.unnamed || entity.known === undefined) return [];
-
-  if (hasIdentities(entity)) {
-    return identitiesOf(entity)
-      .filter((identity) => !knowsIdentity(entity, identity) && identity.alias !== false)
-      .flatMap((identity) => {
-        const first = identity.name.split(/\s+/)[0];
-        return [{ name: identity.name, part: 'identity' as const }, ...(first !== identity.name ? [{ name: first, part: 'identity' as const }] : [])];
-      });
-  }
 
   const parts = namePartsOf(entity);
   const out: { name: string; part: NamePart }[] = [];
@@ -665,121 +434,6 @@ export function nameLeaks(db: AppDatabase, narration: string): string[] {
   return leaks.slice(0, 8);
 }
 
-// ---------------------------------------------------------------------------
-// Who calls them what
-
-function matchesViewer(who: string, viewer: EntityRecord) {
-  return who === viewer.id || lower(who) === lower(viewer.name);
-}
-
-/** The identities a viewer knows them by right now, with notes. */
-function identitiesKnownBy(db: AppDatabase, entity: EntityRecord, viewer: EntityRecord) {
-  const now = dateSortValue(db.state.inStoryDate);
-  const out: { identity: Identity; playsAlong?: boolean; note?: string }[] = [];
-
-  for (const identity of identitiesOf(entity)) {
-    if (!happened(db, identity.existsFrom)) continue;
-
-    if (isPlayerEntity(viewer)) {
-      if (knowsIdentity(entity, identity)) out.push({ identity });
-      continue;
-    }
-
-    if (identity.publicFrom && happened(db, identity.publicFrom)) {
-      out.push({ identity });
-      continue;
-    }
-
-    const entry = (identity.knownBy ?? []).find(
-      (knower) =>
-        knower.who.some((who) => matchesViewer(who, viewer)) &&
-        happened(db, knower.from) &&
-        (!knower.on || dateSortValue(knower.on) <= now)
-    );
-
-    if (entry) out.push({ identity, playsAlong: entry.playsAlong, note: entry.note });
-  }
-
-  return out;
-}
-
-/** What one person in the world calls them (the persona, or the claimed name, they know). */
-export function nameKnownBy(db: AppDatabase, entity: EntityRecord, viewer: EntityRecord): string | null {
-  if (isPlayerEntity(viewer)) return playerKnowsName(entity) ? displayName(db, entity) : null;
-  if (!hasIdentities(entity)) return entity.name;
-
-  const known = identitiesKnownBy(db, entity, viewer);
-  const usable = known.filter((item) => !item.playsAlong);
-  const best = bestIdentity((usable.length > 0 ? usable : known).map((item) => item.identity));
-
-  return best ? identityName(best, Boolean(best.renamed && happened(db, best.renamed.after))) : null;
-}
-
-/**
- * For the narrator: the identity a person is using right now and what each
- * person present knows them as. Only for people with more than one identity.
- */
-export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: string[]): string {
-  const identities = identitiesOf(entity);
-
-  // One name, one secret (a spy, an undercover officer).
-  if (identities.length === 1 && identities[0].note) {
-    const knowers = (identities[0].knownBy ?? []).filter((knower) => happened(db, knower.from)).flatMap((knower) => knower.who);
-
-    return `  Truth (narrator only): ${identities[0].note}${knowers.length > 0 ? `; only ${knowers.join(', ')} know` : ''}.`;
-  }
-
-  if (!hasIdentities(entity)) return '';
-
-  const truth = identities.find((identity) => identity.kind === 'true');
-  const claimed = identities.find((identity) => identity.kind === 'claimed');
-  const persona = identities.find((identity) => identity.kind === 'persona' && happened(db, identity.existsFrom));
-  const you = db.entities.find(isPlayerEntity);
-  const viewers = [
-    ...(you ? [you] : []),
-    ...presentIds.map((id) => db.entities.find((item) => item.id === id)).filter((item): item is EntityRecord => Boolean(item) && item!.id !== entity.id && !isPlayerEntity(item!)),
-  ];
-
-  const views = viewers.map((viewer) => {
-    const known = identitiesKnownBy(db, entity, viewer);
-    const name = nameKnownBy(db, entity, viewer);
-    const along = known.find((item) => item.playsAlong);
-    const note = known.find((item) => item.note)?.note;
-    const who = isPlayerEntity(viewer) ? 'You' : displayName(db, viewer);
-
-    return {
-      viewer,
-      best: bestIdentity(known.filter((item) => !item.playsAlong).map((item) => item.identity)),
-      text: along
-        ? `${who}: knows the truth (${along.identity.name}) but plays along${name ? ` and calls them ${name}` : ''}`
-        : `${who}: ${name ? `knows them as ${name}` : 'does not know who they are'}${note ? ` (${note})` : ''}`,
-    };
-  });
-
-  // The act holds whenever someone who only knows the persona is there.
-  const truthPublic = truth?.publicFrom && happened(db, truth.publicFrom);
-  const inUse = truthPublic
-    ? truth!
-    : persona && views.some((view) => !isPlayerEntity(view.viewer) && view.best?.kind === 'persona')
-      ? persona
-      : claimed && (happened(db, claimed.publicFrom) || views.some((view) => view.best?.kind === 'claimed' || view.best?.kind === 'true'))
-        ? claimed
-        : (persona ?? claimed ?? truth!);
-  const playerKnowsMask = Boolean(persona && claimed && you && knowsIdentity(entity, claimed));
-
-  const truthText = truth
-    ? `truly ${truth.name}${truth.note ? `, ${truth.note}` : ''}${claimed ? `; claims to be ${claimed.name}` : ''}${persona ? `; plays "${persona.name}"` : ''}`
-    : identities.map((identity) => identity.name).join(' / ');
-
-  return [
-    `  Truth (narrator only): ${truthText}.`,
-    `  Going by "${identityName(inUse, Boolean(inUse.renamed && happened(db, inUse.renamed.after)))}" in this scene.${
-      persona && claimed ? ' They switch in an instant to whichever name the people present know.' : ''
-    }${playerKnowsMask ? ' The player knows the act is a mask and may be expected to play along; keeping or breaking that silence has consequences.' : ''}`,
-    `  Who knows them as what: ${views.map((view) => view.text).join('; ')}.`,
-  ].join('\n');
-}
-
 /**
  * For CHARACTERS IN SCENE: how the player knows them, and what the narrator may
  * call them.
@@ -788,53 +442,24 @@ export function playerKnowsLine(db: AppDatabase, entity: EntityRecord): string {
   if (isPlayerEntity(entity)) return '';
 
   if (!playerKnowsName(entity)) {
-    const fame = fameOf(db, entity);
-
-    return `The player doesn't know their name: call them "${labelOf(db, entity)}" every time until they learn it${
-      fame === 'heard' ? `; the player has heard the name ${entity.name} but doesn't know the face (only an introduction or a clear sign tells them)` : ''
-    }`;
+    return `The player doesn't know their name: call them "${labelOf(db, entity)}" every time until they learn it`;
   }
 
-  if (!playerKnowsFully(entity) && !hasIdentities(entity)) {
+  if (!playerKnowsFully(entity)) {
     return `The player knows them only as ${displayName(db, entity)} (narrator only: ${fullNameOf(entity)})`;
   }
 
   return `The player knows them as ${displayName(db, entity)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Setup and older saves
-
-/** Load-time setup: identity knower lists are copied so no two saves share them. */
-export function ensureNames(db: AppDatabase): AppDatabase {
-  const entities = db.entities.map((entity) =>
-    entity.type === 'character' && entity.identities
-      ? {
-          ...entity,
-          identities: entity.identities.map((identity) => ({
-            ...identity,
-            knownBy: identity.knownBy?.map((knower) => ({ ...knower, who: [...knower.who] })),
-          })),
-        }
-      : entity
-  );
-
-  return { ...db, entities };
-}
-
-/** Everyone the player learned about in the scene and through the world this turn. */
+/** Everyone the player learned about in the scene this turn. */
 export function applyNameStep(
   db: AppDatabase,
-  input: { learned?: TurnDiff['namesLearned']; told?: TurnDiff['namesTold']; narration: string; presentIds: string[] }
+  input: { learned?: TurnDiff['namesLearned']; narration: string; presentIds: string[] }
 ): AppDatabase {
   let next = applyNamesLearned(db, input.learned);
-  next = applyNamesTold(next, input.told);
-  next = recogniseOnSight(next, input.presentIds);
   next = learnFromDialogue(next, input.narration, input.presentIds);
-  next = learnFromTimeline(next);
   next = ensureLabels(next, input.presentIds);
 
   return next;
 }
-
-export type { CalendarDate };

@@ -18,7 +18,7 @@
 // stands would react to their face, and, now and then, an optional hunter.
 
 import { daysBetween, timeOfDayOf } from './calendar';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { encounterRisk, locationKindOf } from './encounters';
 import { regionOf } from './geography';
 import { currencyOf, formatMoney } from './money';

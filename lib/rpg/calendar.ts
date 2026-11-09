@@ -9,7 +9,6 @@ export const DEFAULT_DATE: CalendarDate = {
   second: 0,
 };
 
-const MONTHS_PER_YEAR = 12;
 const MONTH_DAYS_COMMON = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const SECONDS_PER_MINUTE = 60;
 const SECONDS_PER_HOUR = 3600;
@@ -58,17 +57,9 @@ export function formatDate(date: CalendarDate) {
   return `Year ${date.year} · Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
 }
 
-export function formatDay(date: CalendarDate) {
-  return `Day ${date.day}, ${monthName(date.month)}`;
-}
-
 /** "1 Oct" — for headers and list meta lines. */
 export function formatDayMonth(date: CalendarDate) {
   return `${date.day} ${monthName(date.month).slice(0, 3)}`;
-}
-
-export function formatShortDate(date: CalendarDate) {
-  return `Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
 }
 
 export function calculateAge(
@@ -278,10 +269,6 @@ export function sameDate(a: CalendarDate, b: CalendarDate) {
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
-export function isBirthday(date: CalendarDate, birthday: { month: number; day: number }) {
-  return date.month === birthday.month && date.day === birthday.day;
-}
-
 export function normalizeDate(
   value: Partial<CalendarDate> | undefined,
   fallback: CalendarDate
@@ -367,8 +354,7 @@ function isCalendarDate(value: unknown): value is CalendarDate {
 
 /**
  * Moves every in-story date stamped after `after` by `seconds`, anywhere in
- * the given value (facts, bonds, events, portraits, canon "heard" dates,
- * letters...). Used when a turn's length is corrected, so everything that
+ * the given value (facts, bonds, events, portraits, letters...). Used when a turn's length is corrected, so everything that
  * turn and later turns recorded stays on the one corrected clock.
  */
 export function shiftDatesAfter<T>(value: T, after: CalendarDate, seconds: number): T {

@@ -2,43 +2,29 @@
 // and opening scene by hand, screen by screen, then starts the story.
 // Drafts autosave. "Help me fill this" is optional on every screen and only
 // suggests values for empty fields, shown as a draft to accept or discard.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { X } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
-import { CanonDraftPanel } from '@/components/wizard/CanonDraft';
 import { draftFromTemplate, loadTemplates, type WorldTemplate } from '@/lib/rpg/worldEdit';
-import { AddButton, Choice, Field, FieldRow, Hint, ItemCard, ListField, MultiChoice, NumberField, Toggle } from '@/components/Form';
+import { Choice } from '@/components/Form';
 import { useToast } from '@/components/Toast';
-import { colors, fonts, radius, spacing, type } from '@/constants/theme';
+import { colors, type } from '@/constants/theme';
 import { completeChat } from '@/lib/openrouter';
-import { pickImageFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
-import { FACE_IMAGE } from '@/lib/rpg/imageCompress';
-import { storeImage } from '@/lib/rpg/imageStore';
-import { RELATIONSHIP_STAGES } from '@/lib/rpg/intimacy';
-import type { CalendarDate, ClimateType, ContentProfile, ContentTag, IntimacyProfile, PlaceDef, StartingPerson, TimelineKnowledge } from '@/lib/rpg/types';
-import { CHECK_REASONS, canBeIntimate } from '@/lib/rpg/intimacy';
 import {
-  CLIMATE_LABELS,
   STEP_LABELS,
   WIZARD_STEPS,
   applySuggestion,
   clearDraft,
   draftToSeedInput,
   emptyDraft,
-  emptyPerson,
   helpFillMessages,
   loadDraft,
   missingFields,
-  newFaction,
-  newLore,
-  newPlace,
-  newRegion,
-  newTimelineEvent,
   parseHelpReply,
   saveDraft,
   type HelpSection,
@@ -56,7 +42,6 @@ import {
   PlacesStep,
   ReviewStep,
   SuggestionCard,
-  TimelineStep,
   WorldStep,
   YouStep,
   wizardStyles as styles,
@@ -191,7 +176,6 @@ export default function NewStoryScreen() {
             />
           ) : null}
           {draft.step === 'world' ? <WorldStep draft={draft} update={update} /> : null}
-          {draft.step === 'world' ? <CanonDraftPanel draft={draft} update={update} /> : null}
           {draft.step === 'places' ? <PlacesStep draft={draft} update={update} /> : null}
           {draft.step === 'lore' ? <LoreStep draft={draft} update={update} /> : null}
           {draft.step === 'you' ? <YouStep draft={draft} update={update} /> : null}
@@ -199,7 +183,6 @@ export default function NewStoryScreen() {
           {draft.step === 'intimacy' ? <IntimacyStep draft={draft} update={update} /> : null}
           {draft.step === 'people' ? <PeopleStep draft={draft} update={update} /> : null}
           {draft.step === 'opening' ? <OpeningStep draft={draft} update={update} /> : null}
-          {draft.step === 'timeline' ? <TimelineStep draft={draft} update={update} /> : null}
           {draft.step === 'review' ? <ReviewStep draft={draft} goTo={goTo} update={update} /> : null}
 
           {helpSection ? (

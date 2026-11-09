@@ -52,17 +52,6 @@ function handMadeDraft(): WizardDraft {
       regions: [quarter, uptown],
       places: [club, mansion],
       factions: [family, police],
-      timeline: [
-        {
-          id: 'tmp',
-          title: 'The big raid',
-          description: 'The police raid the clubs of the Quarter.',
-          from: { year: 1925, month: 10, day: 9 },
-          regionId: quarter.id,
-          knowledge: 'public',
-          facts: [],
-        },
-      ],
     },
     character: {
       ...draft.character,
@@ -122,7 +111,6 @@ describe('creation wizard', () => {
       ['delacroix-house', 'uptown'],
     ]);
     expect(input.world.factions[0].territoryRegionIds).toEqual(['uptown']);
-    expect(input.world.timeline[0]).toMatchObject({ id: 'the-big-raid', regionId: 'the-french-quarter', facts: ['The police raid the clubs of the Quarter.'] });
     expect(input.opening.placeId).toBe('the-blue-room');
     // Unknown cast names are dropped.
     expect(input.opening.castNames).toEqual(['Vincent Duval', 'Rose']);

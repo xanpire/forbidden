@@ -16,7 +16,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { generateImage } from '@/lib/openrouter';
 import { beginPainting, endPainting, portraitKey } from '@/lib/rpg/characterPortrait';
 import { recordDebugImage } from '@/lib/rpg/debug';
-import { calculateAge, formatDayMonth } from '@/lib/rpg/calendar';
+import { formatDayMonth } from '@/lib/rpg/calendar';
 import { playerAge, playerName } from '@/lib/rpg/player';
 import { useGame } from '@/lib/rpg/game';
 import { loadImage, useStoredImage } from '@/lib/rpg/imageStore';

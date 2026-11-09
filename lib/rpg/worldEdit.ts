@@ -54,7 +54,6 @@ export function withReadableNewIds(world: WorldDefinition, before: WorldDefiniti
   const regions = name(world.regions, (r) => r.name, before.regions.map((r) => r.id));
   const places = name(world.places, (p) => p.name, before.places.map((p) => p.id));
   const factions = name(world.factions, (f) => f.name, before.factions.map((f) => f.id));
-  const timeline = name(world.timeline, (e) => e.title, before.timeline.map((e) => e.id));
   const map = (id: string | undefined) => (id ? remap.get(id) ?? id : id);
 
   return {
@@ -62,7 +61,6 @@ export function withReadableNewIds(world: WorldDefinition, before: WorldDefiniti
     regions: regions.map((region) => ({ ...region, neighbours: region.neighbours.map((next) => ({ ...next, id: map(next.id)! })) })),
     places: places.map((place) => ({ ...place, regionId: map(place.regionId)! })),
     factions: factions.map((faction) => ({ ...faction, territoryRegionIds: faction.territoryRegionIds?.map((id) => map(id)!) })),
-    timeline: timeline.map((event) => ({ ...event, regionId: map(event.regionId), factionId: map(event.factionId) })),
   };
 }
 

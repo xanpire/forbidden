@@ -1,4 +1,3 @@
-import { loreActive } from './lore';
 import { daysBetween, sameDate } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import type {
@@ -166,7 +165,7 @@ export function relevantFacts(
 
 export function triggeredLore(db: AppDatabase, text: string): LoreRecord[] {
   const lower = text.toLowerCase();
-  const active = db.loreEntries.filter((lore) => loreActive(db, lore));
+  const active = db.loreEntries.filter((lore) => lore.enabled);
   const always = active.filter((lore) => lore.always);
   const triggered = active.filter(
     (lore) => !lore.always && lore.keywords.some((keyword) => lower.includes(keyword.toLowerCase()))

@@ -238,3 +238,8 @@ export function resolveTurnClock(options: {
     storyTimed,
   };
 }
+
+/** The player is mid-fight (or mid-chase). */
+export function isCombatPace(pace: string | undefined): boolean {
+  return pace === 'combat' || pace === 'chase';
+}

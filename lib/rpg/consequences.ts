@@ -8,24 +8,20 @@
 // A seed only comes back when that is realistic: the person is alive and
 // could plausibly cross the player's path (near where they are, or present for a
 // lie to come out), and enough time has passed. It comes back softly, as an
-// optional offer to the narrator like a personal beat (SOMETHING COMES
+// optional offer to the narrator (SOMETHING COMES
 // BACK), never forced; the tracker marks it returned when it plays out. A
 // witness the player left alive does not need to find them: when the time comes they
 // talk, and the faction they talk to wants the player more. Seeds that never
 // find a fitting moment fade.
-//
-// People on the world timeline stay on their path: a consequence changes how
-// they see the player, not their story.
 
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
 import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
 import { makeId } from './id';
 import { grudgeOffer } from './grudges';
-import { onTimelinePath } from './lives';
 import { applyReputationChanges, factionById, factionsOf } from './reputation';
 import { hashText, playerTurnCount } from './util';
 import type { AppDatabase, ConsequenceKind, ConsequenceSeed, EntityRecord, TurnDiff } from './types';
@@ -88,7 +84,7 @@ export function isImportant(db: AppDatabase, entity: EntityRecord): boolean {
   const bond = db.bonds.find((item) => item.entityId === entity.id);
 
   return Boolean(
-    bond?.isMajor || (bond && Math.abs(bond.affinity) >= 5) || onTimelinePath(db, entity)
+    bond?.isMajor || (bond && Math.abs(bond.affinity) >= 5)
   );
 }
 
@@ -264,7 +260,7 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
       return peopled && kind === 'settlement' && near(db, playerRegion, seed.region as Region, 4);
     case 'found':
       // They come to the place they found, while the player is there (safehouses.ts searches it while they are away).
-      return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId && !db.state.flashbacks?.active;
+      return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId 
     case 'intercepted':
       return peopled;
     default: {
@@ -332,19 +328,17 @@ function interceptHow(db: AppDatabase, seed: ConsequenceSeed): string {
 export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | null): string {
   if (!seed) return '';
 
-  const person = seed.entityId ? db.entities.find((entity) => entity.id === seed.entityId) : null;
   const ago = agoLabel(daysBetween(seed.createdOn, db.state.inStoryDate));
   const how =
     seed.kind === 'intercepted'
       ? interceptHow(db, seed)
       : HOW[seed.kind];
-  const onPath = person && onTimelinePath(db, person) ? ' They stay on their path on the world timeline; this changes only how they see you.' : '';
 
   return [
     `SOMETHING COMES BACK (optional: use it only if it fits this scene; never forced). ${ago} ago: ${seed.what} (${seed.who}).`,
     seed.want ? `What they want now: ${seed.want}.` : '',
     how,
-    `Make it realistic: show how it found you.${onPath} If it does not fit, leave it for another time.`,
+    `Make it realistic: show how it found you. If it does not fit, leave it for another time.`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -373,9 +367,3 @@ export function markConsequenceOffered(db: AppDatabase, seed: ConsequenceSeed | 
   );
 }
 
-/** Seeds still waiting, soonest first (the world clock screen; spoilers). */
-export function waitingConsequences(db: AppDatabase): ConsequenceSeed[] {
-  return seedsOf(db)
-    .filter((seed) => seed.status === 'waiting')
-    .sort((a, b) => dateSortValue(a.after) - dateSortValue(b.after));
-}

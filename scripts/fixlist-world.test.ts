@@ -13,6 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { entityAge } from '../lib/rpg/calendar';
+import { isDeceased } from '../lib/rpg/deaths';
 import { characterPortraitSignature } from '../lib/rpg/characterPortrait';
 import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
@@ -47,7 +48,7 @@ describe('15. the starting cast', () => {
     }
     expect(entityAge(db.state.inStoryDate, person(db, 'Mara Vance'))).toBe(31);
     expect(bondOf(db, 'Theo Marsh')).toMatchObject({ relationship: 'old friend', status: 'Deceased · old friend' });
-    expect(person(db, 'Theo Marsh').deceased?.known).toBe(true);
+    expect(isDeceased(person(db, 'Theo Marsh'))).toBe(true);
   });
 
   test('a bond shows a death once you know of it, not before', () => {

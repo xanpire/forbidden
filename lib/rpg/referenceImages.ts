@@ -19,4 +19,4 @@ export async function loadPlayerReferenceImages(db: Pick<AppDatabase, 'state'>):
 }
 
 export { faceDroppedWarning, planReferences } from './referencePlan';
-export type { PlannedReference, ReferenceKind } from './referencePlan';
+export type { PlannedReference } from './referencePlan';

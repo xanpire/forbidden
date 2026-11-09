@@ -35,9 +35,7 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     regions: [],
     places: [],
     lore: [],
-    timeline: [],
     festivals: [],
-    flashbacks: [],
     letterCarriers: ['phone', 'text message'],
     artStyle: 'cinematic photo, natural light',
   };
@@ -119,14 +117,8 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     lore: list<WorldDefinition['lore'][number]>(world.lore).filter(
       (entry) => entry && typeof entry.id === 'string' && typeof entry.text === 'string'
     ),
-    timeline: list<WorldDefinition['timeline'][number]>(world.timeline).filter(
-      (event) => event && typeof event.id === 'string' && event.from && typeof event.from === 'object'
-    ),
     festivals: list<WorldDefinition['festivals'][number]>(world.festivals).filter(
       (festival) => festival && typeof festival.id === 'string' && typeof festival.month === 'number'
-    ),
-    flashbacks: list<WorldDefinition['flashbacks'][number]>(world.flashbacks).filter(
-      (record) => record && typeof record.id === 'string' && record.date && typeof record.date === 'object'
     ),
     letterCarriers: strings(world.letterCarriers).length > 0 ? strings(world.letterCarriers) : base.letterCarriers,
     artStyle: text(world.artStyle) || base.artStyle,

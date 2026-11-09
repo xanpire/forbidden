@@ -1,7 +1,6 @@
 import { daysBetween, entityAge } from './calendar';
 import { narratorName } from './names';
-import { isCombatPace } from './timeline';
-import { onTimelinePath } from './lives';
+import { isCombatPace } from './pacing';
 import { mentionsEntity } from './characterRefs';
 import { isDeceased } from './deaths';
 import { encounterRisk, locationKindOf } from './encounters';
@@ -12,8 +11,8 @@ import { isPlayerEntity } from './player';
 /**
  * Characters who come back.
  *
- * Every so often the narrator is offered ONE free character (anyone the world
- * timeline does not already follow) whom the player has not seen in a while and
+ * Every so often the narrator is offered ONE character whom the player has not
+ * seen in a while and
  * who would plausibly be at the current place: they were last seen there,
  * their role or notes tie them to it, or they travel for a living and the player is
  * on a road or in a town. The offer is optional; the narrator uses it only if
@@ -103,12 +102,9 @@ export function isReturnTurn(db: AppDatabase, turn = playerTurn(db)) {
   return turn % RETURN_WINDOW_TURNS === slot;
 }
 
-/** Someone the story is free to bring back: a character, not the player, not on the world timeline's path. */
-export function isFreeCharacter(db: AppDatabase, entity: EntityRecord) {
-  if (entity.type !== 'character') return false;
-  if (isPlayerEntity(entity)) return false;
-
-  return !onTimelinePath(db, entity);
+/** Someone the story is free to bring back: a character, not the player. */
+export function isFreeCharacter(_db: AppDatabase, entity: EntityRecord) {
+  return entity.type === 'character' && !isPlayerEntity(entity);
 }
 
 function fitFor(

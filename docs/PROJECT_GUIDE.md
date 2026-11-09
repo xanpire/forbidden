@@ -20,8 +20,6 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `../privacy.ts` | PIN lock, quick-hide, neutral name, notification text |
 | `explicitImages.ts` / `paintExplicit.ts` / `../explicitProviders.ts` | Explicit pictures (§11b): fixed shot lists, adults-only check, structured prompts, in-app references, gallery records, Runware and Wiro adapters |
 | `worldEdit.ts` | The world editor during play (`draftFromSave`, `applyWorldEdit` with readable ids for new items, `applyCharacterEdit`, `applyContentEdit`, `addPersonToSave`) and world templates (`saveWorldAsTemplate`, `loadTemplates`, `exportTemplate` / `importTemplate`, `draftFromTemplate`) |
-| `canonDraft.ts` | "Draft from canon" for a known grounded setting (`canonDraftMessages`, `parseCanonDraft`, `acceptCanonItem`) |
-| `flashbackDraft.ts` | Backstory flashbacks: AI-proposed memory scenes the player approves into `world.flashbacks` |
 | `mapLayout.ts` | The drawn map's automatic layout from the travel graph |
 | `wizard.ts` | The creation wizard's draft (`WizardDraft`, `emptyDraft`, `WORLD_PRESETS`, `missingFields`, `draftToSeedInput`, autosave, "Help me fill this": `helpFillMessages` / `parseHelpReply` / `applySuggestion`) |
 | `seed.ts` | `seedDatabase(slotId, name, input?)` turns a `SeedInput` into a save; without input it is a blank save (`blankSeedInput`). Nothing is built in: the test fixture lives in `scripts/fixtures/` |
@@ -33,12 +31,10 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `bonds.ts` | `applyBondDiff`: affinity, status, relationship stage, attraction |
 | `companions.ts` | People travelling with the player: `startCompanion`, `endCompanion`, `setCompanion`, `applyCompanionChanges`, `castWithCompanions`, `applySharedScene` (§6a) |
 | `facts.ts` | `applyFactDiff`, `applyThreadDiff`, `recordSceneEvent` |
-| `deaths.ts` | Who is dead: `isDeceased`, `playerKnowsDeath`, `markDeceased`, `markDeathsByName` (timeline events, exact names only), `markAlive`, `normalizeDeaths` (load-time backfill) |
+| `deaths.ts` | Who is dead: `isDeceased`, `markDeceased` (from the tracker's `deaths`), `markAlive`, `normalizeDeaths` (load-time backfill), `markKnownDeathsOnBonds` |
 | `clock.ts` | `applyClockChange` (date/elapsed/clock from the diff, ageing across years), `applyClockTick` (stall counter) |
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
 | `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
-| `timeline.ts` | **World timeline engine** over `db.world.timeline` (empty by default): scheduling (`advanceTimeline`), state-tracker marks (`applyTimelineMarks`), the unheard-news queue and its escalation (`unheardNews`, `newsUrgency`, `markNewsHeard`), bearers and channels (`timelineBearers`, `timelineChannel`), the world clock (`worldClock`) |
-| `newsDelivery.ts` | How news reaches the player this turn: `newsOffer` (bearers in the scene first, the living fallbacks, one delivery style, catch-up reports), `newsAllowance`, the narrator/tracker text |
 | `reputation.ts` | What each faction has on the player (`state.reputation.factions`): `applyReputationChanges`, `wantedListings` (factions with `hasBounties`), `factionStandings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
 | `grudges.ts` | Grudges, the dark mirror of romance (`BondRecord.grudge`): `applyGrudgeChanges`, `grudgeStage`, `grudgeHeat`, `grudgeOffer` (SOMEONE WANTS YOU TO PAY), `GRUDGE_RULES` (§10a) |
 | `letters.ts` | Personal letters to and from the player (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit`, `letterArchive`, `interceptionRisks`, `tidyLetter` (§8c) |
@@ -50,10 +46,9 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, region and 6-hour block), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `climateOf`, `CLIMATE_TYPES` (one entry per `ClimateType`) |
 | `mapData.ts` | Places and the player's road (§8d), no coordinates: `mapPlace`, `placeIdOf` (matches `world.places`), `recordTravel` (`state.travelLog`), `placeVisits`, `regionsVisited`, `travelEstimate`, `knownWhereabouts` (as far as the player knows) |
 | `ambience.ts` | Ambient sound (§8e): `ambienceInputOf`, `ambienceMix` (bed levels from weather, place kind, climate type, location words, clock, season, scene mode), `currentAmbience`, `isIndoors`, `describeAmbience`. Pure; the player lives in `lib/audio/` |
-| `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by era and chapter; flashback photos under `MEMORY_ERA`), `eraOfDate`, `captionOf`, `placeAt` |
-| `flashbacks.ts` | Playable flashbacks (§8f); records live in `db.world.flashbacks` (empty by default). The engine: `flashbacksOf`, `flashbackById`, `flashbackOffer`, `beginFlashback`, `applyFlashbackMarks`, `applyFlashbackTurn`, `endFlashback`, `applyFlashbackWriteUp`, `flashbackView` (the memory's date, place and weather), `formatFlashbackBlock` / `formatFlashbackOffer` / `formatFlashbackReturn`, `flashbackTrackingLines`, `flashbackImageNote`, `rememberChip` |
+| `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by chapter, oldest first), `captionOf`, `placeAt` |
 | `safehouses.ts` | Safehouses (§8g, `state.safehouses`): `applySafehouses` (tagging, leaving and coming back, stash, upgrades, residents, who knows, rest), `advanceSafehouses` (rooms running out, hosts, residents, found places searched), `currentSafehouse`, `restQuality` / `restBlocked`, `formatSafehouseLine` (SAFEHOUSE), `placesLine`, `formatSafehouseTracking` (SAFEHOUSES), `letterAddress`, `headingTo` |
-| `names.ts` | Names the player knows (§8i): `displayName` (the one name everything shows), `alsoKnownAs`, `searchableNames`, `narratorName`, `labelOf` / `ensureLabels`, `learnName`, `applyNameStep` (tracker names, names told, recognition on sight, names said aloud, identities from timeline news), `nameKnownBy` / `identityLine` (who calls whom what), `playerKnowsLine`, `nameLeaks`, `ensureNames` (load-time setup), `fameOf` (the entity's `fame`) |
+| `names.ts` | Names the player knows (§8i): `displayName` (the one name everything shows), `alsoKnownAs`, `searchableNames`, `narratorName`, `labelOf` / `ensureLabels`, `learnName`, `applyNameStep` (tracker names and names said aloud), `playerKnowsLine`, `nameLeaks` |
 | `money.ts` | The player's money (§8h, `state.purse`): `applyPurse` (the tracker's changes and stated totals; never below zero), `formatPurseLine` (Purse in CURRENT STATE), `currencyOf` / `priceGuideOf` (from `world.currency`), `formatMoney`, `formatChange`, `readAmount`, `purseFeel`, `lowPurseAmount` |
 | `yearly.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and `world.festivals`: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes` |
 | `prompt.ts` | Narrator and state prompts |
@@ -67,7 +62,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `image*.ts`, `reference*.ts`, `portrait.ts` | Image pipeline |
 | `debug.ts` | Debug log (outside the save) |
 
-Dependency direction: `services.ts` → `entities/bonds/facts/clock/log/stateBlock` → `util/calendar/characterRefs/id`. `timeline.ts` reads only `db.world.timeline`. The leaf modules never import `services.ts`.
+Dependency direction: `services.ts` → `entities/bonds/facts/clock/log/stateBlock` → `util/calendar/characterRefs/id`. The leaf modules never import `services.ts`.
 
 ---
 
@@ -75,7 +70,7 @@ Dependency direction: `services.ts` → `entities/bonds/facts/clock/log/stateBlo
 
 - A **client-only** interactive roleplay PWA. The player writes their own world (`db.world`) and character (`db.state.player`), and plays them. Settings are grounded in reality: no magic, powers or ability systems; the player only picks *when* (past, present or future).
 - An LLM **narrator** writes the story in second person (prose only); a separate **state call** turns that prose into a structured diff.
-- A deterministic engine applies that diff, advances the clock, runs the world timeline, delivers news, records memories, updates bonds, and persists everything.
+- A deterministic engine applies that diff, advances the clock, records memories, updates bonds, and persists everything. Nothing is scripted: no timeline, beats or flashbacks; the world moves only from what the player does and from people's own lives.
 - No server, no database service: `AsyncStorage` (localStorage on web) + OpenRouter API.
 
 Tech: Expo SDK 54, Expo Router, React Native Web, TypeScript, `bun` as package manager.
@@ -125,12 +120,12 @@ AppDatabase {
   settings: Settings
   rawLog: RawLogEntry[]          // story messages (user/assistant) with dates, tokens, image
   entities: EntityRecord[]       // characters/places/organizations + lore + lastSeen
-  events: EventRecord[]          // memories, world timeline events, time skips
+  events: EventRecord[]          // memories and time skips
   eventEntities: EventEntityRecord[]
   bonds: BondRecord[]            // affinity, status, relationship, attraction, romanceNote
   facts: FactRecord[]            // permanent facts with whoKnows + validity
   threads: ThreadRecord[]        // open/resolved plot threads
-  loreEntries: LoreRecord[]      // keyword-triggered world lore
+  loreEntries: LoreRecord[]      // the player's lore notes (keyword-triggered, or always on); no conditions
   summaries: SummaryRecord[]     // chapter / arc / year summaries
   world: WorldDefinition         // the world the player wrote (world.ts); every system reads it
   state: GameState
@@ -167,8 +162,6 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   locationKind?: 'settlement' | 'road' | 'wilderness' | 'structure'
   inStoryDate: CalendarDate
   turnsWithoutTimeChange?: number   // turns where only the pace minimum moved the clock; drives a prompt nudge
-  worldPoint: string           // a free line on where the world stands; timeline events can set it
-  timelineProgress?: TimelineProgress
   chapter: number
   scene: string
   scenePace?: 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime'
@@ -177,7 +170,6 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
   yearly?: { knownBirthdays: string[], offered: Record<key, year> }        // §8b
   weather?: { region, condition, text?, since, sceneSeq?, source: 'world'|'story' }   // §8d
   travelLog?: [{ place, region?, placeId?, date }]                          // §8d, last 400
-  flashbacks?: { played, offered, lastOfferOn?, pending?, active?, returned? } // §8f
   safehouses?: { places: Safehouse[], current? }                            // §8g
   purse?: { amount, history: [{ date, change, reason, counted? }], estimatedStart? }  // §8h, last 40, in world.currency
 }
@@ -185,24 +177,8 @@ No `timeOfDay` field. Period labels (`morning/afternoon/evening/night`) are deri
 
 `EntityRecord.birthdayInvented?: true` marks a birthday the app chose. `EntityRecord.fame?: 'sight' | 'heard'` says whether the player would recognise someone famous on sight or only by name (§8i).
 
-`RawLogEntry.flashback?: { id, date }` marks a turn played inside a flashback (both entries, with the memory's clock when it began); `RawLogEntry.flashbackOffer?: id` marks a reply whose prompt offered one (§8f).
 
 `EntityRecord.companion?: { since, sinceLocation?, reason?, sharedScenes, bondPoints }` — set while that person travels with the player (§6a).
-
-### `TimelineProgress`
-
-```ts
-{
-  version?: number
-  baselineDate?: CalendarDate
-  completed: string[]           // timeline event ids (including expired/silent)
-  active: string[]              // open encounter windows
-  engaged: string[]             // personal beats started but not finished
-  expired?: string[]            // windows that closed before they could happen
-  heard?: Record<eventId, { from: string; date: CalendarDate }>
-  heldForCombat?: boolean       // last advance was held because the player was mid-fight
-}
-```
 
 ### `state.post` (personal letters, `letters.ts`)
 
@@ -273,12 +249,11 @@ consequences: [{
   bonds?: [{ entityId?, character, affinityDelta?, status?, note?, isMajor?, relationship?, attraction?, romanceNote? }],
   facts?: [{ action, type?, text, subject?, whoKnows?, validFrom?, ... }],
   threads?: [{ action, title, description?, type?, participants? }],
-  timelineCompleted?: string[], timelineEngaged?: string[], timelinePassed?: string[],
   newsRelayed?: [{ id, from? }],
   lettersSent?: [{ entityId?, name, gist?, text?, carrier?, coded? }], lettersReceived?: [{ entityId?, name, text? }],
   lifeEvents?: [{ entityId?, name, text }], epithet?: { audience, name },
   consequences?: [{ kind, entityId?, who, what, want?, witnesses?, faction?, when? }], consequencesReturned?: string[],
-  birthdaysLearned?: [{ entityId?, name }], weather?: string, flashback?: 'offered'|'started'|'ended',
+  birthdaysLearned?: [{ entityId?, name }], weather?: string,
   safehouse?: { id?, name?, kind?, paidNights?, host?, stored?, taken?, upgrade?, shownTo?, residentsJoined?, residentsLeft?, ended? },
   money?: [{ amount /* world currency, negative when the player pays */, reason }], moneyCounted?: number,
   reputation?: [{ faction /* faction id */, change, reason }], bountySeen?: string[] /* faction ids */,
@@ -300,7 +275,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 1. Validate API key and action text.
 2. Snapshot the database (undo).
 3. Append the player message to `rawLog`.
-4. `buildNarrationPrompt(db, action)` → messages + estimated tokens. The narrator prompt contains **no JSON instructions and no timeline ids**; it only asks for prose and for time, place, people and outcomes to be legible in it.
+4. `buildNarrationPrompt(db, action)` → messages + estimated tokens. The narrator prompt contains **no JSON instructions and no ids**; it only asks for prose and for time, place, people and outcomes to be legible in it.
 5. **Call 1 — narrator.** `streamChatCompletion` (SSE) with the story model. Text streams to the screen live (`streamingText`, throttled to ~60 ms; `streamingPreview` hides anything from a stray ``` or `{"` onwards). The player's line is shown meanwhile via `pendingAction`.
 6. `stripNarrationJson` runs once on the final text as a safety net only. If the finish reason is `length` or the prose ends mid-sentence, it is trimmed to the last complete sentence (`trimToSentence`). There is no continuation request.
 7. Snapshot + append the player and assistant messages onto the **latest** copy of the slot (`updateLatest`), not the copy the prompt was built from.
@@ -313,11 +288,10 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 1. `extraction = extractTurnDiff(...)`: the memory model (`settings.extractionModel`, a cheap one) gets `buildExtractionPrompt` — `STATE_SYSTEM` rules, current state/characters/bonds/facts/threads, `TIME BEFORE THIS TURN`, `TIMELINE TRACKING` (active/personal beat ids and the offered news ids with the rule for each), `LETTERS` (the letters_sent rule, and the offered letter's sender id), the previous beat for context, then this turn's player line and prose. It is sent with OpenRouter structured output (`response_format: json_schema`, `strict: true`, `provider.require_parameters: true`). If no provider for that model supports it, `completeChat` falls back to `json_object`, then to a plain reply; `parseJsonObject` + `convertStateBlock` read whatever comes back. If the call fails, a `state` job is stored as pending and nothing else changes; an unreadable reply applies `null` (the prose clock parser still runs).
 2. **Narration clock**: `detectNarrationTime`, pace via `extraction.state.scenePace ?? inferScenePace`, then `resolveTurnClock(...)` returns the one forward step for the turn (largest of reported, parsed and the pace minimum; combat cannot skip days; a full night's sleep jumps to morning). The diff carries only that `elapsedSeconds`; the applied seconds are stored on the reply as `rawLog[].elapsedSeconds` for the time chip.
 3. `applyTurnDiff` (`services.ts`) in this order: state + clock (`clock.ts`), entities (`entities.ts`), revivals and deaths (`deaths.ts`), companion joins/partings (`companions.ts`), bonds incl. romance (`bonds.ts`), facts and threads (`facts.ts`), scene event (with companions) + shared-scene bond step, duplicate merge, presence (companions always included), stall counter.
-4. `applyTimelineMarks` → `markNewsHeard` (up to `newsAllowance(latest)`: 1, or the size of the catch-up report the prompt offered) → `advanceTimeline` → letters: `receiveLetters` → `sendLetters` → `deliverLetters`.
 5. Queue follow-up jobs in `db.memoryJobs`:
    - `timeSkip` if `daysBetween(before, after) >= 180`,
    - `scene` when `imageWorthy`, `scene.ended`, or `storyMessagesSinceLastSummary >= autoSummarizeThreshold`. It covers only story messages no chapter summary covers yet (`unsummarizedStory`, oldest first, up to 16; at least 4 unless the scene ended). A pending scene job is re-pointed at those instead of stacking a new one.
-6. Commit. The clock, bonds, facts and timeline are now saved.
+6. Commit. The clock, bonds and facts are now saved.
 
 **Phase 2 — summary jobs (`drainJobs`)**, one at a time, never blocking the next turn:
 
@@ -368,10 +342,7 @@ Each block is sent as a text part with `cache_control` for models that need expl
 2. `formatTimeLine` — `Year 13 · Day 4, October · 9:40 PM` plus a nudge to state durations once `turnsWithoutTimeChange >= 2`
 2a. `formatWeatherLine` — `WEATHER (the Land of Rain, late autumn; it almost never stops raining here): steady rain. …` with what it does, shaped by the mode (§8d)
 3. `formatMatchedEntities` (with lore hearts + era notes), `formatFacts` (≤10), `formatLore`
-4. `formatNewsBlock` — `newsOffer`: the next unheard event (or one catch-up report), with location, bearers in the scene first, the living fallbacks, this turn's delivery style and urgency (none in combat)
 4a. `formatLetterBlock` — `A LETTER FOR YOU`: a reply that has arrived, or an unprompted letter (none in combat or during a catch-up report)
-5. `formatUpcomingWorldBlock` — planned world events in the next ~10 days (“RUMORS OF WHAT'S COMING”)
-6. `formatTimelineBlock` (WORLD TIMELINE) — recent heard world events, pending personal beats (“do not assume”), active beats + encounter context, recently concluded; "the world is quiet" when the timeline is empty
 7. `formatMemories` — retrieved events (≤ retrieval limit, 400 chars each), skipping any that repeat a summary already in STORY SO FAR
 8. `formatRecentMessages` — last `contextMessages` (default 16). The newest narration keeps its last 2200 chars; older narrations keep their **start and end** (`headAndTail`, 1400 chars: ~40% opening, ~60% ending); player input 500 the same way
 9. `formatLastBeat` — final 450 chars of the newest narration
@@ -439,80 +410,13 @@ A companion is someone travelling with the player: `EntityRecord.companion` is s
 
 ### Deaths (`deaths.ts`)
 
-A death lives on the person's own record (`EntityRecord.deceased: { date?, cause?, known?, timelineEventId? }`), not only as a fact, so it is never lost to the 10-fact cap.
+A death lives on the person's own record (`EntityRecord.deceased: { date?, cause? }`), not only as a fact, so it is never lost to the 10-fact cap.
 
-- **Timeline**: an event's `deaths` are marked when it fires (`fireEvent` in timeline.ts), stamped with its event id (`timelineEventId`). The player *knows* once that news is heard (or he witnessed it); until then the bonds screen shows them as before, so news is never spoiled.
 - **Story**: the state tracker's `deaths[]` (`character_id`, `cause`) marks anyone who dies on screen, whose body the player sees, or whose death he is told of — known at once. `revived[]` undoes it for a true return to life  and tags the person `revived` so loading never kills them again.
 - **Seeded**: people the player marks "died before the story" start dead and known.
 - **Prompts**: narrator gets `THE DEAD` every turn plus `[DECEASED]` on scene cards and bonds, with the rule that the dead never appear alive; the state tracker sees `deceased` in `KNOWN CHARACTERS`.
 - **Effects**: the dead never get `lastSeen` stamped; the bonds screen lists known dead under "The dead"; the bond screen has **Mark as dead / Mark as alive** for corrections (`setCharacterDeceased`).
 - `normalizeDeaths` runs in `normalizeDatabase` and repairs death records.
-
----
-
-## 7. World timeline (`timeline.ts`)
-
-The player's own world events, in `db.world.timeline` (written by hand in the wizard, or drafted for a known setting in session 6). **Empty by default: then nothing here fires** and the narrator's WORLD TIMELINE block says the world is quiet. `timeline.ts` never hard-codes an event.
-
-### Event shape (`TimelineEvent`, types.ts)
-
-```ts
-{
-  id, era?, title, description, worldPoint?, artDirection?,
-  from: {year, month, day?}, to?: {year, month, day?},
-  regionId?, location?,            // where it happens (default: the world's name)
-  knowledge?,                      // public (default) | faction | witnesses | secret
-  factionId?,                      // for 'faction': whose members know
-  bearers?,                        // named people who can carry the news
-  major?, playerDriven?, priority?, after?, requires?, completesWhen?,
-  facts: string[],
-  deaths?: string[],               // people it kills, by exact name/alias
-  setsStatus?: {name: status},
-  encounter?: { who, where, context },
-  attendanceFact?, opensThreads?, resolvesThreadTitles?
-}
-```
-
-- `playerDriven` = **personal beat**: it **never fires by itself**; it is offered and fires only when the state tracker marks it.
-- World events fire on the **in-story date + every earlier world event** — never on turn counts. A long time skip fires everything that came due, each stamped with the day it happened (clamped to the save's baseline).
-- **Nothing fires during combat.** `advanceTimeline(db, { inCombat })` only sets `heldForCombat`; everything due fires on the first turn after the fight.
-- Windows use the **real calendar** (`daysFromCivil`). Fired events are `EventRecord`s with id `event_timeline_<id>` and the `timeline` tag.
-
-### Scheduling (`advanceTimeline`)
-
-- `baselineDate` prevents a backlog dump on load/import.
-- Events whose `to` closed before the baseline are completed **silently** and tracked in `expired`.
-- Encounter windows go into `active`; personal beats appear in the prompt as pending offers.
-
-### Tracker marks (`applyTimelineMarks`)
-
-- `timeline_completed` → fire if needed, add `attendanceFact`, mark **witnessed**, record facts/threads/`worldPoint`.
-- `timeline_engaged` → record the event, add to `active` + `engaged` (not completed).
-- `timeline_passed` → complete without attendance, log a “never crossed paths” fact.
-
-### News & rumors
-
-- Every fired world event is **unheard** until delivered. `unheardNews` returns them most pressing first (major news weighs ×4, so old minor news is never starved).
-- **One piece of news per turn** (`NEWS_PER_TURN`); none during combat.
-- **Catch-up reports** (`newsDelivery.ts`): after a long quiet stretch with 2+ events piled up, the offer becomes one report covering several (a stack of messages, a friend catching them up). Secret and eyewitness news never travels in a bundle.
-- **Knowledge classes**: `public`, `faction` (members of `event.factionId`), `witnesses`, `secret`.
-- **Bearers**: anyone in the scene (scene cast + companions, alive) who could plausibly know comes first; then the event's named `bearers`; then a generic local or traveller for public news. The dead are removed (`livingBearers`).
-- **Channels** (`timelineChannel`): the faction's own `carriers`, else `world.letterCarriers`; secrets only face to face from a named confidant; witness news only from someone who was there.
-- **Delivery style**: one per turn, picked deterministically (slot + player turn + event) from the place kind and the knowledge class (gossip at the next table, a notice, a call, a message from the group itself…). Overdue news comes looking for the player.
-- **Escalation** (`newsUrgency`): `due` → bring it in if anything fits; `overdue` → deliver it this turn, through the channel if nobody present could know.
-- `news_relayed: [{id, from}]` records delivery (`heard`), and the Journal hides unheard events.
-
-### Personal letters (`letters.ts`)
-
-- Not world news: people the player is close to write about their own lives. Everything is delivered on the page, never as an app notification.
-- **Unprompted**: once `LETTER_GAP_DAYS` (21) have passed since the last letter reached the player (or the story began), the warmest `correspondents` candidate writes: a met, living person with affinity ≥ 5 (or a close/romantic/partner stage), not travelling with the player, not in the scene, not seen for 10+ days, who has not written in 45 days and has no letter on the road.
-- **The player writes**: `letters_sent: [{to, gist, text, carrier, coded}]` (someone not in the scene) sets out for as long as the distance and carrier take (§8c). When it arrives (`deliverLetters`, every turn): +2 affinity (+1 if they are cold toward him, +1 for a birthday letter), a fact that they received it, and — unless affinity is below −3 — a reply sets out the same way. Interception, real losses, letters to the dead and the archive: §8c.
-- **Delivery**: `letterOffer` offers an arrived reply first (it waits while the writer is in the scene), else an unprompted letter; never in combat or during a catch-up report. The carrier comes from `world.letterCarriers` ("post", "courier", "text message"… fitting the era), with a default speed table (fast/normal/slow). After 5 days waiting, the offer is pressed. `letters_received: [id]` marks it read and sets `lastLetterIn`.
-- The hidden world-clock screen lists letters on the road.
-
-### World point
-
-`state.worldPoint` is a free line on where the world stands; a timeline event with `worldPoint` sets it when it happens.
 
 ---
 
@@ -694,7 +598,6 @@ Ambience only: no music, no stingers, no recordings. Every sound is synthesised 
 - **Indoors** (`isIndoors`): the location's own words (room, inn, house, hut, tent, hideout, hall… vs courtyard, street, roof of…), else a `structure` kind. Caves count. Indoors, outside beds drop (wind ×0.35, life ×0.3 or nothing in a cave, water ×0.45) and go through a low-pass.
 - **Fight mode** adds nothing and changes no bed: it only sets `fight`, and the player lowers everything to 30 %. The weather stays.
 - `key` is a stable string of the mix; the player ignores a new mix with the same key, so a quiet turn changes nothing.
-- A flashback (§8f): `currentAmbience` reads `flashbackView(db)`, the memory's date, place and weather, so it never touches the present scene.
 
 **The player** (`lib/audio/`)
 - `synth.ts`: the 20 bed builders, three 7-second stereo noise buffers (white, pink, brown; seams cross-faded) made once, and small helpers: steady filtered noise layers, `drifter` (wanders a gain or a filter frequency), `striker` (struck noise for raindrops, crackles, footsteps, one envelope at a time per voice), `tone` (bird notes, bubbles, drips, hoots, a cup set down). Events are scheduled 0.6 s ahead by each bed's `tick`. **Only linear and exponential ramps are chained**, never `setTargetAtTime` (implementations disagree on chained targets), and every parameter is anchored with `setValueAtTime` when made.
@@ -704,28 +607,6 @@ Ambience only: no music, no stingers, no recordings. Every sound is synthesised 
 - Levels were checked by rendering each bed offline (40 s): all finite and unclipped, roughly −22 dB (waterfall) to −36 dB (room tone) RMS at full level.
 
 UI: Settings → **Sound**: Ambience switch (its line says what's playing now, e.g. "Now: rain on the roof, a quiet room, voices") and a Volume slider (`components/Slider.tsx`) that changes the sound live while dragging.
-
-## 8f. Playable flashbacks (`lib/rpg/flashbacks.ts`)
-
-Living-world section 19. Short scenes from the player's life before the story. Offered, never requested; each plays once. **The records live in `db.world.flashbacks` and are empty by default**, so nothing is offered until the player writes some (or approves drafted ones, session 7). Tests: `scripts/flashbacks.test.ts`.
-
-**Data** (`FlashbackRecord`): id, title, date, place and location kind, cast (entity names), the scene, notes on how people were then, triggers (`people`, `places` by place id or words, `dates`, `beats` reached in the last 7 days, `words`, `afterFight`), what is fixed, what must stay hidden, `requires`, a one-line memory and its importance. `ensureFlashbackPeople` adds a cast member who isn't in the save yet (dead and met) the first time a memory needs them.
-
-**Offer** (`flashbackOffer`, inside `buildNarrationPrompt`): never while one plays or waits, never in a fight, a chase or on the road (pace downtime or conversation only), never on a turn with a grudge, hunter or other pressure, not before story turn 12 or in the story's first 3 days, and at most once per 30 in-story days (`lastOfferOn`). Each record scores the moment (date or beat 3, place or person 2, words 2, or 1 + 1 after a fight for the `afterFight` ones; people and words only count after a fight there); 2 is enough, the highest wins. A date trigger fits within 2 days of its day; a world beat counts from the day the player heard it. The narrator gets one optional `A MEMORY` line (let one small trigger touch the player, don't start the memory); `game.tsx` stamps the reply with `flashbackOffer`.
-
-**Taking it**: the state step marks the offer (`applyFlashbackMarks`): the month gap starts either way; if the tracker says `flashback: "offered"` (the reply showed the trigger), it waits as `pending` for 2 turns and the reply gets a **Remember** chip. Tapping it calls `sendTurn(REMEMBER_INPUT, { remember: id })`, which runs `beginFlashback` on the snapshot it saves (so Undo undoes it) and narrates that turn inside the memory. The player can also follow it in his own words: the tracker's `"started"` begins it from the next turn. Regenerate re-enters a memory the regenerated turn stepped into.
-
-**Playing**: `state.flashbacks.active` holds the memory's own clock, place, kind, weather, turn count, cast, bond nudges, and the present pace and scene mode to put back. Both story entries of a memory turn carry `flashback: { id, date }`.
-- Narrator (`formatFlashbackBlock` instead of the present's dynamic block: no state, news, letters, timeline, pressure, encounters): the memory's date and the player's age, WHERE, its WEATHER line (`formatWeatherLine(flashbackView(db))`), THE PLAYER THEN (`playerThen(age)`: a child, a teenager, a young adult…; present inventory and money don't exist there), who is there at their age then (`entityAge` on the memory's date; the dead marked alive here), fixed facts, the hidden list, pacing by turn (begin → play → from turn 6 look for the end → from turn 9 end it this reply, carrying the player back to the same second), and THE PRESENT frozen with its last line. RECENT SCENE shows the present lead-in and this memory's turns (`getRecentMessages`). Fight mode works; its line leaves out the present's wounds.
-- Tracker: THIS TURN IS A MEMORY (report the memory's time and place, who is in it, the dead included, bonds −1..1, everything else empty; `"ended"` when it closes), CURRENT STATE and TIME from the memory, no timeline/letters/yearly/enemy tracking.
-- State step (`applyMemoryStep` → `applyFlashbackTurn`): `resolveTurnClock` on the memory's clock; place, kind, weather (`conditionFromText`), cast and bond nudges kept on `active`; scene beat and fight options as usual. Nothing in the present moves: clock, location, inventory, money, facts, threads, deaths, timeline, letters, travel log, held weather. Memory turns are never chapter material (`unsummarizedStory`, `storyMessagesSinceLastSummary` skip them) and carry no time chip.
-- Header, ambience and images read `flashbackView(db)`: the memory's date, place and weather, so `state.weather` and `state.travelLog` are never touched. The Story header shows "Memory · Year 5 · …".
-
-**Ending** (`endFlashback`, on the tracker's `"ended"`, or forced after `FLASHBACK_HARD_CAP` = 12 turns): an `EventRecord` dated on the memory's date, tagged `flashback` + its id, `present`-linked to everyone in it; each living person's bond moves by the sum of its nudges capped at ±1; the id goes to `played`; the present's pace and mode come back; `returned` gives the next present turn one `BACK FROM A MEMORY` line (same second, how it ended, never retold) and is cleared after it. A `flashback` memory job (`runSummaryJob` → `summarizeScene` with a memory note) writes it up: `applyFlashbackWriteUp` puts the MEMORY line on the event and keeps point-of-view lines from the living people in it. In the present, memories show as "(from Year N, before the story)" in RELEVANT MEMORIES; a remembrance day names one lived with the dead.
-
-**UI** (Story): memory turns in a muted warm tint (`colors.memory*`), opened by a date line ("Year 2009, Sep 20. You are nine."); the Remember chip under the reply that showed the trigger; the live reply is tinted while it streams. Journal → Memories lists it under its own past date. Scrapbook: flashback photos go in "Before the story", grouped by memory title, with the memory's date, place and the player's age. Images of a memory send no outfit references and tell the model the player's age and look then (`playerLookAt`) and everyone's age then, in a faded warm tint.
-
-**Prompt size**: nothing on a quiet turn; one line on an offer turn; the memory block replaces the present's dynamic block while one plays.
 
 ## 8g. Safehouses (`lib/rpg/safehouses.ts`)
 
@@ -886,7 +767,6 @@ Goal: wide, cinematic frames in the world's own art style (`world.artStyle`, def
 - **The prompt (`buildSceneImagePrompt(db, references, action, { shot, shotType })`)**, vision first, rules after: style opener (`world.artStyle`) → SHOT → ACTION → ART DIRECTION → `lightLine` (light from the clock hour: dawn, noon, golden hour, night, lamplight indoors; weather from `currentWeather` or the memory's own; a colour accent from the scene's words — never hard-coded rain) → location → the player's look/outfit → look tags for the others → reference labels (all **identity only**: copy face, hair, eyes, clothing; ignore pose, expression, framing, lighting, background) → rules (actor rule, who may appear, ensemble focus, compose for 16:9, no text). No `Timeline:` or `Scene:` lines.
 - **Shot types (`imageDirection.ts`)**: `shotTypeOf` reads the type from the SHOT line's opening words. Wide / extreme wide / aerial are scale shots: tiny distant faceless figures, rooftops and armies are allowed; only unnamed recognisable faces stay banned. The type is stored as `imageMeta.shot` / `shotType`.
 - **Ensembles**: an ensemble shot (or the Ensemble chip) takes up to 10 people from `sceneCast` (5 otherwise). People slots = the model's `maxReferences` minus the player's face and outfit (`personReferenceSlots`). `sceneCharacterReferences(db, action, limit, originalsFirst)` can spend slots on people the model won't know first (`modelKnowsCharacter`: only famous people in a known-universe world); every person named gets a look tag from `appearance` / `currentLook` (and age). When there are more people than slots, `castSheet.ts` draws up to six faces side by side on one canvas with their names baked in and sends it as one `cast` reference ("left to right …"); without a canvas (native) they go one per slot. The director has five ensemble layouts (line-up, battle lines, circle, depth layers, clash) and always names one focal person.
-- **Timeline art direction (#13)**: `TimelineEvent.artDirection`; `timelineArtDirection` uses it while the player has taken on that beat, or for two days after it happened where they are.
 - **Swapped-roles check (`imageCheck.ts`, #14)**: after each image (Settings → Check images, on by default) a vision call on the director model asks whether the actor is the one doing it and whether extra people appear. Reversed roles → one retry with `sharperActorRule`; if that is wrong too the better one is kept and flagged (`imageMeta.mightBeOff`, a toast). Logged in Debug as "Image check".
 - **Shot chips and two takes**: tap Paint for Auto; long-press it for Auto · Close-up · Action · Impact · Epic wide · Ensemble · Aftermath and the Two takes switch (`settings.imageTwoTakes`, off by default; also in Settings). Two takes paints both, checks both, and lets you keep one. A reply the state tracker flagged `image_worthy` (stamped on its log entry as `imageWorthy`) shows a glowing "Paint this".
 - **Retouch (#12)**: in the fullscreen viewer, Retouch opens a one-line field; `retouchSceneImage` sends the image (as an `edit` reference, first) and the player's face with `Edit this image: <tweak>. Keep everything else the same…`. The new version shows with Keep / Discard; keeping it stores `imageMeta.tweak` and `previous` (the old image).
@@ -922,10 +802,7 @@ Three tabs: **Story / You / Settings** (the You tab switches Bonds / Journal / M
   - **Only what the player could know** (`lib/rpg/disclosure.ts`): the bond meter and list bar show *your* feelings (`yourFeelings`); theirs only as a word ("Toward you they seem warm", `howTheySeem`), with no note, attraction chip or romance note. Mood shows only while they are with you; otherwise "Last you saw them" with the date. A grudge (bond page, list label, enemies group, Journal thread) shows only once they have struck (`grudgeKnown`). Profile fields and portrait prompts go through `shownField` (today it shows the field as written; it is the one place to hide a secret from the player later). The narrator still gets everything. The "Your name out there" card never hints at listings you haven't seen. Tests: `scripts/immersion.test.ts`.
   - `MapSection.tsx` — the drawn map (`WorldMap.tsx`: `layoutWorld` places areas by the travel graph, neighbours pulled together, roads labelled with travel time, places in a ring around their area, your area and place in red; deterministic), then where you are, the world list and your places (§8d, §8g).
   - `JournalSection.tsx` — Now (scene, missions, goals, threads), Recap (timeline of summaries, falls back to recent events), World (heard timeline news with source, what they call you, where things stand, lore), Memories (events with people), Letters, Scrapbook (§8d). Rows use an event's own `title` when it has one (`memoryTitle`); otherwise `titleAndBody` (`util.ts`) splits the text: "Title: …", a first sentence under 90 characters, or the first words cut at a word boundary with the rest kept as the description. Recap titles come from `summary.title`.
-- `app/(tabs)/world-clock.tsx` — hidden **World clock** (long-press the clock in the Story header; `href: null`, no tab). Read-only view of `worldClock(db)`: running/held-for-combat status, not heard yet (next in line first), due-but-waiting, queued with dates and days until, personal moments open to you, fired (with who told you), and missed beats. Contains spoilers by design.
 - `app/(tabs)/settings.tsx` — Narrator (key status that expands into the editor, Story and Images models, Advanced: summary + memory models), Sound (ambience switch and volume, §8e), Stories (slots with a ⋯ menu: play, copy, rename, delete; **New story** opens the wizard; there is no built-in story), Export / Import, Debug, version and credit.
-- **Draft from canon** (`components/wizard/CanonDraft.tsx`, wizard World step, shown once "Known setting" is filled): pick what to draft (cast, groups, areas and places, timeline, lore), a start point, and whether personal beats are allowed. One call per kind (summary model, JSON), areas and groups first so places and events link by name. Each drafted item is a card with Use / Skip (or Use all / Skip all); accepted items land in the normal editors. In code (`parseCanonDraft`): a setting that needs magic is refused; people under 18 or without an age are dropped; real people get `realPerson` and never an intimacy section; met is false, `fame` decides whether the player knows their name; hearts that are taken keep their devotion; timeline events need a real year and month, link to areas and groups by name, carry deaths, and are personal only when the player allowed it. `StartingPerson.fame` reaches the entity.
-- **Memories** tab in the world editor: "Propose memories from my backstory" (summary model) → `parseFlashbackDraft` keeps only memories dated before the story, with cast limited to people in it and triggers from words and people; each is approved or skipped; approved ones go into `world.flashbacks`, where the flashback engine (§8f) offers them. Kept ones can be removed.
 - `app/world-editor.tsx` — **Your world** (You tab → "Edit your world and sheet"): the wizard's own step screens (`components/wizard/Steps.tsx`, shared with the wizard) for World, Places, Lore, Timeline, You and Intimacy, saved together with "Save changes" (`applyWorldEdit` → `applyCharacterEdit` → `applyContentEdit`; new areas, places, groups and events get readable ids, existing ids never change, new groups get a faction entity, lore in play follows). Edits change the cached THE WORLD / WHO YOU ARE / INTIMACY blocks and count from the next turn. **Add a person** creates an entity (and a bond if you already know them) at once. **Templates**: save this world (world only), import a `.world.json` file, and per template "New story here" (writes a wizard draft with the world filled in and opens the wizard on You) or Export. Templates live on the device under `STORAGE_KEYS.worldTemplates`; the wizard's World step offers "Start from a saved world".
 - `app/new-story.tsx` — the **creation wizard**, also reached from "Create your own story" on the Story start screen. An **Intimacy** step after Backstory (pacing, interests, limits, narrator voice, vague recaps; blocked with a note until the player's character is a stated adult) and an intimacy section on each People card (real person, drawn to, toward you, likes, won'ts, style, experience). Steps: World (past/present/future + period first, grounded presets that only prefill, name, premise, genre, tone, tech, money + price guide, carriers, art style, narrator notes) → Places (areas with climate and travel times, places, groups with territory / wanted list / carriers) → Lore → You (every `CharacterDefinition` field, face/outfit upload) → Backstory (verbatim text, "things that are true" with who knows, secrets) → People (`StartingPerson` cards: dead before the story, name known, met, both sides' feelings) → Opening (place, date and time, situation, who's there, goals → threads) → Timeline (optional events by hand) → Review → Start (`draftToSeedInput` → `createNewSlot(name, input)` → `seedDatabase`). Required: world name, premise, character name, opening situation. The draft autosaves to `STORAGE_KEYS.wizardDraft` and is cleared on Start. Every step has an optional **Help me fill this** (summary model, JSON reply) that suggests only empty fields as a card to accept or discard; accepted suggestions never overwrite what the player wrote, and suggested people under 18 lose their age. Form widgets live in `components/Form.tsx` (`Field`, `NumberField`, `ListField`, `Choice`, `MultiChoice`, `Toggle`, `ItemCard`, `AddButton`).
 - `components/settings/DebugPanel.tsx` — Settings → Debug. For each of the last 30 turns: the exact messages the narrator saw (newest 5 only; copyable), the state step's status, raw reply, applied diff and a field-by-field list of what changed in the save, and every call the turn made (narrator, state, summaries, images) with billed tokens, thinking/cached tokens, time and cost.
@@ -942,18 +819,15 @@ Three tabs: **Story / You / Settings** (the You tab switches Bonds / Journal / M
 ## 13. Invariants (do not break these)
 
 1. **Never control the player.** The narrator stops when the player must act.
-2. **The narrator writes prose only.** Never add JSON, field names or timeline ids to the narrator prompt; state comes from the separate structured state call. `stripNarrationJson` / `streamingPreview` remain as safety nets. JSON must never appear in the chat.
-3. **World truth**: no invented world event, death or date; only timeline events, news and facts count. **Realism**: no magic, powers or impossible technology for the era.
+2. **The narrator writes prose only.** Never add JSON, field names or ids to the narrator prompt; state comes from the separate structured state call. `stripNarrationJson` / `streamingPreview` remain as safety nets. JSON must never appear in the chat.
+3. **World truth**: nothing is pre-written; the story moves only from what the player does and the world's own reactions. **Realism**: no magic, powers or impossible technology for the era.
 4. **Time always moves, by the largest of** the narrator’s report, the narration parser, or the scene-type minimum (combat 15 s, chase 1 min, conversation 2 min — 20 s in conversation mode, downtime 10 min, travel 30 min). Every advance goes through `resolveTurnClock`, never forward-only hacks elsewhere; the player can correct any turn from its time chip.
 5. **Combat cannot skip days** around the player; the cap is enforced in `resolveTurnClock`.
 6. **Names the player knows** (§8i): narration, the UI and every text the app writes use `displayName`; a name the player hasn't learned is shown only as a narrator-only truth, and search finds only known names. A hidden identity stays unknown to the player until the story reveals it.
 7. **One person, one entity**: every identity of someone (a persona, a cover name, a real name) lives on that one entity.
-8. **Unheard timeline events are invisible in the Journal** until delivered.
-9. **Personal beats are offers**, never assumed; they only complete when narrated.
 10. **Token ceiling**: prompts over `settings.promptTokenBudget` are trimmed; never add unbounded prompt data. Keep the rules and slow blocks first so the cached prefix survives.
 11. **Images only on user action**, with the player’s face/outfit references (when uploaded) and the action brief.
 12. **Version sync**: `package.json` → `app.json` → SW cache (`scripts/generate-sw.js`) → Settings display.
-13. **A flashback never moves the present**: its turns change only `state.flashbacks.active`; the present's clock, place, inventory, money, facts, timeline and weather stand still, and its turns stay out of chapter summaries.
 14. **A safehouse comes from the story**: the tracker tags it (or a night's downtime at an inn, a camp or a group's base makes one); upgrades, stash moves and endings only come from what the page shows, never a menu. Its line reaches the narrator only when the player is at one or heading to one.
 15. **Adults only and no real people** are code (`canBeIntimate`), never settings, and nothing else is filtered (§10).
 
@@ -965,8 +839,6 @@ How the fixes from the save-analysis list work, and where they live. Tests: `scr
 
 - **One clock** (`correctTurnTime`, `shiftDatesAfter` in calendar.ts): correcting a turn's length shifts every in-story date stamped after the turn began, anywhere in the save.
 - **Fact lifecycle** (facts.ts): the state tracker sees `ACTIVE FACTS` with refs (`f-xxxxxx`) and can `supersedes` / `facts_ended` them; a new fact overtakes a matching "does not know yet"; `lasts` gives conditions `untilRest` and injuries/plans an `expiresAt`; `expireFacts` runs every turn (rest = 5+ hours outside a fight). `whoKnows` holds entity ids, `whoKnowsGroups` group tags; claims are `confidence: 'claimed'` with `claimedBy`; every fact has a subject and a `sourceEventId` or `sourceLogId`. The prompt budget cuts memories, then facts and lore, before recent story.
-- **Lore conditions** (lore.ts): `activeAfter` / `activeUntil` with a timeline event, thread status, fact text or flag (`inRomance`); `always` entries are always sent.
-- **Timeline stages** (timeline.ts): offered → accepted (`timeline_engaged`, nothing written) → completed (`timeline_completed`, the moment in `completesWhen`): only completion writes facts (real date, subject, who was there) and opens threads. `requires` gates a beat.
 - **Chapters** (`applyChapterBreak` in memoryJobs.ts): summaries never end chapters. A chapter opens on `chapter_title`, a completed major timeline event or a 2+ day skip, once the chapter has 6 turns or 12 hours (60 turns closes one anyway). `state.chapterTitle`, `chapterStart`, `chapters`.
 - **People**: `gender` on everyone; romance accessibility comes from who each person is drawn to (`attracted_to`) and the player's gender, never from gender alone. `tier: 'minor'` people get no bond until a second scene. `appearance` is the lasting base look, `currentLook` the look of the moment (cleared by a new scene or rest), `whereabouts` where someone absent is.
 - **Bonds**: `theirFeelings` (mirrors `affinity`/`note`, kept in step by `syncBondSides`) and `yourFeelings` (`your_change`, `your_note`). Relationship labels are fixed; `partner` is a work or crime partner, romance is `lover`. A bond reads "Deceased · …" once you know of the death.
@@ -976,9 +848,6 @@ How the fixes from the save-analysis list work, and where they live. Tests: `scr
 - **Undo**: snapshots (last 5) survive saves and hold no images; restore takes images from the live save.
 
 ## 14. How to extend safely
-
-### Add a world timeline event
-Add a `TimelineEvent` to `db.world.timeline` (through the wizard or world editor once they exist; in code, in the world you seed). Give it a real date window, `regionId`/`location`, `knowledge` (+ `factionId` for faction news, `bearers` for secrets), facts, an optional encounter, and `playerDriven` if it depends on the player. Never hard-code an event in `timeline.ts`.
 
 ### Add a person at the start
 Add a `StartingPerson` to the seed input (name, age, gender, role, appearance, personality, speech style, relationship, both sides' feelings, `alive`, `knownName`, optional `fame`). `seedDatabase` makes the entity and bond.
@@ -1002,8 +871,6 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 | Date jumps during a fight | `resolveTurnClock` / `pace` not applied; check `scene_pace`. |
 | Too many / too few strangers | Check the STYLE encounter rule in `NARRATION_SYSTEM` and `formatEncounterConditions` / `classifyLocation`. |
 | Old acquaintances never come back | `returning.ts`: they need `lastSeenAt` (older saves only have role/notes and the traveller rule), 14+ days away, and a place fit; offers come once per 8 turns. |
-| Timeline events not appearing | Check `db.world.timeline` (empty by default), `timelineProgress.completed` and the hidden World clock screen. World events need their date plus every earlier world event, and nothing fires mid-fight. Personal beats need state-call marks — check `TIMELINE TRACKING` in the state prompt. |
-| Timeline event visible too early | Journal only shows `heard` events; check `heard` map and `normalizeDatabase` migration. |
 | JSON text in chat | Something put JSON back into the narrator prompt. Safety nets: `streamingPreview` (live), `stripNarrationJson` (save + render). Run tests. |
 | Wrong characters in images | The ACTION line is written fresh on tap by `writeImageAction` (memory model); cast comes from `sceneCast`. Check Settings → Debug → Image description. |
 | Prompt tokens growing | Budget guard trims recent messages; check `formatFacts`/timeline caps. |
@@ -1018,9 +885,8 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 Run: `bun test`. Tests run against a small fixture in `scripts/fixtures/testWorld.ts` (never shipped). Tests import `seedDatabase` from `scripts/fixtures/seed.ts`, which defaults to the fixture; the app's own `seedDatabase` defaults to a blank save.
 
 - Pipeline (`scripts/verify-pipeline.test.ts`): save compatibility, JSON stripping, identity resolution, time parsing, pacing, timeline scheduling and deaths, prompt composition, companions, letters, returning characters, portraits and scene references, token stability over 60 turns
-- Draft from canon (`scripts/canon-draft.test.ts`): prompt rules, magic refused, adults only, real people background only, travel both ways, dated events, personal beats only when asked, and a drafted cast + timeline that the timeline engine runs by date (a drafted death lands)
 - World editor and templates (`scripts/world-edit.test.ts`): edits reach the next narrator and tracker prompts with readable ids, sheet and intimacy edits, adding a person, template file round trip, a second character in the same world
-- Extras (`scripts/extras.test.ts`): the map layout, backstory flashbacks (dated before the story, approve-only), PIN hashing and the neutral name
+- Extras (`scripts/extras.test.ts`): the map layout, PIN hashing and the neutral name
 - Creation wizard (`scripts/wizard.test.ts`): required fields, a hand-made draft → `draftToSeedInput` → `seedDatabase` → a playable save (readable ids remapped, backstory verbatim, the dead, facts, threads, scene cast, prompts), help fills only empty fields and never keeps an under-18 age, draft reload
 - No legacy words (`scripts/no-legacy-words.test.ts`): no prompt (narrator, tracker, summaries, time skip, scene image, portraits) carries a word from the old setting; the narrator gets THE WORLD and WHO YOU ARE as prose
 - Enemies (`enemies`), living world (`living-world`), yearly offers (`yearly`), weather and map (`weather-map`), flashbacks, money, names, image director, state fallback

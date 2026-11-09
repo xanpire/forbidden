@@ -28,12 +28,6 @@ export const colors = {
   dangerSoft: 'rgba(229, 9, 20, 0.10)',
   onAccent: '#FFFFFF',
   overlay: 'rgba(0, 0, 0, 0.82)',
-  // Flashbacks: a muted, warm tint, so a memory is never mistaken for the present.
-  memoryTint: 'rgba(196, 150, 96, 0.07)',
-  memoryBorder: 'rgba(196, 150, 96, 0.28)',
-  memoryText: '#E6D6BE',
-  memoryMuted: '#B39E80',
-  memoryAccent: '#C9A06A',
   white: '#FFFFFF',
 };
 

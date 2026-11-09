@@ -5,7 +5,6 @@ import { mentionsEntity } from './characterRefs';
 import { completeChat, type CallUsage } from '../openrouter';
 import { currentOutfit } from './portrait';
 import type { PlannedReference } from './referencePlan';
-import { flashbackImageNote, playerAgeAt, latestReplyIsFlashback } from './flashbacks';
 import { entityAge, timeOfDayOf } from './calendar';
 import {
   chipDirection,
@@ -18,7 +17,6 @@ import {
   shotTypeOf,
   type ShotChip,
   type ShotType,
-  timelineArtDirection,
 } from './imageDirection';
 import { CONDITION_INFO } from './weather';
 import type { AppDatabase, EntityRecord } from './types';
@@ -60,20 +58,11 @@ function sceneCast(db: AppDatabase, limit = SCENE_CAST_LIMIT): string[] {
 export const SCENE_CHARACTER_LIMIT = 3;
 
 /**
- * People the image model may already know by name: only in a known universe,
- * and only someone famous there (`fame`). Everyone else needs a reference or
- * a description.
- */
-export function modelKnowsCharacter(db: Pick<AppDatabase, 'world'>, entity: Pick<EntityRecord, 'fame'>) {
-  return Boolean(db.world?.knownUniverse && entity.fame);
-}
-
-/**
  * How many people can get their own reference slot: what the model takes,
  * minus the player's face and outfit.
  */
-export function personReferenceSlots(maxReferences: number, withOutfit = true) {
-  return Math.max(0, maxReferences - 1 - (withOutfit ? 1 : 0));
+export function personReferenceSlots(maxReferences: number) {
+  return Math.max(0, maxReferences - 2);
 }
 
 /**
@@ -85,9 +74,7 @@ export function personReferenceSlots(maxReferences: number, withOutfit = true) {
 export function sceneCharacterReferences(
   db: AppDatabase,
   action: string,
-  limit = SCENE_CHARACTER_LIMIT,
-  /** Spend slots on people the model can't already know first (#6c). */
-  originalsFirst = false
+  limit = SCENE_CHARACTER_LIMIT
 ): Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait' }> {
   const found: Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait'; at: number }> = [];
 
@@ -115,12 +102,9 @@ export function sceneCharacterReferences(
     found.push({ entity, name: entity.name, image, source: face ? 'face' : 'portrait', at });
   }
 
-  const rank = (entry: { entity: EntityRecord }) => (originalsFirst && modelKnowsCharacter(db, entry.entity) ? 1 : 0);
-
   return found
-    .sort((a, b) => rank(a) - rank(b) || a.at - b.at)
-    .slice(0, Math.max(0, limit))
     .sort((a, b) => a.at - b.at)
+    .slice(0, Math.max(0, limit))
     .map(({ at: _at, ...rest }) => rest);
 }
 
@@ -299,29 +283,21 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
 
   const cast = sceneCast(db, ENSEMBLE_CAST_LIMIT);
   const playerAction = latestPlayerAction(db, reply.id);
-  // A reply inside a flashback: the memory's place and the player at their age then.
-  const memory = reply.flashback ? db.state.flashbacks?.active ?? null : null;
-  const moment = sceneMoment(db, Boolean(reply.flashback));
-  const sceneText = `${playerAction} ${reply.content}`;
+  const moment = sceneMoment(db);
   const shots = recentShots(db);
   const forced = chipDirection(options.chip);
-  const art = reply.flashback ? null : timelineArtDirection(db);
   const outfit = currentOutfit(db);
-  const notes = reply.flashback ? [] : peopleNotes(db, cast);
+  const notes = peopleNotes(db, cast);
 
   const who = playerName(db);
 
   return [
     `PLAYER: ${who}.`,
-    memory || reply.flashback
-      ? `This reply is a memory from Year ${reply.flashback!.date.year}: ${who} is ${playerAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
-      : `Location: ${db.state.location}.`,
-    reply.flashback ? '' : `Scene: ${db.state.scene}.`,
-    reply.flashback || !outfit ? '' : `${who} wears ${outfit.replace(/\.$/, '')}.`,
-    reply.flashback || !db.state.mood ? '' : `${who}'s mood: ${db.state.mood}.`,
-    reply.flashback
-      ? ''
-      : cast.length > 0 ? `Known people in the scene: ${cast.map((name) => {
+    `Location: ${db.state.location}.`,
+    `Scene: ${db.state.scene}.`,
+    !outfit ? '' : `${who} wears ${outfit.replace(/\.$/, '')}.`,
+    !db.state.mood ? '' : `${who}'s mood: ${db.state.mood}.`,
+    cast.length > 0 ? `Known people in the scene: ${cast.map((name) => {
           const entity = resolveEntity(db, name);
           const known = entity ? displayName(db, entity) : name;
 
@@ -329,7 +305,6 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
         }).join(', ')}.` : `Known people in the scene: none besides ${who}.`,
     notes.length > 0 ? `How they are: ${notes.join('; ')}.` : '',
     `Time and weather: ${timeOfDayOf(moment.date)}, ${String(moment.date.hour ?? 12).padStart(2, '0')}:${String(moment.date.minute ?? 0).padStart(2, '0')}; ${moment.weatherText ?? CONDITION_INFO[moment.condition].label}${moment.indoors ? ' (indoors)' : ''}.`,
-    art ? `ART DIRECTION for this moment in the story (a hint; still frame it around ${who} and what they do): ${art}.` : '',
     reply.imageWorthy && !forced ? 'This is a key moment: go big.' : '',
     forced ? `The player asked for this shot: ${forced}. Use it.` : '',
     shots.length > 0
@@ -462,14 +437,10 @@ export function buildSceneImagePrompt(
   options: ScenePromptOptions = {}
 ) {
   const who = playerName(db);
-  // A memory: the player and everyone else at their age then, no present outfit.
-  const memoryReply = latestReplyIsFlashback(db);
-  const memoryNote = flashbackImageNote(db, memoryReply);
   const shotType = options.shotType ?? shotTypeOf(options.shot);
   const ensemble = shotType === 'ensemble';
-  const cast = memoryNote ? [] : sceneCast(db, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
+  const cast = sceneCast(db, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
   const sceneText = `${action} ${options.shot ?? ''}`;
-  const art = memoryNote ? null : timelineArtDirection(db);
   const impact = shotType === 'impact frame';
   const outfit = currentOutfit(db).replace(/\.$/, '') || 'their usual clothes';
 
@@ -480,12 +451,12 @@ export function buildSceneImagePrompt(
       reference.kind === 'character' && reference.name ? [reference.name] : reference.kind === 'cast' ? reference.names ?? [] : []
     )
   );
-  const date = memoryReply?.flashback?.date ?? db.state.inStoryDate;
-  // People the model already knows, and anyone without a reference, get a look tag.
+  const date = db.state.inStoryDate;
+  // Anyone without a reference gets a look tag.
   const looks = lookTags(db, action, {
     exclude: new Set(
       db.entities
-        .filter((entity) => referenced.has(entity.name) && !modelKnowsCharacter(db, entity))
+        .filter((entity) => referenced.has(entity.name))
         .map((entity) => entity.name)
     ),
     limit: ensemble ? 10 : 5,
@@ -509,33 +480,19 @@ export function buildSceneImagePrompt(
 
   lines.push(`ACTION (depict this exactly): ${action}`);
 
-  if (art) {
-    lines.push(`ART DIRECTION: ${art}.`);
-  }
-
   // 4. Light and atmosphere from the real weather and clock (not for impact frames: flat colour).
   if (!impact) {
-    lines.push(lightLine(db, sceneText, Boolean(memoryReply)));
+    lines.push(lightLine(db, sceneText));
   }
 
-  if (memoryNote) {
-    lines.push(memoryNote);
-  } else {
-    lines.push(`Location: ${db.state.location}.`);
-  }
+  lines.push(`Location: ${db.state.location}.`);
 
   // The player's look.
   if (!hasFace) {
     lines.push(playerLook(db));
   }
 
-  if (!memoryNote) {
-    if (!hasOutfit) {
-      lines.push(`${who} wears ${outfit}.`);
-    } else {
-      lines.push(`${who} currently wears ${outfit}.`);
-    }
-  }
+  lines.push(hasOutfit ? `${who} currently wears ${outfit}.` : `${who} wears ${outfit}.`);
 
   if (looks.length > 0) {
     lines.push(`How the others look: ${looks.join(' | ')}.`);
@@ -567,7 +524,7 @@ export function buildSceneImagePrompt(
       const name = reference.name ?? 'this person';
       lines.push(
         reference.source === 'face'
-          ? `Reference image ${n}: ${name}'s face, at ${memoryNote ? 'the age the memory note gives' : 'their current age'}, in this image's art style. ${IDENTITY_ONLY}`
+          ? `Reference image ${n}: ${name}'s face, at their current age, in this image's art style. ${IDENTITY_ONLY}`
           : `Reference image ${n}: a portrait of ${name}: their face, hair, colouring and usual clothing. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'cast') {

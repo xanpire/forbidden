@@ -55,7 +55,6 @@ export const RELATIONSHIPS = [
   'rejected',
   'ex',
 ] as const;
-export const FLASHBACK_MARKS = ['offered', 'started', 'ended'] as const;
 export const ATTRACTIONS = ['none', 'warm', 'strong'] as const;
 export const GENDERS = ['male', 'female', 'unknown'] as const;
 export const ATTRACTED_TO = ['men', 'women', 'both', 'none', 'unknown'] as const;
@@ -222,16 +221,6 @@ export const TURN_STATE_SCHEMA = object({
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,
-  // Flashbacks (see FLASHBACK in the state prompt): an offered memory's
-  // trigger was shown, the player let a memory take them, or the memory ended.
-  flashback: nullableEnum(FLASHBACK_MARKS),
-  timeline_engaged: stringList,
-  timeline_completed: stringList,
-  timeline_passed: stringList,
-  news_relayed: list({
-    id: { type: 'string' },
-    from: nullableString,
-  }),
   // A letter or message the player writes and sends to someone not in the scene (or
   // to the dead: kept, never sent). text: the player's words with only spelling and
   // punctuation fixed.
@@ -254,7 +243,7 @@ export const TURN_STATE_SCHEMA = object({
     character_id: { type: 'string' },
     stage: { type: 'string' },
   }),
-  milestone: list({
+  first: list({
     character_id: { type: 'string' },
     what: { type: 'string' },
   }),
@@ -277,18 +266,12 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People whose birthday the player learned on the page this turn.
   birthdays_learned: stringList,
-  // Names the player heard, read or recognised this turn, within their hearing or reading.
+  // Names the player heard or read this turn, within their hearing or reading.
   names_learned: list({
     character_id: { type: 'string' },
     name: { type: 'string' },
-    part: { type: 'string', enum: ['given', 'family', 'full', 'identity'] },
-    how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard', 'recognised'] },
-  }),
-  // Someone present learned another name a person goes by (the player told them who someone really is).
-  names_told: list({
-    character_id: { type: 'string' },
-    name: { type: 'string' },
-    told_to: stringList,
+    part: { type: 'string', enum: ['given', 'family', 'full'] },
+    how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard'] },
   }),
   // What a faction (by its id) now has on the player, from deeds its people saw
   // or survived this turn; and factions whose wanted entry on the player they

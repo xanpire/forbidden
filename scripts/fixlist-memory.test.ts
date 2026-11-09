@@ -17,7 +17,6 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { factRef } from '../lib/rpg/facts';
 import { appendStoryMessage } from '../lib/rpg/log';
-import { loreActive } from '../lib/rpg/lore';
 import { applyStateStep, correctTurnTime } from '../lib/rpg/memoryJobs';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from './fixtures/seed';
@@ -83,21 +82,6 @@ describe('6. facts can expire or be replaced', () => {
     expect(fact(db, 'sold the shop')!.supersedes).toBe(shop.id);
     expect(promptText(db)).not.toContain('Your mother still runs the shop');
   });
-
-  test('a death you did not know about becomes known when you learn it', () => {
-    let db = seed();
-    const daniel = person(db, 'Daniel Okafor');
-    db = { ...db, entities: db.entities.map((entity) => (entity.id === daniel.id ? { ...entity, deceased: { known: false }, status: 'Deceased' } : entity)) };
-    expect(promptText(db)).toContain('you do not know yet');
-
-    db = play(db, 'Mara puts down the glass. "Daniel is dead. They found him this morning."', {
-      characters_present: ['mara-vance'],
-      deaths: [{ character_id: 'daniel-okafor', cause: 'found dead' }],
-    });
-
-    expect(db.entities.find((entity) => entity.id === daniel.id)?.deceased?.known).toBe(true);
-  });
-
   test('a passing condition ends at the next rest; an injury after its days', () => {
     let db = seed();
     db = play(db, 'You are worn out and your arm is cut.', {
@@ -145,53 +129,9 @@ describe('6. facts can expire or be replaced', () => {
   });
 });
 
-describe('7. lore with conditions', () => {
-  test('lore turns on and off as the story reaches it; always-on lore is always there', () => {
-    let db = seed();
-    const until = { id: 'lore_until', keywords: [], priority: 3, text: 'You have not told anyone about the shipments.', enabled: true, always: true, activeUntil: { thread: 'Find out what the missing shipments are' } };
-    const after = { id: 'lore_after', keywords: [], priority: 3, text: 'Mara knows about the shipments now.', enabled: true, always: true, activeAfter: { fact: 'told Mara about the shipments' } };
-    db = { ...db, loreEntries: [...db.loreEntries, until, after] };
-
-    expect(loreActive(db, until)).toBe(true);
-    expect(loreActive(db, after)).toBe(false);
+describe('7. lore is plain notes', () => {
+  test('lore the player wrote reaches the narrator, with no conditions', () => {
+    const db = seed();
     expect(promptText(db)).toContain('locals never carry umbrellas');
-
-    db = play(db, 'You tell Mara everything about the shipments.', {
-      characters_present: ['mara-vance'],
-      facts: [{ entity: 'player', fact: 'You told Mara about the shipments.', type: 'event', who_knows: ['player', 'mara-vance'], supersedes: [], claimed_by: null, lasts: null, days: null }],
-    });
-    db = { ...db, threads: db.threads.map((thread) => (thread.title === 'Find out what the missing shipments are' ? { ...thread, status: 'resolved' } : thread)) };
-
-    expect(loreActive(db, until)).toBe(false);
-    expect(loreActive(db, after)).toBe(true);
-  });
-});
-
-describe('8. timeline beats complete at the right moment', () => {
-  test('agreeing only engages the beat; the completing moment applies it with the people there', () => {
-    let db = seed();
-    db = play(db, 'Daniel closes the office door. "I need someone I trust to look at the dock books."', {
-      characters_present: ['daniel-okafor'],
-      timeline_engaged: ['audit-offer'],
-    });
-
-    expect(db.state.timelineProgress?.engaged).toContain('audit-offer');
-    expect(db.facts.some((item) => item.text.includes('You agreed to audit'))).toBe(false);
-    expect(db.threads.some((thread) => thread.title === 'Audit the dock shipments')).toBe(false);
-
-    db = play(db, '"I\'ll do it," you tell him. Daniel slides a key card across the desk.', {
-      time: { elapsed: 5, unit: 'minutes', clock_time: null },
-      characters_present: ['daniel-okafor'],
-      timeline_completed: ['audit-offer'],
-    });
-
-    const agreed = fact(db, 'You agreed to audit')!;
-    expect(agreed.validFrom).toEqual(db.state.inStoryDate);
-    expect(agreed.subjectEntityId).toBe(person(db, 'Alex Reyes').id);
-    expect(agreed.whoKnows).toEqual(expect.arrayContaining([person(db, 'Alex Reyes').id, person(db, 'Daniel Okafor').id]));
-
-    const thread = db.threads.find((item) => item.title === 'Audit the dock shipments')!;
-    expect(thread.participantIds).toContain(person(db, 'Daniel Okafor').id);
-    expect(dateSortValue(thread.openedAt)).toBe(dateSortValue(db.state.inStoryDate));
   });
 });

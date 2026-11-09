@@ -26,15 +26,13 @@ import { NARRATION_SYSTEM } from '../lib/rpg/prompt';
 import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/image';
 import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
-import { activeTimelineEvents, advanceTimeline, applyTimelineMarks, markNewsHeard, unheardNews } from '../lib/rpg/timeline';
 import { RELATIONSHIP_STAGES, normalizeRelationship } from '../lib/rpg/intimacy';
 import { slug } from '../lib/rpg/id';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
 import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
 import { applyTurnDiff } from '../lib/rpg/services';
-import { isDeceased, playerKnowsDeath, markDeathsByName, markDeceased } from '../lib/rpg/deaths';
-import { CATCH_UP_QUIET_DAYS, couldKnow, livingBearers, newsAllowance, newsOffer } from '../lib/rpg/newsDelivery';
+import { isDeceased, markDeceased } from '../lib/rpg/deaths';
 import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
 import { entityAge, shiftDate } from '../lib/rpg/calendar';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
@@ -961,10 +959,6 @@ describe('two-call turn: prose narrator + structured state call', () => {
       characters_present: ['Mara Vance'],
       image_worthy: true,
       scene_ended: false,
-      timeline_engaged: [],
-      timeline_completed: [],
-      timeline_passed: [],
-      news_relayed: [],
     });
 
     expect(imageWorthy).toBe(true);
@@ -980,7 +974,6 @@ describe('two-call turn: prose narrator + structured state call', () => {
     expect(diff?.facts?.[0].whoKnows).toEqual(['Alex Reyes', 'Mara Vance']);
     expect(diff?.threads?.[0]).toMatchObject({ action: 'open', title: 'Reach the safe house' });
     expect(diff?.entities?.[0]).toMatchObject({ name: 'Mara Vance', mood: 'withdrawn' });
-    expect(diff?.timelineCompleted ?? []).toEqual([]);
   });
 
   test('an all-unchanged structured reply is no diff', () => {
@@ -990,13 +983,12 @@ describe('two-call turn: prose narrator + structured state call', () => {
       world_description: null, world_point: null, inventory_added: [], inventory_removed: [],
       bonds: [], facts: [], threads: [], new_characters: [], character_updates: [],
       characters_present: [], image_worthy: false, scene_ended: false,
-      timeline_engaged: [], timeline_completed: [], timeline_passed: [], news_relayed: [],
     });
 
     expect(diff).toBeNull();
   });
 
-  test('state prompt carries the turn prose and canon ids', () => {
+  test('state prompt carries the turn prose', () => {
     const db = loadSave();
     const prompt = buildExtractionPrompt(db, '*Alex Reyes follows.*', 'You walk for an hour behind Mara.');
     const user = prompt.messages[1].content;
@@ -1005,15 +997,6 @@ describe('two-call turn: prose narrator + structured state call', () => {
     expect(user).toContain('THIS TURN');
     expect(user).toContain('You walk for an hour behind Mara.');
     expect(user).toContain('TIME BEFORE THIS TURN');
-
-    const tracked = [
-      ...activeTimelineEvents(db).slice(0, 2).map((event) => event.id),
-      ...unheardNews(db, 3).map((item) => item.timelineId),
-    ];
-
-    for (const id of tracked) {
-      expect(user).toContain(id);
-    }
   });
 
   test('streaming preview hides any code block or JSON a model adds anyway', () => {
@@ -1120,34 +1103,8 @@ describe('image model capabilities', () => {
 
 describe('deaths', () => {
   const jonahOf = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Jonah Pike')!;
-  // A timeline event that kills Jonah off-screen on 12 October.
-  const withJonahDeath = (db: AppDatabase): AppDatabase => ({
-    ...db,
-    world: {
-      ...db.world,
-      timeline: [
-        ...db.world.timeline,
-        {
-          id: 'jonah-dies',
-          title: 'Jonah Pike is found in the harbour',
-          description: 'The night foreman is pulled out of the water by the container yards.',
-          from: { year: 2026, month: 10, day: 12 },
-          regionId: 'the-docks',
-          location: 'The Docks',
-          knowledge: 'public',
-          major: true,
-          facts: ['Jonah Pike was found dead in the harbour.'],
-          deaths: ['Jonah Pike'],
-        },
-      ],
-    },
-  });
-  // The world moves on to 13 October: Jonah's death fires off-screen.
-  const afterJonah = (db: AppDatabase) =>
-    advanceTimeline(
-      { ...withJonahDeath(db), state: { ...db.state, inStoryDate: { year: 2026, month: 10, day: 13, hour: 8, minute: 0, second: 0 } } },
-      { inCombat: false }
-    );
+  // Jonah dies on 12 October.
+  const afterJonah = (db: AppDatabase) => markDeceased(db, jonahOf(db).id, { date: { year: 2026, month: 10, day: 12, hour: 8, minute: 0, second: 0 } });
 
   test('the seeded dead are recorded and known; the living are not dead', () => {
     const db = loadSave();
@@ -1155,32 +1112,9 @@ describe('deaths', () => {
     const daniel = db.entities.find((entity) => entity.name === 'Daniel Okafor')!;
 
     expect(isDeceased(theo)).toBe(true);
-    expect(playerKnowsDeath(db, theo)).toBe(true);
+    expect(isDeceased(theo)).toBe(true);
     expect(isDeceased(daniel)).toBe(false);
   });
-
-  test('a timeline death marks the record, and the player knows only once the news reaches them', () => {
-    let db = withJonahDeath(loadSave());
-    db = applyTimelineMarks(db, ['jonah-dies'], []);
-    // completed = witnessed
-    expect(isDeceased(jonahOf(db))).toBe(true);
-    expect(playerKnowsDeath(db, jonahOf(db))).toBe(true);
-
-    let fresh = afterJonah(loadSave());
-    expect(isDeceased(jonahOf(fresh))).toBe(true);
-    expect(playerKnowsDeath(fresh, jonahOf(fresh))).toBe(false);
-    fresh = markNewsHeard(fresh, [{ id: 'jonah-dies', from: 'mara-vance' }]);
-    expect(playerKnowsDeath(fresh, jonahOf(fresh))).toBe(true);
-  });
-
-  test('timeline deaths use exact names only', () => {
-    let db = loadSave();
-    db = applyEntityDiff(db, { name: 'Jonah Pike Junior', isNew: true, role: 'Dock hand' });
-    db = markDeathsByName(db, ['Jonah Pik', 'Pike'], {});
-    expect(isDeceased(jonahOf(db))).toBe(false);
-    expect(isDeceased(db.entities.find((e) => e.name === 'Jonah Pike Junior')!)).toBe(false);
-  });
-
   test('the state tracker reports a death on screen, including someone new this turn', () => {
     let db = loadSave();
     const { diff } = convertStateBlock({
@@ -1196,7 +1130,7 @@ describe('deaths', () => {
     db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
 
     const goro = db.entities.find((entity) => entity.name === 'Goro the Mugger')!;
-    expect(goro.deceased?.known).toBe(true);
+    expect(isDeceased(goro)).toBe(true);
     expect(goro.deceased?.cause).toBe('Fell from the quay in the struggle');
     expect(isDeceased(jonahOf(db))).toBe(true);
     expect(isDeceased(db.entities.find((e) => e.name === 'Alex Reyes')!)).toBe(false);
@@ -1207,7 +1141,7 @@ describe('deaths', () => {
     const danielId = db.entities.find((entity) => entity.name === 'Daniel Okafor')!.id;
     const { diff } = convertStateBlock({ deaths: [{ character_id: 'daniel-okafor', cause: null }] });
     db = applyTurnDiff(db, resolveCharacterRefs(db, diff as TurnDiff));
-    expect(playerKnowsDeath(db, db.entities.find((e) => e.id === danielId)!)).toBe(true);
+    expect(isDeceased(db.entities.find((e) => e.id === danielId)!)).toBe(true);
 
     db = afterJonah(db);
     expect(isDeceased(jonahOf(db))).toBe(true);
@@ -1218,20 +1152,11 @@ describe('deaths', () => {
     expect(isDeceased(jonahOf(normalizeDatabase(db)))).toBe(false);
   });
 
-  test('the dead are not "seen", and loading backfills deaths for older saves', () => {
+  test('the dead are not "seen"', () => {
     let db = afterJonah(loadSave());
     const before = jonahOf(db).lastSeen;
     db = applyTurnDiff(db, { scene: { ended: false, entities: ['Jonah Pike'] } });
     expect(jonahOf(db).lastSeen).toEqual(before);
-
-    const old = {
-      ...db,
-      entities: db.entities.map((entity) => {
-        const { deceased: _d, ...rest } = entity;
-        return entity.name === 'Jonah Pike' ? rest : entity;
-      }),
-    };
-    expect(isDeceased(jonahOf(normalizeDatabase(old)))).toBe(true);
   });
 
   test('every turn the narrator and the state tracker see who is dead', () => {
@@ -1240,20 +1165,12 @@ describe('deaths', () => {
 
     const narration = buildNarrationPrompt(db, '*You wait.*').messages.map((m) => m.content).join('\n');
     expect(narration).toContain('THE DEAD');
-    expect(narration).toContain('- Jonah Pike (you do not know yet)');
+    expect(narration).toContain('- Jonah Pike');
     expect(narration).toContain('- Theo Marsh');
 
     const state = buildExtractionPrompt(db, '*You wait.*', 'Rain falls.').messages.map((m) => m.content).join('\n');
-    expect(state).toMatch(/- jonah-pike: Jonah Pike.*deceased, you do not know yet\]/);
+    expect(state).toMatch(/- jonah-pike: Jonah Pike.*deceased\]/);
     expect(JSON.stringify(TURN_STATE_SCHEMA)).toContain('"deaths"');
-  });
-
-  test('death names resolve to people in the cast', () => {
-    const db = loadSave();
-    for (const name of ['Mara Vance', 'Jonah Pike', 'Daniel Okafor']) {
-      const marked = markDeathsByName(db, [name], {});
-      expect(marked).not.toBe(db);
-    }
   });
 });
 

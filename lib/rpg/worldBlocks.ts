@@ -14,12 +14,6 @@ const WHEN_LABEL: Record<WorldDefinition['era']['when'], string> = {
   future: 'the future',
 };
 
-const STRICTNESS: Record<NonNullable<WorldDefinition['knownUniverse']>['canonStrictness'], string> = {
-  loose: 'use it as inspiration: its people and places, but the story may go its own way from the start',
-  faithful: 'stay true to its people, places and events until the player changes them',
-  strict: 'stay strictly true to it: its people, places, history and facts never change unless the player changes them on the page',
-};
-
 function clean(value: string | undefined) {
   return (value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -75,10 +69,6 @@ export function formatWorldBlock(db: AppDatabase): string {
       ].join('');
     });
 
-  const known = world.knownUniverse && clean(world.knownUniverse.name)
-    ? `Known setting: ${clean(world.knownUniverse.name)}. ${STRICTNESS[world.knownUniverse.canonStrictness] ?? STRICTNESS.faithful}.`
-    : '';
-
   return [
     'THE WORLD (written by the player; this is the setting, true from the first page)',
     line('Name', world.name),
@@ -87,7 +77,6 @@ export function formatWorldBlock(db: AppDatabase): string {
     line('Tone', world.tone),
     `When: ${WHEN_LABEL[era?.when] ?? 'the present day'}${clean(era?.period) ? `, ${clean(era.period)}` : ''}`,
     line('What exists', era?.techNotes),
-    known,
     clean(currency?.name) ? `Money: ${clean(currency.name)}${clean(currency.symbol) ? ` (${clean(currency.symbol)})` : ''}` : '',
     prices(db),
     list(world.letterCarriers).length > 0 ? `How messages travel: ${list(world.letterCarriers).join(', ')}` : '',

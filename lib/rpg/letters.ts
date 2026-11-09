@@ -32,16 +32,15 @@
 import { applyBondDiff } from './bonds';
 import { displayName, displayNameOf } from './names';
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { castWithCompanions } from './companions';
 import { plantSeed } from './consequences';
-import { isDeceased, playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
 import { applyFactDiff } from './facts';
 import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
 import { makeId } from './id';
 import { markLifeKnown, newsOfTheirLife } from './lives';
-import { newsOffer } from './newsDelivery';
 import { factionById, factionName, factionsOf, territoryOf, wantedListings } from './reputation';
 import { clamp, hashText } from './util';
 import type {
@@ -416,7 +415,7 @@ function lastLetterFrom(db: AppDatabase, entityId: string): CalendarDate | null 
 }
 
 function storyStart(db: AppDatabase): CalendarDate {
-  return db.state.timelineProgress?.baselineDate ?? db.rawLog[0]?.inStoryDate ?? db.state.inStoryDate;
+  return db.rawLog[0]?.inStoryDate ?? db.world.calendar.start;
 }
 
 function writesToPlayer(db: AppDatabase, entity: EntityRecord, here: Set<string>, pending: Set<string>) {
@@ -592,9 +591,9 @@ export function letterOffer(db: AppDatabase): LetterOffer | null {
   };
 }
 
-/** A catch-up report fills the turn; a letter waits for the next one. */
+/** The letter offered this turn, if any. */
 export function turnLetterOffer(db: AppDatabase): LetterOffer | null {
-  return newsOffer(db)?.mode === 'catch-up' ? null : letterOffer(db);
+  return letterOffer(db);
 }
 
 export function formatLetterOffer(offer: LetterOffer | null, address?: string, writer?: string): string {
@@ -681,7 +680,7 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
     const text = keepPlayersWords(item.text, userMessage);
 
     // To the dead: kept, never sent.
-    if (isDeceased(entity) && playerKnowsDeath(db, entity)) {
+    if (isDeceased(entity)) {
       letters.push({
         id,
         direction: 'from-player',

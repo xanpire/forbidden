@@ -5,24 +5,21 @@ import { normalizeReputation } from './reputation';
 import { normalizeRenown } from './renown';
 import { normalizeConsequences } from './consequences';
 import { normalizeDeaths } from './deaths';
-import { ensureNames } from './names';
 import { knowersOf } from './facts';
 
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { TIMELINE_VERSION } from './timeline';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
-import { intimacyFromLegacy, normalizeContentProfile, normalizeIntimacy } from './intimacy';
+import { normalizeContentProfile, normalizeIntimacy } from './intimacy';
 import type { SeedInput } from './types';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
-import type { AppDatabase, EntityRecord, MemoryIndex, WeatherLock } from './types';
+import type { AppDatabase, MemoryIndex, WeatherLock } from './types';
 import { normalizeTravelLog } from './mapData';
 import { WEATHER_CONDITIONS } from './weather';
-import { normalizeFlashbacks } from './flashbacks';
 import { normalizeSafehouses } from './safehouses';
 import { normalizePurse } from './money';
 import { APP_NAME, STORAGE_KEYS } from '../brand';
@@ -357,16 +354,6 @@ export async function importDatabase(
   return imported;
 }
 
-/** The intimacy profile, folding in the old romanceAccessibility / canonDevotion / orientation. */
-function normalizeEntityIntimacy(entity: EntityRecord): Partial<EntityRecord> {
-  const raw = entity as EntityRecord & Record<string, unknown>;
-  const { romanceAccessibility: _a, canonDevotion: _d, orientation: _o, ...rest } = raw;
-  void rest;
-  const intimacy =
-    entity.type !== 'character' || isPlayerEntity(entity) ? undefined : normalizeIntimacy(entity.intimacy) ?? intimacyFromLegacy(raw);
-  return { intimacy, romanceAccessibility: undefined, canonDevotion: undefined, orientation: undefined } as Partial<EntityRecord>;
-}
-
 export function normalizeDatabase(db: AppDatabase): AppDatabase {
   const normalized: AppDatabase = {
     schemaVersion: 1,
@@ -385,7 +372,6 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
-      worldTimeline: true,
       promptTokenBudget: normalizePromptBudget(db.settings?.promptTokenBudget),
     },
     rawLog: Array.isArray(db.rawLog)
@@ -401,9 +387,8 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
           mood: entity.mood ?? (entity.type === 'character' ? 'Unknown' : undefined),
           appearance: entity.appearance ?? (entity.type === 'character' ? 'Unknown' : undefined),
           gender: entity.type === 'character' ? (entity.gender ?? 'unknown') : undefined,
-          // Nobody's heart is decided by gender: it comes from the entity
-          // (written or tracked). Older saves' romance fields fold in here.
-          ...normalizeEntityIntimacy(entity),
+          // Nobody's heart is decided by gender: it comes from the entity (written or tracked).
+          intimacy: entity.type !== 'character' || isPlayerEntity(entity) ? undefined : normalizeIntimacy(entity.intimacy),
         }))
       : [],
     events: Array.isArray(db.events) ? db.events : [],
@@ -459,7 +444,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = ensureNames(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized))));
+  const withDeaths = repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized)));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;
@@ -555,29 +540,6 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
         ? Math.max(0, Math.round(state.turnsWithoutTimeChange))
         : 0,
     worldPoint: typeof state.worldPoint === 'string' ? state.worldPoint : seeded.worldPoint,
-    timelineProgress:
-      state.timelineProgress && Array.isArray(state.timelineProgress.completed)
-        ? {
-            version: state.timelineProgress.version ?? TIMELINE_VERSION,
-            baselineDate: state.timelineProgress.baselineDate,
-            completed: state.timelineProgress.completed.filter(Boolean),
-            active: Array.isArray(state.timelineProgress.active) ? state.timelineProgress.active.filter(Boolean) : [],
-            engaged: Array.isArray(state.timelineProgress.engaged) ? state.timelineProgress.engaged.filter(Boolean) : [],
-            expired: Array.isArray(state.timelineProgress.expired) ? state.timelineProgress.expired.filter(Boolean) : [],
-            heard:
-              state.timelineProgress.heard && typeof state.timelineProgress.heard === 'object'
-                ? state.timelineProgress.heard
-                : {},
-          }
-        : {
-            version: TIMELINE_VERSION,
-            baselineDate: state.inStoryDate,
-            completed: [],
-            active: [],
-            engaged: [],
-            expired: [],
-            heard: {},
-          },
     chapter: state.chapter ?? seeded.chapter,
     chapterTitle: typeof state.chapterTitle === 'string' ? state.chapterTitle : undefined,
     chapterStart: state.chapterStart,
@@ -604,7 +566,6 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
     consequences: normalizeConsequences(state.consequences),
     weather: normalizeWeather(state.weather),
     travelLog: normalizeTravelLog({ world }, state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
-    flashbacks: normalizeFlashbacks(state.flashbacks, world.flashbacks),
     safehouses: normalizeSafehouses(state.safehouses),
     purse: normalizePurse(state.purse, normalizeCharacter(state.player, seeded.player).money),
   };

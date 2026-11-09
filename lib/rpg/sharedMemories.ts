@@ -15,7 +15,7 @@ export function sharedMemories(db: AppDatabase, entityId: string, limit = 12): E
   );
 
   return db.events
-    .filter((event) => eventIds.has(event.id) && !event.tags.includes('canon'))
+    .filter((event) => eventIds.has(event.id))
     .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
     .slice(0, limit);
 }

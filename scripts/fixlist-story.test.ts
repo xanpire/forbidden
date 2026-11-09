@@ -109,36 +109,6 @@ describe('24-26. clock, numbers, places, gear', () => {
 });
 
 describe('28. story hooks', () => {
-  test('a timeline beat opens its thread with its people; a later one resolves it', () => {
-    let db = seed();
-    expect(thread(db, 'Audit the dock shipments')).toBeUndefined();
-
-    db = play(db, '"I\'ll do it," you tell Daniel.', { characters_present: ['daniel-okafor'], timeline_completed: ['audit-offer'] });
-    expect(thread(db, 'Audit the dock shipments')?.status).toBe('open');
-    expect(thread(db, 'Audit the dock shipments')?.participantIds).toContain(db.entities.find((e) => e.name === 'Daniel Okafor')!.id);
-
-    db = {
-      ...db,
-      world: {
-        ...db.world,
-        timeline: [
-          ...db.world.timeline,
-          {
-            id: 'audit-done',
-            title: 'You hand Daniel the audit',
-            description: 'You give Daniel what you found.',
-            from: { year: 2026, month: 10, day: 1 },
-            playerDriven: true,
-            facts: ['You handed Daniel the finished audit.'],
-            resolvesThreadTitles: ['Audit the dock shipments'],
-          },
-        ],
-      },
-    };
-    db = play(db, 'You slide the folder across his desk.', { characters_present: ['daniel-okafor'], timeline_completed: ['audit-done'] });
-    expect(thread(db, 'Audit the dock shipments')?.status).toBe('resolved');
-    expect(db.facts.some((fact) => fact.text.includes('finished audit'))).toBe(true);
-  });
 });
 
 describe('27. smaller images', () => {

@@ -513,25 +513,6 @@ describe('around it', () => {
     expect(currentAmbience(open).indoors).toBe(false);
     expect(formatSafehouseLine(open, '*You wait.*')).toContain('No roof');
   });
-
-  test('a flashback never sees the present\'s places', () => {
-    const db = settled();
-    const inMemory = {
-      ...db,
-      state: {
-        ...db.state,
-        flashbacks: {
-          played: [],
-          offered: {},
-          active: { id: 'old-days', date: { year: 2015, month: 9, day: 20, hour: 9, minute: 0 }, place: 'Old Town', locationKind: 'settlement' as const, startedOn: NOW, turns: 0, castIds: [], nudges: {} },
-        },
-      },
-    };
-    expect(currentSafehouse(inMemory)).toBeNull();
-    expect(formatSafehouseLine(inMemory, '*You look around.*')).toBe('');
-    expect(ambienceInputOf(inMemory).shelter).toBeUndefined();
-  });
-
   test('saves keep their places through normalize', () => {
     const db = settled();
     const again = normalizeDatabase(JSON.parse(JSON.stringify(db)));

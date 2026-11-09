@@ -19,11 +19,11 @@
 // one line. Otherwise CURRENT STATE names the places he can go back to.
 
 import { dateSortValue, daysBetween, formatDayMonth, shiftDate } from './calendar';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { characterRefs } from './characterRefs';
 import { castWithCompanions } from './companions';
 import { plantSeed, seedsOf } from './consequences';
-import { isDeceased, playerKnowsDeath } from './deaths';
+import { isDeceased } from './deaths';
 import { grudgeKnown } from './disclosure';
 import { resolveEntity } from './entities';
 import { isRegion, regionName, regionOf, type Region } from './geography';
@@ -189,8 +189,6 @@ export function matchesSafehouse(db: AppDatabase, house: Safehouse, location: st
 
 /** The safehouse the player is at, if any. */
 export function currentSafehouse(db: Pick<AppDatabase, 'state'>): Safehouse | null {
-  if (db.state.flashbacks?.active) return null;
-
   const state = safehouseState(db);
 
   return state.places.find((house) => house.id === state.current && house.status === 'active') ?? null;
@@ -851,7 +849,7 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
       const host = next.entities.find((entity) => entity.id === house.hostId);
       const bond = host ? next.bonds.find((item) => item.entityId === host.id) : null;
 
-      if (host && isDeceased(host) && playerKnowsDeath(next, host)) {
+      if (host && isDeceased(host)) {
         next = endHouse(next, house.id, 'withdrawn', `${host.name} died`);
         continue;
       }
@@ -968,7 +966,7 @@ function entityName(db: AppDatabase, id: string) {
 export function whoKnows(db: AppDatabase, house: Safehouse): string[] {
   const people = house.knownBy
     .map((id) => db.entities.find((entity) => entity.id === id))
-    .filter((entity): entity is EntityRecord => Boolean(entity) && !(isDeceased(entity!) && playerKnowsDeath(db, entity!)))
+    .filter((entity): entity is EntityRecord => Boolean(entity) && !(isDeceased(entity!)))
     .map((entity) => entity.name);
 
   return [...people, ...house.knownGroups];

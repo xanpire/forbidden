@@ -22,7 +22,7 @@ import { appendStoryMessage } from '../lib/rpg/log';
 import { knownWhereabouts, normalizeTravelLog, placeIdOf, placeVisits, recordTravel, travelEstimate } from '../lib/rpg/mapData';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
-import { captionOf, eraOfDate, placeAt, scrapbook, STORY_ERA } from '../lib/rpg/scrapbook';
+import { captionOf, placeAt, scrapbook } from '../lib/rpg/scrapbook';
 import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
@@ -204,14 +204,6 @@ describe('places and your road', () => {
 });
 
 describe('the scrapbook', () => {
-  test("eras follow the world's timeline, or one era when it names none", () => {
-    const db = seed();
-    expect(eraOfDate(db, db.state.inStoryDate)).toBe(STORY_ERA);
-    const eras = { ...db, world: { ...db.world, timeline: [{ id: 'e1', era: 'Before the strike', title: 'x', description: '', from: { year: 2026, month: 1 }, facts: [] }, { id: 'e2', era: 'After the strike', title: 'y', description: '', from: { year: 2026, month: 10, day: 5 }, facts: [] }] } };
-    expect(eraOfDate(eras, { year: 2026, month: 10, day: 2, hour: 9, minute: 0 })).toBe('Before the strike');
-    expect(eraOfDate(eras, { year: 2026, month: 11, day: 2, hour: 9, minute: 0 })).toBe('After the strike');
-  });
-
   test('photos by chapter, with captions in your words', () => {
     let db = seed();
     db = appendStoryMessage(db, 'assistant', 'Alex stands at the end of the pier. Gulls wheel overhead.', null, 0, 0);
@@ -230,7 +222,7 @@ describe('the scrapbook', () => {
     next = { ...next, rawLog: next.rawLog.map((entry) => (entry.id === second ? { ...entry, image: 'img:two' } : entry)) };
 
     const book = scrapbook(next);
-    const chapters = book.flatMap((era) => era.chapters);
+    const chapters = book;
     expect(chapters[0].photos[0].caption).toBe('You throw a stone into the harbour.');
     expect(chapters[0].photos[0].age).toBe(29);
     expect(chapters.at(-1)!.chapter).toBe(4);

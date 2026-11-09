@@ -159,7 +159,7 @@ describe('hard limits in code', () => {
     expect(diff?.limitCrossed).toBe(true);
     expect(diff?.ageRuleCrossed).toBeUndefined();
     const required = TURN_STATE_SCHEMA.required as readonly string[];
-    for (const field of ['intimate_scene', 'intimacy_stage_changed', 'milestone', 'preference_learned', 'outfit_changed', 'limit_crossed', 'age_rule_crossed']) {
+    for (const field of ['intimate_scene', 'intimacy_stage_changed', 'first', 'preference_learned', 'outfit_changed', 'limit_crossed', 'age_rule_crossed']) {
       expect(required).toContain(field);
     }
   });
@@ -249,29 +249,16 @@ describe('relationship progression', () => {
 
     // Firsts and learned preferences are kept and reach the narrator.
     db = play(db, 'Mara kisses you, slow.', {
-      milestone: [{ character_id: 'mara-vance', what: 'first night together' }],
+      first: [{ character_id: 'mara-vance', what: 'first night together' }],
       preference_learned: [{ character_id: 'mara-vance', preference: 'being teased', about_player: true }],
       outfit_changed: [{ character_id: 'mara-vance', outfit: 'your shirt, nothing else', position: 'curled up beside you' }],
     });
-    expect(bond(db, 'Mara Vance').milestones?.[0]).toMatchObject({ what: 'first night together' });
+    expect(bond(db, 'Mara Vance').firsts?.[0]).toMatchObject({ what: 'first night together' });
     expect(bond(db, 'Mara Vance').learnedPreferences).toEqual(['knows you like being teased']);
     expect(entity(db, 'Mara Vance').currentLook).toBe('your shirt, nothing else');
     const text = narrator(db);
     expect(text).toContain('they remember: knows you like being teased');
     expect(text).toContain('where they are now: curled up beside you');
-  });
-
-  test('an old save\'s romance fields fold into the intimacy profile', () => {
-    const db = story();
-    const old = {
-      ...db,
-      content: undefined,
-      entities: db.entities.map((e) => (e.name === 'Daniel Okafor' ? { ...e, intimacy: undefined, romanceAccessibility: 'lore-locked', canonDevotion: 'his late wife' } : e)),
-    } as unknown as AppDatabase;
-    const loaded = normalizeDatabase(old);
-    expect(loaded.content.pacing).toBe('natural');
-    expect(entity(loaded, 'Daniel Okafor').intimacy).toMatchObject({ interestedInPlayer: 'taken', devotion: 'his late wife' });
-    expect((entity(loaded, 'Daniel Okafor') as unknown as Record<string, unknown>).romanceAccessibility).toBeUndefined();
   });
 });
 

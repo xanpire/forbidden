@@ -24,7 +24,7 @@
 
 import { daysBetween } from './calendar';
 import { displayName, narratorName } from './names';
-import { isCombatPace } from './timeline';
+import { isCombatPace } from './pacing';
 import { isCompanion } from './companions';
 import { isDeceased } from './deaths';
 import { locationKindOf } from './encounters';
@@ -60,7 +60,6 @@ const STRIKE_MIN_TURN = 6;
 export type GrudgeStage = 'resentful' | 'vengeful' | 'hunting';
 
 export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
-export type GrudgeEvent = (typeof GRUDGE_EVENTS)[number];
 
 export const GRUDGE_RULES = `ENEMIES
 - Hatred is the dark mirror of love: slow, earned, and lasting. Someone the player truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, their revenge, or death.

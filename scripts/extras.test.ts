@@ -14,8 +14,6 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { approveFlashback, flashbackDraftMessages, parseFlashbackDraft } from '../lib/rpg/flashbackDraft';
-import { flashbacksOf } from '../lib/rpg/flashbacks';
 import { layoutWorld } from '../lib/rpg/mapLayout';
 import { seedDatabase } from './fixtures/seed';
 import { checkPin, shownAppName, validPin, withPin } from '../lib/privacy';
@@ -42,34 +40,6 @@ describe('the drawn map', () => {
     expect(layoutWorld({ regions: [], places: [] }).regions).toEqual([]);
   });
 });
-
-describe('backstory flashbacks', () => {
-  test('proposals come from the backstory, are dated before the story, and only approved ones are offered', () => {
-    const db = seed();
-    const [system, user] = flashbackDraftMessages(db);
-    expect(system.content).toContain('Never invent major new facts');
-    expect(system.content).toContain('under 18');
-    expect(user.content).toContain('Grew up in Old Town above his mother');
-
-    const reply = JSON.stringify({
-      memories: [
-        { title: 'The last night with Theo', year: 2025, month: 12, day: 20, place: 'The docks', kind: 'road', cast: ['Theo Marsh', 'Someone Invented'], scene: 'You and Theo walk the docks the night before his fall.', fixed: ['Theo is alive in this memory'], hidden: ['How Theo really died'], triggerWords: ['docks', 'Theo'], triggerPeople: ['Theo Marsh'], memoryLine: 'You walked the docks with Theo the night before he fell.' },
-        { title: 'Next week', year: 2027, month: 1, day: 1, place: 'Nowhere', kind: 'structure', cast: [], scene: 'Not yet.' },
-      ],
-    });
-    const proposals = parseFlashbackDraft(db, reply);
-    expect(proposals).toHaveLength(1);
-    expect(proposals[0]).toMatchObject({ title: 'The last night with Theo', cast: ['Theo Marsh'], hidden: ['How Theo really died'], triggers: { words: ['docks', 'theo'], people: ['Theo Marsh'] } });
-    expect(proposals[0].date.year).toBe(2025);
-    expect(flashbacksOf(db)).toHaveLength(0);
-
-    const approved = approveFlashback(db, proposals[0]);
-    expect(flashbacksOf(approved).map((record) => record.title)).toEqual(['The last night with Theo']);
-    expect(approveFlashback(approved, proposals[0])).toBe(approved);
-    expect(parseFlashbackDraft(db, 'not json')).toEqual([]);
-  });
-});
-
 describe('privacy', () => {
   test('a PIN is 4 to 8 digits, stored salted, and checked', () => {
     expect(validPin('1234')).toBe(true);

@@ -7,12 +7,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { STORAGE_KEYS } from '../brand';
-import { DEFAULT_DATE } from './calendar';
 import { makeId, slug } from './id';
 import { emptyWorld, normalizeWorld } from './world';
 import { CHECK_REASONS, canBeIntimate, defaultContentProfile, normalizeContentProfile } from './intimacy';
 import type {
-  CalendarDate,
   CharacterDefinition,
   ClimateType,
   ContentProfile,
@@ -25,11 +23,10 @@ import type {
   SeedInput,
   StartingPerson,
   StartingTruth,
-  TimelineEvent,
   WorldDefinition,
 } from './types';
 
-export const WIZARD_STEPS = ['world', 'places', 'lore', 'you', 'backstory', 'intimacy', 'people', 'opening', 'timeline', 'review'] as const;
+export const WIZARD_STEPS = ['world', 'places', 'lore', 'you', 'backstory', 'intimacy', 'people', 'opening', 'review'] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 
 export const STEP_LABELS: Record<WizardStep, string> = {
@@ -41,7 +38,6 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   intimacy: 'Intimacy',
   people: 'People',
   opening: 'Opening',
-  timeline: 'Timeline',
   review: 'Review',
 };
 
@@ -148,17 +144,6 @@ export function newLore(): LoreRecord {
   return { id: makeId('lore'), keywords: [], priority: 2, text: '', enabled: true };
 }
 
-export function newTimelineEvent(start: CalendarDate): TimelineEvent {
-  return {
-    id: makeId('event'),
-    title: '',
-    description: '',
-    from: { year: start.year, month: start.month, day: start.day },
-    knowledge: 'public',
-    facts: [],
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Validation: only four fields are required.
 
@@ -241,17 +226,6 @@ export function draftToSeedInput(draft: WizardDraft): SeedInput {
     lore: raw.lore
       .filter((entry) => clean(entry.text))
       .map((entry) => ({ ...entry, text: clean(entry.text), keywords: cleanList(entry.keywords).map((word) => word.toLowerCase()) })),
-    timeline: raw.timeline
-      .filter((event) => clean(event.title))
-      .map((event) => ({
-        ...event,
-        id: slug(event.title) || event.id,
-        title: clean(event.title),
-        description: clean(event.description) || clean(event.title),
-        regionId: regionId(event.regionId),
-        factionId: event.factionId ? factions.idMap.get(event.factionId) ?? event.factionId : undefined,
-        facts: cleanList(event.facts).length ? cleanList(event.facts) : [clean(event.description) || clean(event.title)],
-      })),
     letterCarriers: cleanList(raw.letterCarriers).length ? cleanList(raw.letterCarriers) : emptyWorld().letterCarriers,
     calendar: { ...raw.calendar, start: { ...draft.opening.date } },
   });
@@ -347,7 +321,7 @@ export function normalizeDraft(value: unknown): WizardDraft | null {
 // ---------------------------------------------------------------------------
 // "Help me fill this": one optional call per section.
 
-export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'intimacy' | 'people' | 'opening' | 'timeline';
+export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'intimacy' | 'people' | 'opening';
 
 const HELP_SHAPES: Record<HelpSection, string> = {
   world:
@@ -361,7 +335,6 @@ const HELP_SHAPES: Record<HelpSection, string> = {
   people:
     '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string}]}',
   opening: '{"location": string, "situation": string, "threads": string[]}',
-  timeline: '{"timeline": [{"title": string, "description": string, "monthsFromStart": number}]}',
 };
 
 function draftSummary(draft: WizardDraft) {
@@ -525,41 +498,6 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
       const o = draft.opening;
       return { ...draft, opening: { ...o, location: fill(o.location, s.location), situation: fill(o.situation, s.situation), threads: fillList(o.threads, s.threads) } };
     }
-    case 'timeline': {
-      const timeline = [...draft.world.timeline];
-      const start = draft.opening.date;
-      for (const item of Array.isArray(s.timeline) ? s.timeline : []) {
-        const record = item as Record<string, unknown>;
-        const title = str(record.title);
-        if (!title) continue;
-        const months = Math.max(0, Math.round(Number(record.monthsFromStart) || 0));
-        const total = start.month - 1 + months;
-        timeline.push({
-          ...newTimelineEvent(start),
-          title,
-          description: str(record.description),
-          from: { year: start.year + Math.floor(total / 12), month: (total % 12) + 1 },
-        });
-      }
-      return { ...draft, world: { ...draft.world, timeline } };
-    }
   }
 }
 
-/** Plain-text lines → list ("one per line"), and back. */
-export function linesToList(text: string): string[] {
-  return text.split('\n').map((line) => line.trim()).filter(Boolean);
-}
-
-export function listToLines(values: string[] | undefined): string {
-  return (values ?? []).join('\n');
-}
-
-/** Comma-separated text → list, and back. */
-export function commaToList(text: string): string[] {
-  return text.split(',').map((item) => item.trim()).filter(Boolean);
-}
-
-export function listToComma(values: string[] | undefined): string {
-  return (values ?? []).join(', ');
-}

@@ -24,7 +24,6 @@ import {
   usePreviousForStyle,
 } from '../lib/rpg/image';
 import {
-  timelineArtDirection,
   colourAccent,
   impactFrameAllowed,
   lightLine,
@@ -210,7 +209,6 @@ describe('the scene prompt', () => {
 describe('ensembles', () => {
   test('person slots follow the model, not a fixed three', () => {
     expect(personReferenceSlots(8)).toBe(6);
-    expect(personReferenceSlots(8, false)).toBe(7);
     expect(personReferenceSlots(1)).toBe(0);
   });
 
@@ -235,21 +233,6 @@ describe('ensembles', () => {
 
     expect(await packPeopleReferences(people, 0, draw)).toEqual([]);
   });
-
-  test('in a known setting, original characters get reference slots before famous ones the model knows', async () => {
-    const base = seed();
-    const db: AppDatabase = { ...base, world: { ...base.world, knownUniverse: { name: 'A famous city drama', canonStrictness: 'faithful' } } };
-    const mara = db.entities.find((entity) => entity.name === 'Mara Vance')!;
-    const famous = { ...mara, id: 'famous1', name: 'Celeste Moreau', aliases: [], fame: 'sight' as const };
-    const original = { ...mara, id: 'oc1', name: 'Renji Kaito', aliases: [] };
-    let next: AppDatabase = { ...db, entities: [...db.entities, famous, original] };
-    const mod = await import('../lib/rpg/characterPortrait');
-    next = mod.setCharacterFaceInDb(next, famous.id, 'img:celeste');
-    next = mod.setCharacterFaceInDb(next, original.id, 'img:renji');
-    const action = 'Celeste Moreau watches as Renji Kaito circles Alex.';
-    expect(sceneCharacterReferences(next, action, 1, true).map((ref) => ref.name)).toEqual(['Renji Kaito']);
-    expect(sceneCharacterReferences(next, action, 1).map((ref) => ref.name)).toEqual(['Celeste Moreau']);
-  });
 });
 
 describe('the swapped-roles check', () => {
@@ -263,16 +246,5 @@ describe('the swapped-roles check', () => {
     const rule = sharperActorRule('Alex chokes the thug.', { rolesOk: false, extraPeople: true, note: 'Alex is the one choked.' });
     expect(rule).toContain('Alex is the one DOING the action');
     expect(rule).toContain('only the people the ACTION names');
-  });
-});
-
-describe('timeline art direction', () => {
-  test('a timeline beat the player took on gives its art direction', () => {
-    const db = seed();
-    const world = { ...db.world, timeline: db.world.timeline.map((event) => (event.id === 'audit-offer' ? { ...event, artDirection: 'a dark office lit by one desk lamp' } : event)) };
-    const progress = db.state.timelineProgress ?? { completed: [], active: [], engaged: [] };
-    const engaged: AppDatabase = { ...db, world, state: { ...db.state, timelineProgress: { ...progress, engaged: [...progress.engaged, 'audit-offer'] } } };
-    expect(timelineArtDirection(engaged)).toContain('one desk lamp');
-    expect(timelineArtDirection({ ...db, world })).toBeNull();
   });
 });

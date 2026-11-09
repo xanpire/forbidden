@@ -7,7 +7,7 @@ import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ReputationCard } from '@/components/player/ReputationCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
-import { playerKnowsDeath } from '@/lib/rpg/deaths';
+import { isDeceased } from '@/lib/rpg/deaths';
 import { grudgeKnown, shownField } from '@/lib/rpg/disclosure';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
@@ -154,7 +154,7 @@ export function BondsSection() {
       .map((entity) => ({
         entity,
         bond: db.bonds.find((bond) => bond.entityId === entity.id) ?? null,
-        dead: playerKnowsDeath(db, entity),
+        dead: isDeceased(entity),
       }))
       .filter(({ entity, bond }) => {
         if (!term) {

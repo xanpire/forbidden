@@ -115,8 +115,5 @@ export function storyMessagesSinceLastSummary(db: AppDatabase): number {
     .filter((summary) => summary.level === 'chapter')
     .sort((a, b) => b.createdAt - a.createdAt)[0]?.createdAt ?? 0;
 
-  // Flashback turns are written up on their own (see flashbacks.ts).
-  return db.rawLog.filter(
-    (message) => message.kind === 'story' && !message.flashback && message.createdAt > lastChapterSummaryAt
-  ).length;
+  return db.rawLog.filter((message) => message.kind === 'story' && message.createdAt > lastChapterSummaryAt).length;
 }
