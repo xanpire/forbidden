@@ -1,5 +1,5 @@
 import { playerAge, playerName } from './player';
-import { locationKindOf } from './encounters';
+import { locationKindOf } from './places';
 import type { PlannedReference } from './referencePlan';
 import type {
   AppDatabase,

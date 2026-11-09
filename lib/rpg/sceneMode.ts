@@ -1,16 +1,13 @@
-// Conversation mode and fight mode: how a scene plays (living-world Stage 1).
+// Scene modes: how a scene plays. The narrator writes normal prose, a real
+// conversation (mostly speech, short *action* lines), or an intimate scene.
+// The mode is decided before each narrator call from two signals:
 //
-// The narrator writes normal prose, a real conversation (mostly speech, short
-// *action* lines), or a fight in short exchanges. The mode is decided before
-// each narrator call from two signals:
-//
-// 1. The player's own input. Speaking, acting in place, attacking or leaving is the
+// 1. The player's own input. Speaking, acting in place or leaving is the
 //    most reliable signal there is, because the player knows what they meant.
-// 2. The beat the state tracker tagged on earlier turns (exchange,
-//    instruction, remark, action, travel, combat). Conversation mode is slow
-//    to start (two exchange beats in a row with the same people, or one plus
-//    The player answering in speech) and quick to stop (a scene-changing move).
-//    A fight starts on an attack and ends when the tracker says it is over.
+// 2. How the state tracker tagged earlier turns (exchange, instruction,
+//    remark, action, travel). Conversation mode is slow to start (two
+//    exchanges in a row with the same people, or one plus the player
+//    answering in speech) and quick to stop (a scene-changing move).
 //
 // Before full conversation mode, an exchange already leans the narrator
 // toward shorter, more spoken replies, so a wrong call costs one chattier
@@ -23,7 +20,7 @@ import { characterRefs } from './characterRefs';
 import { isDeceased } from './deaths';
 import type {
   AppDatabase,
-  SceneBeat,
+  TurnKind,
   SceneModeName,
   SceneModeState,
   ScenePace,
@@ -35,7 +32,6 @@ import { intimacyAllowed } from './intimacy';
 export const CONVERSATION_STREAK = 2;
 /** The least time a conversation-mode turn takes (a line or two of talk). */
 export const CONVERSATION_MODE_MINIMUM_SECONDS = 20;
-export const MAX_FIGHT_OPTIONS = 4;
 
 export const DEFAULT_SCENE_MODE: SceneModeState = {
   current: 'normal',
@@ -51,10 +47,6 @@ export function sceneModeOf(db: AppDatabase): SceneModeState {
 // Reading the player's input
 
 const QUOTED = /["“”„«»]([^"“”„«»]*[\p{L}\p{N}][^"“”„«»]*)["“”„«»]/u;
-const ATTACK =
-  /\b(attack|attacks|attacking|strike|strikes|striking|punch|punches|kick|kicks|stab|stabs|slash|slashes|cut (?:him|her|them|it|at|down|through)|lunge|lunges|charge (?:at|him|her|them)|tackle|tackles|throw (?:a |my |the |two |three )?(?:knife|knives|punch|punches|bottle|blades?)|hurl|fling|fire (?:at|a|my)|swing (?:at|my)|draw (?:my|a) (?:sword|blade|knife|gun|pistol)|go for (?:his|her|their) (?:throat|neck|eyes|heart)|kill (?:him|her|them)|choke|strangle|headbutt|ambush)\b/gi;
-// Fighting back only counts once a fight is on ("I block his path" is not a fight).
-const DEFEND = /\b(counter(?:attack)?s?|block|blocks|parry|parries|dodge|dodges|duck under|sidestep|roll (?:away|aside|under)|jump back|leap back|guard)\b/gi;
 const NEGATED = /\b(not|never|won't|wouldn't|don't|do not|can't|cannot|refuse to|without)\s+(?:\w+\s+){0,2}$/i;
 
 function hasMove(text: string, pattern: RegExp) {
@@ -72,15 +64,11 @@ const LEAVES =
 export type PlayerInput = {
   /** The player says something out loud. */
   speaks: boolean;
-  /** The player attacks someone. */
-  attacks: boolean;
-  /** The player dodges, blocks or counters (fighting back). */
-  defends: boolean;
   /** The player does something that changes the scene: leaves, moves on, sleeps, waits it out. */
   changesScene: boolean;
 };
 
-/** What the player's input is: talk, an attack, a scene change, or a small move in place. */
+/** What the player's input is: talk, a scene change, or a small move in place. */
 export function readPlayerInput(input: string): PlayerInput {
   const text = input ?? '';
   const speaks = QUOTED.test(text);
@@ -90,8 +78,6 @@ export function readPlayerInput(input: string): PlayerInput {
 
   return {
     speaks: speaks || plainSpeech,
-    attacks: hasMove(doing, ATTACK),
-    defends: hasMove(doing, DEFEND),
     changesScene: hasMove(doing, LEAVES),
   };
 }
@@ -108,16 +94,11 @@ export type TurnMode = {
   ending?: 'conversation';
   /** True when the player chose the mode from the chip. */
   manual: boolean;
-  /** Who the player is talking with or fighting (names, for the prompt and the chip). */
+  /** Who the player is talking with (names, for the prompt and the chip). */
   with: string[];
   /** Intimate mode only: the player chose fade to black for this scene. */
   fade?: boolean;
 };
-
-function fightGoingOn(db: AppDatabase) {
-  const state = sceneModeOf(db);
-  return !db.state.sceneClosed && (db.state.scenePace === 'combat' || state.lastBeat === 'combat');
-}
 
 function partnerNames(db: AppDatabase, partners: string[]) {
   return partners
@@ -143,25 +124,13 @@ function castNames(db: AppDatabase) {
 export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   const state = sceneModeOf(db);
   const said = readPlayerInput(input);
-  const fightOn = fightGoingOn(db);
   const talking = state.exchangeStreak > 0 && !db.state.sceneClosed;
   const talkers = partnerNames(db, state.partners);
   const people = talkers.length > 0 ? talkers : castNames(db).slice(0, 4);
   const wasConversation = state.current === 'conversation';
 
-  // An attack is hard to mistake: it starts a fight whatever else is going on.
-  const startsFight = said.attacks;
-
-  if (state.override === 'fight') {
-    return { mode: 'fight', lean: false, manual: true, with: castNames(db).slice(0, 4) };
-  }
-
   if (state.override === 'normal') {
     return { mode: 'normal', lean: false, manual: true, with: [] };
-  }
-
-  if (fightOn || startsFight) {
-    return { mode: 'fight', lean: false, manual: false, with: castNames(db).slice(0, 4) };
   }
 
   // An intimate scene goes on until the tracker says it ended or the player
@@ -218,12 +187,11 @@ function resolvePartners(db: AppDatabase, raw: string[]): string[] {
   return [...new Set(ids)].slice(0, 6);
 }
 
-/** When the tracker gave no beat: read it from the pace and the player's input. */
-export function fallbackBeat(pace: ScenePace | undefined, input: string, narration: string): SceneBeat {
+/** When the tracker gave no turn kind: read it from the pace and the player's input. */
+export function fallbackTurnKind(pace: ScenePace | undefined, input: string, narration: string): TurnKind {
   const said = readPlayerInput(input);
 
-  if (pace === 'combat') return 'combat';
-  if (pace === 'travel' || pace === 'chase') return 'travel';
+  if (pace === 'travel') return 'travel';
   if (said.changesScene) return 'action';
   if (said.speaks && QUOTED.test(narration)) return 'exchange';
   return QUOTED.test(narration) ? 'remark' : 'action';
@@ -233,10 +201,10 @@ export function fallbackBeat(pace: ScenePace | undefined, input: string, narrati
  * Records how the turn played: the exchange streak and who it is with, the
  * mode it was narrated in, and clears a chip choice that no longer applies.
  */
-export function applySceneBeat(
+export function applyTurnKind(
   db: AppDatabase,
   options: {
-    beat?: { kind: SceneBeat; with: string[] };
+    turnKind?: { kind: TurnKind; with: string[] };
     modeUsed?: SceneModeName;
     input: string;
     narration: string;
@@ -245,9 +213,9 @@ export function applySceneBeat(
   }
 ): AppDatabase {
   const before = sceneModeOf(db);
-  const kind = options.beat?.kind ?? fallbackBeat(options.pace, options.input, options.narration);
+  const kind = options.turnKind?.kind ?? fallbackTurnKind(options.pace, options.input, options.narration);
   const said = readPlayerInput(options.input);
-  let partners = resolvePartners(db, options.beat?.with ?? []);
+  let partners = resolvePartners(db, options.turnKind?.with ?? []);
 
   if (partners.length === 0 && kind === 'exchange') {
     partners = resolvePartners(db, castNames(db));
@@ -256,7 +224,7 @@ export function applySceneBeat(
   let streak = before.exchangeStreak;
   let kept = before.partners;
 
-  if (options.sceneEnded || kind === 'action' || kind === 'travel' || kind === 'combat') {
+  if (options.sceneEnded || kind === 'action' || kind === 'travel') {
     streak = 0;
     kept = [];
   } else if (kind === 'exchange') {
@@ -284,15 +252,10 @@ export function applySceneBeat(
     kept = [];
   }
 
-  const fightOver = kind !== 'combat' && options.pace !== 'combat';
   let override = before.override;
 
-  if (override === 'conversation' && kind === 'combat') {
-    override = undefined;
-  } else if (override === 'fight' && (fightOver || options.sceneEnded)) {
-    override = undefined;
-  } else if (override === 'normal' && streak === 0 && fightOver) {
-    // Switched off until this conversation or fight was over; now it is.
+  if (override === 'normal' && streak === 0) {
+    // Switched off until this conversation was over; now it is.
     override = undefined;
   }
 
@@ -300,7 +263,7 @@ export function applySceneBeat(
     current: options.modeUsed ?? before.current,
     exchangeStreak: Math.min(streak, 99),
     partners: kept,
-    lastBeat: kind,
+    lastKind: kind,
     ...(override ? { override } : {}),
     ...(before.intimateWith ? { intimateWith: before.intimateWith } : {}),
     ...(before.fadeToBlack ? { fadeToBlack: true } : {}),
@@ -317,14 +280,8 @@ export function setSceneModeOverride(db: AppDatabase, mode: SceneModeName | null
   return { ...db, state: { ...db.state, sceneMode: next } };
 }
 
-/** Fight moves to offer under the latest reply, if the fight goes on. */
-export function cleanFightOptions(options: string[] | undefined): string[] | undefined {
-  const cleaned = [...new Set((options ?? []).map((option) => option.trim()).filter(Boolean))].slice(0, MAX_FIGHT_OPTIONS);
-  return cleaned.length > 0 ? cleaned : undefined;
-}
-
-/** A quick fight move as the player's input. */
-export function fightOptionInput(option: string) {
+/** An offered move as the player's input. */
+export function sceneOptionInput(option: string) {
   const text = option.trim().replace(/^\*+|\*+$/g, '').replace(/[.!]*$/, '');
   return `*${text}.*`;
 }
@@ -335,8 +292,8 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
   }
 
   const raw = value as Partial<SceneModeState>;
-  const modes: SceneModeName[] = ['normal', 'conversation', 'fight', 'intimate'];
-  const beats: SceneBeat[] = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'];
+  const modes: SceneModeName[] = ['normal', 'conversation', 'intimate'];
+  const beats: TurnKind[] = ['exchange', 'instruction', 'remark', 'action', 'travel'];
 
   return {
     current: modes.includes(raw.current as SceneModeName) ? (raw.current as SceneModeName) : 'normal',
@@ -345,7 +302,7 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
         ? Math.max(0, Math.min(99, Math.floor(raw.exchangeStreak)))
         : 0,
     partners: Array.isArray(raw.partners) ? raw.partners.filter((item) => typeof item === 'string').slice(0, 6) : [],
-    ...(beats.includes(raw.lastBeat as SceneBeat) ? { lastBeat: raw.lastBeat } : {}),
+    ...(beats.includes(raw.lastKind as TurnKind) ? { lastKind: raw.lastKind } : {}),
     ...(modes.includes(raw.override as SceneModeName) && raw.override !== 'intimate' ? { override: raw.override } : {}),
     ...(Array.isArray(raw.intimateWith) && raw.intimateWith.length > 0
       ? { intimateWith: raw.intimateWith.filter((item) => typeof item === 'string').slice(0, 4) }
@@ -357,32 +314,10 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
 // ---------------------------------------------------------------------------
 // Prompt lines
 
-function playerCondition(db: AppDatabase) {
-  return db.facts
-    .filter(
-      (fact) =>
-        fact.validTo === null &&
-        (fact.type === 'injury' || fact.type === 'condition') &&
-        (fact.subjectEntityId === undefined || fact.subjectEntityId === null || isPlayer(db, db.entities.find((e) => e.id === fact.subjectEntityId)))
-    )
-    .slice(-3)
-    .map((fact) => (fact.text.length > 80 ? `${fact.text.slice(0, 79)}…` : fact.text));
-}
-
 /** One or two lines for the narrator: which mode this turn is, and with whom. */
-export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
+export function formatSceneModeLine(turn: TurnMode): string {
   const who = turn.with.length > 0 ? ` with ${turn.with.join(', ')}` : '';
   const chosen = turn.manual ? ' (the player chose this mode: keep it even if the scene moves on)' : '';
-
-  if (turn.mode === 'fight') {
-    const condition = playerCondition(db);
-    return [
-      `SCENE MODE: fight${turn.with.length > 0 ? ` against or beside ${turn.with.join(', ')}` : ''}${chosen}. Short exchange: show what the player's move does, then the opponent's next specific move, and stop before it lands.`,
-      condition.length > 0 ? `You right now: ${condition.join('; ')}.` : '',
-    ]
-      .filter(Boolean)
-      .join('\n');
-  }
 
   if (turn.mode === 'intimate') {
     return turn.fade

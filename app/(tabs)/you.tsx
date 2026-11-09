@@ -7,17 +7,15 @@ import { AppButton } from '@/components/AppButton';
 import { router } from 'expo-router';
 import { BondsSection } from '@/components/player/BondsSection';
 import { JournalSection } from '@/components/player/JournalSection';
-import { MapSection } from '@/components/player/MapSection';
 import { PortraitHeader } from '@/components/player/PortraitHeader';
 import { colors, spacing } from '@/constants/theme';
 import { useGame } from '@/lib/rpg/game';
 
-type YouTab = 'bonds' | 'journal' | 'map';
+type YouTab = 'bonds' | 'journal';
 
 const TABS: { value: YouTab; label: string }[] = [
   { value: 'bonds', label: 'Bonds' },
   { value: 'journal', label: 'Journal' },
-  { value: 'map', label: 'Map' },
 ];
 
 export default function YouScreen() {
@@ -47,7 +45,6 @@ export default function YouScreen() {
           </View>
           {tab === 'bonds' ? <BondsSection /> : null}
           {tab === 'journal' ? <JournalSection /> : null}
-          {tab === 'map' ? <MapSection /> : null}
           <View style={styles.editWrap}>
             <AppButton label="Edit your world and sheet" onPress={() => router.push('/world-editor')} variant="secondary" />
           </View>

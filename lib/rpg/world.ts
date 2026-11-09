@@ -15,7 +15,6 @@ export const CLIMATE_TYPE_LIST: ClimateType[] = [
   'rainy',
   'coastal',
   'mountain',
-  'none',
 ];
 
 const PLACE_KINDS: LocationKind[] = ['settlement', 'road', 'wilderness', 'structure'];
@@ -31,12 +30,11 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     era: { when: 'present', period: 'today' },
     currency: { name: 'dollars', priceGuide: '' },
     calendar: { yearLabel: 'Year', start: { ...DEFAULT_DATE } },
+    climate: 'temperate',
     factions: [],
-    regions: [],
     places: [],
     lore: [],
     festivals: [],
-    letterCarriers: ['phone', 'text message'],
     artStyle: 'cinematic photo, natural light',
   };
 }
@@ -49,10 +47,6 @@ function list<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function strings(value: unknown): string[] {
-  return list<unknown>(value).filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
-}
-
 const ERA_WHEN: WorldEra['when'][] = ['past', 'present', 'future'];
 
 /** Fills missing fields and drops broken entries; never adds story. */
@@ -63,16 +57,12 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     return base;
   }
 
-  // Older worlds may still carry the removed ability and magic fields: drop them.
-  const { abilityCategories: _a, abilityLabel: _b, techLevel: _c, magicSystem: _d, ...world } =
-    value as Partial<WorldDefinition> & Record<'abilityCategories' | 'abilityLabel' | 'techLevel' | 'magicSystem', unknown>;
+  const world = value as Partial<WorldDefinition>;
   const era = (world.era ?? {}) as Partial<WorldEra>;
   const currency = (world.currency ?? {}) as Partial<WorldDefinition['currency']>;
   const calendar = (world.calendar ?? {}) as Partial<WorldDefinition['calendar']>;
 
   return {
-    ...base,
-    ...world,
     id: text(world.id) || base.id,
     name: text(world.name) || base.name,
     premise: text(world.premise),
@@ -95,24 +85,17 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     },
     factions: list<WorldDefinition['factions'][number]>(world.factions).filter(
       (faction) => faction && typeof faction.id === 'string' && typeof faction.name === 'string'
-    ),
-    regions: list<WorldDefinition['regions'][number]>(world.regions)
-      .filter((region) => region && typeof region.id === 'string' && typeof region.name === 'string')
-      .map((region) => ({
-        ...region,
-        description: text(region.description),
-        climate: CLIMATE_TYPE_LIST.includes(region.climate) ? region.climate : 'temperate',
-        neighbours: list<{ id: string; days: number }>(region.neighbours).filter(
-          (link) => link && typeof link.id === 'string' && typeof link.days === 'number' && link.days > 0
-        ),
-      })),
+    ).map((faction) => ({ id: faction.id, name: faction.name, description: text(faction.description) })),
+    climate: CLIMATE_TYPE_LIST.includes(world.climate as ClimateType) ? (world.climate as ClimateType) : base.climate,
+    ...(world.southern === true ? { southern: true } : {}),
     places: list<WorldDefinition['places'][number]>(world.places)
       .filter((place) => place && typeof place.id === 'string' && typeof place.name === 'string')
       .map((place) => ({
-        ...place,
-        regionId: text(place.regionId),
+        id: place.id,
+        name: place.name,
         description: text(place.description),
-        kind: PLACE_KINDS.includes(place.kind) ? place.kind : 'settlement',
+        kind: PLACE_KINDS.includes(place.kind) ? place.kind : 'structure',
+        ...(text(place.who) ? { who: text(place.who) } : {}),
       })),
     lore: list<WorldDefinition['lore'][number]>(world.lore).filter(
       (entry) => entry && typeof entry.id === 'string' && typeof entry.text === 'string'
@@ -120,7 +103,7 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     festivals: list<WorldDefinition['festivals'][number]>(world.festivals).filter(
       (festival) => festival && typeof festival.id === 'string' && typeof festival.month === 'number'
     ),
-    letterCarriers: strings(world.letterCarriers).length > 0 ? strings(world.letterCarriers) : base.letterCarriers,
     artStyle: text(world.artStyle) || base.artStyle,
+    ...(text(world.narratorNotes) ? { narratorNotes: text(world.narratorNotes) } : {}),
   };
 }

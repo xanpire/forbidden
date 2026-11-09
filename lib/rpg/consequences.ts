@@ -2,43 +2,32 @@
 //
 // A choice that could come back later is kept as a seed: who was involved,
 // who saw it, what they would want, and roughly when and where it could come
-// back. The state tracker plants them (consequences); intercepted letters
-// plant them too (letters.ts).
+// back. The state tracker plants them (consequences).
 //
 // A seed only comes back when that is realistic: the person is alive and
-// could plausibly cross the player's path (near where they are, or present for a
+// could plausibly cross the player's path (out in public, or present for a
 // lie to come out), and enough time has passed. It comes back softly, as an
-// optional offer to the narrator (SOMETHING COMES
-// BACK), never forced; the tracker marks it returned when it plays out. A
-// witness the player left alive does not need to find them: when the time comes they
-// talk, and the faction they talk to wants the player more. Seeds that never
-// find a fitting moment fade.
+// optional offer to the narrator (SOMETHING COMES BACK), never forced; the
+// tracker marks it returned when it plays out. Seeds that never find a
+// fitting moment fade.
 
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
-import { isCombatPace } from './pacing';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
-import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
 import { makeId } from './id';
-import { grudgeOffer } from './grudges';
-import { applyReputationChanges, factionById, factionsOf } from './reputation';
 import { hashText, playerTurnCount } from './util';
 import type { AppDatabase, ConsequenceKind, ConsequenceSeed, EntityRecord, TurnDiff } from './types';
 import { isPlayerEntity } from './player';
 
 /** Waiting seeds kept at once; the oldest fade first. */
 const MAX_WAITING = 24;
-/** Ended seeds kept for the world clock. */
+/** Ended seeds kept. */
 const MAX_ENDED = 20;
-/** Close enough to cross paths, in travel days. */
-const CROSS_PATHS_DAYS = 2.5;
 /** An eligible seed is pressed (offered every fitting turn) this long after it could first return. */
 const PRESS_AFTER_DAYS = 90;
-/** How much a witness who talks raises a faction's heat. */
-const WITNESS_HEAT = 8;
 
-const KINDS = new Set<ConsequenceKind>(['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt', 'intercepted', 'found']);
+const KINDS = new Set<ConsequenceKind>(['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt']);
 
 export function seedsOf(db: AppDatabase): ConsequenceSeed[] {
   return Array.isArray(db.state.consequences) ? db.state.consequences : [];
@@ -92,7 +81,7 @@ export type NewSeed = Omit<ConsequenceSeed, 'id' | 'createdOn' | 'after' | 'befo
   when?: 'weeks' | 'months' | 'years';
 };
 
-/** Plants one seed (letters.ts uses this for interceptions). */
+/** Plants one seed. */
 export function plantSeed(db: AppDatabase, seed: NewSeed): AppDatabase {
   const now = db.state.inStoryDate;
   const id = makeId('seed');
@@ -165,8 +154,6 @@ export function applyConsequences(
       what,
       want: item.want?.trim() || undefined,
       witnesses,
-      faction: item.faction,
-      region: regionOf(db, db.state.location) ?? undefined,
       when: item.when,
     });
 
@@ -178,10 +165,9 @@ export function applyConsequences(
   return { db: next, remembered };
 }
 
-/** Seeds whose time ran out fade; witnesses whose time came talk. Runs every turn. */
+/** Seeds whose time ran out fade. Runs every turn. */
 export function advanceConsequences(db: AppDatabase): AppDatabase {
   const now = db.state.inStoryDate;
-  let next = db;
   let changed = false;
   const seeds = seedsOf(db).map((seed) => {
     if (seed.status !== 'waiting') return seed;
@@ -199,17 +185,10 @@ export function advanceConsequences(db: AppDatabase): AppDatabase {
       return { ...seed, status: 'faded' as const, resolvedOn: now };
     }
 
-    // A witness the player left alive talks: the faction they talk to wants them more.
-    if (seed.kind === 'witness' && seed.faction && factionById(next, seed.faction) && dateSortValue(now) >= dateSortValue(seed.after)) {
-      next = applyReputationChanges(next, [{ faction: seed.faction, change: WITNESS_HEAT, reason: `A witness talked: ${seed.what}` }], []);
-      changed = true;
-      return { ...seed, status: 'returned' as const, resolvedOn: now };
-    }
-
     return seed;
   });
 
-  return changed ? withSeeds(next, seeds) : db;
+  return changed ? withSeeds(db, seeds) : db;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,19 +206,16 @@ function sceneIds(db: AppDatabase): Set<string> {
   return ids;
 }
 
-function near(db: AppDatabase, a: Region | null, b: Region | null | undefined, days = CROSS_PATHS_DAYS) {
-  if (!a || !b) return false;
-  return travelDaysBetween(db, a, b as Region) <= days;
-}
-
 /** Could this seed realistically come back here and now? */
 export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
   if (seed.status !== 'waiting' || dateSortValue(db.state.inStoryDate) < dateSortValue(seed.after)) return false;
 
   const here = sceneIds(db);
-  const kind = db.state.locationKind ?? 'wilderness';
-  const peopled = kind === 'road' || kind === 'settlement';
-  const playerRegion = regionOf(db, db.state.location) ?? regionOf(db, db.state.scene);
+  // Out in public (a street, a bar, a station), people cross paths; alone at home, nobody turns up unasked.
+  const kind = db.state.locationKind ?? 'structure';
+  const home = db.state.player.home?.trim().toLowerCase();
+  const atHome = Boolean(home && db.state.location.toLowerCase().includes(home));
+  const out = !atHome && kind !== 'wilderness';
   const person = seed.entityId ? db.entities.find((entity) => entity.id === seed.entityId) ?? null : null;
 
   if (person && (isDeceased(person) || (person.companion && !['lie', 'betrayal', 'promise', 'debt'].includes(seed.kind)))) {
@@ -252,32 +228,20 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
     case 'betrayal':
     case 'promise':
     case 'debt':
-      return person ? here.has(person.id) : peopled && near(db, playerRegion, seed.region as Region);
+      return person ? here.has(person.id) : out;
+    // Talk and gratitude reach the player out among people.
     case 'helped':
-      return playerRegion !== null && playerRegion === seed.region && peopled;
     case 'witness':
-      // Without a faction to talk to, the talk reaches a town near the place.
-      return peopled && kind === 'settlement' && near(db, playerRegion, seed.region as Region, 4);
-    case 'found':
-      // They come to the place they found, while the player is there (safehouses.ts searches it while they are away).
-      return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId 
-    case 'intercepted':
-      return peopled;
-    default: {
-      // Spared, humiliated: they have to be able to cross the player's path.
-      if (!peopled) return false;
-      if (person) {
-        if (here.has(person.id)) return true;
-        return near(db, playerRegion, whereaboutsRegion(db, person) ?? (seed.region as Region));
-      }
-      return near(db, playerRegion, seed.region as Region, 3);
-    }
+      return out;
+    // Spared, humiliated: they turn up where the player is, or are already here.
+    default:
+      return person ? here.has(person.id) || out : out;
   }
 }
 
 /** The one seed that may come back this turn, or null. Deterministic per turn. */
 export function consequenceOffer(db: AppDatabase): ConsequenceSeed | null {
-  if (isCombatPace(db.state.scenePace)) return null;
+  if (db.state.scenePace === 'action') return null;
 
   const turn = playerTurnCount(db);
   const now = db.state.inStoryDate;
@@ -294,9 +258,9 @@ export function consequenceOffer(db: AppDatabase): ConsequenceSeed | null {
   return null;
 }
 
-/** The seed the narrator is offered this turn: only when no grudge takes the turn (one pressure per turn). */
+/** The seed the narrator is offered this turn. */
 export function turnConsequenceOffer(db: AppDatabase): ConsequenceSeed | null {
-  return grudgeOffer(db) ? null : consequenceOffer(db);
+  return consequenceOffer(db);
 }
 
 function agoLabel(days: number) {
@@ -310,29 +274,18 @@ const HOW: Record<ConsequenceKind, string> = {
   spared: 'They could turn up grateful or bitter: a warning, a favour repaid, or a knife.',
   lie: 'The lie can come out now: something they saw, heard, or were told.',
   helped: 'The people you helped remember: shelter, a warning, food, a door that opens.',
-  witness: 'The witness talked: people here have heard a version of it, and it has grown.',
+  witness: 'Someone who saw it talked: people around you have heard a version of it, and it has grown.',
   betrayal: 'They have not forgotten, and they have not forgiven.',
   humiliated: 'They have not forgotten how it felt.',
   promise: 'Someone comes to see whether you kept your word.',
   debt: 'Someone comes to collect.',
-  intercepted: '',
-  found: 'They know where you stay now: watchers on the approach, a visit, an ambush at night, a question at the door. Show how they found it.',
 };
-
-function interceptHow(db: AppDatabase, seed: ConsequenceSeed): string {
-  const name = factionById(db, seed.faction)?.name ?? 'Someone';
-
-  return `${name} read it on the way: now someone there knows something tied to you, and may bring it up, watch you, or put a question to the person you wrote to.`;
-}
 
 export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | null): string {
   if (!seed) return '';
 
   const ago = agoLabel(daysBetween(seed.createdOn, db.state.inStoryDate));
-  const how =
-    seed.kind === 'intercepted'
-      ? interceptHow(db, seed)
-      : HOW[seed.kind];
+  const how = HOW[seed.kind];
 
   return [
     `SOMETHING COMES BACK (optional: use it only if it fits this scene; never forced). ${ago} ago: ${seed.what} (${seed.who}).`,
@@ -344,10 +297,10 @@ export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | 
     .join(' ');
 }
 
-export function consequenceTrackingLines(db: AppDatabase, seed: ConsequenceSeed | null): string[] {
-  const factions = factionsOf(db).map((faction) => faction.id);
+export function consequenceTrackingLines(seed: ConsequenceSeed | null): string[] {
   const lines = [
-    `consequences: only for a real choice someone would remember that could plausibly come back later: you spare an enemy, lie to someone, help a person or a group in need, leave a witness after a deed a group would want you for, betray, humiliate, promise, or owe someone. kind (spared, lie, helped, witness, betrayal, humiliated, promise, debt); character_id (their id, or null for someone unnamed); who (their name, or a short description: 'the mugger you let go in the alley'); what (what you did, second person); want (what they would want now); witnesses (ids); faction (${factions.length ? `the faction id whose people would hear of it: ${factions.join(', ')}; or null` : 'null'}); when (weeks, months, years: how soon it could return). Most turns [].`,
+    `consequences: only for a real choice someone would remember that could plausibly come back later: you let someone off, lie to someone, help someone in need, do something others saw and will talk about, betray, humiliate, promise, or owe someone. kind (spared, lie, helped, witness, betrayal, humiliated, promise, debt); character_id (their id, or null for someone unnamed); who (their name, or a short description: 'the guy you shoved outside the bar'); what (what you did, second person); want (what they would want now); witnesses (ids); when (weeks, months, years: how soon it could return). Most turns [].`,
+    `grudges: {character_id, event, reason} when someone starts holding a real grudge against you this turn (wronged: you truly hurt, cheated or humiliated them), when it is settled (settled: amends, a reckoning, or their revenge), or forgiven (forgiven: they let it go for a clear reason on the page); otherwise [].`,
   ];
 
   if (seed) {

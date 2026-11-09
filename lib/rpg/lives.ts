@@ -284,15 +284,6 @@ export function markLifeKnown(db: AppDatabase, entityId: string, upTo: CalendarD
   return changed ? { ...db, entities } : db;
 }
 
-/** The newest life event the player has not heard of yet: something a letter could tell. */
-export function newsOfTheirLife(entity: EntityRecord, before: CalendarDate): LifeEvent | null {
-  return (
-    [...lifeOf(entity)]
-      .reverse()
-      .find((event) => !event.known && dateSortValue(event.date) <= dateSortValue(before)) ?? null
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Reunions
 

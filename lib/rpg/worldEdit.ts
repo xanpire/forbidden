@@ -28,14 +28,13 @@ export function draftFromSave(db: AppDatabase): WizardDraft {
   };
 }
 
-const NEW_ID = /^(region|place|faction|lore|event)_[a-z0-9]+$/;
+const NEW_ID = /^(place|faction|lore)_[a-z0-9]+$/;
 
 /**
  * Items made in the editor get readable ids ("the-blue-room") that never clash
  * with ids already in the story; references to them are moved along.
  */
 export function withReadableNewIds(world: WorldDefinition, before: WorldDefinition): WorldDefinition {
-  const remap = new Map<string, string>();
   const name = <T extends { id: string }>(items: T[], label: (item: T) => string, existing: string[]) => {
     const used = new Set(existing);
     return items.map((item) => {
@@ -47,20 +46,13 @@ export function withReadableNewIds(world: WorldDefinition, before: WorldDefiniti
       let id = base;
       for (let n = 2; used.has(id); n += 1) id = `${base}-${n}`;
       used.add(id);
-      remap.set(item.id, id);
       return { ...item, id };
     });
   };
-  const regions = name(world.regions, (r) => r.name, before.regions.map((r) => r.id));
-  const places = name(world.places, (p) => p.name, before.places.map((p) => p.id));
-  const factions = name(world.factions, (f) => f.name, before.factions.map((f) => f.id));
-  const map = (id: string | undefined) => (id ? remap.get(id) ?? id : id);
-
   return {
     ...world,
-    regions: regions.map((region) => ({ ...region, neighbours: region.neighbours.map((next) => ({ ...next, id: map(next.id)! })) })),
-    places: places.map((place) => ({ ...place, regionId: map(place.regionId)! })),
-    factions: factions.map((faction) => ({ ...faction, territoryRegionIds: faction.territoryRegionIds?.map((id) => map(id)!) })),
+    places: name(world.places, (p) => p.name, before.places.map((p) => p.id)),
+    factions: name(world.factions, (f) => f.name, before.factions.map((f) => f.id)),
   };
 }
 
@@ -69,12 +61,7 @@ export function applyWorldEdit(db: AppDatabase, edited: WorldDefinition): AppDat
   const world = normalizeWorld(withReadableNewIds(edited, db.world));
   const oldLore = new Set(db.world.lore.map((entry) => entry.id));
   const loreEntries = [...db.loreEntries.filter((entry) => !oldLore.has(entry.id)), ...world.lore.map((entry) => ({ ...entry }))];
-  // New groups need a faction entity so the tracker and reputation can find them.
-  const known = new Set(db.entities.filter((entity) => entity.type === 'faction').flatMap((entity) => entity.tags));
-  const factionEntities = world.factions
-    .filter((faction) => !known.has(faction.id))
-    .map((faction) => ({ id: makeId('entity'), name: faction.name, type: 'faction' as const, aliases: [], notes: faction.description, tags: ['faction', faction.id] }));
-  return { ...db, world, loreEntries, entities: [...db.entities, ...factionEntities] };
+  return { ...db, world, loreEntries };
 }
 
 /** Your own sheet: the player entity follows the name, look and manner. */

@@ -142,13 +142,10 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     next.companionsLeft = companions(diff.companionsLeft);
   }
 
-  // Letters only go to and come from people the save knows.
-  if (diff.lettersSent) {
-    next.lettersSent = diff.lettersSent.flatMap((letter) => {
-      const ref = resolve(letter.entityId ?? letter.name);
-
-      return ref?.entityId ? [{ ...letter, name: ref.name, entityId: ref.entityId }] : [];
-    });
+  // Only people the save knows move in or out.
+  if (diff.home) {
+    const ids = (refs: string[]) => refs.map((raw) => resolve(raw)?.entityId).filter((id): id is string => Boolean(id));
+    next.home = { ...diff.home, movedIn: ids(diff.home.movedIn), movedOut: ids(diff.home.movedOut) };
   }
 
   // Grudges belong to people the save knows.
@@ -165,14 +162,6 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
       const ref = resolve(item.entityId ?? item.name);
 
       return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId }] : [];
-    });
-  }
-
-  if (diff.lettersReceived) {
-    next.lettersReceived = diff.lettersReceived.flatMap((letter) => {
-      const ref = resolve(letter.entityId ?? letter.name);
-
-      return ref?.entityId ? [{ name: ref.name, entityId: ref.entityId, ...(letter.text ? { text: letter.text } : {}) }] : [];
     });
   }
 

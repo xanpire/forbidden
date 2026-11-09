@@ -1,11 +1,11 @@
 import type { ImageModelCaps } from '../openrouter';
-export type ScenePace = 'combat' | 'chase' | 'conversation' | 'travel' | 'downtime';
+export type ScenePace = 'action' | 'conversation' | 'travel' | 'downtime';
 
 /** How a turn played, tagged by the state tracker (see sceneMode.ts). */
-export type SceneBeat = 'exchange' | 'instruction' | 'remark' | 'action' | 'travel' | 'combat';
+export type TurnKind = 'exchange' | 'instruction' | 'remark' | 'action' | 'travel';
 
-/** How the narrator writes a turn: normal prose, conversation, or fight exchanges. */
-export type SceneModeName = 'normal' | 'conversation' | 'fight' | 'intimate';
+/** How the narrator writes a turn: normal prose, conversation, or an intimate scene. */
+export type SceneModeName = 'normal' | 'conversation' | 'intimate';
 
 export type SceneModeState = {
   /** The mode the last turn was narrated in. */
@@ -14,7 +14,7 @@ export type SceneModeState = {
   exchangeStreak: number;
   /** Who the player is talking with: entity ids (or lowercased names for people not on record). */
   partners: string[];
-  lastBeat?: SceneBeat;
+  lastKind?: TurnKind;
   /** The player's choice from the mode chip; cleared once it no longer applies. */
   override?: SceneModeName;
   /** An intimate scene is under way, with these people (entity ids). */
@@ -35,7 +35,7 @@ export type CalendarDate = {
   second?: number;
 };
 
-export type EntityType = 'character' | 'place' | 'faction' | 'object';
+export type EntityType = 'character' | 'place' | 'object';
 
 export type EventEntityRole = 'present' | 'mentioned' | 'participant';
 
@@ -105,24 +105,16 @@ export type GameState = {
   sceneSeq?: number;
   /** The last applied turn ended its scene: the next turn opens a new one. */
   sceneClosed?: boolean;
-  /** Personal letters to and from the player (see letters.ts). */
-  post?: PostState;
-  /** What each faction has on the player (see reputation.ts). */
-  reputation?: ReputationState;
   /** Birthdays, anniversaries and festivals (see yearly.ts). */
   yearly?: YearlyState;
-  /** Deeds people talk about, and what they call the player (see renown.ts). */
-  renown?: RenownState;
   /** Choices that could come back later (see consequences.ts). */
   consequences?: ConsequenceSeed[];
   /** The weather held for the current scene (see weather.ts). */
   weather?: WeatherLock;
-  /** Every place the player has been, oldest first (see mapData.ts). */
-  travelLog?: TravelStop[];
-  /** Places the player stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
-  safehouses?: SafehouseState;
   /** The money the player carries, and what moved it (see money.ts). */
   purse?: PurseState;
+  /** Where the player is staying when it isn't home (a hotel, a friend's couch). */
+  stayingAt?: string;
 };
 
 /** One change to the player's money (see money.ts). */
@@ -144,50 +136,6 @@ export type PurseState = {
   estimatedStart?: boolean;
 };
 
-export type SafehouseKind = 'own' | 'rented' | 'borrowed' | 'base' | 'camp';
-export type SafehouseEnd = 'expired' | 'destroyed' | 'compromised' | 'withdrawn' | 'given-up' | 'left';
-
-/** A place the player stays (see safehouses.ts). */
-export type Safehouse = {
-  id: string;
-  /** A short name: "the flat above the bakery", "a room at the harbour inn". */
-  name: string;
-  kind: SafehouseKind;
-  /** state.location when it became his. */
-  place: string;
-  region?: string;
-  placeId?: string;
-  since: CalendarDate;
-  /** The last time the player was there. */
-  lastVisit: CalendarDate;
-  /** Nights (long rests) spent there. */
-  nights: number;
-  /** A rented room: paid until then. */
-  until?: CalendarDate;
-  /** A borrowed place: whose it is. */
-  hostId?: string;
-  hostName?: string;
-  /** People (entity ids) and groups (a faction id, "the landlord") who know of it. */
-  knownBy: string[];
-  knownGroups: string[];
-  stash: string[];
-  upgrades: { name: string; since: CalendarDate }[];
-  /** People living there (entity ids). */
-  residents: string[];
-  /** Found by someone the player is hiding from. */
-  compromised?: { on: CalendarDate; by: string };
-  /** Searched while the player was away; seen once he is back. */
-  raided?: { on: CalendarDate; lost: string[]; seen: boolean };
-  status: 'active' | 'ended';
-  ended?: { on: CalendarDate; reason: SafehouseEnd; note?: string };
-};
-
-export type SafehouseState = {
-  places: Safehouse[];
-  /** The one the player is at now. */
-  current?: string;
-};
-
 export type WeatherCondition =
   | 'clear'
   | 'cloudy'
@@ -206,29 +154,16 @@ export type WeatherCondition =
 
 /**
  * The weather a scene is played in, held so it stays the same through the
- * scene: the world's own weather for the region, or what the story changed
+ * scene: the world's own weather, or what the story changed
  * it to (a storm rolling in, the fog lifting).
  */
 export type WeatherLock = {
-  /** A geography region id, or 'unknown'. */
-  region: string;
   condition: WeatherCondition;
   /** The story's own words for it, when the story set it. */
   text?: string;
   since: CalendarDate;
   sceneSeq?: number;
   source: 'world' | 'story';
-};
-
-/** One stop on the player's road (see mapData.ts). */
-export type TravelStop = {
-  /** state.location as the story gave it. */
-  place: string;
-  /** A geography region id, when the place names one or the player has not left the last one. */
-  region?: string;
-  /** The map place it matches (a village, a shrine, a ruin). */
-  placeId?: string;
-  date: CalendarDate;
 };
 
 /** What the yearly calendar remembers (see yearly.ts). */
@@ -239,30 +174,6 @@ export type YearlyState = {
   offered: Record<string, number>;
 };
 
-/** A faction id from `db.world.factions`. */
-export type ReputationFaction = string;
-
-/** What one faction has on the player (see reputation.ts). */
-export type FactionStanding = {
-  /** 0-100: how badly they want the player, before cooling since lastDeedOn. */
-  heat: number;
-  /** -100..100: how they regard the player. */
-  standing?: number;
-  /** When they put the player on their wanted list (factions with bounties). Never removed. */
-  listedOn?: CalendarDate;
-  /** Their last new reason to want him; cooling counts from here. */
-  lastDeedOn?: CalendarDate;
-  lastReason?: string;
-  /** True once the player has seen or been told what they wrote about them. */
-  known: boolean;
-};
-
-export type ReputationState = {
-  factions: Record<string, FactionStanding>;
-  /** The last few changes, newest last. */
-  recent: { faction: ReputationFaction; change: number; reason?: string; date: CalendarDate }[];
-};
-
 /** Someone's grudge against the player, kept on their bond (see grudges.ts). */
 export type Grudge = {
   since: CalendarDate;
@@ -270,93 +181,6 @@ export type Grudge = {
   /** 0-100, before the stewing since updatedOn. */
   heat: number;
   updatedOn: CalendarDate;
-  lastStrike?: CalendarDate;
-  strikes: number;
-};
-
-/**
- * One personal letter. `to-player` letters come from someone the player is close to
- * (a reply to his own letter, or unprompted); `from-player` letters are the ones
- * he sends, which take days to arrive and move the recipient's bond.
- */
-export type Letter = {
-  id: string;
-  direction: 'to-player' | 'from-player';
-  entityId: string;
-  name: string;
-  sentOn: CalendarDate;
-  arrivesOn: CalendarDate;
-  /** What the letter says, in a few words (the player's own letters). */
-  gist?: string;
-  /**
-   * The letter itself, kept for the archive: the player's own words (only spelling
-   * and punctuation tidied), or the words the narrator gave the writer.
-   */
-  text?: string;
-  /**
-   * travelling: on its way; delivered: it reached its reader; lost: it never
-   * arrived (see lostReason); unsent: a letter to the dead, kept, never sent.
-   */
-  status: 'travelling' | 'delivered' | 'lost' | 'unsent';
-  /** Why a lost letter never arrived. */
-  lostReason?: string;
-  /** A to-player letter answering one of the player's. */
-  replyTo?: string;
-  deliveredOn?: CalendarDate;
-  /** How it travels; sets its speed and how safe it is (see letters.ts). */
-  carrier?: LetterCarrierKind;
-  /** Written in a cipher. */
-  coded?: boolean;
-  /** Where the reader was thought to be when it set out (to notice they moved on). */
-  toRegion?: string;
-  /** Someone read it on the way (see letters.ts); the player does not know until it comes back to them. */
-  interceptedBy?: Interceptor;
-  /** A birthday letter. */
-  occasion?: 'birthday';
-};
-
-/** How a letter travels: one of the world's carriers (free text), or 'hand' (delivered in person). */
-export type LetterCarrierKind = string;
-
-/** The faction id that read a letter on the way. */
-export type Interceptor = string;
-
-export type PostState = {
-  letters: Letter[];
-  /** When a letter last reached the player. */
-  lastLetterIn?: CalendarDate;
-};
-
-/** A deed people saw, which travels as talk and shapes what they call the player (see renown.ts). */
-export type Deed = {
-  id: string;
-  date: CalendarDate;
-  text: string;
-  /** Whose people saw it, when a faction did. */
-  faction?: ReputationFaction;
-  /** Where it happened (geography.ts region). */
-  region?: string;
-  /** How much it moved the world's view of the player (the reputation change, or a few points). */
-  weight: number;
-};
-
-/** Who calls the player by a name of their own: a faction id, or 'common' for ordinary people. */
-export type Audience = string;
-
-export type Epithet = {
-  name: string;
-  since: CalendarDate;
-  /** The theme it grew from (renown.ts), or 'story' when the story named the player. */
-  theme: string;
-  /** The player has heard themselves called this. */
-  known: boolean;
-  /** Names it had before, oldest first. */
-  history?: { name: string; since: CalendarDate }[];
-};
-
-export type RenownState = {
-  deeds: Deed[];
-  epithets: Record<string, Epithet>;
 };
 
 /**
@@ -378,19 +202,11 @@ export type ConsequenceSeed = {
   want?: string;
   /** Ids of anyone else who saw it. */
   witnesses: string[];
-  /** A faction it could reach. */
-  faction?: ReputationFaction;
-  /** Where it happened (geography.ts region). */
-  region?: string;
   /** Not before this date. */
   after: CalendarDate;
   /** It fades if it has not come back by this date. */
   before: CalendarDate;
   status: 'waiting' | 'returned' | 'faded';
-  /** The letter it came from (an interception). */
-  letterId?: string;
-  /** The safehouse someone found out about (kind found). */
-  safehouseId?: string;
   /** When it was last offered to the narrator. */
   offeredOn?: CalendarDate;
   resolvedOn?: CalendarDate;
@@ -404,9 +220,7 @@ export type ConsequenceKind =
   | 'betrayal'
   | 'humiliated'
   | 'promise'
-  | 'debt'
-  | 'intercepted'
-  | 'found';
+  | 'debt';
 
 export type RawLogEntry = {
   id: string;
@@ -434,10 +248,10 @@ export type RawLogEntry = {
   imageMeta?: SceneImageMeta;
   /** The scene mode this reply was narrated in (assistant story turns). */
   sceneMode?: SceneModeName;
-  /** The state tracker judged this beat visually striking (image_worthy). */
+  /** The state tracker judged this moment visually striking (image_worthy). */
   imageWorthy?: boolean;
-  /** Quick moves offered under a fight reply (written by the state tracker). */
-  fightOptions?: string[];
+  /** Moves offered under the reply (sex mode: four, written by the state tracker). */
+  sceneOptions?: string[];
   /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
   intimate?: boolean;
 };
@@ -448,6 +262,8 @@ export type SceneImageMeta = {
   action: string;
   /** The scrapbook caption, written in second person with the action line. */
   caption?: string;
+  /** Where the player was when it was painted. */
+  location?: string;
   /** The director's camera line (shot, angle, lens, composition, light). */
   shot?: string;
   /** The shot type read from `shot`, for the variety tracker. */
@@ -535,17 +351,19 @@ export type EntityRecord = {
   /** The story has not given them a name yet: `name` is only their label. */
   unnamed?: true;
   /**
-   * "minor": a one-scene character (a bounty target, a shopkeeper). No bond
+   * "minor": a one-scene character (a waiter, a shopkeeper). No bond
    * card and no portrait unless they come back in a second scene, which
    * makes them an ordinary character.
    */
   tier?: 'minor';
   /**
-   * Set while this person travels with the player (see companions.ts): they are in
-   * every scene until the story shows them leave, and the scenes they share
-   * move their bond.
+   * Set while this person is with the player right now (see companions.ts):
+   * they are in every scene until the story shows them leave, and the scenes
+   * they share move their bond.
    */
   companion?: Companion;
+  /** Lives with the player (a partner, a roommate): home when the player is home, unless their day says otherwise. */
+  livesWithYou?: boolean;
   /** Small events in their own life while the player was elsewhere (see lives.ts). */
   lifeEvents?: LifeEvent[];
   /** Set when the player meets them again after a long time apart (see lives.ts). */
@@ -1007,12 +825,10 @@ export type TurnDiff = {
     scene?: string;
     sceneCast?: string[];
   };
-  /** The state model judged this beat visually striking (queues a scene summary). */
+  /** The state model judged this moment visually striking (queues a scene summary). */
   imageWorthy?: boolean;
   /** How this turn played, and who the player was talking with (ids from the tracker). */
-  beat?: { kind: SceneBeat; with: string[] };
-  /** Moves the player could make next while a fight goes on. */
-  fightOptions?: string[];
+  turnKind?: { kind: TurnKind; with: string[] };
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
   /**
@@ -1097,18 +913,6 @@ export type TurnDiff = {
   companionsJoined?: { entityId?: string; name: string; reason?: string }[];
   /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];
-  /** Letters or messages the player sent this turn to someone far away (or wrote to the dead). */
-  lettersSent?: {
-    entityId?: string;
-    name: string;
-    gist?: string;
-    /** The letter as the player wrote it, only spelling and punctuation tidied. */
-    text?: string;
-    carrier?: LetterCarrierKind;
-    coded?: boolean;
-  }[];
-  /** People whose letter reached the player on the page this turn, with its words. */
-  lettersReceived?: { entityId?: string; name: string; text?: string }[];
   /** Things in someone's own life away from the player that this turn revealed. */
   lifeEvents?: { entityId?: string; name: string; text: string }[];
   /** Intimacy (intimacy.ts): what the page showed between the player and someone. */
@@ -1122,8 +926,6 @@ export type TurnDiff = {
   limitCrossed?: boolean;
   /** Someone under 18, of no stated age, or described as a child was sexualised. The reply is thrown away. */
   ageRuleCrossed?: boolean;
-  /** A name the story called the player by this turn, and whose name it is. */
-  epithet?: { audience: Audience; name: string };
   /** Choices this turn that could plausibly come back later. */
   consequences?: {
     kind: ConsequenceKind;
@@ -1132,51 +934,30 @@ export type TurnDiff = {
     what: string;
     want?: string;
     witnesses?: string[];
-    faction?: ReputationFaction;
     when?: 'weeks' | 'months' | 'years';
   }[];
   /** Ids of offered consequences that came back on the page this turn. */
   consequencesReturned?: string[];
   /** The weather as the page changed it this turn, in a few words. */
   weather?: string;
-  /** A place the player settles in or sleeps at, and what changed there (see safehouses.ts). */
-  safehouse?: SafehouseDiff;
+  /** Home: where the player now lives, where they are staying ('' = back home), who moved in or out. */
+  home?: { livesAt?: string; stayingAt?: string; movedIn: string[]; movedOut: string[] };
   /** Changes to the player's own money this turn, in the world's currency (negative when they pay). */
   money?: { amount: number; reason: string }[];
   /** The total the player has, when the prose states it. */
   moneyCounted?: number;
-  /** What a faction now has on the player. */
-  reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday the player learned this turn (they said it, someone told them). */
   birthdaysLearned?: { entityId?: string; name: string }[];
   /** Names the player heard, read or recognised this turn (names.ts). */
   namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
-  /** Factions whose wanted entry on the player they saw or were told of this turn. */
-  bountySeen?: string[];
   /** Grudges started, acted on, settled or forgiven this turn. */
   grudges?: {
     entityId?: string;
     name: string;
-    event: 'wronged' | 'struck' | 'settled' | 'forgiven';
+    event: 'wronged' | 'settled' | 'forgiven';
     reason?: string;
   }[];
   scene?: SceneInfo;
-};
-
-export type SafehouseDiff = {
-  /** A listed safehouse id; none means where the player is now. */
-  id?: string;
-  name?: string;
-  kind?: SafehouseKind;
-  paidNights?: number;
-  host?: string;
-  stored?: string[];
-  taken?: string[];
-  upgrade?: string;
-  shownTo?: string[];
-  residentsJoined?: string[];
-  residentsLeft?: string[];
-  ended?: Exclude<SafehouseEnd, 'left'>;
 };
 
 export type OpenRouterMessage = {
@@ -1208,39 +989,23 @@ export type ClimateType =
   | 'monsoon'
   | 'rainy'
   | 'coastal'
-  | 'mountain'
-  | 'none';
+  | 'mountain';
 
 /** A group in the world: a company, a family, a gang, a police force, a crew, a church. */
 export type FactionDef = {
   id: string;
   name: string;
   description: string;
-  /** Regions it holds (see reputation.ts: "in their territory"). */
-  territoryRegionIds?: string[];
-  /** Keeps a wanted list and pays bounties in the world's currency. */
-  hasBounties?: boolean;
-  /** How its people send word: "courier", "phone", "text message"… */
-  carriers?: string[];
-  /** 0–1: how likely it reads letters that cross its land. */
-  readsMail?: number;
 };
 
-export type RegionDef = {
-  id: string;
-  name: string;
-  description: string;
-  climate: ClimateType;
-  /** Regions next to this one and how many days' travel apart. */
-  neighbours: { id: string; days: number }[];
-};
-
+/** A place in the world: home, work, the bar, someone's apartment. */
 export type PlaceDef = {
   id: string;
   name: string;
-  regionId: string;
   kind: LocationKind;
   description: string;
+  /** Optional: who lives or works there, in the player's words. */
+  who?: string;
 };
 
 export type FestivalDef = {
@@ -1269,16 +1034,18 @@ export type WorldDefinition = {
    * plausible technology only.
    */
   era: WorldEra;
+  /** The climate where the story is set; its seasons and weather follow it. */
+  climate: ClimateType;
+  /** South of the equator: the seasons run six months on. */
+  southern?: boolean;
   currency: { name: string; symbol?: string; priceGuide: string };
   calendar: { yearLabel: string; start: CalendarDate; monthNames?: string[] };
+  /** Groups in the world, as plain notes: a workplace, a friend group, a family. */
   factions: FactionDef[];
-  regions: RegionDef[];
   places: PlaceDef[];
   /** The player's own lore entries. */
   lore: LoreRecord[];
   festivals: FestivalDef[];
-  /** How letters and messages travel, fitting the era: "courier", "post", "phone", "text message"… */
-  letterCarriers: string[];
   /** Image style opener, e.g. "cinematic photo, 35mm film". */
   artStyle: string;
   /** The player's own extra rules for the narrator. */
@@ -1315,6 +1082,8 @@ export type CharacterDefinition = {
   skills?: string;
   inventory: string[];
   money: number;
+  /** Where the player lives (a flat, a house, a dorm room). */
+  home?: string;
   secrets: string[];
   goals: string[];
   /** `img:` references the player uploaded. */
@@ -1350,6 +1119,8 @@ export type StartingPerson = {
   met?: boolean;
   secrets?: string[];
   whereabouts?: string;
+  /** Lives with the player (a partner, a roommate). */
+  livesWithYou?: boolean;
 };
 
 /** Something the player marked as true at the start ("things that are true"). */

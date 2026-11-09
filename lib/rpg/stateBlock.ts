@@ -3,30 +3,16 @@
 import { readAmount } from './money';
 import type {
   AppDatabase,
-  Audience,
   ConsequenceKind,
   FactType,
-  LetterCarrierKind,
   LocationKind,
   NameHow,
   NamePart,
-  ReputationFaction,
-  SafehouseDiff,
-  SafehouseKind,
   TurnDiff,
 } from './types';
 import { isPlayerRef, playerName, playerRefs } from './player';
 
 const KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
-
-/** A faction id, audience or carrier as the tracker wrote it: trimmed, or undefined. Checked against the world later. */
-function idString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-
-  const text = value.trim();
-
-  return text && text.toLowerCase() !== 'null' ? text.slice(0, 60) : undefined;
-}
 
 /** How the state reply may name the player: their name, and every ref. */
 export type StatePlayer = { name: string; refs: readonly string[] };
@@ -61,45 +47,6 @@ export function convertStateBlock(
   const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
 
-  if (Array.isArray(block.letters_sent)) {
-    const sent = block.letters_sent
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({
-        name: typeof item.to === 'string' ? item.to.trim() : '',
-        gist: typeof item.gist === 'string' && item.gist.trim() ? item.gist.trim().slice(0, 160) : undefined,
-        text: cleanString(item.text)?.slice(0, 4000),
-        carrier: idString(item.carrier) as LetterCarrierKind | undefined,
-        coded: item.coded === true ? true : undefined,
-      }))
-      .filter((item) => item.name.length > 0)
-      .slice(0, 3);
-
-    if (sent.length > 0) {
-      diff.lettersSent = sent;
-    }
-  }
-
-  if (Array.isArray(block.letters_received)) {
-    // Older replies: a list of ids; now {from, text}.
-    const received = block.letters_received
-      .map((item) =>
-        typeof item === 'string'
-          ? { name: item.trim() }
-          : item && typeof item === 'object'
-            ? {
-                name: cleanString((item as Record<string, unknown>).from) ?? '',
-                text: cleanString((item as Record<string, unknown>).text)?.slice(0, 2400),
-              }
-            : { name: '' }
-      )
-      .filter((item) => item.name.length > 0)
-      .slice(0, 3);
-
-    if (received.length > 0) {
-      diff.lettersReceived = received;
-    }
-  }
-
   if (Array.isArray(block.birthdays_learned)) {
     const learned = block.birthdays_learned
       .filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
@@ -128,30 +75,6 @@ export function convertStateBlock(
     if (learned.length > 0) {
       diff.namesLearned = learned;
     }
-  }
-
-  if (Array.isArray(block.reputation)) {
-    const changes = block.reputation
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({
-        faction: (idString(item.faction) ?? '') as ReputationFaction,
-        change: typeof item.change === 'number' && Number.isFinite(item.change) ? item.change : 0,
-        reason: cleanString(item.reason)?.slice(0, 160),
-      }))
-      .filter((item) => item.faction.length > 0 && item.change !== 0)
-      .slice(0, 6);
-
-    if (changes.length > 0) {
-      diff.reputation = changes;
-    }
-  }
-
-  const seen = stringItems(block.bounty_seen)
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-
-  if (seen.length > 0) {
-    diff.bountySeen = [...new Set(seen)];
   }
 
   if (Array.isArray(block.life_events)) {
@@ -201,18 +124,6 @@ export function convertStateBlock(
   if (block.limit_crossed === true) diff.limitCrossed = true;
   if (block.age_rule_crossed === true) diff.ageRuleCrossed = true;
 
-  const epithet = block.epithet;
-
-  if (epithet && typeof epithet === 'object' && !Array.isArray(epithet)) {
-    const value = epithet as Record<string, unknown>;
-    const audience = idString(value.audience);
-    const name = cleanString(value.name);
-
-    if (audience && name) {
-      diff.epithet = { audience: audience as Audience, name: name.slice(0, 60) };
-    }
-  }
-
   if (Array.isArray(block.consequences)) {
     const seeds = block.consequences
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
@@ -227,7 +138,6 @@ export function convertStateBlock(
           what: cleanString(item.what)?.slice(0, 200) ?? '',
           want: cleanString(item.want)?.slice(0, 160),
           witnesses: stringItems(item.witnesses).slice(0, 6),
-          faction: idString(item.faction),
           when: ['weeks', 'months', 'years'].includes(String(item.when)) ? (item.when as 'weeks' | 'months' | 'years') : undefined,
         };
       })
@@ -246,12 +156,12 @@ export function convertStateBlock(
   }
 
   if (Array.isArray(block.grudges)) {
-    const events = new Set(['wronged', 'struck', 'settled', 'forgiven']);
+    const events = new Set(['wronged', 'settled', 'forgiven']);
     const grudges = block.grudges
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
         name: cleanString(item.character_id) ?? cleanString(item.name) ?? '',
-        event: (typeof item.event === 'string' ? item.event.trim().toLowerCase() : '') as 'wronged' | 'struck' | 'settled' | 'forgiven',
+        event: (typeof item.event === 'string' ? item.event.trim().toLowerCase() : '') as 'wronged' | 'settled' | 'forgiven',
         reason: cleanString(item.reason)?.slice(0, 160),
       }))
       .filter((item) => item.name.length > 0 && notPlayer(item.name) && events.has(item.event))
@@ -332,8 +242,7 @@ export function convertStateBlock(
   }
 
   if (
-    block.scene_pace === 'combat' ||
-    block.scene_pace === 'chase' ||
+    block.scene_pace === 'action' ||
     block.scene_pace === 'conversation' ||
     block.scene_pace === 'travel' ||
     block.scene_pace === 'downtime'
@@ -341,32 +250,19 @@ export function convertStateBlock(
     diff.state = { ...diff.state, scenePace: block.scene_pace };
   }
 
-  const beatKinds = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'] as const;
-  const beatKind = beatKinds.find((kind) => kind === block.beat);
+  const turnKinds = ['exchange', 'instruction', 'remark', 'action', 'travel'] as const;
+  const turnKind = turnKinds.find((kind) => kind === block.turn_kind);
 
-  if (beatKind) {
-    diff.beat = {
-      kind: beatKind,
-      with: Array.isArray(block.beat_with)
-        ? block.beat_with
+  if (turnKind) {
+    diff.turnKind = {
+      kind: turnKind,
+      with: Array.isArray(block.talking_with)
+        ? block.talking_with
             .filter((id): id is string => typeof id === 'string' && id.trim().length > 0 && notPlayer(id))
             .map((id) => id.trim())
             .slice(0, 6)
         : [],
     };
-  }
-
-  if (Array.isArray(block.fight_options)) {
-    const options = block.fight_options
-      .filter((option): option is string => typeof option === 'string')
-      .map((option) => option.replace(/^[\s*"“”-]+|[\s*"“”]+$/g, '').replace(/\s+/g, ' ').trim())
-      .filter((option) => option.length >= 3)
-      .map((option) => option.slice(0, 90))
-      .slice(0, 4);
-
-    if (options.length > 0) {
-      diff.fightOptions = options;
-    }
   }
 
   if (typeof block.mood === 'string' && block.mood.trim()) {
@@ -418,10 +314,10 @@ export function convertStateBlock(
     diff.moneyCounted = counted;
   }
 
-  const safehouse = convertSafehouse(block.safehouse);
+  const home = convertHome(block.home);
 
-  if (safehouse) {
-    diff.safehouse = safehouse;
+  if (home) {
+    diff.home = home;
   }
 
   const weather = cleanString(block.weather);
@@ -893,33 +789,19 @@ function convertMoney(value: unknown): { amount: number; reason: string }[] {
     .slice(0, 6);
 }
 
-const SAFEHOUSE_KIND_VALUES = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;
-const SAFEHOUSE_END_VALUES = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'] as const;
-
-/** The tracker's safehouse report, or null when it says nothing. */
-function convertSafehouse(value: unknown): SafehouseDiff | null {
+/** The tracker's home report, or null when it says nothing. */
+function convertHome(value: unknown): TurnDiff['home'] | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
 
   const item = value as Record<string, unknown>;
-  const kind = cleanString(item.kind)?.toLowerCase();
-  const ended = cleanString(item.ended)?.toLowerCase().replace(/\s+/g, '-');
-  const id = cleanString(item.id);
-  const nights = typeof item.paid_nights === 'number' && Number.isFinite(item.paid_nights) && item.paid_nights > 0 ? Math.min(item.paid_nights, 365) : undefined;
-  const list = (raw: unknown, max: number) => stringItems(raw).map((entry) => entry.slice(0, 80)).slice(0, max);
-  const diff: SafehouseDiff = {
-    ...(id && id.toLowerCase() !== 'null' ? { id } : {}),
-    ...(cleanString(item.name) ? { name: cleanString(item.name)!.slice(0, 70) } : {}),
-    ...((SAFEHOUSE_KIND_VALUES as readonly string[]).includes(kind ?? '') ? { kind: kind as SafehouseKind } : {}),
-    ...(nights ? { paidNights: nights } : {}),
-    ...(cleanString(item.host) ? { host: cleanString(item.host)! } : {}),
-    ...(list(item.stored, 8).length ? { stored: list(item.stored, 8) } : {}),
-    ...(list(item.taken, 8).length ? { taken: list(item.taken, 8) } : {}),
-    ...(cleanString(item.upgrade) ? { upgrade: cleanString(item.upgrade)!.slice(0, 80) } : {}),
-    ...(list(item.shown_to, 8).length ? { shownTo: list(item.shown_to, 8) } : {}),
-    ...(list(item.residents_joined, 4).length ? { residentsJoined: list(item.residents_joined, 4) } : {}),
-    ...(list(item.residents_left, 4).length ? { residentsLeft: list(item.residents_left, 4) } : {}),
-    ...((SAFEHOUSE_END_VALUES as readonly string[]).includes(ended ?? '') ? { ended: ended as SafehouseDiff['ended'] } : {}),
-  };
+  const livesAt = cleanString(item.lives_at)?.slice(0, 120);
+  // "" (or "home") means back home: the tracker clears where the player was staying.
+  const staying = typeof item.staying_at === 'string' ? item.staying_at.trim().slice(0, 120) : null;
+  const movedIn = stringItems(item.moved_in).slice(0, 4);
+  const movedOut = stringItems(item.moved_out).slice(0, 4);
+  const stayingAt = staying === null ? undefined : /^(home|null)$/i.test(staying) ? '' : staying;
 
-  return Object.keys(diff).length > 0 ? diff : null;
+  if (!livesAt && stayingAt === undefined && movedIn.length === 0 && movedOut.length === 0) return null;
+
+  return { ...(livesAt ? { livesAt } : {}), ...(stayingAt !== undefined ? { stayingAt } : {}), movedIn, movedOut };
 }

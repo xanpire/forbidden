@@ -34,8 +34,8 @@ function list(properties: Record<string, unknown>) {
 }
 
 export const TIME_UNITS = ['seconds', 'minutes', 'hours', 'days'] as const;
-export const SCENE_PACES = ['combat', 'chase', 'conversation', 'travel', 'downtime'] as const;
-export const SCENE_BEATS = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'] as const;
+export const SCENE_PACES = ['action', 'conversation', 'travel', 'downtime'] as const;
+export const TURN_KINDS = ['exchange', 'instruction', 'remark', 'action', 'travel'] as const;
 export const LOCATION_KINDS = ['settlement', 'road', 'wilderness', 'structure'] as const;
 export const RELATIONSHIPS = [
   'stranger',
@@ -73,10 +73,8 @@ export const FACT_TYPES = [
   'other',
 ] as const;
 export const FACT_LASTS = ['lasting', 'until_rest', 'days'] as const;
-export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
+export const GRUDGE_EVENTS = ['wronged', 'settled', 'forgiven'] as const;
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
-export const SAFEHOUSE_KINDS = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;
-export const SAFEHOUSE_ENDINGS = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'] as const;
 export const CONSEQUENCE_KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
 
 export const TURN_STATE_SCHEMA = object({
@@ -86,11 +84,9 @@ export const TURN_STATE_SCHEMA = object({
     clock_time: nullableString,
   }),
   scene_pace: nullableEnum(SCENE_PACES),
-  // How this turn played (the player's input and the reply together), who the player was
-  // talking with, and, while a fight goes on, a few moves they could make next.
-  beat: nullableEnum(SCENE_BEATS),
-  beat_with: stringList,
-  fight_options: stringList,
+  // How this turn played (the player's input and the reply together), and who the player was talking with.
+  turn_kind: nullableEnum(TURN_KINDS),
+  talking_with: stringList,
   location: nullableString,
   location_kind: nullableEnum(LOCATION_KINDS),
   mood: nullableString,
@@ -195,47 +191,22 @@ export const TURN_STATE_SCHEMA = object({
   scene_title: nullableString,
   // The weather, only when the page changes it from WEATHER NOW.
   weather: nullableString,
-  // A place the player sleeps at or settles in, or what changed at one (see SAFEHOUSES).
-  safehouse: {
+  // Home: where the player lives now (only when they move), where they are
+  // staying if not at home ("" when they go back home), and who moved in or out.
+  home: {
     type: ['object', 'null'],
     properties: {
-      id: nullableString,
-      name: nullableString,
-      kind: nullableEnum(SAFEHOUSE_KINDS),
-      paid_nights: nullableNumber,
-      host: nullableString,
-      stored: stringList,
-      taken: stringList,
-      upgrade: nullableString,
-      shown_to: stringList,
-      residents_joined: stringList,
-      residents_left: stringList,
-      ended: nullableEnum(SAFEHOUSE_ENDINGS),
+      lives_at: nullableString,
+      staying_at: nullableString,
+      moved_in: stringList,
+      moved_out: stringList,
     },
-    required: [
-      'id', 'name', 'kind', 'paid_nights', 'host', 'stored', 'taken', 'upgrade',
-      'shown_to', 'residents_joined', 'residents_left', 'ended',
-    ],
+    required: ['lives_at', 'staying_at', 'moved_in', 'moved_out'],
     additionalProperties: false,
   },
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,
-  // A letter or message the player writes and sends to someone not in the scene (or
-  // to the dead: kept, never sent). text: the player's words with only spelling and
-  // punctuation fixed.
-  letters_sent: list({
-    to: { type: 'string' },
-    gist: nullableString,
-    text: nullableString,
-    carrier: nullableString,
-    coded: { type: ['boolean', 'null'] },
-  }),
-  // Letters that actually reached the player on the page this turn, with their words.
-  letters_received: list({
-    from: { type: 'string' },
-    text: nullableString,
-  }),
   // Intimacy (intimacy.ts): scene on/off, ladder steps, firsts, learned
   // preferences, clothes and positions, and the two hard-limit flags.
   intimate_scene: { type: ['boolean', 'null'] },
@@ -273,25 +244,6 @@ export const TURN_STATE_SCHEMA = object({
     part: { type: 'string', enum: ['given', 'family', 'full'] },
     how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard'] },
   }),
-  // What a faction (by its id) now has on the player, from deeds its people saw
-  // or survived this turn; and factions whose wanted entry on the player they
-  // learned of.
-  reputation: list({
-    faction: { type: 'string' },
-    change: { type: 'number' },
-    reason: nullableString,
-  }),
-  bounty_seen: stringList,
-  // A name the prose calls the player by, and whose name it is.
-  epithet: {
-    type: ['object', 'null'],
-    properties: {
-      audience: { type: 'string' },
-      name: { type: 'string' },
-    },
-    required: ['audience', 'name'],
-    additionalProperties: false,
-  },
   // Choices that could come back later, and offered ones that came back.
   consequences: list({
     kind: { type: 'string', enum: [...CONSEQUENCE_KINDS] },
@@ -300,11 +252,10 @@ export const TURN_STATE_SCHEMA = object({
     what: { type: 'string' },
     want: nullableString,
     witnesses: stringList,
-    faction: nullableString,
     when: nullableEnum(['weeks', 'months', 'years']),
   }),
   consequences_returned: stringList,
-  // Grudges against the player: started, acted on, settled, or forgiven.
+  // Grudges against the player: started, settled, or forgiven.
   grudges: list({
     character_id: { type: 'string' },
     event: { type: 'string', enum: [...GRUDGE_EVENTS] },

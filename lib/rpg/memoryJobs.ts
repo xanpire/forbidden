@@ -18,33 +18,27 @@
  * to no longer exists (undo, regenerate).
  */
 import { applyIntimacyStages, applyIntimateScene, applyFirsts, applyOutfits, applyPreferences } from './intimacy';
-import { WANTED_LABEL, wantedListings } from './reputation';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
-import { deliverLetters, receiveLetters, sendLetters, turnLetterOffer } from './letters';
 import { advanceLives, applyLifeEvents, markReunions } from './lives';
 import { advanceConsequences, applyConsequences, markConsequenceOffered, turnConsequenceOffer } from './consequences';
-import { applyEpithet, markEpithetsSeen, recordDeeds } from './renown';
 import { applyYearly, yearlyOffer } from './yearly';
-import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
-import { applySafehouses } from './safehouses';
-import { applyPurse, currencyOf, formatMoney } from './money';
+import { applyPurse } from './money';
 import { parsePovLines, povCandidates, resolvePovs } from './povMemories';
 import { daysBetween, secondsBetween, shiftDatesAfter, shiftSeconds } from './calendar';
 import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
-import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
-import { CONVERSATION_MODE_MINIMUM_SECONDS, applySceneBeat, cleanFightOptions } from './sceneMode';
+import { inferScenePace, resolveTurnClock } from './pacing';
+import { CONVERSATION_MODE_MINIMUM_SECONDS, applyTurnKind } from './sceneMode';
 import { resolveEntity } from './entities';
-import { applyNameStep, displayName, nameLeaks } from './names';
+import { applyNameStep, nameLeaks } from './names';
 import { fallbackDiffFromProse } from './proseFallback';
 import {
   applyTurnDiff,
   extractTurnDiff,
-  isRest,
   rollArcSummary,
   summarizeScene,
   summarizeTimeSkip,
@@ -229,8 +223,6 @@ export type StateStepResult = {
   db: AppDatabase;
   /** Follow-up summary jobs that were queued by this step. */
   followUpIds: string[];
-  /** A short line to show under the reply (a letter arrived, …). */
-  notice: string | null;
   /** The diff that was applied, after the app settled the clock. */
   appliedDiff: TurnDiff | null;
   /** Names the narration used outside dialogue that the player couldn't know (for the Debug panel). */
@@ -253,7 +245,7 @@ export function applyStateStep(
   const beforeDate = latest.state.inStoryDate;
   const parsedTime = detectNarrationTime(turn.narration, beforeDate);
   const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
-  const pace = validateScenePace(extraction?.state?.scenePace, turn.narration) ?? inferScenePace(turn.narration);
+  const pace = extraction?.state?.scenePace ?? inferScenePace(turn.narration);
   const sceneEnded = extraction?.scene?.ended ?? false;
   // The mode the reply was narrated in (set when it was saved).
   const modeUsed = latest.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneMode;
@@ -286,16 +278,12 @@ export function applyStateStep(
   const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
   const stalled = latest.state.turnsWithoutTimeChange ?? 0;
 
-  // Fight moves to offer under the reply, only while the fight goes on.
-  const fightGoesOn = !sceneEnded && (pace === 'combat' || extraction?.beat?.kind === 'combat');
-  const fightOptions = fightGoesOn ? cleanFightOptions(extraction?.fightOptions) : undefined;
-
   next = {
     ...next,
     // The chip under the reply shows this, and tapping it corrects it.
     rawLog: next.rawLog.map((entry) =>
       entry.id === turn.turnLogId
-        ? { ...entry, elapsedSeconds: appliedSeconds, fightOptions, ...(extraction?.imageWorthy ? { imageWorthy: true } : {}) }
+        ? { ...entry, elapsedSeconds: appliedSeconds, ...(extraction?.imageWorthy ? { imageWorthy: true } : {}) }
         : entry
     ),
     state: {
@@ -305,8 +293,8 @@ export function applyStateStep(
     },
   };
   // How the turn played: the conversation streak, the mode, the chip choice.
-  next = applySceneBeat(next, {
-    beat: extraction?.beat,
+  next = applyTurnKind(next, {
+    turnKind: extraction?.turnKind,
     modeUsed,
     input: turn.userMessage,
     narration: turn.narration,
@@ -323,8 +311,7 @@ export function applyStateStep(
   // Which scene this turn belongs to, and who was in it: memories are cut
   // and shared by this, never by names in their text.
   next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true, next.state.chapter !== chapterBefore);
-  // The player's road and the scene's weather (held through the scene unless the page changed it).
-  next = recordTravel(next);
+  // The scene's weather (held through the scene unless the page changed it).
   next = applyWeather(next, extraction?.weather);
 
   // Names the player heard or read this turn; labels for anyone he can't name.
@@ -353,53 +340,19 @@ export function applyStateStep(
   next = advanceLives(next);
   next = advanceConsequences(next);
 
-  // Letters: what the player sent sets out, what reached them on the page is read,
-  // and his letters that arrived by now move their reader's bond.
-  next = receiveLetters(next, extraction?.lettersReceived, turnLetterOffer(latest));
-  next = sendLetters(next, extraction?.lettersSent, turn.userMessage);
-  next = deliverLetters(next);
-
-  // What people saw becomes talk and a name; choices that could come back
-  // are kept. The offers come from the state this turn's prompt was built on.
-  next = recordDeeds(next, extraction?.reputation);
-  next = applyEpithet(next, extraction?.epithet);
-  next = markEpithetsSeen(next, extraction?.bountySeen);
+  // Choices that could come back are kept. The offer comes from the state
+  // this turn's prompt was built on.
   const offeredSeed = turnConsequenceOffer(latest);
   const planted = applyConsequences(next, extraction?.consequences, extraction?.consequencesReturned, offeredSeed);
   next = markConsequenceOffered(planted.db, offeredSeed);
   // The player's own money: what he paid, was paid, found or lost, and their total
   // when the prose states it.
   next = applyPurse(next, extraction?.money, extraction?.moneyCounted);
-  // Where the player stays: a place he sleeps at or settles in, what is stashed or built there, who
-  // knows (after consequences, so a found place that came back this turn is compromised).
-  // Only real downtime counts as sleeping somewhere: a long day on the road is not a night's rest.
-  next = applySafehouses(latest, next, extraction?.safehouse, {
-    rested: isRest(effectiveDiff) && pace === 'downtime',
-    elapsedSeconds: clock.elapsedSeconds,
-  });
   // The day's birthday or anniversary was offered (once a year), and any
   // birthday the player learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
-
-  let notice: string | null = null;
-
-  if (!notice && extraction?.lettersReceived?.length) {
-    const writer = extraction.lettersReceived[0].entityId
-      ? next.entities.find((entity) => entity.id === extraction.lettersReceived![0].entityId)
-      : resolveEntity(next, extraction.lettersReceived[0].name);
-    notice = `A letter from ${writer ? displayName(next, writer) : extraction.lettersReceived[0].name}`;
-  }
-
-  // The player just learned what a group has on them.
-  if (!notice && extraction?.bountySeen?.length) {
-    const listing = wantedListings(next).find((item) => item.factionId === extraction.bountySeen![0]);
-
-    if (listing) {
-      notice = `${listing.name}: ${WANTED_LABEL[listing.level]} · ${formatMoney(listing.bounty, currencyOf(next))}`;
-    }
-  }
 
   // The state step is done; any earlier state job for this turn is settled.
   next = withJobs(
@@ -432,7 +385,7 @@ export function applyStateStep(
     }
   }
 
-  return { db: next, followUpIds, notice, appliedDiff: effectiveDiff, nameLeaks: nameLeaks(next, turn.narration) };
+  return { db: next, followUpIds, appliedDiff: effectiveDiff, nameLeaks: nameLeaks(next, turn.narration) };
 }
 
 /** A chapter is long: a break only counts once this much story has passed in it. */

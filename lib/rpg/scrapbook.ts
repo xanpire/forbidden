@@ -3,7 +3,7 @@
 // Every scene image you asked for, kept like photos of your life: sorted by
 // date and chapter, each with a short caption, its in-story date, where you
 // were and how old you were. Nothing is stored twice: it is read from the
-// story log (rawLog[].image and imageMeta), the chapters and your road.
+// story log (rawLog[].image and imageMeta) and the chapters.
 
 import { dateSortValue } from './calendar';
 import { playerAgeAt, playerDisplayNames } from './player';
@@ -45,19 +45,6 @@ export function captionOf(entry: Pick<RawLogEntry, 'content' | 'imageMeta'>, pla
   return secondPerson(opening, playerNames);
 }
 
-/** Where you were at a moment, from your road. */
-export function placeAt(db: AppDatabase, date: CalendarDate): string | null {
-  const when = dateSortValue(date);
-  let place: string | null = null;
-
-  for (const stop of db.state.travelLog ?? []) {
-    if (dateSortValue(stop.date) > when) break;
-    place = stop.place;
-  }
-
-  return place ? place : null;
-}
-
 export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
   const names = playerDisplayNames(db);
 
@@ -69,7 +56,7 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
       date: entry.inStoryDate,
       chapter: entry.chapter,
       caption: captionOf(entry, names),
-      place: placeAt(db, entry.inStoryDate),
+      place: entry.imageMeta?.location ?? null,
       age: playerAgeAt(db, entry.inStoryDate),
     }))
     .sort((a, b) => dateSortValue(a.date) - dateSortValue(b.date));

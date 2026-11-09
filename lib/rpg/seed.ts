@@ -87,6 +87,7 @@ export function personEntity(person: StartingPerson, id: string, date: CalendarD
     ...(person.intimacy ? { intimacy: normalizeIntimacy(person.intimacy) } : {}),
     ...(person.realPerson ? { realPerson: true } : {}),
     ...(person.whereabouts ? { whereabouts: person.whereabouts } : {}),
+    ...(person.livesWithYou ? { livesWithYou: true } : {}),
     ...(person.alive ? {} : { deceased: {}, status: 'Deceased' }),
     ...(person.knownName ? {} : { known: { label: person.role || 'someone you know' } }),
     met: person.met !== false,
@@ -163,16 +164,7 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     tags: ['location'],
   };
 
-  const factionEntities: EntityRecord[] = world.factions.map((faction) => ({
-    id: makeId('entity'),
-    name: faction.name,
-    type: 'faction',
-    aliases: [],
-    notes: faction.description,
-    tags: ['faction', faction.id],
-  }));
-
-  const entities = [player, ...peopleEntities, placeEntity, ...factionEntities];
+  const entities = [player, ...peopleEntities, placeEntity];
 
   const openingEvent: EventRecord = {
     id: makeId('event'),

@@ -8,23 +8,19 @@ import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 import { todayNotes } from '@/lib/rpg/yearly';
-import { grudgeKnown } from '@/lib/rpg/disclosure';
-import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
-import { audienceName, knownEpithets } from '@/lib/rpg/renown';
 import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
 import { PrivateGallery } from '@/components/player/PrivateGallery';
 import { displayName } from '@/lib/rpg/names';
 import { isPlayer } from '@/lib/rpg/player';
 
-type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters' | 'scrapbook';
+type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'scrapbook';
 
 const VIEWS: { value: JournalView; label: string }[] = [
   { value: 'now', label: 'Now' },
   { value: 'recap', label: 'Recap' },
   { value: 'world', label: 'World' },
   { value: 'memories', label: 'Memories' },
-  { value: 'letters', label: 'Letters' },
   { value: 'scrapbook', label: 'Scrapbook' },
 ];
 
@@ -67,21 +63,9 @@ function ThreadRows({ threads }: { threads: ThreadRecord[] }) {
   );
 }
 
-function hiddenGrudge(db: AppDatabase, thread: ThreadRecord) {
-  if (thread.type !== 'grudge') return false;
-
-  const ids = new Set(thread.participantIds ?? []);
-  const bond = db.bonds.find(
-    (item) => item.grudge && (ids.has(item.entityId) || thread.participants?.includes(item.characterName))
-  );
-
-  return !bond || !grudgeKnown(bond.grudge);
-}
-
 function NowView({ db }: { db: AppDatabase }) {
-  // A grudge stays off the page until they have acted on it.
-  const open = db.threads.filter((thread) => thread.status === 'open' && !hiddenGrudge(db, thread));
-  const missions = open.filter((thread) => thread.type === 'quest');
+  const open = db.threads.filter((thread) => thread.status === 'open');
+  const plans = open.filter((thread) => thread.type === 'quest');
   const goals = open.filter((thread) => thread.type === 'goal');
   const other = open.filter((thread) => thread.type !== 'quest' && thread.type !== 'goal');
   // Birthdays, anniversaries and festivals on today's date, as far as you know.
@@ -100,8 +84,8 @@ function NowView({ db }: { db: AppDatabase }) {
 
       <PurseCard db={db} />
 
-      <SectionLabel>Missions</SectionLabel>
-      {missions.length > 0 ? <ThreadRows threads={missions} /> : <EmptyRow title="No missions. For now." />}
+      <SectionLabel>Plans</SectionLabel>
+      {plans.length > 0 ? <ThreadRows threads={plans} /> : <EmptyRow title="Nothing planned. For now." />}
 
       <SectionLabel>Goals</SectionLabel>
       {goals.length > 0 ? <ThreadRows threads={goals} /> : <EmptyRow title="Nothing you’ll admit to" />}
@@ -191,26 +175,9 @@ function RecapView({ db }: { db: AppDatabase }) {
 
 function WorldView({ db }: { db: AppDatabase }) {
   const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && lore.enabled);
-  // Only the names you have heard yourself called.
-  const names = knownEpithets(db);
 
   return (
     <>
-      {names.length > 0 ? (
-        <>
-          <SectionLabel>What they call you</SectionLabel>
-          <ListCard>
-            {names.map(({ audience, epithet }) => (
-              <ListRow
-                body={epithet.history?.length ? `Before that: ${epithet.history.map((item) => item.name).join(', ')}` : null}
-                key={audience}
-                meta={`${audienceName(db, audience).charAt(0).toUpperCase()}${audienceName(db, audience).slice(1)} · since ${formatDayMonth(epithet.since)}, year ${epithet.since.year}`}
-                title={epithet.name}
-              />
-            ))}
-          </ListCard>
-        </>
-      ) : null}
 
       <SectionLabel>The world as you know it</SectionLabel>
       <ListCard>
@@ -271,58 +238,6 @@ function MemoriesView({ db }: { db: AppDatabase }) {
   );
 }
 
-function LetterRow({ letter }: { letter: ArchivedLetter }) {
-  const [open, setOpen] = useState(false);
-  const words = letter.text?.trim() || null;
-  const when = letter.direction === 'to-player' ? letter.deliveredOn ?? letter.arrivesOn : letter.sentOn;
-
-  return (
-    <ListRow
-      accessibilityLabel={open ? `Fold the letter: ${letter.label}` : `Read the letter: ${letter.label}`}
-      body={words ? (open ? words : words.split('\n')[0]) : letter.gist ?? 'Only the gist of this one was kept.'}
-      bodyLines={open ? undefined : 2}
-      meta={`${formatDayMonth(when)}, year ${when.year}${letter.gist && words ? ` · ${letter.gist}` : ''}`}
-      onPress={words ? () => setOpen((value) => !value) : undefined}
-      title={letter.label}
-    />
-  );
-}
-
-function LettersView({ db }: { db: AppDatabase }) {
-  const letters = useMemo(() => letterArchive(db), [db]);
-  const kept = letters.filter((letter) => letter.status === 'unsent');
-  const rest = letters.filter((letter) => letter.status !== 'unsent');
-
-  return (
-    <>
-      <SectionLabel>Letters</SectionLabel>
-      {rest.length === 0 ? (
-        <EmptyRow
-          body="Letters you write and the ones that find you are kept here, word for word. Tap one to read it."
-          title="No letters yet"
-        />
-      ) : (
-        <ListCard>
-          {rest.map((letter) => (
-            <LetterRow key={letter.id} letter={letter} />
-          ))}
-        </ListCard>
-      )}
-
-      {kept.length > 0 ? (
-        <>
-          <SectionLabel>Never sent</SectionLabel>
-          <ListCard>
-            {kept.map((letter) => (
-              <LetterRow key={letter.id} letter={letter} />
-            ))}
-          </ListCard>
-        </>
-      ) : null}
-    </>
-  );
-}
-
 export function JournalSection() {
   const { db } = useGame();
   const [view, setView] = useState<JournalView>('now');
@@ -338,7 +253,6 @@ export function JournalSection() {
       {view === 'recap' ? <RecapView db={db} /> : null}
       {view === 'world' ? <WorldView db={db} /> : null}
       {view === 'memories' ? <MemoriesView db={db} /> : null}
-      {view === 'letters' ? <LettersView db={db} /> : null}
       {view === 'scrapbook' ? <ScrapbookView db={db} /> : null}
       {view === 'scrapbook' ? <PrivateGallery /> : null}
     </View>

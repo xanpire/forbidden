@@ -20,7 +20,6 @@ import {
   newFaction,
   newLore,
   newPlace,
-  newRegion,
   type HelpSuggestion,
   type WizardDraft,
   type WizardStep,
@@ -154,13 +153,14 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
         placeholder="coffee 4; a meal 15; a hotel night 150"
         value={world.currency.priceGuide}
       />
-      <ListField
-        label="How messages travel"
-        onChange={(letterCarriers) => setWorld({ letterCarriers })}
-        placeholder="text message, phone, post"
-        separator="commas"
-        values={world.letterCarriers}
+      <Choice
+        hint="Where the story is set: its seasons and weather follow."
+        label="Climate"
+        onChange={(climate) => setWorld({ climate: climate as ClimateType })}
+        options={Object.entries(CLIMATE_LABELS).map(([value, label]) => ({ value, label }))}
+        value={world.climate}
       />
+      <Toggle hint="Seasons run six months on (summer at Christmas)." label="South of the equator" onChange={(southern) => setWorld({ southern })} value={Boolean(world.southern)} />
       <Field hint="The opening line of every image prompt." label="Art style" onChange={(artStyle) => setWorld({ artStyle })} placeholder="cinematic photo, 35mm film" value={world.artStyle} />
       <Field
         hint="Your own extra rules for the narrator."
@@ -177,50 +177,10 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
 export function PlacesStep({ draft, update }: { draft: WizardDraft; update: Updater }) {
   const world = draft.world;
   const setWorld = (patch: Partial<typeof world>) => update((d) => ({ ...d, world: { ...d.world, ...patch } }));
-  const regionOptions = world.regions.filter((region) => region.name.trim()).map((region) => ({ value: region.id, label: region.name }));
-
-  const setRegion = (id: string, patch: Partial<(typeof world.regions)[number]>) =>
-    setWorld({ regions: world.regions.map((region) => (region.id === id ? { ...region, ...patch } : region)) });
-  const setTravel = (from: string, to: string, days: number | undefined) =>
-    setWorld({
-      regions: world.regions.map((region) => {
-        if (region.id !== from && region.id !== to) return region;
-        const other = region.id === from ? to : from;
-        const rest = region.neighbours.filter((next) => next.id !== other);
-        return { ...region, neighbours: days && days > 0 ? [...rest, { id: other, days }] : rest };
-      }),
-    });
 
   return (
     <>
-      <StepIntro body="Areas (a district, a town, a country), the places inside them, and the groups that matter." title="Places & groups" />
-      <Text style={type.sectionLabel}>Areas</Text>
-      {world.regions.map((region) => (
-        <ItemCard key={region.id} onRemove={() => setWorld({ regions: world.regions.filter((item) => item.id !== region.id) })} title={region.name || 'New area'}>
-          <Field label="Name" onChange={(name) => setRegion(region.id, { name })} value={region.name} />
-          <Field label="Description" multiline lines={2} onChange={(description) => setRegion(region.id, { description })} value={region.description} />
-          <Choice
-            label="Climate"
-            onChange={(climate) => setRegion(region.id, { climate: climate as ClimateType })}
-            options={Object.entries(CLIMATE_LABELS).map(([value, label]) => ({ value, label }))}
-            value={region.climate}
-          />
-          {world.regions
-            .filter((other) => other.id !== region.id && other.name.trim())
-            .map((other) => (
-              <NumberField
-                allowEmpty
-                hint="In days: 0.1 is about 2 hours. Empty = not next to each other."
-                key={other.id}
-                label={`Travel to ${other.name}`}
-                onChange={(days) => setTravel(region.id, other.id, days)}
-                value={region.neighbours.find((next) => next.id === other.id)?.days}
-              />
-            ))}
-        </ItemCard>
-      ))}
-      <AddButton label="Add an area" onPress={() => setWorld({ regions: [...world.regions, newRegion()] })} />
-
+      <StepIntro body="The places in your story (home, work, the bar, someone's apartment) and the groups that matter. Getting around is just narrated." title="Places & groups" />
       <Text style={type.sectionLabel}>Places</Text>
       {world.places.map((place) => {
         const setPlace = (patch: Partial<typeof place>) => setWorld({ places: world.places.map((item) => (item.id === place.id ? { ...item, ...patch } : item)) });
@@ -228,24 +188,21 @@ export function PlacesStep({ draft, update }: { draft: WizardDraft; update: Upda
           <ItemCard key={place.id} onRemove={() => setWorld({ places: world.places.filter((item) => item.id !== place.id) })} title={place.name || 'New place'}>
             <Field label="Name" onChange={(name) => setPlace({ name })} value={place.name} />
             <Choice label="Kind" onChange={(kind) => setPlace({ kind })} options={KIND_OPTIONS} value={place.kind} />
-            <Choice label="Area" onChange={(regionId) => setPlace({ regionId })} options={regionOptions} value={place.regionId} />
             <Field label="Description" multiline lines={2} onChange={(description) => setPlace({ description })} value={place.description} />
+            <Field hint="Optional." label="Who lives or works there" onChange={(who) => setPlace({ who })} placeholder="Sam works the bar most nights" value={place.who ?? ''} />
           </ItemCard>
         );
       })}
-      <AddButton label="Add a place" onPress={() => setWorld({ places: [...world.places, newPlace(world.regions[0]?.id ?? '')] })} />
+      <AddButton label="Add a place" onPress={() => setWorld({ places: [...world.places, newPlace()] })} />
 
       <Text style={type.sectionLabel}>Groups</Text>
-      <Hint>Any group that matters: a company, a family, a gang, the police, a friend group.</Hint>
+      <Hint>Any group that matters: a workplace, a family, a friend group, a band.</Hint>
       {world.factions.map((faction) => {
         const setFaction = (patch: Partial<typeof faction>) => setWorld({ factions: world.factions.map((item) => (item.id === faction.id ? { ...item, ...patch } : item)) });
         return (
           <ItemCard key={faction.id} onRemove={() => setWorld({ factions: world.factions.filter((item) => item.id !== faction.id) })} title={faction.name || 'New group'}>
             <Field label="Name" onChange={(name) => setFaction({ name })} value={faction.name} />
             <Field label="Description" multiline lines={2} onChange={(description) => setFaction({ description })} value={faction.description} />
-            <MultiChoice label="Holds these areas" onChange={(territoryRegionIds) => setFaction({ territoryRegionIds })} options={regionOptions} values={faction.territoryRegionIds ?? []} />
-            <Toggle hint="They can put a price on someone." label="Keeps a wanted list" onChange={(hasBounties) => setFaction({ hasBounties })} value={Boolean(faction.hasBounties)} />
-            <ListField label="How they send word (optional)" onChange={(carriers) => setFaction({ carriers })} separator="commas" values={faction.carriers} />
           </ItemCard>
         );
       })}
@@ -308,6 +265,7 @@ export function YouStep({ draft, update }: { draft: WizardDraft; update: Updater
       <Field label="Personality" multiline lines={2} onChange={(personality) => set({ personality })} value={c.personality} />
       <Field label="How you talk" multiline lines={2} onChange={(speechStyle) => set({ speechStyle })} value={c.speechStyle} />
       <Field hint="Plain text: training, languages, what you're good and bad at." label="Skills" multiline lines={3} onChange={(skills) => set({ skills })} value={c.skills ?? ''} />
+      <Field hint="Where you live: a flat, a house, a dorm room." label="Home" onChange={(home) => set({ home })} placeholder="a small flat above a bakery" value={c.home ?? ''} />
       <ListField label="What you carry" onChange={(inventory) => set({ inventory })} values={c.inventory} />
       <NumberField label={`Money (${draft.world.currency.name || 'money'})`} onChange={(money) => set({ money: money ?? 0 })} value={c.money} />
       <ListField label="Goals" onChange={(goals) => set({ goals })} values={c.goals} />
@@ -463,6 +421,7 @@ export function PersonFields({ person, set }: { person: StartingPerson; set: (pa
       <Toggle label="Alive" hint="Off: they died before the story starts." onChange={(alive) => set({ alive })} value={person.alive} />
       <Toggle label="You know their name" onChange={(knownName) => set({ knownName })} value={person.knownName} />
       <Toggle label="You've met before" onChange={(met) => set({ met })} value={person.met !== false} />
+      <Toggle hint="A partner, a roommate: they share your home." label="Lives with you" onChange={(livesWithYou) => set({ livesWithYou })} value={Boolean(person.livesWithYou)} />
       <Field label="Where they are now" onChange={(whereabouts) => set({ whereabouts })} value={person.whereabouts ?? ''} />
       <ListField label="Their secrets" onChange={(secrets) => set({ secrets })} values={person.secrets} />
     </>
@@ -509,7 +468,7 @@ export function ReviewStep({ draft, update, goTo }: { draft: WizardDraft; update
   const c = draft.character;
   const rows: [WizardStep, string, string][] = [
     ['world', 'World', `${w.name || '—'} · ${w.era.when}, ${w.era.period}`],
-    ['places', 'Places & groups', `${w.regions.length} areas · ${w.places.length} places · ${w.factions.length} groups`],
+    ['places', 'Places & groups', `${w.places.length} places · ${w.factions.length} groups`],
     ['lore', 'Lore', `${w.lore.length} entries`],
     ['you', 'You', c.name ? `${c.name}, ${c.age}${c.role ? ` · ${c.role}` : ''}` : '—'],
     ['intimacy', 'Intimacy', `${draft.content.pacing} · ${draft.content.interests.length} interests · ${draft.content.limits.length} limits`],

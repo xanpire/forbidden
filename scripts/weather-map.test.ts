@@ -12,17 +12,16 @@ mock.module('@react-native-async-storage/async-storage', () => ({
   },
 }));
 
-import { advanceSeconds, shiftDate } from '../lib/rpg/calendar';
+import { advanceSeconds } from '../lib/rpg/calendar';
 import { startCompanion } from '../lib/rpg/companions';
 import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
-import { currentRegion } from '../lib/rpg/geography';
 import { parseImageAction } from '../lib/rpg/image';
 import { appendStoryMessage } from '../lib/rpg/log';
-import { knownWhereabouts, normalizeTravelLog, placeIdOf, placeVisits, recordTravel, travelEstimate } from '../lib/rpg/mapData';
+import { classifyLocation, whereaboutsOf } from '../lib/rpg/places';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
-import { captionOf, placeAt, scrapbook } from '../lib/rpg/scrapbook';
+import { captionOf, scrapbook } from '../lib/rpg/scrapbook';
 import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
@@ -54,7 +53,7 @@ function yearOf(climate: ClimateType) {
   const days: { date: CalendarDate; condition: string }[] = [];
   let date: CalendarDate = { year: 2026, month: 1, day: 1, hour: 3, minute: 0 };
   for (let index = 0; index < 365 * 4; index += 1) {
-    days.push({ date, condition: weatherAt('slot', 'region', climate, date) });
+    days.push({ date, condition: weatherAt('slot', climate, date) });
     date = advanceSeconds(date, 6 * 3600);
   }
   return days;
@@ -68,13 +67,15 @@ describe('seasons', () => {
     expect(seasonOf(10)).toBe('autumn');
     expect(seasonLabel('temperate', { year: 2026, month: 12, day: 10, hour: 9, minute: 0 })).toBe('early winter');
     expect(seasonLabel('monsoon', { year: 2026, month: 7, day: 10, hour: 9, minute: 0 })).toContain('monsoon');
+    // South of the equator the seasons run six months on: December is summer.
+    expect(seasonLabel('temperate', { year: 2026, month: 12, day: 10, hour: 9, minute: 0 }, true)).toBe('early summer');
   });
 });
 
 describe('weather', () => {
   test('the same save, place and hour always give the same weather', () => {
     const date: CalendarDate = { year: 2026, month: 3, day: 12, hour: 14, minute: 0 };
-    expect(weatherAt('a', 'old-town', 'coastal', date)).toBe(weatherAt('a', 'old-town', 'coastal', date));
+    expect(weatherAt('a', 'coastal', date)).toBe(weatherAt('a', 'coastal', date));
   });
 
   test('a rainy climate rarely dries out; tundra snows in winter; the desert never snows', () => {
@@ -97,7 +98,7 @@ describe('weather', () => {
     const later = at(forced, { inStoryDate: advanceSeconds(forced.state.inStoryDate, 5 * 3600) });
     expect(currentWeather(later).condition).toBe('fog');
     const next = at(later, { sceneSeq: (later.state.sceneSeq ?? 0) + 1 });
-    expect(currentWeather(next).condition).toBe(weatherAt(next.meta.slotId, 'old-town', 'coastal', next.state.inStoryDate));
+    expect(currentWeather(next).condition).toBe(weatherAt(next.meta.slotId, 'coastal', next.state.inStoryDate));
   });
 
   test('the story can change the weather, and it holds a while', () => {
@@ -117,18 +118,14 @@ describe('weather', () => {
     expect(currentWeather(gone).source).toBe('world');
   });
 
-  test('the narrator gets one short line; indoors the weather is outside; a no-weather region has none', () => {
+  test('the narrator gets one short line; indoors the weather is outside', () => {
     const base = applyWeather(outside(seed()), undefined);
     const rain = at(base, { weather: { ...base.state.weather!, condition: 'rain' } });
     const line = weatherLine(rain);
-    expect(line).toContain('Old Town');
     expect(line).toMatch(/autumn/);
-    expect(line.length).toBeLessThan(420);
-    expect(formatWeatherLine(rain, 'fight')).toContain('In this fight');
-    expect(formatWeatherLine(at(rain, { locationKind: 'structure', location: 'a cellar in Old Town' }), 'normal')).toContain('outside');
-
-    const underground = { ...rain, world: { ...rain.world, regions: rain.world.regions.map((region) => (region.id === 'old-town' ? { ...region, climate: 'none' as const } : region)) } };
-    expect(formatWeatherLine(underground, 'normal')).toBe('');
+    expect(line).toContain('Feel:');
+    expect(line.length).toBeLessThan(300);
+    expect(formatWeatherLine(at(rain, { locationKind: 'structure', location: 'your flat' }))).toContain('outside');
   });
 
   test('the state tracker sees the weather and can change it; old saves load without it', () => {
@@ -136,70 +133,29 @@ describe('weather', () => {
     expect(buildExtractionPrompt(db, 'x', 'y').messages[1].content).toContain('WEATHER NOW');
     expect((TURN_STATE_SCHEMA as { properties: Record<string, unknown> }).properties.weather).toBeTruthy();
     expect(convertStateBlock({ weather: 'Snow starts falling' }).diff.weather).toBe('Snow starts falling');
-    const old = normalizeDatabase({ ...db, state: { ...db.state, weather: undefined, travelLog: undefined } } as AppDatabase);
+    const old = normalizeDatabase({ ...db, state: { ...db.state, weather: undefined } } as AppDatabase);
     expect(old.state.weather).toBeUndefined();
-    expect(old.state.travelLog?.length).toBe(1);
   });
 });
 
-describe('places and your road', () => {
-  test('locations find the places the player wrote', () => {
-    const db = seed();
-    expect(placeIdOf(db, 'the back booth at The Anchor')).toBe('the-anchor');
-    expect(placeIdOf(db, 'Harbour Market at noon')).toBe('harbour-market');
-    expect(placeIdOf(db, 'a cave in the hills')).toBeNull();
-  });
-
-  test('your road: each new place once, with its region', () => {
-    let db = seed();
-    expect(db.state.travelLog?.[0].region).toBe('old-town');
-    db = play(db, '*You drive up the hill.*', 'Twenty minutes up the Coast Road.', {
-      location: 'Coast Road', location_kind: 'road', scene_pace: 'travel', time: { elapsed: 20, unit: 'minutes', clock_time: null },
-    });
-    expect(db.state.travelLog?.at(-1)).toMatchObject({ place: 'Coast Road', region: 'northgate', placeId: 'coast-road' });
-    db = play(db, '*You pull over.*', 'A lay-by under the trees.', {
-      location: 'a lay-by under the trees', location_kind: 'road', scene_pace: 'downtime', time: { elapsed: 5, unit: 'minutes', clock_time: null },
-    });
-    expect(currentRegion(db)).toBe('northgate');
-    const count = db.state.travelLog!.length;
-    expect(recordTravel(db).state.travelLog!.length).toBe(count);
-  });
-
-  test('visits are counted per place', () => {
-    const date: CalendarDate = { year: 2026, month: 2, day: 1, hour: 9, minute: 0 };
-    const base = seed();
-    const db = at(base, {
-      travelLog: normalizeTravelLog(base, [
-        { place: 'The Anchor', region: 'old-town', placeId: 'the-anchor', date },
-        { place: 'Harbour Market', region: 'old-town', placeId: 'harbour-market', date: shiftDate(date, 1) },
-        { place: 'The Anchor', region: 'old-town', placeId: 'the-anchor', date: shiftDate(date, 2) },
-      ], 'x', date),
-    });
-    expect(placeVisits(db).get('the-anchor')?.count).toBe(2);
-    expect(placeVisits(db).get('harbour-market')?.count).toBe(1);
-  });
-
-  test('travel times from where you are, slower in bad weather', () => {
-    const base = applyWeather(outside(seed()), undefined);
-    const clear = at(base, { weather: { ...base.state.weather!, condition: 'clear' } });
-    const storm = at(base, { weather: { ...base.state.weather!, condition: 'storm' } });
-    expect(travelEstimate(clear, 'northgate')?.days).toBe(0.2);
-    expect(travelEstimate(storm, 'northgate')!.inWeather).toBeGreaterThan(travelEstimate(storm, 'northgate')!.days);
-    expect(travelEstimate(clear, null)).toBeNull();
+describe('places', () => {
+  test('what kind of place a location is, in present-day words', () => {
+    expect(classifyLocation('the bar on Elm Street')).toBe('structure');
+    expect(classifyLocation('a bench in the park')).toBe('wilderness');
+    expect(classifyLocation('the train station')).toBe('road');
+    expect(classifyLocation('the corner of Fifth and Main street')).toBe('settlement');
   });
 
   test('where people are, as far as you know, not the truth', () => {
     let db = seed();
-    db = update(db, 'Mara Vance', { whereabouts: 'visiting her mother in Northgate' });
-    db = update(db, 'Daniel Okafor', { whereabouts: undefined, lastSeenAt: 'The Docks', lastSeen: db.state.inStoryDate });
-    const known = knownWhereabouts(db);
-    expect(known.find((entry) => entry.entity.name === 'Mara Vance')).toMatchObject({ region: 'northgate', basis: 'told' });
-    expect(known.find((entry) => entry.entity.name === 'Daniel Okafor')?.basis).toBe('seen');
-    // Unmet people and the known dead never show.
-    expect(known.some((entry) => entry.entity.name === 'Jonah Pike')).toBe(false);
-    expect(known.some((entry) => entry.entity.name === 'Theo Marsh')).toBe(false);
-    const together = startCompanion(db, person(db, 'Mara Vance').id, 'heading north');
-    expect(knownWhereabouts(together).find((entry) => entry.entity.name === 'Mara Vance')?.basis).toBe('with-you');
+    db = update(db, 'Mara Vance', { whereabouts: 'at work at the bar' });
+    db = update(db, 'Daniel Okafor', { whereabouts: undefined, lastSeenAt: 'The Anchor', lastSeen: db.state.inStoryDate });
+    expect(whereaboutsOf(db, person(db, 'Mara Vance'))).toMatchObject({ basis: 'told', detail: 'At work at the bar' });
+    expect(whereaboutsOf(db, person(db, 'Daniel Okafor'))?.detail).toContain('Last seen at The Anchor');
+    expect(whereaboutsOf(db, person(db, 'Jonah Pike'))).toBeNull();
+    expect(whereaboutsOf(db, person(db, 'Theo Marsh'))).toBeNull();
+    const together = startCompanion(db, person(db, 'Mara Vance').id, 'out for drinks');
+    expect(whereaboutsOf(together, person(together, 'Mara Vance'))?.basis).toBe('with-you');
   });
 });
 
@@ -212,7 +168,7 @@ describe('the scrapbook', () => {
       ...db,
       rawLog: db.rawLog.map((entry) =>
         entry.id === first
-          ? { ...entry, image: 'img:one', imageMeta: { prompt: '', action: 'Alex throws a stone into the harbour.', caption: 'You throw a stone into the harbour.', references: [], model: 'x', createdAt: 0 } }
+          ? { ...entry, image: 'img:one', imageMeta: { prompt: '', action: 'Alex throws a stone into the harbour.', caption: 'You throw a stone into the harbour.', location: 'The pier', references: [], model: 'x', createdAt: 0 } }
           : entry
       ),
     };
@@ -225,6 +181,7 @@ describe('the scrapbook', () => {
     const chapters = book;
     expect(chapters[0].photos[0].caption).toBe('You throw a stone into the harbour.');
     expect(chapters[0].photos[0].age).toBe(29);
+    expect(chapters[0].photos[0].place).toBe('The pier');
     expect(chapters.at(-1)!.chapter).toBe(4);
     expect(chapters.at(-1)!.title).toBe('Winter books');
     expect(chapters.at(-1)!.photos[0].caption).toBe('The office is silent.');
@@ -235,8 +192,6 @@ describe('the scrapbook', () => {
     expect(captionOf({ content: 'You draw the knife. Rain falls.', imageMeta: meta })).toBe('You draw the knife.');
     expect(captionOf({ content: 'You draw the knife.', imageMeta: { ...meta, caption: 'You draw the knife in the rain.' } })).toBe('You draw the knife in the rain.');
     expect(parseImageAction('ACTION: Alex draws the knife.\nCAPTION: You draw the knife.')).toEqual({ action: 'Alex draws the knife.', caption: 'You draw the knife.' });
-    const db = seed();
-    expect(placeAt(db, shiftDate(db.state.inStoryDate, -5))).toBeNull();
   });
 });
 

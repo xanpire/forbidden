@@ -30,10 +30,9 @@ import { RELATIONSHIP_STAGES, normalizeRelationship } from '../lib/rpg/intimacy'
 import { slug } from '../lib/rpg/id';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';
-import { classifyLocation, encounterRisk, formatEncounterConditions } from '../lib/rpg/encounters';
+
 import { applyTurnDiff } from '../lib/rpg/services';
 import { isDeceased, markDeceased } from '../lib/rpg/deaths';
-import { deliverLetters, letterOffer, receiveLetters, sendLetters, LETTER_BOND_GAIN, LETTER_MAX_DAYS } from '../lib/rpg/letters';
 import { entityAge, shiftDate } from '../lib/rpg/calendar';
 import type { AppDatabase, TurnDiff } from '../lib/rpg/types';
 
@@ -452,50 +451,9 @@ describe('presence tracking and bonds ordering', () => {
 
 
 describe('encounter realism', () => {
-  test('location classification and risk matrix', () => {
-    expect(classifyLocation('Harbour Market stalls at noon')).toBe('settlement');
-    expect(classifyLocation('deep forest outside the village')).toBe('wilderness');
-    expect(classifyLocation('abandoned temple in the mountains')).toBe('structure');
-    expect(classifyLocation('the road north')).toBe('road');
-
-    expect(encounterRisk('settlement', 'morning')).toBe('high');
-    expect(encounterRisk('settlement', 'night')).toBe('low');
-    expect(encounterRisk('wilderness', 'afternoon')).toBe('low');
-    expect(encounterRisk('wilderness', 'night')).toBe('none');
-    expect(encounterRisk('structure', 'night')).toBe('none');
-  });
-
-  test('encounter conditions follow place and time', () => {
-    let db = loadSave();
-    db = {
-      ...db,
-      state: {
-        ...db.state,
-        location: 'deep woods',
-        locationKind: 'wilderness',
-        inStoryDate: { ...db.state.inStoryDate, hour: 22, minute: 0 },
-      },
-    };
-
-    expect(formatEncounterConditions(db)).toContain('isolated');
-
-    const village = {
-      ...db,
-      state: {
-        ...db.state,
-        location: 'Harbour Market',
-        locationKind: 'settlement' as const,
-        inStoryDate: { ...db.state.inStoryDate, hour: 14, minute: 0 },
-      },
-    };
-
-    expect(formatEncounterConditions(village)).toContain('settlement');
-    expect(formatEncounterConditions(village)).toContain('crowded');
-  });
-
   test('location_kind flows through the diff and fallback classifier', () => {
     let db = loadSave();
-    db = applyTurnDiff(db, { state: { location: 'Harbour Market stalls' } });
+    db = applyTurnDiff(db, { state: { location: 'the street market downtown' } });
     expect(db.state.locationKind).toBe('settlement');
 
     db = applyTurnDiff(db, { state: { location: 'somewhere new', locationKind: 'structure' } });
@@ -662,10 +620,10 @@ describe('clock arithmetic', () => {
     expect(leapFeb.day).toBe(29);
   });
 
-  test('pacing caps keep fights and travel honest', () => {
-    expect(paceCapSeconds('combat', false)).toBe(600);
-    expect(paceCapSeconds('combat', true)).toBe(7200);
-    expect(paceCapSeconds('travel', false)).toBe(3 * 86400);
+  test('pacing caps keep quick scenes and getting around honest', () => {
+    expect(paceCapSeconds('action', false)).toBe(600);
+    expect(paceCapSeconds('action', true)).toBe(7200);
+    expect(paceCapSeconds('travel', false)).toBe(86400);
     expect(paceCapSeconds('downtime', false)).toBe(7 * 86400);
     expect(paceCapSeconds('conversation', false)).toBe(3600);
   });
@@ -673,30 +631,29 @@ describe('clock arithmetic', () => {
 
 describe('scene pacing and the clock', () => {
   test('infers pace from narration', () => {
-    expect(inferScenePace('Alex Reyes chokes a dock guard while the blade whistles past.')).toBe('combat');
-    expect(inferScenePace('They rode for two days along the border road.')).toBe('travel');
+    expect(inferScenePace('Alex Reyes shoves the guy back and they scuffle by the bar.')).toBe('action');
+    expect(inferScenePace('They drove across town in the rain.')).toBe('travel');
     expect(inferScenePace('Alex Reyes sleeps until the coals die down.')).toBe('downtime');
     expect(inferScenePace('Mara says nothing and looks away.')).toBe('conversation');
-    expect(inferScenePace('The Root hounds are hunting him through the trees.')).toBe('chase');
   });
 
-  test('combat caps time even if the narrator overreports', () => {
+  test('a quick physical scene caps time even if the narrator overreports', () => {
     const capped = resolveElapsedSeconds({
       reportedSeconds: 2 * 86400,
       detectedSeconds: 0,
-      pace: 'combat',
+      pace: 'action',
       sceneEnded: false,
     });
     expect(capped).toBe(600);
   });
 
-  test('travel respects explicit days but caps at three', () => {
+  test('getting around takes hours, never days', () => {
     expect(
-      resolveElapsedSeconds({ reportedSeconds: 2 * 86400, detectedSeconds: 0, pace: 'travel', sceneEnded: false })
-    ).toBe(2 * 86400);
+      resolveElapsedSeconds({ reportedSeconds: 5 * 3600, detectedSeconds: 0, pace: 'travel', sceneEnded: false })
+    ).toBe(5 * 3600);
     expect(
       resolveElapsedSeconds({ reportedSeconds: 30 * 86400, detectedSeconds: 0, pace: 'travel', sceneEnded: false })
-    ).toBe(3 * 86400);
+    ).toBe(86400);
   });
 
   test('fight seconds accumulate correctly on the clock', () => {
@@ -1186,7 +1143,7 @@ describe('characters who come back', () => {
       ...db,
       state: {
         ...db.state,
-        location: 'Tanzaku Town gambling district',
+        location: 'the night market downtown',
         locationKind: 'settlement' as const,
         scenePace: 'downtime' as const,
         sceneCast: [],
@@ -1199,15 +1156,19 @@ describe('characters who come back', () => {
           name: 'Mei Tanaka',
           type: 'character' as const,
           aliases: ['Mei'],
-          role: 'Teahouse owner',
+          role: 'Food stall owner',
           personality: 'Sharp-tongued, kind underneath.',
           lastSeen,
-          lastSeenAt: 'a teahouse in Tanzaku Town',
+          lastSeenAt: 'the night market',
           tags: [],
           ...overrides,
         },
       ],
-    };
+      bonds: [
+        ...db.bonds,
+        { id: 'bond_mei', entityId: 'entity_mei', characterName: 'Mei Tanaka', affinity: 3, status: 'Old friend', lastKeyEventId: null, note: '', isMajor: false, relationship: 'friendly', attraction: 'none', updatedInStoryDate: db.state.inStoryDate },
+      ],
+    } as AppDatabase;
   }
 
   function atReturnTurn(db: AppDatabase): AppDatabase {
@@ -1244,22 +1205,23 @@ describe('characters who come back', () => {
     expect(candidates[0].reason).toBe('last-seen-here');
   });
 
-  test('canon cast, the recently seen, the dead and people elsewhere are never offered', () => {
+  test('the recently seen, the dead, people elsewhere and people without a bond are never offered', () => {
     const db = withOriginal();
 
     for (const offer of returningCandidates(db)) {
-      expect(offer.entity.tags).not.toContain('canon');
       expect(offer.entity.name).not.toBe('Alex Reyes');
     }
 
+    expect(returningCandidates({ ...db, bonds: db.bonds.filter((bond) => bond.entityId !== 'entity_mei') })).toHaveLength(0);
+
     expect(returningCandidates(withOriginal({ lastSeen: db.state.inStoryDate }))).toHaveLength(0);
     expect(returningCandidates(withOriginal({ status: 'Deceased' }))).toHaveLength(0);
-    expect(returningCandidates(withOriginal({ lastSeenAt: 'the Hidden Mist Village', role: 'Fisherman' }))).toHaveLength(0);
+    expect(returningCandidates(withOriginal({ lastSeenAt: 'a gym across town', role: 'Fisherman' }))).toHaveLength(0);
     expect(returningCandidates(withOriginal(), 'Mei waved at you yesterday.')).toHaveLength(0);
   });
 
-  test('travellers can turn up on roads and in towns', () => {
-    const db = withOriginal({ lastSeenAt: 'the Hidden Mist Village', role: 'Wandering merchant' });
+  test('people out and about for work can turn up in town', () => {
+    const db = withOriginal({ lastSeenAt: 'a gym across town', role: 'Delivery driver' });
 
     expect(returningCandidates(db)[0]?.reason).toBe('traveller');
   });
@@ -1272,7 +1234,7 @@ describe('characters who come back', () => {
     expect(formatReturningCharacter(db)).toContain('A FAMILIAR FACE');
     expect(formatReturningCharacter(db)).toContain('Mei Tanaka');
 
-    const fight = { ...db, state: { ...db.state, scenePace: 'combat' as const } };
+    const fight = { ...db, state: { ...db.state, scenePace: 'action' as const } };
     expect(pickReturningCharacter(fight)).toBeNull();
 
     const empty = { ...db, state: { ...db.state, locationKind: 'wilderness' as const, inStoryDate: { ...db.state.inStoryDate, hour: 23 } } };
@@ -1335,7 +1297,7 @@ describe('companions', () => {
     expect(companionsOf(db).map((entity) => entity.id)).toEqual([id]);
     expect(maraOf(db).companion?.reason).toBe('leaving town together');
     expect(bondOf(db, id)).toBeDefined();
-    expect(db.facts.some((fact) => fact.text.startsWith('Mara Vance began travelling with you'))).toBe(true);
+    expect(db.facts.some((fact) => fact.text.startsWith('Mara Vance came along with you'))).toBe(true);
 
     const later = applyTurnDiff(db, {
       state: { sceneCast: ['Jonah Pike'], elapsedSeconds: 3600 },
@@ -1366,13 +1328,13 @@ describe('companions', () => {
     }
     expect(bondOf(db, id)!.affinity).toBe(start + 1);
 
-    // A fight survived together counts double.
-    db = applyTurnDiff(db, { state: { scenePace: 'combat' }, scene: { ended: true } });
+    // A hectic scene together counts double.
+    db = applyTurnDiff(db, { state: { scenePace: 'action' }, scene: { ended: true } });
     expect(maraOf(db).companion?.bondPoints).toBe(2);
 
     // The story moved the bond itself: no extra drift, count starts over.
     db = applyTurnDiff(db, {
-      state: { scenePace: 'combat' },
+      state: { scenePace: 'action' },
       bonds: [{ entityId: id, character: 'Mara Vance', affinityDelta: -2 }],
       scene: { ended: true },
     });
@@ -1447,26 +1409,26 @@ describe('companions', () => {
     expect(db.state.sceneCast!.length).toBeLessThanOrEqual(6);
   });
 
-  test('both prompts know who travels with Alex Reyes', () => {
+  test('both prompts know who is with Alex Reyes', () => {
     const { db } = withMara();
     const narration = buildNarrationPrompt(db, '"We move at dawn."');
     const system = narration.messages[0].content;
     const user = narration.messages[1].content;
 
-    expect(system).toContain("TRAVELLING WITH YOU is physically at the player's side in every scene");
-    expect(user).toContain('TRAVELLING WITH YOU (at your side');
+    expect(system).toContain("Anyone under WITH YOU is physically at the player's side in every scene");
+    expect(user).toContain('WITH YOU (at your side');
     expect(user).toMatch(/- Mara Vance: joined today \(leaving town together/);
     expect(user).toContain('CHARACTERS IN SCENE');
     expect(JSON.stringify(narration.messages)).not.toContain('companions_joined');
 
     const state = buildExtractionPrompt(db, 'We move.', 'You walk on beside Mara.');
     const stateText = state.messages.map((message) => message.content).join('\n');
-    expect(stateText).toContain('TRAVELLING WITH YOU: mara-vance (Mara Vance)');
-    expect(stateText).toContain('[travelling with you]');
+    expect(stateText).toContain('WITH YOU: mara-vance (Mara Vance)');
+    expect(stateText).toContain('[with you]');
     expect(stateText).toContain('companions_joined');
 
     const alone = buildExtractionPrompt(loadSave(), 'Wait.', 'You wait.');
-    expect(alone.messages[1].content).toContain('TRAVELLING WITH YOU: nobody');
+    expect(alone.messages[1].content).toContain('WITH YOU: nobody');
   });
 
   test('companions survive a merge and a reload', () => {
@@ -1480,102 +1442,6 @@ describe('companions', () => {
     expect(companionsOf(merged).map((entity) => entity.id)).toEqual([dupId]);
   });
 });
-
-describe('personal letters', () => {
-  // Post only: a text message would arrive at once.
-  const loadSave = (): AppDatabase => {
-    const db = loadSaveBase();
-    return { ...db, world: { ...db.world, letterCarriers: ['post'], factions: db.world.factions.map((faction) => ({ ...faction, carriers: undefined })) } };
-  };
-  const hanaOf = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Daniel Okafor')!;
-  const later = (db: AppDatabase, days: number): AppDatabase => ({
-    ...db,
-    state: { ...db.state, inStoryDate: shiftDate(db.state.inStoryDate, days), scenePace: 'downtime' },
-  });
-  const affinity = (db: AppDatabase, id: string) => db.bonds.find((bond) => bond.entityId === id)?.affinity ?? 0;
-
-  test('Alex Reyes writes to Daniel: it travels, arrives, moves the bond, and she writes back', () => {
-    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
-    const daniel = hanaOf(db);
-    const before = affinity(db, daniel.id);
-
-    db = sendLetters(db, [{ entityId: daniel.id, name: daniel.name, gist: 'you are alive and sorry you left' }]);
-    expect(db.state.post!.letters).toHaveLength(1);
-    expect(db.state.post!.letters[0]).toMatchObject({ direction: 'from-player', status: 'travelling' });
-
-    // Not there yet the same day (a letter by post takes at least a day).
-    db = deliverLetters(db);
-    expect(affinity(db, daniel.id)).toBe(before);
-
-    db = deliverLetters(later(db, LETTER_MAX_DAYS));
-    expect(affinity(db, daniel.id)).toBe(Math.min(10, before + LETTER_BOND_GAIN));
-    expect(db.facts.some((fact) => fact.text.includes('Daniel Okafor received a letter from you'))).toBe(true);
-
-    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-player')!;
-    expect(reply.status).toBe('travelling');
-
-    db = later(db, LETTER_MAX_DAYS + 1);
-    const offer = letterOffer(db)!;
-    expect(offer.kind).toBe('reply');
-    expect(offer.entity.id).toBe(daniel.id);
-
-    const prompt = buildNarrationPrompt(db, '*Alex Reyes waits.*').messages.map((m) => m.content).join('\n');
-    expect(prompt).toContain('A LETTER FOR YOU');
-    expect(prompt).toContain('answering the letter you sent (you are alive and sorry you left)');
-    expect(buildExtractionPrompt(db, '*Alex Reyes reads.*', 'A ninken finds you.').messages[1].content).toContain('letters_received');
-
-    db = receiveLetters(db, [{ entityId: daniel.id, name: daniel.name }]);
-    expect(db.state.post!.letters.find((letter) => letter.id === reply.id)!.status).toBe('delivered');
-    expect(db.state.post!.lastLetterIn).toEqual(db.state.inStoryDate);
-    // The post goes quiet for a while after a letter.
-    expect(letterOffer(later(db, 2))).toBeNull();
-  });
-
-  test('someone close writes unprompted after a while apart, never mid-fight', () => {
-    const base = loadSave();
-    // Mara is close enough to write.
-    const seed = { ...base, bonds: base.bonds.map((bond) => (bond.characterName === 'Mara Vance' ? { ...bond, affinity: 7 } : bond)) };
-    const db = later({ ...seed, state: { ...seed.state, sceneCast: [] } }, 40);
-    const offer = letterOffer(db);
-    expect(offer?.kind).toBe('unprompted');
-    expect(offer!.entity.name).toBe('Mara Vance');
-
-    expect(letterOffer({ ...db, state: { ...db.state, scenePace: 'combat' } })).toBeNull();
-    // Too soon after the story starts: nothing yet.
-    expect(letterOffer(later({ ...seed, state: { ...seed.state, sceneCast: [] } }, 3))).toBeNull();
-  });
-
-  test('a letter to someone who died is lost, with no reply', () => {
-    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
-    const daniel = hanaOf(db);
-    db = sendLetters(db, [{ entityId: daniel.id, name: daniel.name }]);
-    db = { ...db, entities: db.entities.map((entity) => (entity.id === daniel.id ? { ...entity, deceased: { known: false } } : entity)) };
-    db = deliverLetters(later(db, LETTER_MAX_DAYS + 1));
-    expect(db.state.post!.letters[0].status).toBe('lost');
-    expect(db.state.post!.letters.some((letter) => letter.direction === 'to-player')).toBe(false);
-  });
-
-  test('the state block carries letters, resolved to known people', () => {
-    const db = loadSave();
-    const { diff } = convertStateBlock({
-      letters_sent: [{ to: 'daniel-okafor', gist: 'meet me at the old bridge' }],
-      letters_received: ['daniel-okafor'],
-    });
-    const resolved = resolveCharacterRefs(db, diff!);
-    expect(resolved.lettersSent?.[0]).toMatchObject({ name: 'Daniel Okafor', gist: 'meet me at the old bridge' });
-    expect(resolved.lettersReceived?.[0].name).toBe('Daniel Okafor');
-    expect(TURN_STATE_SCHEMA.required).toEqual(expect.arrayContaining(['letters_sent', 'letters_received']));
-  });
-
-  test('saves keep their post through a reload', () => {
-    let db: AppDatabase = { ...loadSave(), state: { ...loadSave().state, sceneCast: [] } };
-    const daniel = hanaOf(db);
-    db = sendLetters(db, [{ entityId: daniel.id, name: daniel.name }]);
-    const reloaded = normalizeDatabase(JSON.parse(JSON.stringify(db)));
-    expect(reloaded.state.post?.letters).toHaveLength(1);
-  });
-});
-
 describe('clock, prompt memory and people (from the old canon blocks)', () => {
   test('recent messages keep the newest narration ending', () => {
     let db = loadSave();
@@ -1613,7 +1479,7 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
         explicitDate: { year: 13, month: 10, day: 6, hour: 22, minute: 0, second: 0 },
         clock: { hour: 20, minute: 0 },
       },
-      pace: 'combat',
+      pace: 'action',
       sceneEnded: false,
       current,
     });
@@ -1626,11 +1492,10 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
   test('every turn moves at least the pace minimum', () => {
     const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
     const none = { elapsedSeconds: 0 };
-    const run = (pace: 'combat' | 'chase' | 'conversation' | 'downtime' | 'travel') =>
+    const run = (pace: 'action' | 'conversation' | 'downtime' | 'travel') =>
       resolveTurnClock({ reportedSeconds: 0, detected: none, pace, sceneEnded: false, current });
 
-    expect(run('combat').elapsedSeconds).toBe(15);
-    expect(run('chase').elapsedSeconds).toBe(60);
+    expect(run('action').elapsedSeconds).toBe(30);
     expect(run('conversation').elapsedSeconds).toBe(120);
     expect(run('downtime').elapsedSeconds).toBe(600);
     expect(run('travel').elapsedSeconds).toBe(1800);
@@ -1652,12 +1517,12 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
   });
 
 
-  test('fights cannot skip days, travel only when the story says so', () => {
+  test('quick scenes cannot skip days, getting around caps at a day', () => {
     const current = { year: 13, month: 10, day: 4, hour: 18, minute: 0, second: 0 };
     const fight = resolveTurnClock({
       reportedSeconds: 3 * 86400,
       detected: { elapsedSeconds: 0 },
-      pace: 'combat',
+      pace: 'action',
       sceneEnded: false,
       current,
     });
@@ -1673,13 +1538,13 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
     expect(quietRoad.elapsedSeconds).toBe(1800);
 
     const longRoad = resolveTurnClock({
-      reportedSeconds: 2 * 86400,
+      reportedSeconds: 5 * 3600,
       detected: { elapsedSeconds: 0 },
       pace: 'travel',
       sceneEnded: false,
       current,
     });
-    expect(longRoad.elapsedSeconds).toBe(2 * 86400);
+    expect(longRoad.elapsedSeconds).toBe(5 * 3600);
   });
 
 
@@ -1896,7 +1761,7 @@ describe('clock, prompt memory and people (from the old canon blocks)', () => {
     expect(text).not.toContain('ENCOUNTER HINT');
     expect(text).not.toContain('d20');
     expect(text).not.toContain('STYLE GUARD');
-    expect(text).toContain('ENCOUNTER CONDITIONS');
+    expect(text).not.toContain('ENCOUNTER CONDITIONS');
     expect(NARRATION_SYSTEM).toContain('never reuse a description');
   });
 

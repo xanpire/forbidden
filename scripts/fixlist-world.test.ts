@@ -104,7 +104,7 @@ describe('17. base look and current look', () => {
 });
 
 describe('19. scene labels', () => {
-  test('a ravine is not a settlement, an ambush is not travel, and you are not in your own cast', () => {
+  test('a ravine is not a settlement, and you are not in your own cast', () => {
     let db = seed();
     db = play(db, 'They jump you from behind the rocks. A knife lunges at you; you dodge and hit back.', {
       location: 'Ravine below the coast road',
@@ -113,7 +113,6 @@ describe('19. scene labels', () => {
       characters_present: ['player', 'mara-vance'],
     });
     expect(db.state.locationKind).toBe('wilderness');
-    expect(db.state.scenePace).toBe('combat');
     expect(db.state.sceneCast).toEqual(['Mara Vance']);
   });
 });

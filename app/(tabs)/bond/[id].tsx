@@ -10,7 +10,8 @@ import { CharacterPortraitCard } from '@/components/player/CharacterPortraitCard
 import { memoryTitle } from '@/components/player/JournalSection';
 import { sharedMemories } from '@/lib/rpg/sharedMemories';
 import { knownLife } from '@/lib/rpg/lives';
-import { grudgeKnown, howTheySeem, shownProfile } from '@/lib/rpg/disclosure';
+import { howTheySeem, shownProfile } from '@/lib/rpg/disclosure';
+import { whereaboutsOf } from '@/lib/rpg/places';
 import { resolveEntity } from '@/lib/rpg/entities';
 import { MergeSheet } from '@/components/player/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -100,28 +101,20 @@ export default function BondScreen() {
       ? 'Joined you today'
       : `Together ${formatTogether(together)}`
     : null;
-  // A grudge shows once they have acted on it; until then it stews where you can't see it.
-  const grudge = !dead && bond?.grudge && grudgeKnown(bond.grudge) ? bond.grudge : null;
+  const grudge = !dead && bond?.grudge ? bond.grudge : null;
   const stage = grudge && bond ? grudgeStage(db, bond) : null;
   const STAGE_TEXT = {
     resentful: 'They resent you, and left alone it will only grow.',
-    vengeful: 'They want you to pay, and will act when they get the chance.',
-    hunting: 'They are coming after you.',
+    vengeful: 'They want to get back at you, and will when the chance comes.',
   } as const;
-  const grudgeMeta = grudge
-    ? [
-        `Since ${formatDayMonth(grudge.since)}, Year ${grudge.since.year}`,
-        `struck ${grudge.strikes === 1 ? 'once' : `${grudge.strikes} times`}`,
-        grudge.lastStrike ? `last ${formatDayMonth(grudge.lastStrike)}` : null,
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : null;
+  const grudgeMeta = grudge ? `Since ${formatDayMonth(grudge.since)}, Year ${grudge.since.year}` : null;
   const partyFull = !companion && companionsOf(db).length >= MAX_COMPANIONS;
   const details = [
     { label: 'Also known as', value: otherNames.length > 0 ? otherNames.join(', ') : undefined },
     { label: 'Died', value: dead ? death?.cause : undefined },
     { label: 'Mood', value: dead || !hereNow ? undefined : entity.mood },
+    { label: 'Where they are', value: hereNow ? undefined : whereaboutsOf(db, entity)?.detail },
+    { label: 'Lives with you', value: entity.livesWithYou && !dead ? 'Yes' : undefined },
     {
       label: 'Last you saw them',
       value:

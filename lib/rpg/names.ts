@@ -88,13 +88,6 @@ export function displayName(db: AppDatabase, entity: EntityRecord | null | undef
   return labelOf(db, entity);
 }
 
-/** Looks up a person by id and returns their display name. */
-export function displayNameOf(db: AppDatabase, entityId: string | null | undefined, fallback = 'someone') {
-  const entity = entityId ? db.entities.find((item) => item.id === entityId) : undefined;
-
-  return entity ? displayName(db, entity) : fallback;
-}
-
 /** Other names the player has learned for them, for "Also known as". */
 export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
   if (entity.type !== 'character' || isPlayerEntity(entity)) return [];

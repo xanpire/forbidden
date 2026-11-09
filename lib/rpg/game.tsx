@@ -146,8 +146,6 @@ type GameContextValue = {
   streamingText: string;
   pendingAction: string | null;
   lastPromptTokens: number;
-  worldEventNotice: string | null;
-  dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
   /** Sends the player's input. */
   sendTurn: (input: string, options?: TurnOptions) => Promise<void>;
@@ -211,7 +209,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   /** The player's line for the turn being narrated, shown until the turn is saved. */
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [lastPromptTokens, setLastPromptTokens] = useState(0);
-  const [worldEventNotice, setWorldEventNotice] = useState<string | null>(null);
 
   const dbRef = useRef<AppDatabase | null>(null);
   /** The current turn's state step. The next turn, undo and regenerate wait for it. */
@@ -381,11 +378,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setActiveJobCount(activeJobIdsRef.current.size);
   }, []);
 
-  const showNotice = useCallback((slotId: string, notice: string | null) => {
-    if (notice && dbRef.current?.meta.slotId === slotId) {
-      setWorldEventNotice(notice);
-    }
-  }, []);
 
   /**
    * Runs memory jobs one at a time. Each job reads the latest save, calls the
@@ -415,7 +407,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
           if (job.kind === 'state') {
             const extraction = await extractStateForJob(activeKey, base, job);
-            let notice: string | null = null;
 
             await updateLatest(slotId, (latest) => {
               const current = latest.memoryJobs?.find((entry) => entry.id === jobId);
@@ -443,11 +434,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
                 ...(result.nameLeaks?.length ? { nameLeaks: result.nameLeaks } : {}),
               });
               followUps.push(...result.followUpIds);
-              notice = result.notice;
               return result.db;
             });
-
-            showNotice(slotId, notice);
           } else {
             const output = await runSummaryJob(activeKey, base, job);
 
@@ -498,7 +486,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [readLatest, setJobActive, showNotice, updateLatest]
+    [readLatest, setJobActive, updateLatest]
   );
 
   const scheduleJobs = useCallback(
@@ -596,7 +584,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
 
         let followUps: string[] = [];
-        let notice: string | null = null;
 
         await updateLatest(slotId, (latest) => {
           if (!latest.rawLog.some((entry) => entry.id === turn.turnLogId)) {
@@ -610,11 +597,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
             changes: describeStateChange(latest, result.db),
           });
           followUps = result.followUpIds;
-          notice = result.notice;
           return result.db;
         });
 
-        showNotice(slotId, notice);
         void scheduleJobs(activeKey, slotId, followUps);
       } catch {
         setError('Your last turn could not be saved. Check your storage space and try again.');
@@ -622,7 +607,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setStateStepRunning(false);
       }
     },
-    [readLatest, scheduleJobs, showNotice, updateLatest]
+    [readLatest, scheduleJobs, updateLatest]
   );
 
   /** Set below once sendTurn exists: the post-check uses it to write a reply again. */
@@ -1061,7 +1046,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // The dead stop travelling with you.
+      // The dead are no longer with you.
       const next = deceased
         ? endCompanion(markDeceased(current, entityId, {}), entityId, 'died')
         : markAlive(current, entityId);
@@ -1361,9 +1346,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const isProcessing = stateStepRunning || activeJobCount > 0;
 
-  const dismissWorldEventNotice = useCallback(() => {
-    setWorldEventNotice(null);
-  }, []);
 
   const value = useMemo<GameContextValue>(
     () => ({
@@ -1380,8 +1362,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       streamingText,
       pendingAction,
       lastPromptTokens,
-      worldEventNotice,
-      dismissWorldEventNotice,
       setApiKey,
       sendTurn,
       regenerate,
@@ -1441,8 +1421,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       slots,
       streamingText,
       pendingAction,
-      worldEventNotice,
-      dismissWorldEventNotice,
       switchSlotById,
       toggleMemoryPin,
       undoLastTurn,

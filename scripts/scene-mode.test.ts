@@ -19,7 +19,7 @@ import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { NARRATION_SYSTEM, buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import {
   CONVERSATION_MODE_MINIMUM_SECONDS,
-  fightOptionInput,
+  sceneOptionInput,
   readPlayerInput,
   resolveTurnMode,
   setSceneModeOverride,
@@ -35,7 +35,6 @@ type Reply = {
   beat?: string | null;
   with?: string[];
   pace?: string | null;
-  options?: string[];
   ended?: boolean;
   present?: string[];
 };
@@ -49,9 +48,8 @@ function play(db: AppDatabase, input: string, narration: string, reply: Reply | 
   next.rawLog[next.rawLog.length - 1] = { ...next.rawLog[next.rawLog.length - 1], sceneMode: prompt.sceneMode.mode };
   const block = reply
     ? {
-        beat: reply.beat ?? null,
-        beat_with: reply.with ?? [],
-        fight_options: reply.options ?? [],
+        turn_kind: reply.beat ?? null,
+        talking_with: reply.with ?? [],
         scene_pace: reply.pace ?? null,
         scene_ended: reply.ended ?? false,
         characters_present: reply.present ?? ['mara-vance'],
@@ -84,21 +82,16 @@ function talking() {
 }
 
 describe('reading the player\'s input', () => {
-  test('speech, attacks, scene changes and small moves in place', () => {
+  test('speech, scene changes and small moves in place', () => {
     expect(readPlayerInput('"Where are we going?"').speaks).toBe(true);
     expect(readPlayerInput('*I look deep in Mara\'s eyes* "This is not like you."')).toMatchObject({
       speaks: true,
-      attacks: false,
       changesScene: false,
     });
     expect(readPlayerInput('*I follow her.*').changesScene).toBe(true);
-    expect(readPlayerInput('*I throw a knife at her throat.*').attacks).toBe(true);
-    expect(readPlayerInput('*I lunge at Daniel.*').attacks).toBe(true);
-    // Words he says and attacks he refuses are not attacks.
-    expect(readPlayerInput('"I will kill him one day."').attacks).toBe(false);
-    expect(readPlayerInput('*I don\'t attack him.*').attacks).toBe(false);
-    expect(readPlayerInput('*I say nothing and look away.*')).toMatchObject({ attacks: false, changesScene: false });
+    expect(readPlayerInput('*I say nothing and look away.*')).toMatchObject({ changesScene: false });
     expect(readPlayerInput('*I stand up and leave.*').changesScene).toBe(true);
+    expect(sceneOptionInput('Pull her closer')).toBe('*Pull her closer.*');
   });
 });
 
@@ -183,56 +176,8 @@ describe('conversation mode', () => {
     expect(turn.db.state.inStoryDate).not.toEqual(before);
   });
 });
-
-describe('fight mode', () => {
-  test('an attack starts it, options come with the reply, and it ends with the fight', () => {
-    let db = talking();
-    expect(resolveTurnMode(db, '*I throw a knife at her throat.*').mode).toBe('fight');
-
-    const strike = play(
-      db,
-      '*I throw a knife at her throat.*',
-      'Mara turns his head; the knife clatters past. She is behind you before you see her move, her elbow already driving at your ribs.',
-      {
-        beat: 'combat',
-        pace: 'combat',
-        options: ['Twist away and slash back', 'Take the hit and grab his arm', 'Grab the bottle and swing'],
-      }
-    );
-    db = strike.db;
-    expect(strike.reply.sceneMode).toBe('fight');
-    expect(strike.reply.fightOptions).toEqual([
-      'Twist away and slash back',
-      'Take the hit and grab his arm',
-      'Grab the bottle and swing',
-    ]);
-    expect(db.state.sceneMode?.exchangeStreak).toBe(0);
-    // While it goes on, everything is fight mode, even a line of speech.
-    expect(resolveTurnMode(db, '"Stop!"').mode).toBe('fight');
-    expect(promptText(db, '*I block.*')).toContain('SCENE MODE: fight');
-    expect(fightOptionInput('Twist away and slash back')).toBe('*Twist away and slash back.*');
-
-    const end = play(db, '*I yield.*', 'Mara steps back. The fight is over. You breathe in the cold air.', {
-      beat: 'action',
-      pace: 'downtime',
-      options: ['should be ignored'],
-    });
-    expect(end.reply.fightOptions).toBeUndefined();
-    expect(resolveTurnMode(end.db, '*I rest.*').mode).toBe('normal');
-  });
-
-  test('an ambush in the narration switches the next turn to fight mode', () => {
-    const db = play(seed(), '*I walk the road.*', 'Three masked men drop from the trees, blades out, and the first one swings at your neck.', {
-      beat: 'combat',
-      pace: 'combat',
-      present: [],
-    }).db;
-    expect(resolveTurnMode(db, '*I duck.*').mode).toBe('fight');
-  });
-});
-
 describe('manual override', () => {
-  test('forced conversation lasts through travel and ends when a fight starts', () => {
+  test('forced conversation lasts through a walk', () => {
     let db = setSceneModeOverride(seed(), 'conversation');
     expect(resolveTurnMode(db, '*We walk north together.*')).toMatchObject({ mode: 'conversation', manual: true });
 
@@ -242,10 +187,6 @@ describe('manual override', () => {
     }).db;
     expect(db.state.sceneMode?.override).toBe('conversation');
     expect(resolveTurnMode(db, '"How dangerous?"').mode).toBe('conversation');
-
-    db = play(db, '"How dangerous?"', 'A blade flashes out of the brush, straight at Mara.', { beat: 'combat', pace: 'combat' }).db;
-    expect(db.state.sceneMode?.override).toBeUndefined();
-    expect(resolveTurnMode(db, '*I draw a knife.*').mode).toBe('fight');
   });
 
   test('switching it off holds until the conversation is over, then automatic resumes', () => {
@@ -259,40 +200,38 @@ describe('manual override', () => {
   });
 
   test('the choice and the streak survive a reload', () => {
-    const db = setSceneModeOverride(talking(), 'fight');
+    const db = setSceneModeOverride(talking(), 'normal');
     const reloaded = normalizeDatabase(JSON.parse(JSON.stringify(db)));
-    expect(reloaded.state.sceneMode).toMatchObject({ override: 'fight', exchangeStreak: 2, current: 'conversation' });
+    expect(reloaded.state.sceneMode).toMatchObject({ override: 'normal', exchangeStreak: 2, current: 'conversation' });
   });
 });
 
 describe('prompts and schema', () => {
   test('the narrator rules describe the modes without any state field names', () => {
     expect(NARRATION_SYSTEM).toContain('SCENE MODES');
-    expect(NARRATION_SYSTEM).toContain('stop there, before it lands');
-    expect(NARRATION_SYSTEM).not.toContain('beat_with');
-    expect(NARRATION_SYSTEM).not.toContain('fight_options');
+    expect(NARRATION_SYSTEM).not.toContain('talking_with');
+    expect(NARRATION_SYSTEM).not.toContain('turn_kind');
   });
 
   test('normal turns add no mode line', () => {
     expect(promptText(seed(), '*I wait.*')).not.toContain('SCENE MODE:');
   });
 
-  test('the state tracker tags the beat and sees the mode the reply used', () => {
-    expect(TURN_STATE_SCHEMA.required).toContain('beat');
-    expect(TURN_STATE_SCHEMA.required).toContain('beat_with');
-    expect(TURN_STATE_SCHEMA.required).toContain('fight_options');
+  test('the state tracker tags the turn and sees the mode the reply used', () => {
+    expect(TURN_STATE_SCHEMA.required).toContain('turn_kind');
+    expect(TURN_STATE_SCHEMA.required).toContain('talking_with');
 
     let db = appendStoryMessage(seed(), 'user', '"Hi"', null, 0, 0);
     db = appendStoryMessage(db, 'assistant', '"Hello."', null, 0, 0);
     db.rawLog[db.rawLog.length - 1] = { ...db.rawLog[db.rawLog.length - 1], sceneMode: 'conversation' };
     const text = buildExtractionPrompt(db, '"Hi"', '"Hello."').messages.map((message) => message.content).join('\n');
     expect(text).toContain('SCENE MODE THIS TURN: conversation');
-    expect(text).toContain('BEAT: beat tags how this turn played');
+    expect(text).toContain('TURN: turn_kind tags how this turn played');
   });
 
   test('a turn with no state reply still keeps the streak sensible', () => {
     let db = seed();
     db = play(db, '"Is it done?"', '"It is done," Mara says.', null).db;
-    expect(db.state.sceneMode?.lastBeat).toBe('exchange');
+    expect(db.state.sceneMode?.lastKind).toBe('exchange');
   });
 });

@@ -33,7 +33,7 @@ const base: AmbienceInput = {
   climate: 'temperate',
   kind: 'wilderness',
   place: 'Forest north of the city',
-  fight: false,
+  hushed: false,
 };
 const mix = (change: Partial<AmbienceInput>) => ambienceMix({ ...base, ...change });
 const seed = () => normalizeDatabase(seedDatabase('slot_ambience', 'Ambience'));
@@ -125,12 +125,12 @@ describe('ambience: what you hear where you are', () => {
     expect(cave.beds['forest-day']).toBeUndefined();
   });
 
-  test('a fight is marked so the player can lower the ambience; nothing is added', () => {
+  test('an intimate scene is marked so the player can lower the ambience; nothing is added', () => {
     const calm = mix({});
-    const fight = mix({ fight: true });
-    expect(fight.fight).toBe(true);
-    expect(fight.beds).toEqual(calm.beds);
-    expect(fight.key).not.toBe(calm.key);
+    const hushed = mix({ hushed: true });
+    expect(hushed.hushed).toBe(true);
+    expect(hushed.beds).toEqual(calm.beds);
+    expect(hushed.key).not.toBe(calm.key);
   });
 
   test('indoor beds are the only ones that skip the outdoor muffle', () => {
@@ -156,7 +156,7 @@ describe('ambience: what you hear where you are', () => {
   test('describes what is playing in a few words', () => {
     expect(describeAmbience(mix({ condition: 'rain', kind: 'structure', place: 'Inn room' }))).toMatch(/^Rain on the roof/);
     expect(describeAmbience(mix({ condition: 'downpour', place: 'Open road', kind: 'road' }))).not.toMatch(/^Rain, /);
-    expect(describeAmbience({ beds: {}, indoors: false, fight: false, key: '' })).toBe('Silence');
+    expect(describeAmbience({ beds: {}, indoors: false, hushed: false, key: '' })).toBe('Silence');
   });
 });
 
@@ -176,8 +176,8 @@ describe('ambience: read from the save', () => {
     expect(result.beds.storm).toBe(1);
     expect(result.beds.river).toBeGreaterThan(0);
 
-    const fighting = at(db, { sceneMode: { current: 'fight', exchangeStreak: 0, partners: [] } });
-    expect(currentAmbience(fighting).fight).toBe(true);
+    const intimate = at(db, { sceneMode: { current: 'intimate', exchangeStreak: 0, partners: [] } });
+    expect(currentAmbience(intimate).hushed).toBe(true);
   });
 
   test('a new save has something to hear', () => {

@@ -14,32 +14,10 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import { normalizeDatabase } from '../lib/rpg/db';
-import { layoutWorld } from '../lib/rpg/mapLayout';
 import { seedDatabase } from './fixtures/seed';
 import { checkPin, shownAppName, validPin, withPin } from '../lib/privacy';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_extras', 'Extras'));
-
-describe('the drawn map', () => {
-  test('areas sit inside the frame, neighbours closer than strangers, the same every time', () => {
-    const db = seed();
-    const layout = layoutWorld(db.world);
-    expect(layout.regions.map((region) => region.id)).toEqual(['old-town', 'the-docks', 'northgate']);
-    for (const point of [...layout.regions, ...layout.places]) {
-      expect(point.x).toBeGreaterThan(0);
-      expect(point.x).toBeLessThan(1);
-      expect(point.y).toBeGreaterThan(0);
-      expect(point.y).toBeLessThan(1);
-    }
-    expect(layout.roads).toHaveLength(2);
-    const at = (id: string) => layout.regions.find((region) => region.id === id)!;
-    const dist = (a: string, b: string) => Math.hypot(at(a).x - at(b).x, at(a).y - at(b).y);
-    expect(dist('old-town', 'the-docks')).toBeLessThan(dist('the-docks', 'northgate'));
-    expect(layoutWorld(db.world)).toEqual(layout);
-    expect(layout.places.find((place) => place.id === 'the-anchor')?.regionId).toBe('old-town');
-    expect(layoutWorld({ regions: [], places: [] }).regions).toEqual([]);
-  });
-});
 describe('privacy', () => {
   test('a PIN is 4 to 8 digits, stored salted, and checked', () => {
     expect(validPin('1234')).toBe(true);

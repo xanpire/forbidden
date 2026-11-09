@@ -11,10 +11,9 @@
 // narrator's prompt is untouched.
 
 import { timeOfDayOf, type DayPeriod } from './calendar';
-import { locationKindOf } from './encounters';
-import { campCover, currentSafehouse } from './safehouses';
+import { locationKindOf } from './places';
 import { sceneModeOf } from './sceneMode';
-import type { AppDatabase, ClimateType, LocationKind, SafehouseKind, WeatherCondition } from './types';
+import type { AppDatabase, ClimateType, LocationKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
 
 export const AMBIENCE_BEDS = [
@@ -66,9 +65,8 @@ export type AmbienceInput = {
   kind: LocationKind;
   /** The location, in words. */
   place: string;
-  fight: boolean;
-  /** The kind of safehouse the player is at: walls and a roof, or a camp under the sky. */
-  shelter?: SafehouseKind;
+  /** An intimate scene: everything around goes quiet. */
+  hushed: boolean;
   /** The world's era (traffic, engines and office hums only outside the past). */
   era?: 'past' | 'present' | 'future';
 };
@@ -78,8 +76,8 @@ export type AmbienceMix = {
   beds: Partial<Record<AmbienceBed, number>>;
   /** The player is inside: outside sounds go through a low-pass and drop. */
   indoors: boolean;
-  /** A fight lowers everything instead of adding anything. */
-  fight: boolean;
+  /** An intimate scene lowers everything instead of adding anything. */
+  hushed: boolean;
   /** Stable text for the mix, to tell when it changes. */
   key: string;
 };
@@ -108,9 +106,7 @@ const SEA_WORDS = /\b(sea|seaside|ocean|coast|coastal|shore|shoreline|beach|cove
 /** Where the player is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
-  const house = currentSafehouse(db);
-  // A safehouse's own name says what it is ("the cave above the falls").
-  const place = ([db.state.location ?? '', house?.name ?? ''].filter(Boolean).join(', '));
+  const place = db.state.location ?? '';
 
   return {
     condition: weather.condition,
@@ -120,27 +116,16 @@ export function ambienceInputOf(db: AppDatabase): AmbienceInput {
     climate: weather.climate,
     kind: locationKindOf(db),
     place,
-    fight: sceneModeOf(db).current === 'fight',
+    hushed: sceneModeOf(db).current === 'intimate',
     era: db.world?.era?.when,
-    ...(house ? { shelter: house.kind } : {}),
   };
 }
 
 /** Is the player inside? The location's own words decide; a structure counts unless it says outside. */
-export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place' | 'shelter'>): boolean {
+export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place'>): boolean {
   const location = input.place;
 
   if (CAVE_WORDS.test(location)) return true;
-  // A camp is what it's in: a cave (above), ruins (half open, see ambienceMix), the walls of a hut, or the sky.
-  if (input.shelter === 'camp') {
-    const cover = campCover(location);
-    // "A hut in the forest" is inside the hut; "outside the hut" is not.
-    return cover === 'walls' && !/\b(outside|roof of|rooftop)\b/i.test(location);
-  }
-  // Ruins with no place of the player's own in them are open to the sky.
-  if (!input.shelter && campCover(location) === 'ruin') return false;
-  // Any other safehouse has walls unless the words say he's outside it.
-  if (input.shelter && !(OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location))) return true;
   if (OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location)) return false;
   if (INDOOR_WORDS.test(location)) return true;
 
@@ -282,28 +267,8 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
     if (CROWD_WORDS.test(place)) add(beds, 'murmur', night && input.hour >= 1 && input.hour < 5 ? 0.1 : 0.55);
   }
 
-  if (
-    FIRE_WORDS.test(place) ||
-    ((input.shelter === 'camp' || (kind !== 'settlement' && /\bcamp\b/i.test(place))) && (period === 'evening' || night))
-  ) {
+  if (FIRE_WORDS.test(place)) {
     add(beds, 'fire', 0.7);
-  }
-
-  // ---- Ruins: half a shelter ---------------------------------------------
-  // Broken walls: some rain drips off what's left of the roof, wind whistles
-  // through the gaps, the birds keep their distance, and wet stone drips.
-  const ruined = !indoors && (input.shelter === 'camp' || !input.shelter) && campCover(place) === 'ruin';
-  if (ruined) {
-    scale(beds, 'rain-light', 0.6);
-    scale(beds, 'rain-heavy', 0.6);
-    if (rain > 0) {
-      add(beds, 'rain-roof', 0.2 + rain * 0.25);
-      add(beds, 'cave', 0.2);
-    }
-    if (!harsh) add(beds, 'wind-light', 0.3);
-    scale(beds, 'forest-day', 0.6);
-    scale(beds, 'cicadas', 0.6);
-    delete beds.village;
   }
 
   // ---- Modern places --------------------------------------------------------
@@ -339,10 +304,10 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
   const key = Object.entries(beds)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([bed, level]) => `${bed}:${(level ?? 0).toFixed(2)}`)
-    .concat(indoors ? 'in' : 'out', input.fight ? 'fight' : 'calm')
+    .concat(indoors ? 'in' : 'out', input.hushed ? 'hushed' : 'calm')
     .join(' ');
 
-  return { beds, indoors, fight: input.fight, key };
+  return { beds, indoors, hushed: input.hushed, key };
 }
 
 /** The mix for the save's scene. */

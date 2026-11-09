@@ -36,38 +36,16 @@ function prices(db: AppDatabase) {
 /** THE WORLD: the setting as the player wrote it. */
 export function formatWorldBlock(db: AppDatabase): string {
   const world = db.world;
-  const regionName = new Map(world.regions.map((region) => [region.id, region.name]));
   const era = world.era;
   const currency = world.currency;
 
   const factions = world.factions
     .filter((faction) => clean(faction.name))
-    .map((faction) => {
-      const territory = list(faction.territoryRegionIds?.map((id) => regionName.get(id) ?? ''));
-      const extra = [
-        territory.length > 0 ? `holds ${territory.join(', ')}` : '',
-        faction.hasBounties ? 'keeps a wanted list and pays for people' : '',
-      ].filter(Boolean);
-      return `- ${clean(faction.name)}${clean(faction.description) ? `: ${clean(faction.description)}` : ''}${extra.length > 0 ? ` (${extra.join('; ')})` : ''}`;
-    });
+    .map((faction) => `- ${clean(faction.name)}${clean(faction.description) ? `: ${clean(faction.description)}` : ''}`);
 
-  const regions = world.regions
-    .filter((region) => clean(region.name))
-    .map((region) => {
-      const near = region.neighbours
-        .map((next) => {
-          const name = regionName.get(next.id);
-          if (!name) return '';
-          return `${name} ${formatTravel(next.days)}`;
-        })
-        .filter(Boolean);
-      const places = world.places.filter((place) => place.regionId === region.id && clean(place.name)).map((place) => clean(place.name));
-      return [
-        `- ${clean(region.name)}${clean(region.description) ? `: ${clean(region.description)}` : ''}`,
-        places.length > 0 ? ` Places: ${places.join(', ')}.` : '',
-        near.length > 0 ? ` Travel: ${near.join(', ')}.` : '',
-      ].join('');
-    });
+  const places = world.places
+    .filter((place) => clean(place.name))
+    .map((place) => `- ${clean(place.name)}${clean(place.description) ? `: ${clean(place.description)}` : ''}${clean(place.who) ? ` (${clean(place.who)})` : ''}`);
 
   return [
     'THE WORLD (written by the player; this is the setting, true from the first page)',
@@ -79,24 +57,12 @@ export function formatWorldBlock(db: AppDatabase): string {
     line('What exists', era?.techNotes),
     clean(currency?.name) ? `Money: ${clean(currency.name)}${clean(currency.symbol) ? ` (${clean(currency.symbol)})` : ''}` : '',
     prices(db),
-    list(world.letterCarriers).length > 0 ? `How messages travel: ${list(world.letterCarriers).join(', ')}` : '',
     factions.length > 0 ? `Groups:\n${factions.join('\n')}` : '',
-    regions.length > 0 ? `Areas:\n${regions.join('\n')}` : '',
+    places.length > 0 ? `Places:\n${places.join('\n')}` : '',
     clean(world.narratorNotes) ? `The player's own rules for you: ${clean(world.narratorNotes)}` : '',
   ]
     .filter(Boolean)
     .join('\n');
-}
-
-function formatTravel(days: number) {
-  if (!Number.isFinite(days) || days <= 0) return 'close by';
-  if (days < 0.05) return 'a few minutes away';
-  if (days < 0.5) {
-    const minutes = Math.round((days * 24 * 60) / 5) * 5;
-    return minutes < 60 ? `about ${minutes} minutes away` : `about ${Math.round(minutes / 60)} hour${Math.round(minutes / 60) === 1 ? '' : 's'} away`;
-  }
-  if (days < 1.5) return 'about a day away';
-  return `about ${Math.round(days)} days away`;
 }
 
 /** WHO YOU ARE: the player's character. The backstory is kept verbatim. */
@@ -118,6 +84,7 @@ export function formatWhoYouAre(db: AppDatabase): string {
     line('Personality', player.personality),
     line('Speech', player.speechStyle),
     line('Skills', player.skills),
+    line('Lives at', player.home),
     goals.length > 0 ? `Goals: ${goals.join(' | ')}` : '',
     (player.backstory ?? '').trim() ? `Backstory, in the player's words:\n${(player.backstory ?? '').trim()}` : '',
     secrets.length > 0 ? `Secrets (narrator only: true, but nobody knows them unless the story shows it): ${secrets.join(' | ')}` : '',

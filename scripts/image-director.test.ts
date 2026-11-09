@@ -33,7 +33,6 @@ import {
 import { packPeopleReferences } from '../lib/rpg/castSheet';
 import { parseImageCheck, sharperActorRule } from '../lib/rpg/imageCheck';
 import { planReferences } from '../lib/rpg/referencePlan';
-import { currentRegion } from '../lib/rpg/geography';
 import type { AppDatabase, RawLogEntry } from '../lib/rpg/types';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_director', 'Director'));
@@ -66,7 +65,7 @@ const at = (db: AppDatabase, hour: number, condition: 'clear' | 'snow' | 'storm'
       inStoryDate: date,
       location: 'Coast Road',
       locationKind: 'road',
-      weather: { region: currentRegion({ ...db, state: { ...db.state, location: 'Coast Road' } }), condition, since: date, source: 'story', sceneSeq: db.state.sceneSeq },
+      weather: { condition, since: date, source: 'story', sceneSeq: db.state.sceneSeq },
     },
   };
 };

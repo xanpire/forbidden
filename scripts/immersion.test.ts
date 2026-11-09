@@ -14,7 +14,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 
 import { buildCharacterPortraitPrompt, characterPortraitSignature } from '../lib/rpg/characterPortrait';
 import { normalizeDatabase } from '../lib/rpg/db';
-import { grudgeKnown, howTheySeem, shownField, shownProfile } from '../lib/rpg/disclosure';
+import { howTheySeem, shownField, shownProfile } from '../lib/rpg/disclosure';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from './fixtures/seed';
 import type { AppDatabase, EntityRecord } from '../lib/rpg/types';
@@ -58,13 +58,6 @@ describe('feelings and grudges', () => {
     expect(howTheySeem(5)).toBe('warm');
     expect(howTheySeem(10)).toBe('devoted');
   });
-
-  test('a grudge is known only once they have acted on it', () => {
-    expect(grudgeKnown(undefined)).toBe(false);
-    expect(grudgeKnown({ strikes: 0 })).toBe(false);
-    expect(grudgeKnown({ strikes: 1 })).toBe(true);
-  });
-
   test('the narrator still gets the full truth', () => {
     const db = { ...seed(), state: { ...seed().state, sceneCast: ['Mara Vance'] } };
     const text = buildNarrationPrompt(db, '*You look at Mara.*').messages.map((message) => message.content).join('\n');

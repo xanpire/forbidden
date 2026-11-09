@@ -15,7 +15,6 @@
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
 import { playerAge } from './player';
 import { displayName, narratorName } from './names';
-import { isCombatPace } from './pacing';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
@@ -321,7 +320,7 @@ export function yearlyCandidates(db: AppDatabase): YearlyOffer[] {
 
 /** The one yearly line for this turn, if any: never in a fight, each once a year. */
 export function yearlyOffer(db: AppDatabase): YearlyOffer | null {
-  if (isCombatPace(db.state.scenePace)) return null;
+  if (db.state.scenePace === 'action') return null;
 
   const { offered } = yearlyOf(db);
   const year = db.state.inStoryDate.year;

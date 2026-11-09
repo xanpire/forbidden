@@ -1,22 +1,19 @@
 import { daysBetween, entityAge } from './calendar';
 import { narratorName } from './names';
-import { isCombatPace } from './pacing';
 import { mentionsEntity } from './characterRefs';
 import { isDeceased } from './deaths';
-import { encounterRisk, locationKindOf } from './encounters';
-import { timeOfDayOf } from './calendar';
+import { locationKindOf } from './places';
 import type { AppDatabase, BondRecord, EntityRecord, LocationKind } from './types';
 import { isPlayerEntity } from './player';
 
 /**
  * Characters who come back.
  *
- * Every so often the narrator is offered ONE character whom the player has not
- * seen in a while and
- * who would plausibly be at the current place: they were last seen there,
- * their role or notes tie them to it, or they travel for a living and the player is
- * on a road or in a town. The offer is optional; the narrator uses it only if
- * it fits.
+ * Every so often the narrator is offered ONE person the player has a bond with
+ * and has not seen in a while, who would plausibly be at the current place:
+ * they were last seen there, their role or notes tie them to it, or their work
+ * keeps them out and about (a driver, a courier) and the player is out in town.
+ * The offer is optional; the narrator uses it only if it fits.
  *
  * The choice is deterministic (slot + turn), so regenerating a turn gets the
  * same offer, and once someone resurfaces their lastSeen resets and they drop
@@ -36,18 +33,18 @@ const STOPWORDS = new Set([
   'upper', 'lower', 'old', 'new', 'small', 'little', 'great', 'big', 'deep',
   'village', 'land', 'country', 'area', 'region', 'border', 'somewhere',
   'town', 'city', 'street', 'road', 'path', 'trail', 'forest', 'woods', 'outskirts',
-  'inn', 'camp', 'room', 'house', 'home', 'place', 'there', 'from', 'with', 'into',
+  'room', 'house', 'home', 'place', 'there', 'from', 'with', 'into',
   'toward', 'towards', 'between', 'along', 'beyond', 'above', 'below', 'under',
-  'hideout', 'district', 'market', 'river', 'mountain', 'mountains', 'hills',
+  'district', 'market', 'river',
   'clearing', 'gate', 'gates', 'square', 'plaza', 'shop', 'cafe', 'bar', 'office', 'flat', 'apartment',
 ]);
 
 const TRAVELLER_ROLE =
-  /\b(merchant|trader|salesman|saleswoman|courier|driver|delivery|messenger|mercenary|wanderer|wandering|travell?ing|travell?er|bounty hunter|smuggler|performer|musician|pilgrim|drifter|informant|spy|journalist|reporter|trucker)\b/i;
+  /\b(salesman|saleswoman|sales rep|courier|driver|delivery|rider|performer|musician|busker|journalist|reporter|photographer|trucker|tour guide|street vendor)\b/i;
 
 export type ReturningOffer = {
   entity: EntityRecord;
-  bond: BondRecord | null;
+  bond: BondRecord;
   daysAway: number;
   reason: 'last-seen-here' | 'tied-to-place' | 'traveller';
 };
@@ -166,8 +163,14 @@ export function returningCandidates(db: AppDatabase, recentText = ''): Returning
       continue;
     }
 
-    const bond = db.bonds.find((item) => item.entityId === entity.id) ?? null;
-    const score = fit.score + (bond ? 1 : 0) + (bond?.isMajor ? 1 : 0);
+    // Only people the player has a bond with come back.
+    const bond = db.bonds.find((item) => item.entityId === entity.id);
+
+    if (!bond) {
+      continue;
+    }
+
+    const score = fit.score + (bond.isMajor ? 1 : 0);
 
     offers.push({ entity, bond, daysAway, reason: fit.reason, score });
   }
@@ -179,16 +182,15 @@ export function returningCandidates(db: AppDatabase, recentText = ''): Returning
 
 /**
  * The one character to offer this turn, or null. Only on the window's offer
- * turn, never in a fight or chase, and never where nobody would be around.
+ * turn, never in the middle of a quick physical scene or an intimate one, and
+ * never out in nature at night where nobody would be around.
  */
 export function pickReturningCharacter(db: AppDatabase, recentText = ''): ReturningOffer | null {
-  if (!isReturnTurn(db) || isCombatPace(db.state.scenePace)) {
+  if (!isReturnTurn(db) || db.state.scenePace === 'action' || db.state.sceneMode?.current === 'intimate') {
     return null;
   }
 
-  const risk = encounterRisk(locationKindOf(db), timeOfDayOf(db.state.inStoryDate));
-
-  if (risk === 'none') {
+  if (locationKindOf(db) === 'wilderness' && db.state.inStoryDate.hour >= 22) {
     return null;
   }
 
@@ -239,15 +241,13 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
       ? 'you last met them around here'
       : reason === 'tied-to-place'
         ? 'they have ties to this place'
-        : 'they travel these roads and towns';
-  const bondLine = bond
-    ? `Between them: ${clip(bond.status, 60) || 'they know each other'}${clip(bond.note, 90) ? ` (${clip(bond.note, 90)})` : ''}.`
-    : '';
+        : 'their work keeps them out and about';
+  const bondLine = `Between them: ${clip(bond.status, 60) || 'they know each other'}${clip(bond.note, 90) ? ` (${clip(bond.note, 90)})` : ''}.`;
   const traits = [clip(entity.personality, 90), clip(entity.speechStyle, 60)].filter(Boolean).join(' ');
 
   return [
     'A FAMILIAR FACE (optional)',
-    `${who}. Last seen ${formatAway(daysAway)} ago${where}; ${why}.${bondLine ? ` ${bondLine}` : ''}${traits ? ` ${traits}` : ''}`,
+    `${who}. Last seen ${formatAway(daysAway)} ago${where}; ${why}. ${bondLine}${traits ? ` ${traits}` : ''}`,
     'If it fits the scene naturally, they can resurface: a face in the crowd, a voice at the next table, word that they are nearby, or them seeking you out. They remember you and have lived their own life since. If you use them, they are this turn\'s encounter; if it does not fit, ignore this.',
   ].join('\n');
 }

@@ -17,7 +17,7 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { playerName } from '../lib/rpg/player';
 import { buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from './fixtures/seed';
-import { draftToSeedInput, emptyPerson, newFaction, newLore, newPlace, newRegion } from '../lib/rpg/wizard';
+import { draftToSeedInput, emptyPerson, newFaction, newLore, newPlace } from '../lib/rpg/wizard';
 import {
   addPersonToSave,
   applyCharacterEdit,
@@ -37,32 +37,26 @@ describe('world editor during play', () => {
   test('a world edit shows up in the next narrator and tracker prompts, with readable ids', () => {
     const db = seed();
     const draft = draftFromSave(db);
-    const harbour = { ...newRegion(), name: 'The Harbour Front', description: 'Ferries and fish markets.', neighbours: [{ id: 'old-town', days: 0.05 }] };
-    const pier = { ...newPlace(harbour.id), name: 'Pier Nine', description: 'A late-night bar on stilts.' };
-    const union = { ...newFaction(), name: 'The Dockers Union', description: 'Loud, loyal, everywhere.', territoryRegionIds: [harbour.id, 'the-docks'] };
+    const pier = { ...newPlace(), name: 'Pier Nine', description: 'A late-night bar on stilts.' };
+    const union = { ...newFaction(), name: 'The Dockers Union', description: 'Loud, loyal, everywhere.' };
     const lore = { ...newLore(), keywords: ['pier nine'], text: 'Pier Nine never closes before dawn.' };
     const edited = applyWorldEdit(db, {
       ...draft.world,
       premise: 'A rainy port city on the edge of a strike.',
-      regions: [...draft.world.regions, harbour],
       places: [...draft.world.places, pier],
       factions: [...draft.world.factions, union],
       lore: [...draft.world.lore, lore],
     });
 
-    expect(edited.world.regions.map((region) => region.id)).toEqual(['old-town', 'the-docks', 'northgate', 'the-harbour-front']);
-    expect(edited.world.places.find((place) => place.name === 'Pier Nine')).toMatchObject({ id: 'pier-nine', regionId: 'the-harbour-front' });
-    expect(edited.world.factions.find((faction) => faction.name === 'The Dockers Union')?.territoryRegionIds).toEqual(['the-harbour-front', 'the-docks']);
-    expect(edited.entities.some((entity) => entity.tags.includes('the-dockers-union'))).toBe(true);
+    expect(edited.world.places.find((place) => place.name === 'Pier Nine')).toMatchObject({ id: 'pier-nine' });
+    expect(edited.world.factions.some((faction) => faction.id === 'the-dockers-union')).toBe(true);
     expect(edited.loreEntries.some((entry) => entry.text === 'Pier Nine never closes before dawn.')).toBe(true);
 
     const text = narrator(edited);
     expect(text).toContain('A rainy port city on the edge of a strike.');
     expect(text).toContain('The Dockers Union');
-    expect(text).toContain('Places: Pier Nine');
+    expect(text).toContain('- Pier Nine: A late-night bar on stilts.');
     const tracker = buildExtractionPrompt(edited, 'Hi.', 'Rain.').messages.map((m) => m.content).join('\n');
-    expect(tracker).toContain('the-dockers-union (The Dockers Union)');
-    expect(tracker).toContain('the-harbour-front (The Harbour Front)');
   });
 
   test('your own sheet and intimacy settings can be edited mid-story', () => {
@@ -115,7 +109,7 @@ describe('world templates', () => {
       opening: { ...draft.opening, location: 'The Anchor', situation: 'Jo walks into The Anchor for the first time.' },
     }));
     expect(second.world.name).toBe('Harbourside');
-    expect(second.world.regions.map((region) => region.id)).toEqual(db.world.regions.map((region) => region.id));
+    expect(second.world.places.map((place) => place.name)).toEqual(db.world.places.map((place) => place.name));
     expect(playerName(second)).toBe('Jo Park');
     expect(second.entities.some((entity) => entity.name === 'Mara Vance')).toBe(false);
   });

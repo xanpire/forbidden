@@ -25,7 +25,6 @@ import {
   missingFields,
   newFaction,
   newPlace,
-  newRegion,
   normalizeDraft,
   parseHelpReply,
   type WizardDraft,
@@ -34,22 +33,18 @@ import {
 /** A story built entirely by hand, the way the wizard screens fill a draft. */
 function handMadeDraft(): WizardDraft {
   let draft = emptyDraft();
-  const quarter = { ...newRegion(), name: 'The French Quarter', description: 'Jazz clubs and narrow streets.', climate: 'rainy' as const };
-  const uptown = { ...newRegion(), name: 'Uptown', description: 'Old money and big houses.' };
-  quarter.neighbours = [{ id: uptown.id, days: 0.1 }];
-  const club = { ...newPlace(quarter.id), name: 'The Blue Room', description: 'A speakeasy behind a barber shop.' };
-  const mansion = { ...newPlace(uptown.id), name: 'Delacroix House', kind: 'structure' as const, description: 'A white mansion.' };
-  const family = { ...newFaction(), name: 'The Delacroix family', description: 'Sugar money.', territoryRegionIds: [uptown.id] };
-  const police = { ...newFaction(), name: 'City police', description: 'On the take.', hasBounties: true };
+  const club = { ...newPlace(), name: 'The Blue Room', description: 'A jazz bar behind a barber shop.' };
+  const mansion = { ...newPlace(), name: 'Delacroix House', kind: 'structure' as const, description: 'A white mansion uptown.' };
+  const family = { ...newFaction(), name: 'The Delacroix family', description: 'Sugar money.' };
+  const police = { ...newFaction(), name: 'City police', description: 'Overworked.' };
 
   return {
     ...draft,
     slotName: 'Blue Room nights',
     world: {
       ...draft.world,
-      name: 'New Orleans, 1925',
-      premise: 'Prohibition-era New Orleans, where everyone drinks and nobody admits it.',
-      regions: [quarter, uptown],
+      name: 'New Orleans',
+      premise: 'New Orleans today, where everyone knows a secret and nobody admits it.',
       places: [club, mansion],
       factions: [family, police],
     },
@@ -86,7 +81,7 @@ function handMadeDraft(): WizardDraft {
     ],
     opening: {
       location: 'The Blue Room',
-      date: { year: 1925, month: 10, day: 2, hour: 23, minute: 30 },
+      date: { year: 2026, month: 10, day: 2, hour: 23, minute: 30 },
       situation: 'The last set is over. Vincent waves you over to his booth.',
       castNames: ['Vincent Duval', 'Rose', 'Somebody not in the list'],
       threads: ['Pay back what you owe Vincent.', 'Find out who killed Old Jack'],
@@ -104,13 +99,8 @@ describe('creation wizard', () => {
   test('a hand-made draft becomes a playable save, with nothing added', () => {
     const input = draftToSeedInput(handMadeDraft());
     // Readable ids, remapped everywhere they are used.
-    expect(input.world.regions.map((region) => region.id)).toEqual(['the-french-quarter', 'uptown']);
-    expect(input.world.regions[0].neighbours).toEqual([{ id: 'uptown', days: 0.1 }]);
-    expect(input.world.places.map((place) => [place.id, place.regionId])).toEqual([
-      ['the-blue-room', 'the-french-quarter'],
-      ['delacroix-house', 'uptown'],
-    ]);
-    expect(input.world.factions[0].territoryRegionIds).toEqual(['uptown']);
+    expect(input.world.places.map((place) => place.id)).toEqual(['the-blue-room', 'delacroix-house']);
+    expect(input.world.factions.map((faction) => faction.id)).toEqual(['the-delacroix-family', 'city-police']);
     expect(input.opening.placeId).toBe('the-blue-room');
     // Unknown cast names are dropped.
     expect(input.opening.castNames).toEqual(['Vincent Duval', 'Rose']);
@@ -119,8 +109,8 @@ describe('creation wizard', () => {
 
     const db = normalizeDatabase(seedDatabase('slot_wizard', 'Blue Room nights', input));
     expect(playerName(db)).toBe('Celeste Moreau');
-    expect(db.world.name).toBe('New Orleans, 1925');
-    expect(db.state.inStoryDate).toMatchObject({ year: 1925, month: 10, day: 2, hour: 23, minute: 30 });
+    expect(db.world.name).toBe('New Orleans');
+    expect(db.state.inStoryDate).toMatchObject({ year: 2026, month: 10, day: 2, hour: 23, minute: 30 });
     expect(db.state.location).toBe('The Blue Room');
     expect(db.state.purse?.amount).toBe(40);
     expect(db.state.inventory).toEqual(['Lipstick', 'A pearl-handled knife']);
@@ -134,12 +124,11 @@ describe('creation wizard', () => {
     expect(db.state.sceneCast).toEqual(expect.arrayContaining(['Vincent Duval', 'Rose']));
 
     const narrator = buildNarrationPrompt(db, '"Evening, Vincent."').messages.map((message) => message.content).join('\n');
-    expect(narrator).toContain('New Orleans, 1925');
+    expect(narrator).toContain('New Orleans today');
     expect(narrator).toContain('Came down from Chicago with a suitcase and a stolen name.');
     expect(narrator).toContain('The Delacroix family');
     const tracker = buildExtractionPrompt(db, 'Hi.', 'Vincent nods.').messages.map((message) => message.content).join('\n');
-    expect(tracker).toContain('the-french-quarter (The French Quarter)');
-    expect(tracker).toContain('city-police (City police)');
+    expect(tracker).toContain('vincent-duval: Vincent Duval');
   });
 
   test('help only fills empty fields and adds new items', () => {
@@ -161,10 +150,9 @@ describe('creation wizard', () => {
     // A suggested age under 18 is never kept.
     expect(people.people.find((person) => person.name === 'Too Young')?.age).toBeUndefined();
 
-    const places = applySuggestion(draft, 'places', { places: [{ name: 'Canal Street', region: 'Uptown', kind: 'road' }] });
+    const places = applySuggestion(draft, 'places', { places: [{ name: 'Canal Street', kind: 'road' }] });
     const street = places.world.places.find((place) => place.name === 'Canal Street')!;
     expect(street.kind).toBe('road');
-    expect(street.regionId).toBe(draft.world.regions[1].id);
   });
 
   test('help asks for adults and a grounded world, as JSON', () => {
@@ -202,7 +190,7 @@ describe('creation wizard', () => {
   test('a saved draft survives a reload, even half-broken', () => {
     const round = normalizeDraft(JSON.parse(JSON.stringify(handMadeDraft())))!;
     expect(round.character.name).toBe('Celeste Moreau');
-    expect(round.world.regions).toHaveLength(2);
+    expect(round.world.places).toHaveLength(2);
     const broken = normalizeDraft({ step: 'nowhere', people: 'x' })!;
     expect(broken.step).toBe('world');
     expect(broken.people).toEqual([]);

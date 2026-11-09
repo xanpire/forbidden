@@ -4,11 +4,10 @@ import { useRouter } from 'expo-router';
 import { Search } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
-import { ReputationCard } from '@/components/player/ReputationCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { isDeceased } from '@/lib/rpg/deaths';
-import { grudgeKnown, shownField } from '@/lib/rpg/disclosure';
+import { shownField } from '@/lib/rpg/disclosure';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import { latestCharacterPortraitMap } from '@/lib/rpg/characterPortrait';
@@ -192,7 +191,7 @@ export function BondsSection() {
   // Birthdays you know in the next month (the dead you remember included).
   const birthdays = useMemo(() => (db ? upcomingBirthdays(db, 30).slice(0, 4) : []), [db]);
 
-  // People travelling with you lead the list; everyone else by last contact.
+  // People with you lead the list; everyone else by last contact.
   const travelling = query ? [] : entries.filter((entry) => !entry.dead && entry.entity.companion);
   const living = entries.filter((entry) => !entry.dead && !travelling.includes(entry));
   const dead = entries.filter((entry) => entry.dead);
@@ -222,7 +221,7 @@ export function BondsSection() {
         </Text>
         {entry.bond?.isMajor && !entry.dead ? <Text style={styles.major}>Major</Text> : null}
         {entry.entity.companion && !entry.dead && query ? <Text style={styles.major}>With you</Text> : null}
-        {entry.bond?.grudge && grudgeKnown(entry.bond.grudge) && !entry.dead ? (
+        {entry.bond?.grudge && !entry.dead ? (
           <Text style={styles.grudge}>{STAGE_LABEL[grudgeStage(db, entry.bond) ?? 'resentful']}</Text>
         ) : null}
       </View>
@@ -230,13 +229,12 @@ export function BondsSection() {
     </ListRow>
   );
 
-  // People who want you to pay, hottest first, under their own heading.
-  const enemies = query ? [] : living.filter((entry) => grudgeKnown(entry.bond?.grudge));
+  // People who hold a grudge, under their own heading.
+  const enemies = query ? [] : living.filter((entry) => Boolean(entry.bond?.grudge));
   const others = living.filter((entry) => !enemies.includes(entry));
 
   return (
     <View style={styles.section}>
-      {!query ? <ReputationCard db={db} /> : null}
 
       {!query && birthdays.length > 0 ? (
         <ListCard>
@@ -281,7 +279,7 @@ export function BondsSection() {
 
       {enemies.length > 0 ? (
         <>
-          <SectionLabel>Want you to pay</SectionLabel>
+          <SectionLabel>Holding a grudge</SectionLabel>
           <ListCard>{enemies.map(renderRow)}</ListCard>
         </>
       ) : null}

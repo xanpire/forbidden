@@ -123,6 +123,7 @@ export async function paintScene({
     prompt: text,
     action,
     ...(written?.caption ? { caption: written.caption } : {}),
+    ...(db.state.location ? { location: db.state.location } : {}),
     ...(shot ? { shot } : {}),
     ...(shotType ? { shotType } : {}),
     ...(mightBeOff ? { mightBeOff: true } : {}),

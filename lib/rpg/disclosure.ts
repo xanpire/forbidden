@@ -38,7 +38,3 @@ export function howTheySeem(affinity: number): string {
   return 'devoted';
 }
 
-/** The player knows of a grudge once they have acted on it. Until then it stews unseen. */
-export function grudgeKnown(grudge: { strikes: number } | undefined | null): boolean {
-  return Boolean(grudge && grudge.strikes > 0);
-}

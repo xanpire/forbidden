@@ -304,14 +304,12 @@ export function normalizeDate(
 
 export function paceCapSeconds(pace: ScenePace | undefined, sceneEnded: boolean) {
   switch (pace) {
-    case 'combat':
+    case 'action':
       return sceneEnded ? 7200 : 600;
-    case 'chase':
-      return sceneEnded ? 7200 : 1800;
     case 'conversation':
       return 3600;
     case 'travel':
-      return 3 * SECONDS_PER_DAY;
+      return SECONDS_PER_DAY;
     case 'downtime':
       return 7 * SECONDS_PER_DAY;
     default:

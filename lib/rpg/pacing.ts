@@ -1,41 +1,20 @@
 import { advanceSeconds, dateSortValue, paceCapSeconds, secondsBetween, setClock } from './calendar';
 import type { CalendarDate, ScenePace } from './types';
 
-const COMBAT = /\b(fight|fights|fighting|fought|battle|clash|clashes|strike|strikes|blade|blades|knife|gun|shot|shots|parry|dodge|blood|punch|kick|choke|chokes|choked|choking|strangle|opponent|enemy|ambush|skirmish|duel|cut|wound)\b/i;
-const CHASE = /\b(chase|chasing|pursuit|flee|fleeing|running|escape|escaped|hunt(ed|ing)?|track(ed|ing)?)\b/i;
-const TRAVEL = /\b(travel|traveled|travelling|traveling|road|ride|rode|riding|march|marched|marching|journey|miles|border|trail|crossing|sailed|sailing|walked|walking)\b/i;
-const DOWNTIME = /\b(sleep|sleeps|sleeping|slept|rest|rests|rested|resting|camp|camps|camped|recover|recovers|recovering|recovered|train|trains|trained|training|nap|naps|napped|dosed off|wake|wakes|woke|woken|morning)\b/i;
+const ACTION = /\b(fight|fights|fighting|fought|scuffle|punch|punches|shove|shoves|shoved|grabs|grabbed|chase|chasing|runs|running|ran|dash|dashes|dashed|sprint|sprints|sprinted)\b/i;
+const TRAVEL = /\b(drive|drives|drove|driving|taxi|cab|uber|train|bus|subway|metro|flight|flew|flying|ride|rode|riding|commute|walked|walking|walk over|across town)\b/i;
+const DOWNTIME = /\b(sleep|sleeps|sleeping|slept|rest|rests|rested|resting|nap|naps|napped|dozed off|wake|wakes|woke|woken|morning)\b/i;
 const CONVERSATION = /\b(says|said|asks|asked|replies|replied|answers|answered|speaks|spoke|talks|talked|whispers|whispered|mutters|muttered|silence|stares|looks)\b/i;
 
-const FIGHTING = /\b(ambush(?:es|ed)?|attack(?:s|ed)?|strikes?|struck|lunges?|lunged|parr(?:y|ies|ied)|dodges?|dodged|clash(?:es|ed)?|fight(?:s|ing)?|slashe?s?|slashed|stabs?|stabbed)\b/gi;
-
-/**
- * Checks the state model's pace against the prose: a turn that reads as a
- * fight (several fighting words) is combat, whatever calmer pace was given.
- * Only ever moves toward combat, so a fight is never skipped as travel.
- */
-export function validateScenePace(given: ScenePace | undefined, narration: string): ScenePace | undefined {
-  if (!given || given === 'combat' || given === 'chase') {
-    return given;
-  }
-
-  const hits = narration.match(FIGHTING)?.length ?? 0;
-  return hits >= 2 ? 'combat' : given;
-}
-
-// Fallback when the narrator forgets scene_pace. Order matters: combat and
-// chase beat travel/rest, because an action scene must never be skipped.
+// Fallback when the narrator forgets scene_pace. Order matters: a quick
+// physical scene beats travel/rest, so it is never skipped.
 export function inferScenePace(text: string): ScenePace {
   if (!text) {
     return 'conversation';
   }
 
-  if (COMBAT.test(text)) {
-    return 'combat';
-  }
-
-  if (CHASE.test(text)) {
-    return 'chase';
+  if (ACTION.test(text)) {
+    return 'action';
   }
 
   if (DOWNTIME.test(text)) {
@@ -58,8 +37,7 @@ export function inferScenePace(text: string): ScenePace {
  * clock by at least this much, even when the story never says how long.
  */
 export const PACE_MINIMUM_SECONDS: Record<ScenePace, number> = {
-  combat: 15,
-  chase: 60,
+  action: 30,
   conversation: 120,
   downtime: 600,
   travel: 1800,
@@ -142,9 +120,9 @@ function trustedReportedClock(options: {
  * The single source of truth for how far a turn moves the clock.
  *
  * Time passed = the largest of what the narrator reports, what the narration
- * parser finds, and the minimum for the scene type. Fights cannot skip days
- * (pace cap, no date jumps, no backward clocks); travel only skips days when
- * the story says so; a full night's sleep jumps to the next morning.
+ * parser finds, and the minimum for the scene type. A quick physical scene
+ * cannot skip ahead (pace cap, no date jumps, no backward clocks); a full
+ * night's sleep jumps to the next morning.
  *
  * Returns the total seconds to advance; the caller applies only that.
  */
@@ -165,7 +143,7 @@ export function resolveTurnClock(options: {
   minimumSeconds?: number;
 }) {
   const { current, pace, sceneEnded } = options;
-  const frozen = (pace === 'combat' || pace === 'chase') && !sceneEnded;
+  const frozen = pace === 'action' && !sceneEnded;
   const minimumSeconds = options.minimumSeconds ?? paceMinimumSeconds(pace);
   const storySeconds = resolveElapsedSeconds({
     reportedSeconds: options.reportedSeconds,
@@ -237,9 +215,4 @@ export function resolveTurnClock(options: {
     /** False when only the pace minimum moved the clock. */
     storyTimed,
   };
-}
-
-/** The player is mid-fight (or mid-chase). */
-export function isCombatPace(pace: string | undefined): boolean {
-  return pace === 'combat' || pace === 'chase';
 }

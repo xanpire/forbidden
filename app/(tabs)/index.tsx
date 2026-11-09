@@ -59,7 +59,7 @@ import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
 import { paintScene, retouchSceneImage, type PaintedTake } from '@/lib/rpg/paintScene';
 import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
-import { fightOptionInput, resolveTurnMode } from '@/lib/rpg/sceneMode';
+import { resolveTurnMode, sceneOptionInput } from '@/lib/rpg/sceneMode';
 import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
@@ -73,7 +73,7 @@ type StoryMessage = {
   /** The state tracker flagged this beat as worth painting. */
   imageWorthy?: boolean;
   elapsedSeconds?: number;
-  fightOptions?: string[];
+  sceneOptions?: string[];
 };
 
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
@@ -86,15 +86,13 @@ const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] 
 const MODE_LABEL: Record<SceneModeName, string> = {
   normal: 'Narration',
   conversation: 'Conversation',
-  fight: 'Fight',
   intimate: 'Intimate',
 };
 
 const MODE_CHOICES: { value: SceneModeName | null; title: string; body: string }[] = [
-  { value: null, title: 'Automatic', body: 'Talk turns into a conversation and an attack into a fight on their own.' },
-  { value: 'conversation', title: 'Conversation', body: 'Mostly speech, even while you walk or travel. Ends if a fight starts.' },
-  { value: 'fight', title: 'Fight', body: 'Short exchanges: their move, then yours. Ends when the fight is over.' },
-  { value: 'normal', title: 'Normal narration', body: 'Full prose until this conversation or fight is over.' },
+  { value: null, title: 'Automatic', body: 'Talk turns into a conversation on its own.' },
+  { value: 'conversation', title: 'Conversation', body: 'Mostly speech, even while you walk or drive.' },
+  { value: 'normal', title: 'Normal narration', body: 'Full prose until this conversation is over.' },
 ];
 
 const TIME_PRESETS: { value: string; label: string; seconds: number }[] = [
@@ -278,8 +276,6 @@ export default function StoryScreen() {
     retryPendingMemory,
     streamingText,
     pendingAction,
-    worldEventNotice,
-    dismissWorldEventNotice,
     sendTurn,
     regenerate,
     undoLastTurn,
@@ -342,7 +338,7 @@ export default function StoryScreen() {
         image: message.image ?? null,
         ...(message.role === 'assistant' && message.imageWorthy ? { imageWorthy: true } : {}),
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
-        fightOptions: message.role === 'assistant' ? message.fightOptions : undefined,
+        sceneOptions: message.role === 'assistant' ? message.sceneOptions : undefined,
       };
     });
   }, [db]);
@@ -634,14 +630,11 @@ export default function StoryScreen() {
   const state = db.state;
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
   const night = ['night', 'evening'].includes(timeOfDayOf(state.inStoryDate));
-  const weather = db ? currentWeather(db) : { condition: 'clear' as const, seasonLabel: '', night, climate: 'none' as const };
+  const weather = currentWeather(db);
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
-  const latestFightOptions =
-    shownMode === 'fight' && !isNarrating
-      ? messages.find((message) => message.id === lastAssistantId)?.fightOptions ?? []
-      : [];
+  const latestSceneOptions = !isNarrating ? messages.find((message) => message.id === lastAssistantId)?.sceneOptions ?? [] : [];
   const modeHint =
     shownMode === 'normal' && turnMode?.lean && !override
       ? 'Talk is building'
@@ -676,24 +669,6 @@ export default function StoryScreen() {
           </Pressable>
         </View>
 
-        {worldEventNotice ? (
-          <View style={styles.newsStrip}>
-            <View style={styles.newsDot} />
-            <Text numberOfLines={2} style={styles.newsText}>
-              <Text style={styles.newsLead}>Word reaches you: </Text>
-              {worldEventNotice}
-            </Text>
-            <Pressable
-              accessibilityLabel="Dismiss news"
-              accessibilityRole="button"
-              hitSlop={6}
-              onPress={dismissWorldEventNotice}
-              style={({ pressed }) => [styles.newsClose, pressed && styles.pressed]}
-            >
-              <X color={colors.textDim} size={14} strokeWidth={2} />
-            </Pressable>
-          </View>
-        ) : null}
 
         <ScrollView
           contentContainerStyle={styles.content}
@@ -896,23 +871,23 @@ export default function StoryScreen() {
               </Pressable>
             </View>
           ) : null}
-          {latestFightOptions.length > 0 ? (
+          {latestSceneOptions.length > 0 ? (
             <ScrollView
-              contentContainerStyle={styles.fightOptions}
+              contentContainerStyle={styles.sceneOptions}
               horizontal
               keyboardShouldPersistTaps="handled"
               showsHorizontalScrollIndicator={false}
             >
-              {latestFightOptions.map((option) => (
+              {latestSceneOptions.map((option) => (
                 <Pressable
-                  accessibilityLabel={`Fight move: ${option}`}
+                  accessibilityLabel={`Option: ${option}`}
                   accessibilityRole="button"
                   disabled={isNarrating}
                   key={option}
-                  onPress={() => void submit(fightOptionInput(option))}
-                  style={({ pressed }) => [styles.fightOption, pressed && styles.pressed]}
+                  onPress={() => void submit(sceneOptionInput(option))}
+                  style={({ pressed }) => [styles.sceneOption, pressed && styles.pressed]}
                 >
-                  <Text numberOfLines={2} style={styles.fightOptionLabel}>
+                  <Text numberOfLines={2} style={styles.sceneOptionLabel}>
                     {option}
                   </Text>
                 </Pressable>
@@ -929,12 +904,12 @@ export default function StoryScreen() {
                 style={({ pressed }) => [
                   styles.modeChip,
                   shownMode === 'conversation' && styles.modeChipTalk,
-                  shownMode === 'fight' && styles.modeChipFight,
+                  shownMode === 'intimate' && styles.modeChipIntimate,
                   pressed && styles.pressed,
                 ]}
               >
                 {shownMode !== 'normal' ? (
-                  <View style={[styles.modeDot, shownMode === 'fight' && styles.modeDotFight]} />
+                  <View style={[styles.modeDot, shownMode === 'intimate' && styles.modeDotIntimate]} />
                 ) : null}
                 <Text
                   style={[
@@ -1597,7 +1572,7 @@ const styles = StyleSheet.create({
     borderColor: colors.borderStrong,
     backgroundColor: colors.surfaceRaised,
   },
-  modeChipFight: {
+  modeChipIntimate: {
     borderColor: colors.accentBorder,
     backgroundColor: colors.accentSoft,
   },
@@ -1615,7 +1590,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.textMuted,
   },
-  modeDotFight: {
+  modeDotIntimate: {
     backgroundColor: colors.accentBright,
   },
   modeDotSelected: {
@@ -1628,11 +1603,11 @@ const styles = StyleSheet.create({
     ...type.rowMeta,
     flexShrink: 1,
   },
-  fightOptions: {
+  sceneOptions: {
     gap: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
-  fightOption: {
+  sceneOption: {
     maxWidth: 220,
     minHeight: 40,
     justifyContent: 'center',
@@ -1643,7 +1618,7 @@ const styles = StyleSheet.create({
     borderColor: colors.accentBorder,
     backgroundColor: colors.accentSoft,
   },
-  fightOptionLabel: {
+  sceneOptionLabel: {
     fontFamily: fonts.semibold,
     fontSize: 13,
     lineHeight: 17,

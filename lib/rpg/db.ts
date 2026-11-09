@@ -1,8 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { normalizePost } from './letters';
 import { normalizeYearly } from './yearly';
-import { normalizeReputation } from './reputation';
-import { normalizeRenown } from './renown';
 import { normalizeConsequences } from './consequences';
 import { normalizeDeaths } from './deaths';
 import { knowersOf } from './facts';
@@ -18,9 +15,7 @@ import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
 import type { AppDatabase, MemoryIndex, WeatherLock } from './types';
-import { normalizeTravelLog } from './mapData';
 import { WEATHER_CONDITIONS } from './weather';
-import { normalizeSafehouses } from './safehouses';
 import { normalizePurse } from './money';
 import { APP_NAME, STORAGE_KEYS } from '../brand';
 import { isPlayerEntity, normalizeCharacter } from './player';
@@ -548,8 +543,7 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
     sceneClosed: state.sceneClosed === true,
     scene: state.scene ?? seeded.scene,
     scenePace:
-      state.scenePace === 'combat' ||
-      state.scenePace === 'chase' ||
+      state.scenePace === 'action' ||
       state.scenePace === 'conversation' ||
       state.scenePace === 'travel' ||
       state.scenePace === 'downtime'
@@ -559,15 +553,11 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
       ? state.sceneCast.filter(Boolean).slice(0, 6)
       : [],
     sceneMode: normalizeSceneMode(state.sceneMode),
-    post: normalizePost(state.post),
-    reputation: normalizeReputation(state.reputation),
     yearly: normalizeYearly(state.yearly),
-    renown: normalizeRenown(state.renown),
     consequences: normalizeConsequences(state.consequences),
     weather: normalizeWeather(state.weather),
-    travelLog: normalizeTravelLog({ world }, state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
-    safehouses: normalizeSafehouses(state.safehouses),
     purse: normalizePurse(state.purse, normalizeCharacter(state.player, seeded.player).money),
+    ...(typeof state.stayingAt === 'string' && state.stayingAt.trim() ? { stayingAt: state.stayingAt.trim().slice(0, 120) } : {}),
   };
 }
 
@@ -576,10 +566,9 @@ function normalizeWeather(value: unknown): WeatherLock | undefined {
 
   const lock = value as WeatherLock;
 
-  if (!WEATHER_CONDITIONS.includes(lock.condition) || typeof lock.region !== 'string' || !lock.since) return undefined;
+  if (!WEATHER_CONDITIONS.includes(lock.condition) || !lock.since) return undefined;
 
   return {
-    region: lock.region,
     condition: lock.condition,
     ...(typeof lock.text === 'string' ? { text: lock.text.slice(0, 60) } : {}),
     since: lock.since,

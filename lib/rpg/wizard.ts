@@ -19,7 +19,6 @@ import type {
   OpenRouterMessage,
   OpeningScene,
   PlaceDef,
-  RegionDef,
   SeedInput,
   StartingPerson,
   StartingTruth,
@@ -109,9 +108,6 @@ export function emptyDraft(): WizardDraft {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Presets: grounded starting points. They only prefill fields.
-
 export const CLIMATE_LABELS: Record<ClimateType, string> = {
   temperate: 'Temperate',
   continental: 'Continental',
@@ -122,18 +118,13 @@ export const CLIMATE_LABELS: Record<ClimateType, string> = {
   rainy: 'Rainy',
   coastal: 'Coastal',
   mountain: 'Mountain',
-  none: 'Indoors (no weather)',
 };
 
 // ---------------------------------------------------------------------------
 // New list items
 
-export function newRegion(): RegionDef {
-  return { id: makeId('region'), name: '', description: '', climate: 'temperate', neighbours: [] };
-}
-
-export function newPlace(regionId = ''): PlaceDef {
-  return { id: makeId('place'), name: '', regionId, kind: 'structure', description: '' };
+export function newPlace(): PlaceDef {
+  return { id: makeId('place'), name: '', kind: 'structure', description: '' };
 }
 
 export function newFaction(): FactionDef {
@@ -198,35 +189,18 @@ function withReadableIds<T extends { id: string; name: string }>(items: T[]): { 
 
 export function draftToSeedInput(draft: WizardDraft): SeedInput {
   const raw = draft.world;
-  const regions = withReadableIds(raw.regions.filter((region) => clean(region.name)));
   const factions = withReadableIds(raw.factions.filter((faction) => clean(faction.name)));
   const places = withReadableIds(raw.places.filter((place) => clean(place.name)));
-  const regionId = (id: string | undefined) => (id ? regions.idMap.get(id) ?? (regions.items.some((r) => r.id === id) ? id : undefined) : undefined);
 
   const world: WorldDefinition = normalizeWorld({
     ...raw,
     name: clean(raw.name),
     premise: clean(raw.premise),
-    regions: regions.items.map((region) => ({
-      ...region,
-      name: clean(region.name),
-      description: clean(region.description),
-      neighbours: region.neighbours
-        .map((next) => ({ id: regionId(next.id) ?? '', days: Math.max(0, Number(next.days) || 0) }))
-        .filter((next) => next.id && next.id !== region.id),
-    })),
-    factions: factions.items.map((faction) => ({
-      ...faction,
-      name: clean(faction.name),
-      description: clean(faction.description),
-      territoryRegionIds: (faction.territoryRegionIds ?? []).map((id) => regionId(id)).filter((id): id is string => Boolean(id)),
-      carriers: cleanList(faction.carriers).length ? cleanList(faction.carriers) : undefined,
-    })),
-    places: places.items.map((place) => ({ ...place, name: clean(place.name), description: clean(place.description), regionId: regionId(place.regionId) ?? regions.items[0]?.id ?? '' })),
+    factions: factions.items.map((faction) => ({ ...faction, name: clean(faction.name), description: clean(faction.description) })),
+    places: places.items.map((place) => ({ ...place, name: clean(place.name), description: clean(place.description), ...(clean(place.who) ? { who: clean(place.who) } : {}) })),
     lore: raw.lore
       .filter((entry) => clean(entry.text))
       .map((entry) => ({ ...entry, text: clean(entry.text), keywords: cleanList(entry.keywords).map((word) => word.toLowerCase()) })),
-    letterCarriers: cleanList(raw.letterCarriers).length ? cleanList(raw.letterCarriers) : emptyWorld().letterCarriers,
     calendar: { ...raw.calendar, start: { ...draft.opening.date } },
   });
 
@@ -239,6 +213,7 @@ export function draftToSeedInput(draft: WizardDraft): SeedInput {
     secrets: cleanList(draft.character.secrets),
     goals: cleanList(draft.character.goals),
     money: Math.max(0, Number(draft.character.money) || 0),
+    ...(clean(draft.character.home) ? { home: clean(draft.character.home) } : {}),
     backstory: draft.character.backstory, // verbatim
   };
 
@@ -325,11 +300,11 @@ export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'i
 
 const HELP_SHAPES: Record<HelpSection, string> = {
   world:
-    '{"genre": string, "tone": string, "period": string, "techNotes": string, "currencyName": string, "priceGuide": string, "artStyle": string, "letterCarriers": string[]}',
+    '{"genre": string, "tone": string, "period": string, "techNotes": string, "currencyName": string, "priceGuide": string, "artStyle": string}',
   places:
-    '{"regions": [{"name": string, "description": string, "climate": one of temperate|continental|desert|tundra|tropical|monsoon|rainy|coastal|mountain|none}], "places": [{"name": string, "region": region name, "kind": one of settlement|structure|road|wilderness, "description": string}], "factions": [{"name": string, "description": string}]}',
+    '{"places": [{"name": string, "kind": one of structure|settlement|road|wilderness, "description": string, "who": string}], "factions": [{"name": string, "description": string}]}',
   lore: '{"lore": [{"keywords": string[], "text": string}]}',
-  you: '{"appearance": string, "outfit": string, "personality": string, "speechStyle": string, "role": string, "skills": string, "inventory": string[], "goals": string[]}',
+  you: '{"appearance": string, "outfit": string, "personality": string, "speechStyle": string, "role": string, "skills": string, "home": string, "inventory": string[], "goals": string[]}',
   backstory: '{"backstory": string, "truths": string[], "secrets": string[]}',
   intimacy: '{"interests": string[], "narratorVoice": string}',
   people:
@@ -344,7 +319,6 @@ function draftSummary(draft: WizardDraft) {
     `World: ${world.name || '(unnamed)'}. ${world.premise}`,
     world.genre ? `Genre: ${world.genre}. Tone: ${world.tone}.` : '',
     `When: ${world.era.when}, ${world.era.period}. ${world.era.techNotes ?? ''}`,
-    world.regions.length ? `Areas: ${world.regions.map((region) => region.name).filter(Boolean).join(', ')}.` : '',
     world.places.length ? `Places: ${world.places.map((place) => place.name).filter(Boolean).join(', ')}.` : '',
     world.factions.length ? `Groups: ${world.factions.map((faction) => faction.name).filter(Boolean).join(', ')}.` : '',
     character.name ? `The player's character: ${character.name}, ${character.age}, ${character.role}. ${character.personality}` : '',
@@ -386,7 +360,6 @@ const str = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 const strs = (value: unknown) => (Array.isArray(value) ? value.map(str).filter(Boolean) : []);
 const fill = (current: string | undefined, next: unknown) => (clean(current) ? (current as string) : str(next) || current || '');
 const fillList = (current: string[] | undefined, next: unknown) => (cleanList(current).length ? (current as string[]) : strs(next));
-const CLIMATES: ClimateType[] = ['temperate', 'continental', 'desert', 'tundra', 'tropical', 'monsoon', 'rainy', 'coastal', 'mountain', 'none'];
 const KINDS: PlaceDef['kind'][] = ['settlement', 'structure', 'road', 'wilderness'];
 
 /**
@@ -407,26 +380,18 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
           era: { ...world.era, period: fill(world.era.period, s.period), techNotes: fill(world.era.techNotes, s.techNotes) },
           currency: { ...world.currency, name: fill(world.currency.name, s.currencyName), priceGuide: fill(world.currency.priceGuide, s.priceGuide) },
           artStyle: fill(world.artStyle, s.artStyle),
-          letterCarriers: fillList(world.letterCarriers, s.letterCarriers),
         },
       };
     }
     case 'places': {
-      const regions = [...draft.world.regions];
-      for (const item of Array.isArray(s.regions) ? s.regions : []) {
-        const name = str((item as Record<string, unknown>).name);
-        if (!name || regions.some((region) => region.name.toLowerCase() === name.toLowerCase())) continue;
-        const climate = str((item as Record<string, unknown>).climate) as ClimateType;
-        regions.push({ ...newRegion(), name, description: str((item as Record<string, unknown>).description), climate: CLIMATES.includes(climate) ? climate : 'temperate' });
-      }
       const places = [...draft.world.places];
       for (const item of Array.isArray(s.places) ? s.places : []) {
         const record = item as Record<string, unknown>;
         const name = str(record.name);
         if (!name || places.some((place) => place.name.toLowerCase() === name.toLowerCase())) continue;
-        const region = regions.find((r) => r.name.toLowerCase() === str(record.region).toLowerCase()) ?? regions[0];
         const kind = str(record.kind) as PlaceDef['kind'];
-        places.push({ ...newPlace(region?.id ?? ''), name, kind: KINDS.includes(kind) ? kind : 'structure', description: str(record.description) });
+        const who = str(record.who);
+        places.push({ ...newPlace(), name, kind: KINDS.includes(kind) ? kind : 'structure', description: str(record.description), ...(who ? { who } : {}) });
       }
       const factions = [...draft.world.factions];
       for (const item of Array.isArray(s.factions) ? s.factions : []) {
@@ -434,7 +399,7 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
         if (!name || factions.some((faction) => faction.name.toLowerCase() === name.toLowerCase())) continue;
         factions.push({ ...newFaction(), name, description: str((item as Record<string, unknown>).description) });
       }
-      return { ...draft, world: { ...draft.world, regions, places, factions } };
+      return { ...draft, world: { ...draft.world, places, factions } };
     }
     case 'lore': {
       const lore = [...draft.world.lore];
@@ -457,6 +422,7 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
           speechStyle: fill(c.speechStyle, s.speechStyle),
           role: fill(c.role, s.role),
           skills: fill(c.skills, s.skills),
+          home: fill(c.home, s.home),
           inventory: fillList(c.inventory, s.inventory),
           goals: fillList(c.goals, s.goals),
         },

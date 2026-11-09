@@ -71,11 +71,11 @@ describe('birthdays, remembrance days and festivals', () => {
     expect(knowsBirthday(next, person(next, 'Nadia Kerr'))).toBe(true);
   });
 
-  test('the dead are remembered on their birthday; nothing in a fight', () => {
+  test('the dead are remembered on their birthday; nothing mid-action', () => {
     const db = at({ year: 2026, month: 11, day: 3, hour: 9, minute: 0 }, { location: 'Your flat on Kell Street' });
     expect(yearlyOffer(db)?.kind).toBe('remembrance');
     expect(todayNotes(db)).toContain("Theo Marsh's birthday (remembered)");
-    expect(yearlyOffer({ ...db, state: { ...db.state, scenePace: 'combat' } })).toBeNull();
+    expect(yearlyOffer({ ...db, state: { ...db.state, scenePace: 'action' } })).toBeNull();
   });
 
   test('festivals only where they happen', () => {

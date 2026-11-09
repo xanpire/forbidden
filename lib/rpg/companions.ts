@@ -1,9 +1,14 @@
-// Companions: people travelling with the player. While someone is flagged
+// Companions: people with the player right now (a date for the evening, a
+// friend along for the night out). While someone is flagged
 // (EntityRecord.companion) they are in every scene — the scene cast, presence
 // and memories include them whether or not the state tracker listed them —
 // until the story shows them leave (or they die). The scenes they share with
-// The player move their bond: the state tracker reports the big swings, and plain
-// time together slowly builds familiarity on top.
+// the player move their bond: the state tracker reports the big swings, and
+// plain time together slowly builds familiarity on top.
+//
+// People who live with the player (a partner, a roommate: EntityRecord.livesWithYou)
+// are not companions: they share the home, and are there when the player is
+// home unless their own day says otherwise.
 
 import { applyBondDiff } from './bonds';
 import { displayName } from './names';
@@ -18,7 +23,7 @@ import { isPlayerEntity, playerName } from './player';
 /** More than this and scenes stop being readable; the scene cast holds six. */
 export const MAX_COMPANIONS = 4;
 
-/** Shared-time points per bond step: a calm scene is 1, a fight survived together is 2. */
+/** Shared-time points per bond step: a calm scene is 1, a hectic one 2. */
 export const BOND_POINTS_PER_STEP = 3;
 
 /** Time together alone never lifts a bond above this; the story has to earn the rest. */
@@ -27,7 +32,7 @@ export const SHARED_TIME_AFFINITY_CAP = 6;
 /** Below this, real hostility: familiarity alone does not soften it. */
 export const SHARED_TIME_AFFINITY_FLOOR = -2;
 
-/** Everyone travelling with the player right now, longest-standing first. */
+/** Everyone with the player right now, longest-standing first. */
 export function companionsOf(db: AppDatabase): EntityRecord[] {
   return db.entities
     .filter(
@@ -68,7 +73,7 @@ function withCast(db: AppDatabase, cast: string[]): AppDatabase {
   return { ...db, state: { ...db.state, sceneCast: uniqueList(cast.filter(Boolean)).slice(0, 6) } };
 }
 
-/** Starts someone travelling with the player. No-op for the player, the dead, existing companions, or a full party. */
+/** Someone is with the player now. No-op for the player, the dead, existing companions, or a full group. */
 export function startCompanion(db: AppDatabase, entityId: string, reason?: string): AppDatabase {
   const entity = db.entities.find((item) => item.id === entityId);
 
@@ -103,13 +108,13 @@ export function startCompanion(db: AppDatabase, entityId: string, reason?: strin
 
   // A companion always has a bond to move.
   if (!next.bonds.some((bond) => bond.entityId === entity.id)) {
-    next = applyBondDiff(next, { entityId: entity.id, character: entity.name, status: 'Travelling with you' });
+    next = applyBondDiff(next, { entityId: entity.id, character: entity.name, status: 'With you' });
   }
 
   next = applyFactDiff(next, {
     action: 'add',
     type: 'event',
-    text: `${displayName(next, entity)} began travelling with you${cleanReason ? ` (${cleanReason})` : ''}.`,
+    text: `${displayName(next, entity)} came along with you${cleanReason ? ` (${cleanReason})` : ''}.`,
     subject: entity.name,
     whoKnows: [playerName(db), entity.name],
   });
@@ -149,8 +154,8 @@ export function endCompanion(db: AppDatabase, entityId: string, reason?: string)
 }
 
 /** Flips the flag by hand (bond screen), for when the story and the app disagree. */
-export function setCompanion(db: AppDatabase, entityId: string, travelling: boolean): AppDatabase {
-  return travelling ? startCompanion(db, entityId) : endCompanion(db, entityId);
+export function setCompanion(db: AppDatabase, entityId: string, along: boolean): AppDatabase {
+  return along ? startCompanion(db, entityId) : endCompanion(db, entityId);
 }
 
 function refId(db: AppDatabase, ref: { entityId?: string; name: string }) {
@@ -212,7 +217,7 @@ export function castWithCompanions(db: AppDatabase, cast: string[]): string[] {
 /**
  * A scene ended with the companions at the player's side. Each one's count of shared
  * scenes grows; when the state tracker did not move their bond this turn,
- * shared time adds points (fights count double) and every
+ * shared time adds points (a hectic scene counts double) and every
  * BOND_POINTS_PER_STEP points lift the bond by one — never above
  * SHARED_TIME_AFFINITY_CAP and never out of real hostility. A bond the story
  * moved this turn starts counting again from zero.
@@ -227,7 +232,7 @@ export function applySharedScene(
     return db;
   }
 
-  const points = options.pace === 'combat' || options.pace === 'chase' ? 2 : 1;
+  const points = options.pace === 'action' ? 2 : 1;
   let next = db;
 
   for (const entity of companions) {

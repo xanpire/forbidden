@@ -16,22 +16,11 @@ import { shiftDate } from '../lib/rpg/calendar';
 import { advanceConsequences, applyConsequences, canReturn, consequenceOffer, plantSeed, seedsOf } from '../lib/rpg/consequences';
 import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
-import { regionOf, travelDaysBetween, whereaboutsRegion } from '../lib/rpg/geography';
-import {
-  deliverLetters,
-  interceptionRisks,
-  keepPlayersWords,
-  letterArchive,
-  letterDays,
-  sendLetters,
-  tidyLetter,
-} from '../lib/rpg/letters';
 import { advanceLives, applyLifeEvents, isSideCharacter, markReunions, sinceYouLastSaw } from '../lib/rpg/lives';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { latestPov, parsePovLines, povCandidates, povInstruction, resolvePovs } from '../lib/rpg/povMemories';
 import { buildExtractionPrompt, buildNarrationPrompt, buildSceneSummaryPrompt } from '../lib/rpg/prompt';
-import { applyEpithet, knownEpithets, recordDeeds, renownOf } from '../lib/rpg/renown';
 import { seedDatabase } from './fixtures/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
@@ -60,82 +49,11 @@ function play(db: AppDatabase, input: string, narration: string, block: Record<s
   return applyStateStep(next, diff, { turnLogId, userMessage: input, narration }, new Set());
 }
 
-/** A save in Northgate with nobody around. */
+/** A save across town with nobody around. */
 function away(): AppDatabase {
   const base = seed();
   return { ...base, state: { ...base.state, location: 'a café in Northgate', locationKind: 'settlement', sceneCast: [], scenePace: 'downtime' } };
 }
-
-describe('geography', () => {
-  test('regions from place text, and travel days from the world', () => {
-    const db = seed();
-    expect(regionOf(db, 'A bar in Old Town')).toBe('old-town');
-    expect(regionOf(db, 'the container yard at The Docks')).toBe('the-docks');
-    expect(regionOf(db, 'a cave, out of the rain')).toBeNull();
-    expect(travelDaysBetween(db, 'old-town', 'the-docks')).toBe(0.1);
-    // Northgate to the docks goes through Old Town.
-    expect(travelDaysBetween(db, 'northgate', 'the-docks')).toBeCloseTo(0.3);
-  });
-
-  test('where someone is: what the story said, else where they were last seen', () => {
-    const db = seed();
-    expect(whereaboutsRegion(db, person(db, 'Daniel Okafor'))).toBe('the-docks');
-    expect(whereaboutsRegion(db, { ...person(db, 'Mara Vance'), whereabouts: 'visiting family in Northgate' })).toBe('northgate');
-  });
-});
-
-describe('letters and messages', () => {
-  test('travel time follows the distance and the carrier; a text is instant', () => {
-    const db = seed();
-    expect(letterDays(db, 'old-town', 'northgate', 'text message', 'x')).toBe(0);
-    expect(letterDays(db, 'old-town', 'northgate', 'pigeon', 'x')).toBeLessThanOrEqual(letterDays(db, 'old-town', 'northgate', 'post', 'x'));
-    const unknown = letterDays(db, null, 'old-town', 'post', 'x');
-    expect(unknown).toBeGreaterThanOrEqual(3);
-    expect(unknown).toBeLessThanOrEqual(9);
-  });
-
-  test("the player's own words are kept, only spelling and punctuation tidied", () => {
-    expect(tidyLetter('mara , i am fine.i miss the bar')).toBe('Mara, I am fine. I miss the bar.');
-    const input = '*I text Mara.* "mara , i am fine and i am sorry i left without a word"';
-    expect(keepPlayersWords('Mara, I am fine and I am sorry I left without a word.', input)).toBe('Mara, I am fine and I am sorry I left without a word.');
-    expect(keepPlayersWords('My dearest Mara, my heart aches with regret for leaving.', input)).toBe('Mara, I am fine and I am sorry I left without a word.');
-  });
-
-  test('a letter to the dead is kept, never sent, and needs no reply', () => {
-    let db = away();
-    const theo = person(db, 'Theo Marsh');
-    db = sendLetters(db, [{ entityId: theo.id, name: theo.name, text: 'I still have your lighter.', carrier: 'post' }], '"I still have your lighter."');
-    expect(db.state.post!.letters[0].status).toBe('unsent');
-    db = deliverLetters(later(db, 30));
-    expect(db.state.post!.letters.some((item) => item.direction === 'to-player')).toBe(false);
-    expect(letterArchive(db)[0].label).toBe('To Theo Marsh · never sent');
-  });
-
-  test('a faction that reads mail on its own ground can intercept; codes and a hand delivery lower the risk', () => {
-    let db = away();
-    db = { ...db, world: { ...db.world, factions: db.world.factions.map((faction) => (faction.id === 'vance-family' ? { ...faction, readsMail: 0.8 } : faction)) } };
-    const daniel = person(db, 'Daniel Okafor');
-    const plain = interceptionRisks(db, daniel, 'post', false);
-    expect(plain.find((risk) => risk.who === 'vance-family')?.chance).toBe(24);
-    expect(interceptionRisks(db, daniel, 'hand', true).find((risk) => risk.who === 'vance-family')!.chance).toBeLessThan(5);
-    // Nobody reads mail where neither end is on their ground.
-    const home = { ...db, state: { ...db.state, location: 'The Anchor, Old Town' } };
-    expect(interceptionRisks(home, daniel, 'post', false).some((risk) => risk.who === 'vance-family')).toBe(false);
-  });
-
-  test('the state block carries the letter words, the carrier, and received letters with text', () => {
-    const db = seed();
-    const { diff } = convertStateBlock({
-      letters_sent: [{ to: 'mara-vance', gist: 'fine', text: 'Mara, I am fine.', carrier: 'text message', coded: false }],
-      letters_received: [{ from: 'daniel-okafor', text: 'Call me.' }],
-    });
-    const resolved = resolveCharacterRefs(db, diff!);
-    expect(resolved.lettersSent?.[0]).toMatchObject({ name: 'Mara Vance', text: 'Mara, I am fine.', carrier: 'text message' });
-    expect(resolved.lettersReceived?.[0]).toMatchObject({ name: 'Daniel Okafor', text: 'Call me.' });
-    expect(trackerText(db)).toContain('ONLY spelling, commas and punctuation corrected');
-  });
-});
-
 describe('people with their own lives', () => {
   test('the people the player wrote are side characters', () => {
     const db = seed();
@@ -173,32 +91,15 @@ describe('people with their own lives', () => {
     expect(life[life.length - 1]).toMatchObject({ text: "bought out her uncle's share of the bar", source: 'story', known: true });
   });
 });
-
-describe('what people call you', () => {
-  test('a name the story gives the player sticks, and the player knows it', () => {
-    let db = later(seed(), 2);
-    db = recordDeeds(db, []);
-    db = applyEpithet(db, { audience: 'harbour-police', name: 'the Night Clerk' });
-    expect(renownOf(db).epithets['harbour-police']).toMatchObject({ name: 'the Night Clerk', theme: 'story', known: true });
-    expect(knownEpithets(db).map((item) => item.epithet.name)).toContain('the Night Clerk');
-  });
-
-  test('the schema carries epithets, consequences and life events', () => {
-    const { diff } = convertStateBlock({ epithet: { audience: 'common', name: 'the Ghost of Kell Street' } });
-    expect(diff?.epithet).toEqual({ audience: 'common', name: 'the Ghost of Kell Street' });
-    expect(TURN_STATE_SCHEMA.required).toEqual(expect.arrayContaining(['epithet', 'consequences', 'consequences_returned', 'life_events']));
-  });
-});
-
 describe('delayed consequences', () => {
   test('the tracker plants a seed; it waits, and only comes back where it is realistic', () => {
     let db = { ...seed(), state: { ...seed().state, location: 'Coast Road above Northgate', locationKind: 'road' as const, sceneCast: [] } };
     const { diff } = convertStateBlock({
-      consequences: [{ kind: 'spared', character_id: null, who: 'the mugger you let go', what: 'You let the mugger go on Coast Road', want: 'to repay you, or to get even', witnesses: [], faction: null, when: 'weeks' }],
+      consequences: [{ kind: 'spared', character_id: null, who: 'the mugger you let go', what: 'You let the mugger go on Coast Road', want: 'to repay you, or to get even', witnesses: [], when: 'weeks' }],
     });
     db = applyConsequences(db, resolveCharacterRefs(db, diff!).consequences, [], null).db;
     const [seedRecord] = seedsOf(db);
-    expect(seedRecord).toMatchObject({ kind: 'spared', status: 'waiting', region: 'northgate' });
+    expect(seedRecord).toMatchObject({ kind: 'spared', status: 'waiting' });
     expect(canReturn(db, seedRecord)).toBe(false);
 
     const back = later(db, 60, { locationKind: 'road', scenePace: 'travel' });
@@ -239,7 +140,6 @@ describe('delayed consequences', () => {
 
     const result = play(probe, '*I keep walking.*', 'The mugger steps out of a doorway and holds up his hands.', { consequences_returned: [offered!.id] });
     expect(seedsOf(result.db).find((item) => item.id === offered!.id)?.status).toBe('returned');
-    expect(result.notice).toBeNull();
   });
 });
 
@@ -281,7 +181,7 @@ describe('memories from their point of view', () => {
 describe('prompt size', () => {
   test('nothing extra reaches the narrator on a quiet turn', () => {
     const text = buildNarrationPrompt(seed(), '*You wait.*').messages[1].content;
-    for (const block of ['SOMETHING COMES BACK', 'TALK OF YOU', 'WANTED POSTERS', 'Since you last saw them']) {
+    for (const block of ['SOMETHING COMES BACK', 'Since you last saw them']) {
       expect(text).not.toContain(block);
     }
   });

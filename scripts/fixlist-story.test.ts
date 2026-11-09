@@ -102,8 +102,7 @@ describe('24-26. clock, numbers, places, gear', () => {
     expect(text).toContain('$20,000');
     expect(text).toContain('Mara Vance: waiting at the station');
     expect(text).toContain('THE WORLD');
-    expect(text).toContain('Old Town');
-    expect(text).toContain('The Docks about 2 hours away');
+    expect(text).toContain('Harbour Market');
     expect(db.state.inventory).toContain('Company badge');
   });
 });

@@ -10,11 +10,10 @@ import { applyCompanionChanges, applySharedScene, castWithCompanions } from './c
 import { markAlive, markDeceased } from './deaths';
 import { buildIndices } from './db';
 import { type DebugCallKind, recordDebugCall, recordDebugState } from './debug';
-import { validateLocationKind } from './encounters';
 import { applyEntityDiff, mergeDuplicateEntities, recordPresence, resolveCharacterRefs, resolveEntity } from './entities';
 import { applyGrudgeChanges } from './grudges';
-import { applyReputationChanges } from './reputation';
-import { restBlocked } from './safehouses';
+import { applyHome } from './home';
+import { validateLocationKind } from './places';
 import { applyFactDiff, applyThreadDiff, endFacts, expireFacts, recordSceneEvent } from './facts';
 import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
@@ -114,7 +113,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   // After bonds and deaths: a soured bond can turn into a grudge, and the
   // dead let theirs go.
   next = applyGrudgeChanges(next, diff, { presentIds });
-  next = applyReputationChanges(next, diff.reputation, diff.bountySeen);
+  next = applyHome(next, diff.home);
 
   if (Array.isArray(diff.factsEnded) && diff.factsEnded.length > 0) {
     next = endFacts(next, diff.factsEnded);
@@ -166,9 +165,8 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 
   next = syncBondSides(next);
   next = applyClockTick(next, diff);
-  // Temporary conditions run out; a long stretch of rest ends the "until rest" ones
-  // (not in a compromised safehouse: the player may not sleep there at all).
-  next = expireFacts(next, { rested: isRest(diff) && !restBlocked(next) });
+  // Temporary conditions run out; a long stretch of rest ends the "until rest" ones.
+  next = expireFacts(next, { rested: isRest(diff) });
 
   next.indices = buildIndices(next);
 
@@ -178,7 +176,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
 /** A turn that covers a night's sleep or a long rest. */
 export function isRest(diff: TurnDiff) {
   const seconds = diff.state?.elapsedSeconds ?? 0;
-  return seconds >= 5 * 3600 && diff.state?.scenePace !== 'combat' && diff.state?.scenePace !== 'chase';
+  return seconds >= 5 * 3600 && diff.state?.scenePace !== 'action';
 }
 
 /** Entity ids of this turn's scene cast (characters_present) and companions. */
@@ -235,8 +233,7 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
   }
 
   if (
-    state.scenePace === 'combat' ||
-    state.scenePace === 'chase' ||
+    state.scenePace === 'action' ||
     state.scenePace === 'conversation' ||
     state.scenePace === 'travel' ||
     state.scenePace === 'downtime'

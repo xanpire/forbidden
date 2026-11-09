@@ -3,7 +3,7 @@
 // call does nothing.
 //
 // Graph: bed → bed gain → outdoor bus (low-pass, opens and closes for
-// indoors) or indoor bus → fight duck → volume → speakers.
+// indoors) or indoor bus → duck (an intimate scene) → volume → speakers.
 
 import { AMBIENCE_BEDS, INDOOR_BEDS, type AmbienceBed, type AmbienceMix } from '@/lib/rpg/ambience';
 import { buildBed, makeNoise, type Bed, type Noise } from './synth';
@@ -14,8 +14,8 @@ export const CROSSFADE_SECONDS = 4;
 const IDLE_STOP_SECONDS = 10;
 const TICK_MS = 200;
 const LOOKAHEAD_SECONDS = 0.6;
-/** How far a fight lowers the ambience. */
-export const FIGHT_DUCK = 0.3;
+/** How far an intimate scene lowers the ambience. */
+export const HUSH_DUCK = 0.3;
 /** Overall headroom; the volume slider scales this. */
 const MASTER = 0.55;
 
@@ -192,7 +192,7 @@ export class AmbienceEngine {
 
     const now = ctx.currentTime;
     const fade = CROSSFADE_SECONDS;
-    glide(this.duck.gain, mix.fight ? FIGHT_DUCK : 1, now, mix.fight ? 1.5 : fade);
+    glide(this.duck.gain, mix.hushed ? HUSH_DUCK : 1, now, mix.hushed ? 1.5 : fade);
     glide(this.muffle.frequency, mix.indoors ? 650 : 18000, now, fade);
     glide(this.outdoor.gain, mix.indoors ? 0.8 : 1, now, fade);
 

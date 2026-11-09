@@ -20,7 +20,6 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `../privacy.ts` | PIN lock, quick-hide, neutral name, notification text |
 | `explicitImages.ts` / `paintExplicit.ts` / `../explicitProviders.ts` | Explicit pictures (§11b): fixed shot lists, adults-only check, structured prompts, in-app references, gallery records, Runware and Wiro adapters |
 | `worldEdit.ts` | The world editor during play (`draftFromSave`, `applyWorldEdit` with readable ids for new items, `applyCharacterEdit`, `applyContentEdit`, `addPersonToSave`) and world templates (`saveWorldAsTemplate`, `loadTemplates`, `exportTemplate` / `importTemplate`, `draftFromTemplate`) |
-| `mapLayout.ts` | The drawn map's automatic layout from the travel graph |
 | `wizard.ts` | The creation wizard's draft (`WizardDraft`, `emptyDraft`, `WORLD_PRESETS`, `missingFields`, `draftToSeedInput`, autosave, "Help me fill this": `helpFillMessages` / `parseHelpReply` / `applySuggestion`) |
 | `seed.ts` | `seedDatabase(slotId, name, input?)` turns a `SeedInput` into a save; without input it is a blank save (`blankSeedInput`). Nothing is built in: the test fixture lives in `scripts/fixtures/` |
 | `game.tsx` | `GameProvider`: the turn loop, undo/regenerate, slot switching |
@@ -29,32 +28,27 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `stateBlock.ts` | Reading the state model's reply: `parseJsonObject`, `convertStateBlock` (snake_case → `TurnDiff`) |
 | `entities.ts` | People/places: `resolveEntity`, identity groups, `resolveCharacterRefs`, `applyEntityDiff`, presence, `mergeDuplicateEntities`, `mergeEntityPair` |
 | `bonds.ts` | `applyBondDiff`: affinity, status, relationship stage, attraction |
-| `companions.ts` | People travelling with the player: `startCompanion`, `endCompanion`, `setCompanion`, `applyCompanionChanges`, `castWithCompanions`, `applySharedScene` (§6a) |
+| `companions.ts` | People with the player right now: `startCompanion`, `endCompanion`, `setCompanion`, `applyCompanionChanges`, `castWithCompanions`, `applySharedScene` (§6a) |
 | `facts.ts` | `applyFactDiff`, `applyThreadDiff`, `recordSceneEvent` |
 | `deaths.ts` | Who is dead: `isDeceased`, `markDeceased` (from the tracker's `deaths`), `markAlive`, `normalizeDeaths` (load-time backfill), `markKnownDeathsOnBonds` |
 | `clock.ts` | `applyClockChange` (date/elapsed/clock from the diff, ageing across years), `applyClockTick` (stall counter) |
 | `log.ts` | Story log + undo snapshots: `appendStoryMessage`, `pushSnapshot`, `restoreLastSnapshot`, `cloneDatabase`, `storyMessagesSinceLastSummary` |
 | `util.ts` | `trimToSentence`, `uniqueList`, `clamp` |
-| `reputation.ts` | What each faction has on the player (`state.reputation.factions`): `applyReputationChanges`, `wantedListings` (factions with `hasBounties`), `factionStandings`, `currentHeat`, `territoryOf`, `formatReputationBlock` (YOUR NAME OUT THERE), `hunterOffer` (§9b) |
 | `grudges.ts` | Grudges, the dark mirror of romance (`BondRecord.grudge`): `applyGrudgeChanges`, `grudgeStage`, `grudgeHeat`, `grudgeOffer` (SOMEONE WANTS YOU TO PAY), `GRUDGE_RULES` (§10a) |
-| `letters.ts` | Personal letters to and from the player (`state.post`): `letterOffer`, `sendLetters`, `receiveLetters`, `deliverLetters`, `lettersInTransit`, `letterArchive`, `interceptionRisks`, `tidyLetter` (§8c) |
-| `geography.ts` | Regions and travel days from `world.regions[].neighbours` (shortest path; unknown pairs `UNKNOWN_DISTANCE_DAYS`): `regionOf`, `regionName`, `travelDaysBetween`, `whereaboutsRegion`, `currentRegion` (§8c) |
 | `lives.ts` | People with their own lives (§8c): `advanceLives`, `applyLifeEvents`, `markReunions`, `sinceYouLastSaw`, `reunionNotes`, `knownLife` |
 | `consequences.ts` | Delayed consequences (`state.consequences`, §8c): `plantSeed`, `applyConsequences`, `advanceConsequences`, `canReturn`, `consequenceOffer` (SOMETHING COMES BACK), `waitingConsequences` |
-| `renown.ts` | Deeds, rumours, posters and the player's epithets (`state.renown`, §8c): `recordDeeds`, `applyEpithet`, `markEpithetsSeen`, `localEpithet`, `knownEpithets`, `rumourOffer` (TALK OF YOU), `posterLine` |
 | `povMemories.ts` | Memories from each person's point of view (`EventRecord.povs`, §8c): `povCandidates`, `parsePovLines`, `resolvePovs`, `povOf`, `latestPov` |
-| `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, region and 6-hour block), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `climateOf`, `CLIMATE_TYPES` (one entry per `ClimateType`) |
-| `mapData.ts` | Places and the player's road (§8d), no coordinates: `mapPlace`, `placeIdOf` (matches `world.places`), `recordTravel` (`state.travelLog`), `placeVisits`, `regionsVisited`, `travelEstimate`, `knownWhereabouts` (as far as the player knows) |
+| `weather.ts` | Seasons and weather (§8d): `weatherAt` (per save, world climate and 6-hour block; southern-hemisphere seasons), `currentWeather` (the scene's held weather), `applyWeather`, `conditionFromText`, `formatWeatherLine` (WEATHER), `formatWeatherTracking`, `seasonLabel`, `climateOf`, `CLIMATE_TYPES` (one entry per `ClimateType`) |
+| `places.ts` | The world's flat list of places: `classifyLocation` / `validateLocationKind` / `locationKindOf` (building, street, road or station, outdoors) and `whereaboutsOf` (where someone is, as far as the player knows) |
+| `home.ts` | Where the player lives and who lives with them: `applyHome` (tracker `home`: lives_at, staying_at, moved_in, moved_out), `housemates`, `formatHomeLine` (HOME), `HOME_TRACKING` |
 | `ambience.ts` | Ambient sound (§8e): `ambienceInputOf`, `ambienceMix` (bed levels from weather, place kind, climate type, location words, clock, season, scene mode), `currentAmbience`, `isIndoors`, `describeAmbience`. Pure; the player lives in `lib/audio/` |
 | `scrapbook.ts` | The scrapbook (§8d): `scrapbook` (photos by chapter, oldest first), `captionOf`, `placeAt` |
-| `safehouses.ts` | Safehouses (§8g, `state.safehouses`): `applySafehouses` (tagging, leaving and coming back, stash, upgrades, residents, who knows, rest), `advanceSafehouses` (rooms running out, hosts, residents, found places searched), `currentSafehouse`, `restQuality` / `restBlocked`, `formatSafehouseLine` (SAFEHOUSE), `placesLine`, `formatSafehouseTracking` (SAFEHOUSES), `letterAddress`, `headingTo` |
 | `names.ts` | Names the player knows (§8i): `displayName` (the one name everything shows), `alsoKnownAs`, `searchableNames`, `narratorName`, `labelOf` / `ensureLabels`, `learnName`, `applyNameStep` (tracker names and names said aloud), `playerKnowsLine`, `nameLeaks` |
 | `money.ts` | The player's money (§8h, `state.purse`): `applyPurse` (the tracker's changes and stated totals; never below zero), `formatPurseLine` (Purse in CURRENT STATE), `currencyOf` / `priceGuideOf` (from `world.currency`), `formatMoney`, `formatChange`, `readAmount`, `purseFeel`, `lowPurseAmount` |
 | `yearly.ts` | The yearly calendar (§8b, `state.yearly`): birthdays, anniversaries, New Year and `world.festivals`: `yearlyOffer`, `applyYearly`, `knowsBirthday`, `upcomingBirthdays`, `todayNotes` |
 | `prompt.ts` | Narrator and state prompts |
 | `calendar.ts` / `timeparse.ts` / `pacing.ts` | Clock arithmetic, reading time from prose, the per-turn clock step (`resolveTurnClock`) |
-| `sceneMode.ts` | Conversation and fight mode (§8a): `readPlayerInput`, `resolveTurnMode`, `applySceneBeat`, `setSceneModeOverride`, the SCENE MODE prompt lines |
-| `encounters.ts` | Location kind and crowd level (`ENCOUNTER CONDITIONS`) |
+| `sceneMode.ts` | Conversation and intimate mode (§8a): `readPlayerInput`, `resolveTurnMode`, `applySceneBeat`, `setSceneModeOverride`, the SCENE MODE prompt lines |
 | `returning.ts` | Characters who come back: the occasional optional `A FAMILIAR FACE` offer |
 | `db.ts` / `slotStore.ts` / `seed.ts` | Persistence + migration (slots in IndexedDB); `seedDatabase(slotId, slotName, { world, character, people, opening })` builds a save from the player's input. A blank save shows only "Create your own story" on the Story screen |
 | `retrieval.ts` | Memory/fact/lore retrieval |

@@ -3,19 +3,14 @@ import { isPlayer, playerName } from './player';
 import { paceMinimumSeconds } from './pacing';
 import { CHECK_REASONS, ROMANCE_RULES, entityCanBeIntimate, formatIntimacyBlock, playerCanBeIntimate, formatOocNote, heartLine, stageLabel, STEER_LINES } from './intimacy';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
-import { formatLetterOffer, letterTrackingLines, turnLetterOffer } from './letters';
 import { reunionNotes } from './lives';
 import { latestPov, povCandidates, povInstruction } from './povMemories';
 import { consequenceTrackingLines, formatConsequenceOffer, turnConsequenceOffer } from './consequences';
-import { epithetLines, formatRenownBlock, renownTrackingLine } from './renown';
-import {
-  formatEncounterConditions,
-  locationKindOf,
-} from './encounters';
+import { locationKindOf } from './places';
+import { HOME_TRACKING, formatHomeLine } from './home';
 import { formatReturningCharacter } from './returning';
 import { formatYearlyBlock, yearlyOffer, yearlyTrackingLines } from './yearly';
-import { GRUDGE_RULES, formatGrudgeOffer, grudgeOffer, grudgeStage, grudgeTrackingLines } from './grudges';
-import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTrackingLines } from './reputation';
+import { GRUDGE_RULES, grudgeStage } from './grudges';
 import { estimateTokens } from '../openrouter';
 import { formatWhoYouAre, formatWorldBlock } from './worldBlocks';
 import { DEFAULT_SETTINGS } from './defaults';
@@ -27,7 +22,6 @@ import { relevantFacts, retrieveMemories, triggeredLore } from './retrieval';
 import { factRef, knowerNames } from './facts';
 import { formatVarietyBlock } from './variety';
 import { formatWeatherLine, formatWeatherTracking } from './weather';
-import { formatSafehouseLine, formatSafehouseTracking, letterAddress, placesLine } from './safehouses';
 import { formatPurseLine, priceGuideOf } from './money';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
@@ -51,7 +45,7 @@ CORE
 - Never speak, act, think, or decide for the player. Describe the world and the reactions, then stop where the player must respond. End on a beat that leaves room to act: an action, an image, a sound, an NPC line, a threat, or an open moment. At most about one reply in three ends on a direct question to the player. Never re-ask a decision the player has already made.
 - When anyone asks the player a question, gives them an order, or makes them an offer, the turn ends right there. Never write their answer, their obedience, or what happens next: no walking, travel, or time passing until the player replies. A plan someone speaks ("walk until nightfall") has not happened yet.
 - The dead stay dead. Anyone under THE DEAD never appears alive, speaks, or acts: only as a memory, a dream, a grave, or a body.
-- Anyone under TRAVELLING WITH YOU is physically at the player's side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, the player sends them away, they are called away, arrested, or killed). What they live through beside the player, good or bad, changes how they feel about the player. Someone joins only when the story makes it clear they are coming along.
+- Anyone under WITH YOU is physically at the player's side in every scene until the story shows them leave: give each of them a real presence every turn (a line, a look, an action, a judgment of their own) in their own voice. They never vanish, wander off unexplained, or get forgotten; they part ways only when the story makes it happen (they choose to go, the player sends them away, they are called away, arrested, or killed). What they live through beside the player, good or bad, changes how they feel about the player. Someone joins only when the story makes it clear they are coming along.
 - The player carries only what CURRENT STATE lists under Inventory: never give them a weapon, tool or item they do not have, and when they use one up or lose it, show it.
 - The player's money is the Purse in CURRENT STATE. They can never pay more than they have; when they are short, the seller says so. Whenever money changes hands for the player (they pay, are paid, find, win, lose or are robbed), say how much, in the world's currency, at believable prices (see PRICES). Someone else may pay for them.
 - Characters have the age, job, and knowledge they would have on the current date, and goals of their own: they can refuse, lie, or leave. Trust and love are earned.
@@ -69,11 +63,10 @@ TIME
 
 THE WORLD
 - Nothing is planned ahead: the story moves only from what the player does and what people would really do about it. Never invent a death of someone the player knows.
-- Letters and messages are personal, never world news. A LETTER FOR YOU arrives the way it says, in its writer's own voice. When the player writes to someone far away, show them send it; it takes as long as its way of travel takes, so any answer comes later, never sooner than it could. The player writes their letters themselves: never reword them. A letter to the dead is never sent; it is kept, burned, or left at a grave.
-- People live their own lives while the player is away. A "since you last saw them" note says what changed for someone they meet again; let it show. SOMETHING COMES BACK and TALK OF YOU are optional: use them only when they fit, and only as the world would really carry them.
+- People live their own lives while the player is away. A "since you last saw them" note says what changed for someone they meet again; let it show. SOMETHING COMES BACK is optional: use it only when it fits.
 
 NAMES
-- Narration calls people only by the name the player knows (each card says it). Anyone the player can't name gets the same short description every time ("the red-haired woman") until they learn the name: someone gives it, someone says it, a letter or document shows it, or they recognise someone famous by their look. Never force an introduction.
+- Narration calls people only by the name the player knows (each card says it). Anyone the player can't name gets the same short description every time ("the red-haired woman") until they learn the name: someone gives it, someone says it, or a document, badge or screen shows it. Never force an introduction.
 - Characters say names aloud when they naturally would, each using the name THEY know the person by. A "narrator only" truth is never narrated or said by someone who couldn't know it.
 - If the player says a name they couldn't know, they say it aloud and people react ("How do you know that name?").
 
@@ -82,7 +75,7 @@ STYLE
 - Weather and season follow the WEATHER line, the same all scene: let them show, slow travel, and change footing and sight in a fight.
 - 2-4 paragraphs of plain English (unless SCENE MODE says otherwise): common words, short to medium sentences, few em dashes or semicolons. Concrete imagery, but never reuse a description, metaphor, gesture, or line from the recent scene. Every beat moves the story.
 - Play out conversations, fights, and travel unless the player asks to skip; compress uneventful travel into a paragraph or two.
-- Encounters are rare and must fit the ENCOUNTER CONDITIONS (place, hour, how crowded). Most turns bring no new people; when a place is empty, use sounds, weather, or signs of who was there. No cheerful strangers in empty places at night, and never two encounters in a row.
+- Most turns bring no new people; when a place is empty, use sounds, weather, or signs of who was there. No cheerful strangers in empty places at night.
 - New characters get a distinct name, age, role, personality, voice, look, and goals.
 - In the player's input, "quoted text" is spoken and *asterisks* are actions.
 
@@ -90,7 +83,6 @@ SCENE MODES (the turn's SCENE MODE line says which applies; with none, write as 
 - Conversation: mostly speech, like talking to them directly. Length follows the talk: one line or a longer speech; someone can ask one question and stop. Between lines, only short action lines in asterisks (*She looks away.*), no scenery. Several people can speak, each in their own voice. The player's small moves in place (a look, a touch, sitting, stepping closer, pouring a drink) and their silences are part of the talk; answer them the same way. Seconds to a minute or two pass.
 - Talk is building: shorter and more spoken than usual.
 - The conversation ends: a short transition in normal prose, then carry on normally.
-- Fight: short exchanges. Show honestly what the player's move does, by their real strength, skill and wounds (a bad call hurts), then give the opponent's one specific next move ("He swings the bottle at your head") and stop there, before it lands. One or two short paragraphs, a few seconds of fight time; wounds, exhaustion and positions carry over; short taunts are fine. If this exchange ends the fight, close with a short paragraph of aftermath in normal prose instead.
 - Intimate: an intimate scene between adults. Slower: stay in the moment with sensory detail, touch, breath and plenty of dialogue; shorter replies that end on the other person's move or a pause that leaves room for the player. Keep track of what everyone is wearing and where they are. Never write the player's actions, words or feelings.
 
 ${ROMANCE_RULES}
@@ -106,25 +98,25 @@ const STATE_SYSTEM = `You are the state tracker for an interactive novel; the pl
 - Report only what THIS turn shows changed: null when unchanged, [] when empty. Never invent anything or contradict the state below.
 - Every text you write calls the player "you", never by name, "he", "she", "him" or "her" (facts, threads, world_description, world_point, bond status and notes, scene titles). Only ids use "player".
 
-TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, fights seconds to minutes, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. Count only what the narration shows happening: plans or times spoken in dialogue ("walk until nightfall", "we leave at dawn") have not happened and add nothing. time.clock_time stays null unless the narration itself names the hour ("at noon", "by dusk", "3 PM"); never guess it. TIME BEFORE THIS TURN is the clock the turn starts from, so a clock_time must fit it plus time.elapsed. scene_pace: combat (any fight or attack, even a short one), chase, conversation, travel (only moving from place to place with no fight), or downtime (rest, sleep, waiting).
+TIME: time.elapsed + time.unit is the in-story time this turn covered, read from the prose. Blows take seconds, talks minutes, fights seconds to minutes, a nap under an hour, a night's sleep 8-9 hours, travel minutes to days; a new day must be covered. Count only what the narration shows happening: plans or times spoken in dialogue ("walk until nightfall", "we leave at dawn") have not happened and add nothing. time.clock_time stays null unless the narration itself names the hour ("at noon", "by dusk", "3 PM"); never guess it. TIME BEFORE THIS TURN is the clock the turn starts from, so a clock_time must fit it plus time.elapsed. scene_pace: action (anything quick and physical: a scuffle, running, a rush), conversation, travel (getting from place to place), or downtime (rest, sleep, waiting).
 
 PLACE: location, with location_kind, when the player moves. location_kind: settlement (a town, a street, a market, a busy public place), structure (inside or on a building: a flat, a bar, an office, a cell), road (a road, bridge, station or trail), wilderness (forest, mountains, river, open land). Never put the player in characters_present. mood (1-3 words), world_description (one sentence), and world_point (one line on where the wider world stands) only when changed. inventory_added / inventory_removed. money: every change to your own money on the page, in the world's currency: amount negative when you pay, lose, give away or are robbed of money, positive when you are paid, given, find, win or take it; reason in a few words ("a room for the night", "your share of the job"). Someone else paying for you changes nothing, and money only talked about has not moved. Use the amount the prose names; if it names none, estimate it from PRICES; a payment is never more than the Purse in CURRENT STATE. money_counted: your total, only when the prose states exactly how much you have now; otherwise null. Money is never an inventory item. weather: a few words only when the prose shows the weather change from WEATHER NOW (rain starts or stops, snow begins, fog rolls in or lifts, a storm breaks); otherwise null.
 
-PEOPLE: refer to every person by their id from KNOWN CHARACTERS (you are "player") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, news_relayed.from, letters_sent.to, letters_received, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first (a first name, a surname and "the bartender with the silver ring" can all be the same id), including people the player has not met yet. A description belongs to whoever the prose means by it: never pick an id because its name looks like a description. new_characters is ONLY for a person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), minor (true for a one-scene character: a waiter, a guard, a shopkeeper), and name_known (false for a stranger the story gives no name yet: name is then a short description of how they look to you, like "the scarred ferryman"); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if the player is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the station"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, dressed up), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, a new haircut, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (a work or job partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
+PEOPLE: refer to every person by their id from KNOWN CHARACTERS (you are "player") in characters_present, bonds.character_id, character_updates.character_id, facts.entity, facts.who_knows, and grudges.character_id. Match every name, title, nickname, and alias against KNOWN CHARACTERS first (a first name, a surname and "the bartender with the silver ring" can all be the same id), including people the player has not met yet. A description belongs to whoever the prose means by it: never pick an id because its name looks like a description. new_characters is ONLY for a person missing from KNOWN CHARACTERS: is_new true, their fullest known name, age, role, personality, speech, appearance, gender, attracted_to (men, women, both, none, or unknown if the story hasn't shown it), minor (true for a one-scene character: a waiter, a guard, a shopkeeper), and name_known (false for a stranger the story gives no name yet: name is then a short description of how they look to you, like "the scarred ferryman"); elsewhere this turn, refer to them by that exact name. Never put a listed person in new_characters. characters_present lists only those physically in the scene at the end; [] if the player is alone. character_updates: visible mood changes; whereabouts when the story says where someone is going or waiting ("waiting at the station"); appearance is how they look RIGHT NOW (what they are wearing, wet, bloodied, dressed up), kept the same from turn to turn unless the prose changes it; lasting_appearance only for a real lasting change (aging, a scar, a new haircut, new clothes worn for good). bonds have two sides. affinity_change (-10..10) and note: how THEY feel about you, moved only by what they could actually see or hear you do or say. your_change and your_note: how YOU feel about them; your inner thoughts and unspoken reactions move only this side. relationship is one fixed label: stranger, acquaintance, friendly, close, old friend, family, teammate, partner (a work or job partner, never romance), mentor, student, rival, enemy, romantic interest, lover (romance), rejected, ex; change it only when the relationship itself changes, never because feelings dipped. attraction and romance_note only if changed. Only important characters; minor people go in facts.
 
-NAMES: you see everyone's true identity and id; the notes say what name you (the player) know each by. Every text you write (facts, notes, threads, letters, world_description) names people only as you knew them at that moment, or describes them ("the woman in the red coat"). names_learned: {character_id, name, part, how} only when a name is spoken, written or recognised within your hearing or reading this turn and you did not know it: part given, family, full, or identity (another name they go by: a real name behind an alias); how introduced (they said it), told (someone else said it), written (a letter, a document, a badge), overheard, or recognised (the prose shows you could tell who someone famous is by their look). A name spoken out of your hearing never counts. names_told: {character_id, name, told_to} when someone present learns another name a person goes by, in front of you (you tell them who someone really is). Otherwise [].
+NAMES: you see everyone's true identity and id; the notes say what name you (the player) know each by. Every text you write (facts, notes, threads, world_description) names people only as you knew them at that moment, or describes them ("the woman in the red coat"). names_learned: {character_id, name, part, how} only when a name is spoken or written within your hearing or reading this turn and you did not know it: part given, family, or full; how introduced (they said it), told (someone else said it), written (a message, a document, a badge), or overheard. A name spoken out of your hearing never counts. Otherwise [].
 
-COMPANIONS: people marked [travelling with you] are with you in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with the player this turn (agrees to come along, is assigned as the player's partner, leaves with the player), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, arrested, or goes off on their own), with a short reason. Stepping out for a minute, sleeping in the next room, or a short errand is not leaving. Companions share what happens to the player: give a companion a bonds entry whenever this turn's shared events move how they feel about you (being in danger together, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
+COMPANIONS: people marked [with you] are with you in every scene; always list them in characters_present. companions_joined lists, by id, someone who clearly sets out with the player this turn (agrees to come along, is assigned as the player's partner, leaves with the player), with a short reason; companions_left lists a companion who truly parts ways (leaves, is sent away, called back, arrested, or goes off on their own), with a short reason. Stepping out for a minute, sleeping in the next room, or a short errand is not leaving. Companions share what happens to the player: give a companion a bonds entry whenever this turn's shared events move how they feel about you (being in danger together, being protected or saved, a secret shared, kindness, an argument, a betrayal); affinity_change usually -3..3.
 
 DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn: they die on screen, the player sees the body, or someone tells the player they died (also for someone already marked deceased whom the player did not know about). Never for someone unconscious, missing, faking, or only rumored dead. The dead are never in characters_present or bonds. revived lists ids only for someone marked dead who turns out to be alive after all (a wrong report, a faked death).
 
 MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "player" for you), a type, and who_knows (ids of people who know it, or group names like "the police"). Types: death (someone died), injury (a wound to someone's body), condition (a passing state: exhaustion, drunk, soaked, a headache), secret, knowledge (someone learned something), membership (joined or left a group), possession (an item gained, lost or changed), relationship, plan (an intention or travel plan), figure (a number stated in the story: a price, a debt, a distance, a deadline, a travel time, word for word), event (anything else that happened). A boast, rumor or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition that a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT (you learned what you did not know, a plan changed, a wound healed), list that fact's ref in supersedes; list refs that simply stopped being true in facts_ended. threads are promises, debts, grudges, mysteries, quests, or goals, with participants (ids of who it involves besides you): "open" only for something no OPEN THREAD already covers (if one does, "update" it under its exact title, even when the wording differs); "update" or "resolved" reuse the exact title. scene_ended is true only when the scene clearly concluded. scene_title names the scene in 2-5 words (like "Rain at the harbour"), only when this turn starts a new scene (the player reaches a new place, a new day begins, a new encounter or conversation takes over) or the current Scene name no longer fits; otherwise null. chapter_title (3-6 words) only when this turn truly opens a new chapter of the story: a big turn in the story, the player arrives somewhere far from where the chapter began, or a long time skip; most turns, and most new scenes, are null. A chapter is long: many scenes, often days of story.
 
-LETTERS: letters_sent and letters_received use character ids, by the rules under LETTERS; otherwise []. life_events: {character_id, event} for something that happened in a person's own life away from you that this turn reveals as true (a promotion, an injury, a move, a new job, a wedding; their letter, or they tell you); event in a few words, third person without their name ("got promoted to manager"); otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
+LIVES: life_events: {character_id, event} for something that happened in a person's own life away from you that this turn reveals as true (a promotion, an injury, a move, a new job, a wedding; a message from them, or they tell you); event in a few words, third person without their name ("got promoted to manager"); otherwise []. birthdays_learned: ids of people whose birthday you learn on the page this turn (they say it, someone tells you); otherwise [].
 
-NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and consequences_returned follow the rules under REPUTATION & GRUDGES; otherwise [] (epithet null).
+GRUDGES: grudges, consequences, and consequences_returned follow the rules under CONSEQUENCES & GRUDGES; otherwise [].
 
-BEAT: beat tags how this turn played, from the player's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring a drink), instruction (someone tells the player to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people the player is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves the player could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the swing and shove him back"), fitting the moment and what you can really do (dodge, block, counter, run, use something at hand); otherwise [].
+TURN: turn_kind tags how this turn played, from the player's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring a drink), instruction (someone tells the player to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, someone new taking over), or travel. talking_with: ids of the people the player is talking with (exchange, instruction, remark); otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
 
@@ -246,25 +238,21 @@ export function buildNarrationPrompt(
       formatState(db),
       formatCompanions(db),
       formatTimeLine(db, 'narrator', sceneMode.mode),
-      formatWeatherLine(db, sceneMode.mode),
-      formatSafehouseLine(db, userMessage),
+      formatWeatherLine(db),
+      formatHomeLine(db),
       formatMatchedEntities(db, matchedEntityIds),
       formatFacts(db, facts),
       formatFigures(db),
       formatElsewhere(db),
       formatLore(lore),
-      formatLetterBlock(db),
       formatYearlyBlock(yearlyOffer(db)),
       formatMemories(db, freshMemories),
       formatRecentMessages(messagesForScene),
       formatLastBeat(messagesForScene),
       formatVarietyBlock(db),
-      formatEncounterConditions(db),
-      formatNameOutThere(db),
-      formatRenownBlock(db),
       pressure,
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
-      formatSceneModeLine(db, sceneMode),
+      formatSceneModeLine(sceneMode),
       options.steer ? STEER_LINES[options.steer] : '',
       formatOocNote(options.oocNote),
       `YOU DO OR SAY:\n${userMessage}`,
@@ -344,7 +332,6 @@ export function buildExtractionPrompt(
     .find((message) => message.role === 'assistant' && message.content !== assistantMessage);
 
   const stable = [
-    formatWorldIds(db),
     formatCharacterRoster(db),
     formatPrices(db),
     formatBonds(db),
@@ -363,10 +350,9 @@ export function buildExtractionPrompt(
     formatWeatherTracking(db),
     formatSceneModeTracking(null, reply?.sceneMode),
     formatIntimacyTracking(db),
-    formatLetterTracking(db),
-    formatSafehouseTracking(db),
+    `HOME\n${HOME_TRACKING}`,
     formatYearlyTracking(db),
-    formatEnemyTracking(db),
+    formatConsequenceTracking(db),
     previousBeat
       ? `PREVIOUS BEAT (context only — already recorded)\n${tail(stripNarrationJson(previousBeat.content), 500)}`
       : '',
@@ -535,7 +521,6 @@ function formatState(db: AppDatabase) {
     state.worldPoint ? `Where the world stands: ${truncate(state.worldPoint, 220)}` : '',
     `Chapter: ${state.chapter}${state.chapterTitle ? ` (${state.chapterTitle})` : ''}`,
     `Scene: ${truncate(state.scene, 140)}`,
-    placesLine(db),
   ]
     .filter(Boolean)
     .join('\n');
@@ -555,7 +540,7 @@ function formatCompanions(db: AppDatabase) {
   const bonds = new Map(db.bonds.map((bond) => [bond.entityId, bond]));
 
   return [
-    'TRAVELLING WITH YOU (at your side in every scene until the story shows them leave)',
+    'WITH YOU (at your side in every scene until the story shows them leave)',
     ...companions.map((entity) => {
       const bond = bonds.get(entity.id);
       const companion = entity.companion!;
@@ -578,7 +563,7 @@ function formatCompanionIds(db: AppDatabase) {
   const companions = companionsOf(db);
   const refByEntity = refByEntityId(db);
 
-  return `TRAVELLING WITH YOU: ${
+  return `WITH YOU: ${
     companions.length > 0
       ? companions.map((entity) => `${refByEntity.get(entity.id)} (${entity.name})`).join(', ')
       : 'nobody'
@@ -668,7 +653,7 @@ function formatCharacterRoster(db: AppDatabase) {
       const notes = [
         isPlayer(db, entity) ? 'the player' : null,
         entity.met === false ? 'not met yet' : null,
-        entity.companion && !isDeceased(entity) ? 'travelling with you' : null,
+        entity.companion && !isDeceased(entity) ? 'with you' : null,
         isDeceased(entity) ? 'deceased' : null,
       ].filter(Boolean);
 
@@ -709,20 +694,8 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
 
       const name = isPlayer(db, entity) ? '' : `; ${playerKnowsName(entity) ? `you know them as ${displayName(db, entity)}` : `you don't know their name (you see "${labelOf(db, entity)}")`}`;
 
-      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [travelling with you]' : ''}${name}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
+      return `- ${refByEntity.get(entity.id)}: ${entity.name}${age !== undefined ? `, age ${age}` : ''}${role ? `, ${role}` : ''}${entity.companion ? ' [with you]' : ''}${entity.livesWithYou ? ' [lives with you]' : ''}${name}; mood ${truncate(entity.mood ?? 'unknown', 60)}; base look ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 80)}` : ''}`;
     }),
-  ].join('\n');
-}
-
-/** Faction and region ids the tracker may reference (stable per world). */
-function formatWorldIds(db: AppDatabase) {
-  const factions = db.world.factions.map((faction) => `${faction.id} (${faction.name})`);
-  const regions = db.world.regions.map((region) => `${region.id} (${region.name})`);
-
-  return [
-    'WORLD IDS — use these exact ids wherever a field asks for a faction or a region',
-    `Factions: ${factions.length > 0 ? factions.join(', ') : 'none'}`,
-    `Regions: ${regions.length > 0 ? regions.join(', ') : 'none'}`,
   ].join('\n');
 }
 
@@ -858,10 +831,8 @@ function dateKey(date: { year: number; month: number; day: number }) {
   return date.year * 10000 + date.month * 100 + date.day;
 }
 
-/** The geography is the narrator's whole map and travel table: it is never cut short. */
+/** Always-on lore gets more room. */
 function loreLimit(entry: AppDatabase['loreEntries'][number]) {
-  if (entry.text.startsWith('GEOGRAPHY (fixed')) return 3600;
-
   return entry.always ? 1400 : 600;
 }
 
@@ -876,58 +847,13 @@ function formatLore(lore: AppDatabase['loreEntries']) {
   ].join('\n');
 }
 
-/** YOUR NAME OUT THERE, with what strangers here call the player. */
-function formatNameOutThere(db: AppDatabase) {
-  const block = formatReputationBlock(db);
-  const extra = epithetLines(db).map((line) => `- ${line}`);
-
-  if (extra.length === 0) return block;
-
-  return block ? `${block}\n${extra.join('\n')}` : ['YOUR NAME OUT THERE (how strangers react to you)', ...extra].join('\n');
-}
-
-function formatLetterBlock(db: AppDatabase) {
-  const offer = turnLetterOffer(db);
-  const address = offer ? letterAddress(db, offer.entity.id) : null;
-
-  return formatLetterOffer(offer, address ? address.name : undefined, offer ? narratorName(db, offer.entity) : undefined);
-}
-
+/** At most one outside pressure per turn: something coming back, else a familiar face. */
 function formatPressure(db: AppDatabase, recentText: string) {
-  const grudge = formatGrudgeOffer(db, grudgeOffer(db));
-
-  if (grudge) {
-    return grudge;
-  }
-
-  const comesBack = formatConsequenceOffer(db, turnConsequenceOffer(db));
-
-  if (comesBack) {
-    return comesBack;
-  }
-
-  return formatHunterOffer(db, hunterOffer(db)) || formatReturningCharacter(db, recentText);
+  return formatConsequenceOffer(db, turnConsequenceOffer(db)) || formatReturningCharacter(db, recentText);
 }
 
-function formatEnemyTracking(db: AppDatabase) {
-  const refByEntity = refByEntityId(db);
-
-  return [
-    'REPUTATION & GRUDGES',
-    ...reputationTrackingLines(db).map((line) => `- ${line}`),
-    `- ${renownTrackingLine(db)}`,
-    ...grudgeTrackingLines(grudgeOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name).map((line) => `- ${line}`),
-    ...consequenceTrackingLines(db, turnConsequenceOffer(db)).map((line) => `- ${line}`),
-  ].join('\n');
-}
-
-function formatLetterTracking(db: AppDatabase) {
-  const refByEntity = refByEntityId(db);
-
-  return [
-    'LETTERS',
-    ...letterTrackingLines(db, turnLetterOffer(db), (entity) => refByEntity.get(entity.id) ?? entity.name),
-  ].join('\n');
+function formatConsequenceTracking(db: AppDatabase) {
+  return ['CONSEQUENCES & GRUDGES', ...consequenceTrackingLines(turnConsequenceOffer(db)).map((line) => `- ${line}`)].join('\n');
 }
 
 /** Today's birthday, for the state tracker (bond moves and birthdays_learned). */
@@ -1090,7 +1016,7 @@ function formatTimeLine(db: AppDatabase, audience: 'narrator' | 'state' = 'narra
   const pace = db.state.scenePace ?? 'conversation';
   const ends = advanceSeconds(
     db.state.inStoryDate,
-    mode === 'conversation' ? CONVERSATION_MODE_MINIMUM_SECONDS : mode === 'fight' ? paceMinimumSeconds('combat') : paceMinimumSeconds(pace)
+    mode === 'conversation' ? CONVERSATION_MODE_MINIMUM_SECONDS : paceMinimumSeconds(pace)
   );
 
   return `${label}\n${formatDate(db.state.inStoryDate)} (exactly ${formatClock(db.state.inStoryDate)}; at this pace this reply ends no earlier than ${formatClock(ends)})${nudge}`;
