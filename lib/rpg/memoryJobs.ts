@@ -220,8 +220,8 @@ export type TurnInfo = {
   turnLogId: string;
   userMessage: string;
   narration: string;
-  /** The one-turn extras the turn was sent with (steer, OOC note, rewrite count). */
-  options?: { steer?: SteerChip; oocNote?: string; retry?: number };
+  /** The one-turn extras the turn was sent with (steer, OOC note, rewrite count, time skip). */
+  options?: { steer?: SteerChip; oocNote?: string; retry?: number; skip?: { to: CalendarDate } };
 };
 
 export type StateStepResult = {
@@ -248,15 +248,18 @@ export function applyStateStep(
   // Clock and pace come from the prose below.
   const extraction = stateReply ?? fallbackDiffFromProse(latest, turn);
   const beforeDate = latest.state.inStoryDate;
-  const parsedTime = detectNarrationTime(turn.narration, beforeDate);
-  const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
+  // After a skip the clock already moved: the reply that opens the new moment
+  // only adds its own few minutes, whatever it says about the hours skipped.
+  const skipped = Boolean(turn.options?.skip);
+  const parsedTime = skipped ? { elapsedSeconds: 0 } : detectNarrationTime(turn.narration, beforeDate);
+  const reportedSeconds = skipped ? Math.min(extraction?.state?.elapsedSeconds ?? 0, SKIP_REPLY_MAX_SECONDS) : (extraction?.state?.elapsedSeconds ?? 0);
   const pace = extraction?.state?.scenePace ?? inferScenePace(turn.narration);
   const sceneEnded = extraction?.scene?.ended ?? false;
   // The mode the reply was narrated in (set when it was saved).
   const modeUsed = latest.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneMode;
   const clock = resolveTurnClock({
     reportedSeconds,
-    reportedClock: extraction?.state?.clockTime,
+    reportedClock: skipped ? undefined : extraction?.state?.clockTime,
     detected: parsedTime,
     pace,
     sceneEnded,
@@ -405,6 +408,16 @@ export function applyStateStep(
     sexStep.closed ||
     storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
 
+  // A skip closed the scene before it: that scene becomes a memory now.
+  if (skipped && !shouldSummarize) {
+    const planned = queueSceneJob(next, turn.turnLogId, activeIds, 2, { onlyClosed: true });
+    next = planned.db;
+
+    if (planned.jobId) {
+      followUpIds.push(planned.jobId);
+    }
+  }
+
   if (shouldSummarize) {
     const planned = queueSceneJob(next, turn.turnLogId, activeIds, sceneEnded || sexStep.closed ? 2 : MIN_SCENE_MESSAGES);
     next = planned.db;
@@ -416,6 +429,9 @@ export function applyStateStep(
 
   return { db: next, followUpIds, appliedDiff: effectiveDiff, nameLeaks: nameLeaks(next, turn.narration) };
 }
+
+/** The reply after a skip moves the clock at most this much. */
+const SKIP_REPLY_MAX_SECONDS = 30 * 60;
 
 /** A chapter is long: a break only counts once this much story has passed in it. */
 export const CHAPTER_MIN_TURNS = 6;

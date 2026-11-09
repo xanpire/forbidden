@@ -9,6 +9,7 @@ import { consequenceTrackingLines, formatConsequenceOffer, turnConsequenceOffer 
 import { locationKindOf } from './places';
 import { whereNow } from './routines';
 import { formatPhoneBlock, formatPhoneTracking } from './phone';
+import { formatSkipLine } from './skip';
 import { HOME_TRACKING, formatHomeLine } from './home';
 import { formatReturningCharacter } from './returning';
 import { formatYearlyBlock, yearlyOffer, yearlyTrackingLines } from './yearly';
@@ -30,6 +31,7 @@ import { SCENE_NOW_TRACKING } from './sceneNow';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
   AppDatabase,
+  CalendarDate,
   SteerChip,
   BondRecord,
   EntityRecord,
@@ -170,7 +172,7 @@ SUMMARY: the 100-150 word summary`;
 export function buildNarrationPrompt(
   db: AppDatabase,
   userMessage: string,
-  options: { steer?: SteerChip; oocNote?: string } = {}
+  options: { steer?: SteerChip; oocNote?: string; skip?: { from: CalendarDate; to: CalendarDate; meanwhile: string } } = {}
 ) {
   const withCurrent = getRecentMessages(db, db.settings.contextMessages + 1);
   const currentIsLast =
@@ -263,7 +265,8 @@ export function buildNarrationPrompt(
       formatSceneModeLine(db, sceneMode),
       options.steer ? STEER_LINES[options.steer] : '',
       formatOocNote(options.oocNote),
-      `YOU DO OR SAY:\n${userMessage}`,
+      options.skip ? formatSkipLine(options.skip.from, options.skip.to, options.skip.meanwhile) : '',
+      options.skip ? `YOU DO OR SAY:\n(the time skip)` : `YOU DO OR SAY:\n${userMessage}`,
     ]
       .filter(Boolean)
       .join('\n\n');

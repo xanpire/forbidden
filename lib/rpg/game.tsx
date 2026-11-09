@@ -53,6 +53,7 @@ import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
 import { narratorHeldBack } from './refusal';
 import { applyTextPlan, sendText as sendPhoneText, waitForNext, writeTexts } from './phone';
+import { applySkip } from './skip';
 import {
   applyStateStep,
   applySummaryJob,
@@ -70,6 +71,7 @@ import {
   type TurnInfo,
 } from './memoryJobs';
 import type {
+  CalendarDate,
   SeedInput,
   SteerChip,
   AppDatabase,
@@ -129,6 +131,8 @@ export type TurnOptions = {
   oocNote?: string;
   /** Internal: this turn is a rewrite after a reply crossed a hard limit. */
   retry?: number;
+  /** A time skip: the clock jumps here before the narrator opens the new moment (skip.ts). */
+  skip?: { to: CalendarDate };
 };
 
 type GameContextValue = {
@@ -184,6 +188,8 @@ type GameContextValue = {
   /** Saves a painted portrait of someone in your bonds. */
   /** Applies a change to the latest copy of the save (explicit pictures, reference sheets, world edits). */
   changeSave: (change: (db: AppDatabase) => AppDatabase) => Promise<void>;
+  /** Skips ahead to this moment; the narrator opens the new moment (skip.ts). */
+  skipTo: (to: CalendarDate) => Promise<void>;
   /** Sends a text from the phone; what comes back lands in story time. */
   sendText: (threadId: string, text: string) => Promise<void>;
   /** Waits for the next text or arrival: the story clock moves to it. False when nothing is on its way. */
@@ -660,17 +666,44 @@ export function GameProvider({ children }: { children: ReactNode }) {
           turnOptions.steer === 'fade-to-black' && db.state.sceneMode
             ? { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode, fadeToBlack: true } } }
             : db;
-        const snapshotDb = fade(pushSnapshot(current));
-        const withUser = appendStoryMessage(
+        // A skip moves the clock and fills in what happened in between, after
+        // the snapshot, so undo puts it all back.
+        const skipped = turnOptions.skip ? applySkip(fade(pushSnapshot(current)), turnOptions.skip.to) : null;
+
+        if (turnOptions.skip && !skipped) {
+          throw new Error("You can't skip to then.");
+        }
+
+        const prepare = (db: AppDatabase) => {
+          const base = fade(pushSnapshot(db));
+          return turnOptions.skip ? (applySkip(base, turnOptions.skip.to)?.db ?? base) : base;
+        };
+        const withMeanwhile = (db: AppDatabase) =>
+          skipped && turnOptions.skip
+            ? {
+                ...db,
+                rawLog: db.rawLog.map((entry, index) =>
+                  index === db.rawLog.length - 1
+                    ? { ...entry, skipTo: turnOptions.skip!.to, ...(skipped.meanwhile ? { meanwhile: skipped.meanwhile } : {}) }
+                    : entry
+                ),
+              }
+            : db;
+        const snapshotDb = skipped?.db ?? fade(pushSnapshot(current));
+        const withUser = withMeanwhile(appendStoryMessage(
           snapshotDb,
           'user',
           action,
           null,
           0,
           0
-        );
+        ));
 
-        const prompt = buildNarrationPrompt(withUser, action, { steer: turnOptions.steer, oocNote: turnOptions.oocNote });
+        const prompt = buildNarrationPrompt(withUser, action, {
+          steer: turnOptions.steer,
+          oocNote: turnOptions.oocNote,
+          ...(skipped && turnOptions.skip ? { skip: { from: current.state.inStoryDate, to: turnOptions.skip.to, meanwhile: skipped.meanwhile } } : {}),
+        });
         setLastPromptTokens(prompt.estimatedTokens);
         debugTurnId = beginDebugTurn({
           slotId: current.meta.slotId,
@@ -750,8 +783,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
         const saved = await updateLatest(slotId, (latest) => {
           // The snapshot is taken first, so undo restores the turn before.
-          const withSnapshot = fade(pushSnapshot(latest));
-          const withPlayer = appendStoryMessage(withSnapshot, 'user', action, null, 0, 0);
+          const withSnapshot = prepare(latest);
+          const withPlayer = withMeanwhile(appendStoryMessage(withSnapshot, 'user', action, null, 0, 0));
           const withReply = appendStoryMessage(
             withPlayer,
             'assistant',
@@ -894,6 +927,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
 
     const { userMessage } = getLastExchange(current);
+    const lastUser = [...current.rawLog].reverse().find((entry) => entry.kind === 'story' && entry.role === 'user');
 
     if (!userMessage) {
       return;
@@ -902,7 +936,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     const snapshot = restoreLastSnapshot(current);
     const restored = snapshot ? carryOverMemory(current, snapshot) : current;
     await commitDb(restored);
-    await sendTurn(userMessage);
+    // A skip is written again as the same skip.
+    await sendTurn(userMessage, lastUser?.skipTo ? { skip: { to: lastUser.skipTo } } : undefined);
   }, [commitDb, sendTurn]);
 
   const updateSettings = useCallback(
@@ -1288,6 +1323,21 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const skipTo = useCallback(
+    async (to: CalendarDate) => {
+      const latest = dbRef.current;
+      const result = latest ? applySkip(latest, to) : null;
+
+      if (!result) {
+        setError("You can't skip to then.");
+        return;
+      }
+
+      await sendTurn(result.label, { skip: { to } });
+    },
+    [sendTurn]
+  );
+
   const sendText = useCallback(
     async (threadId: string, text: string) => {
       const latest = dbRef.current;
@@ -1435,6 +1485,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       correctTurnTime,
       addPortrait,
       changeSave,
+      skipTo,
       sendText,
       waitForText,
       addCharacterPortrait,
@@ -1448,6 +1499,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       attachImage,
       addPortrait,
       changeSave,
+      skipTo,
       sendText,
       waitForText,
       addCharacterPortrait,

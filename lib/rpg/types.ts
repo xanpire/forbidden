@@ -285,6 +285,9 @@ export type RawLogEntry = {
   heldBack?: 'refused' | 'faded';
   /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
   intimate?: boolean;
+  /** A time skip's player entry: where it jumped to, and what happened in between (skip.ts). */
+  skipTo?: CalendarDate;
+  meanwhile?: string;
 };
 
 export type SceneImageMeta = {

@@ -28,6 +28,7 @@ import {
   Image as ImageIcon,
   Clock3,
   RotateCcw,
+  FastForward,
   Smartphone,
   Sparkles,
   Wand2,
@@ -43,6 +44,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import {
   formatClock,
+  formatDate,
   formatDayMonth,
   formatElapsed,
   formatStoryDate,
@@ -55,6 +57,7 @@ import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { unreadCount } from '@/lib/rpg/phone';
+import { canSkip, parseSkipTarget, presetTarget, type SkipChoice } from '@/lib/rpg/skip';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
 import { paintScene, retouchSceneImage, sexualMoment, type PaintedTake } from '@/lib/rpg/paintScene';
@@ -76,6 +79,7 @@ type StoryMessage = {
   elapsedSeconds?: number;
   sceneOptions?: string[];
   heldBack?: 'refused' | 'faded';
+  meanwhile?: string;
 };
 
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
@@ -90,6 +94,12 @@ const MODE_LABEL: Record<SceneModeName, string> = {
   conversation: 'Conversation',
   intimate: 'Sex',
 };
+
+const SKIP_CHOICES: { value: SkipChoice; label: string }[] = [
+  { value: 'hour', label: 'An hour' },
+  { value: 'tonight', label: 'Until tonight' },
+  { value: 'morning', label: 'Next morning' },
+];
 
 const MODE_CHOICES: { value: SceneModeName | null; title: string; body: string }[] = [
   { value: null, title: 'Automatic', body: 'Talk turns into a conversation, and sex into sex mode, on their own.' },
@@ -288,6 +298,7 @@ export default function StoryScreen() {
     setSceneMode,
     changeSave,
     loading,
+    skipTo,
   } = useGame();
   const { showToast } = useToast();
 
@@ -317,6 +328,8 @@ export default function StoryScreen() {
   const [customAmount, setCustomAmount] = useState('');
   const [customUnit, setCustomUnit] = useState<TimeUnit>('min');
   const [modeOpen, setModeOpen] = useState(false);
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [skipText, setSkipText] = useState('');
   const imageScale = useSharedValue(1);
   const imageTranslateX = useSharedValue(0);
   const imageTranslateY = useSharedValue(0);
@@ -351,6 +364,7 @@ export default function StoryScreen() {
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
         sceneOptions: message.role === 'assistant' ? message.sceneOptions : undefined,
         heldBack: message.role === 'assistant' ? message.heldBack : undefined,
+        meanwhile: message.role === 'user' ? message.meanwhile : undefined,
       };
     });
   }, [db]);
@@ -733,6 +747,7 @@ export default function StoryScreen() {
             {message.role === 'user' ? (
               <View style={styles.playerBlock}>
                 <PlayerText text={message.content} />
+                {message.meanwhile ? <Text style={styles.meanwhile}>Meanwhile: {message.meanwhile}</Text> : null}
               </View>
             ) : (
               <View style={styles.narration}>
@@ -962,6 +977,19 @@ export default function StoryScreen() {
                 </Text>
               ) : null}
               <View style={styles.modeSpacer} />
+              {db && canSkip(db) ? (
+                <Pressable
+                  accessibilityLabel="Skip ahead in time"
+                  accessibilityRole="button"
+                  disabled={isNarrating}
+                  hitSlop={6}
+                  onPress={() => setSkipOpen(true)}
+                  style={({ pressed }) => [styles.modeChip, pressed && styles.pressed, isNarrating && styles.disabled]}
+                >
+                  <FastForward color={colors.textDim} size={13} strokeWidth={2.2} />
+                  <Text style={styles.modeChipLabel}>Skip</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityLabel={`Phone${unreadTexts ? `: ${unreadTexts} unread` : ''}`}
                 accessibilityRole="button"
@@ -1120,6 +1148,53 @@ export default function StoryScreen() {
               style={styles.sheetClose}
               variant="secondary"
             />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal animationType="fade" onRequestClose={() => setSkipOpen(false)} transparent visible={skipOpen}>
+        <View style={styles.sheetOverlay}>
+          <Pressable accessibilityLabel="Close skip" onPress={() => setSkipOpen(false)} style={StyleSheet.absoluteFill} />
+          <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.lg) }]}>
+            <SectionLabel first>Skip ahead</SectionLabel>
+            <ListCard>
+              {db
+                ? SKIP_CHOICES.map((choice) => {
+                    const target = presetTarget(db.state.inStoryDate, choice.value);
+                    return target ? (
+                      <ListRow
+                        body={formatDate(target)}
+                        key={choice.value}
+                        onPress={() => {
+                          setSkipOpen(false);
+                          void skipTo(target);
+                        }}
+                        title={choice.label}
+                      />
+                    ) : null;
+                  })
+                : null}
+            </ListCard>
+            <TextInput
+              accessibilityLabel="Skip to a time you type"
+              onChangeText={setSkipText}
+              onSubmitEditing={() => {
+                const target = db ? parseSkipTarget(skipText, db.state.inStoryDate) : null;
+                if (!target) {
+                  showToast('Try “Friday night”, “tomorrow at 9am” or “in 3 hours”.', 'error');
+                  return;
+                }
+                setSkipOpen(false);
+                setSkipText('');
+                void skipTo(target);
+              }}
+              placeholder="Or type when: Friday night, tomorrow at 9am…"
+              placeholderTextColor={colors.textDim}
+              returnKeyType="go"
+              style={styles.oocInput}
+              value={skipText}
+            />
+            <AppButton label="Close" onPress={() => setSkipOpen(false)} style={styles.sheetClose} variant="secondary" />
           </View>
         </View>
       </Modal>
@@ -1652,6 +1727,10 @@ const styles = StyleSheet.create({
   },
   modeSpacer: {
     flex: 1,
+  },
+  meanwhile: {
+    ...type.rowMeta,
+    marginTop: 4,
   },
   heldBack: {
     padding: spacing.sm,
