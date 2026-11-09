@@ -39,7 +39,7 @@ export function ExplicitSheet({ visible, onClose }: { visible: boolean; onClose:
   const current = shot ?? (db ? defaultShot(db) : null);
   const people = useMemo(() => {
     if (!db) return [];
-    const ids = new Set([...(db.state.sceneMode?.intimateWith ?? []), ...db.entities.filter((e) => e.tags.includes('player')).map((e) => e.id)]);
+    const ids = new Set([...(db.state.sceneMode?.sex?.with ?? []), ...db.entities.filter((e) => e.tags.includes('player')).map((e) => e.id)]);
     return db.entities.filter((entity) => ids.has(entity.id)).map((entity) => ({ value: entity.id, label: displayName(db, entity) }));
   }, [db]);
 

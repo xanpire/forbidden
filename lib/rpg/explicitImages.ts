@@ -192,7 +192,7 @@ export function explicitImagePrompt(db: AppDatabase, shot: ExplicitShot, options
 /** The default choices for a picture of the current intimate scene. */
 export function defaultShot(db: AppDatabase): ExplicitShot {
   const player = playerEntity(db);
-  const partners = (db.state.sceneMode?.intimateWith ?? []).slice(0, 2);
+  const partners = (db.state.sceneMode?.sex?.with ?? []).slice(0, 2);
   const castIds = [...(player ? [player.id] : []), ...partners];
   const location = db.state.location.toLowerCase();
   const setting: ExplicitShot['setting'] =
@@ -286,7 +286,7 @@ export function withoutExplicit(db: AppDatabase): AppDatabase {
 
 /** "Picture this" shows only in an intimate scene that everyone in it is allowed to be in. */
 export function canPictureThis(db: AppDatabase): boolean {
-  const partners = db.state.sceneMode?.intimateWith ?? [];
+  const partners = db.state.sceneMode?.sex?.with ?? [];
   if (partners.length === 0) return false;
   return checkShot(db, defaultShot(db)).ok;
 }

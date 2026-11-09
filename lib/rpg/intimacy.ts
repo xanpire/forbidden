@@ -465,30 +465,6 @@ export function applyOutfits(db: AppDatabase, items: TurnDiff['outfits']): AppDa
   return next;
 }
 
-/** The intimate scene starts, goes on or ends; positions clear when it ends. */
-export function applyIntimateScene(db: AppDatabase, on: boolean | undefined, castIds: string[], sceneEnded: boolean): AppDatabase {
-  const mode = db.state.sceneMode;
-  if (!mode) return db;
-  if (on === false || sceneEnded) {
-    if (!mode.intimateWith && !mode.fadeToBlack) return db;
-    const { intimateWith: _with, fadeToBlack: _fade, ...rest } = mode;
-    return {
-      ...db,
-      entities: db.entities.map((entity) => (entity.scenePosition ? { ...entity, scenePosition: undefined } : entity)),
-      state: { ...db.state, sceneMode: { ...rest, current: mode.current === 'intimate' ? 'normal' : mode.current } },
-    };
-  }
-  if (on === true) {
-    const allowed = castIds.filter((id) => {
-      const entity = db.entities.find((e) => e.id === id);
-      return entity && !entity.tags.includes('player') && entityCanBeIntimate(db, entity).ok;
-    });
-    if (allowed.length === 0 || !playerCanBeIntimate(db).ok) return db;
-    return { ...db, state: { ...db.state, sceneMode: { ...mode, intimateWith: allowed } } };
-  }
-  return db;
-}
-
 // ---------------------------------------------------------------------------
 // Prompt text
 

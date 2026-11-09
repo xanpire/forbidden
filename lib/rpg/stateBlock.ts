@@ -8,8 +8,11 @@ import type {
   LocationKind,
   NameHow,
   NamePart,
+  SexEnd,
+  SexPhase,
   TurnDiff,
 } from './types';
+import { SEX_ENDS, SEX_PHASES } from './stateSchema';
 import { isPlayerRef, playerName, playerRefs } from './player';
 
 const KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
@@ -89,13 +92,27 @@ export function convertStateBlock(
     }
   }
 
-  // Intimacy.
-  if (typeof block.intimate_scene === 'boolean') {
-    diff.intimateScene = block.intimate_scene;
-  }
-
   const records = (value: unknown) =>
     Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : [];
+
+  // Sex mode.
+  if (block.sex && typeof block.sex === 'object' && !Array.isArray(block.sex)) {
+    const raw = block.sex as Record<string, unknown>;
+    const phase = (SEX_PHASES as readonly string[]).includes(raw.phase as string) ? (raw.phase as SexPhase) : undefined;
+    const ended = (SEX_ENDS as readonly string[]).includes(raw.ended as string) ? (raw.ended as SexEnd) : undefined;
+    const partners = stringItems(raw.with).filter(notPlayer).slice(0, 4).map((name) => ({ name }));
+    const done = stringItems(raw.done).map((item) => item.slice(0, 80)).slice(0, 4);
+    const options = stringItems(raw.options).map((item) => item.slice(0, 80)).slice(0, 6);
+    const sex: NonNullable<TurnDiff['sex']> = {
+      ...(typeof raw.on === 'boolean' ? { on: raw.on } : {}),
+      ...(partners.length ? { with: partners } : {}),
+      ...(phase ? { phase } : {}),
+      ...(done.length ? { done } : {}),
+      ...(ended ? { ended } : {}),
+      ...(options.length ? { options } : {}),
+    };
+    if (Object.keys(sex).length > 0) diff.sex = sex;
+  }
 
   const stages = records(block.intimacy_stage_changed)
     .map((item) => ({ name: cleanString(item.character_id) ?? '', stage: cleanString(item.stage) ?? '' }))
@@ -596,8 +613,8 @@ export function convertStateBlock(
     (Object.values(diff).some(
       (value) => Array.isArray(value) ? value.length > 0 : Boolean(value)
     ) ||
-      // An intimate scene ending is a change on its own.
-      diff.intimateScene === false);
+      // A sexual scene ending is a change on its own.
+      diff.sex?.on === false);
 
   return { diff: hasChanges ? diff : null, imageWorthy };
 }

@@ -23,6 +23,7 @@ import { factRef, knowerNames } from './facts';
 import { formatVarietyBlock } from './variety';
 import { formatWeatherLine, formatWeatherTracking } from './weather';
 import { formatPurseLine, priceGuideOf } from './money';
+import { formatSexTracking, sexPartners } from './sexMode';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
   AppDatabase,
@@ -77,7 +78,8 @@ SCENE MODES (the SCENE MODE line says which applies; with none, write as above)
 - Conversation: mostly speech, like talking to them directly. Length follows the talk; between lines only short action lines in asterisks (*She looks away.*). Several people can speak, each in their own voice. The player's small moves and silences are part of the talk. Seconds to a minute or two pass.
 - Talk is building: shorter and more spoken than usual.
 - The conversation ends: a short transition in normal prose, then carry on.
-- Intimate: stay in the moment with touch, breath, sensation and dialogue; shorter replies that end on the other person's move or a pause for the player. Keep track of what everyone is wearing and where they are.
+- Sex: short, fully explicit turns of a few moments each, as the SCENE MODE line says; the partners act on their own desires and limits. Keep track of what everyone is wearing and where they are.
+- Aftermath: one normal-length reply after the sex is over, then carry on.
 
 ${ROMANCE_RULES}
 
@@ -114,7 +116,9 @@ TURN: turn_kind, from the player's input and the reply together: exchange (back-
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
 
-INTIMACY: intimate_scene true when this turn is (or turns into) a sexual scene between the player and someone, false when it ends or the scene moves on, null otherwise. intimacy_stage_changed: {character_id, stage} only when the relationship with the player reaches a new step (none, interest, flirting, first kiss, lovers, established) or falls back; otherwise []. first: {character_id, what} for a first or a big moment between them this turn (a first kiss, a first night, "I love you"); otherwise []. preference_learned: {character_id, preference, about_player} when someone clearly learns what the player likes (about_player true) or the player learns what they like (false), in a few plain words; otherwise []. outfit_changed: {character_id, outfit, position} when someone's clothes or position change on the page ("player" for you); otherwise []. limit_crossed: true only if the reply writes something under the player's hard limits. age_rule_crossed: true only if the reply makes anyone under 18, anyone without a stated adult age, or anyone described as a child part of anything sexual. Both false otherwise.`;
+SEX: sex follows the rules under SEX below.
+
+INTIMACY: intimacy_stage_changed: {character_id, stage} only when the relationship with the player reaches a new step (none, interest, flirting, first kiss, lovers, established) or falls back; otherwise []. first: {character_id, what} for a first or a big moment between them this turn (a first kiss, a first night, "I love you"); otherwise []. preference_learned: {character_id, preference, about_player} when someone clearly learns what the player likes (about_player true) or the player learns what they like (false), in a few plain words; otherwise []. outfit_changed: {character_id, outfit, position} when someone's clothes or position change on the page ("player" for you); otherwise []. limit_crossed: true only if the reply writes something under the player's hard limits. age_rule_crossed: true only if the reply makes anyone under 18, anyone without a stated adult age, or anyone described as a child part of anything sexual. Both false otherwise.`;
 
 const SUMMARY_SYSTEM = `You are a story summarizer for a long-running interactive novel.
 
@@ -246,7 +250,7 @@ export function buildNarrationPrompt(
       formatVarietyBlock(db),
       pressure,
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
-      formatSceneModeLine(sceneMode),
+      formatSceneModeLine(db, sceneMode),
       options.steer ? STEER_LINES[options.steer] : '',
       formatOocNote(options.oocNote),
       `YOU DO OR SAY:\n${userMessage}`,
@@ -344,6 +348,7 @@ export function buildExtractionPrompt(
     formatWeatherTracking(db),
     formatSceneModeTracking(null, reply?.sceneMode),
     formatIntimacyTracking(db),
+    formatSexTracking(db, (entity) => refByEntityId(db).get(entity.id) ?? entity.name),
     `HOME\n${HOME_TRACKING}`,
     formatYearlyTracking(db),
     formatConsequenceTracking(db),
@@ -864,7 +869,7 @@ function formatIntimacyTracking(db: AppDatabase) {
   const notAdults = db.entities
     .filter((entity) => entity.type === 'character' && !entity.tags.includes('player') && !isDeceased(entity))
     .filter((entity) => !entityCanBeIntimate(db, entity).ok)
-    .filter((entity) => (db.state.sceneCast ?? []).some((name) => name === entity.name) || (db.state.sceneMode?.intimateWith ?? []).includes(entity.id))
+    .filter((entity) => (db.state.sceneCast ?? []).some((name) => name === entity.name) || sexPartners(db).includes(entity.id))
     .map((entity) => `${refByEntity.get(entity.id) ?? entity.name} (${(() => { const check = entityCanBeIntimate(db, entity); return check.ok ? '' : CHECK_REASONS[check.reason]; })()})`);
   const lines = [
     hard.length ? `- The player's hard limits (limit_crossed if the reply writes any): ${hard.join(', ')}` : '',
@@ -878,7 +883,7 @@ function formatIntimacyTracking(db: AppDatabase) {
 function formatHeart(db: AppDatabase, entity: EntityRecord) {
   const bond = db.bonds.find((item) => item.entityId === entity.id);
   const stage = bond?.intimacyStage ? stageLabel(db, bond.intimacyStage) : '';
-  const close = (bond?.intimacyStage ?? 0) >= 2 || db.state.sceneMode?.intimateWith?.includes(entity.id);
+  const close = (bond?.intimacyStage ?? 0) >= 2 || sexPartners(db).includes(entity.id);
   const parts = [
     heartLine(entity, Boolean(close)),
     stage ? `between you: ${stage}` : '',
@@ -1040,6 +1045,7 @@ function formatElsewhere(db: AppDatabase) {
         !entity.companion &&
         !cast.has(entity.name.toLowerCase()) &&
         entity.lastSeen &&
+        (entity.whereabouts || entity.lastSeenAt) &&
         Math.abs(daysBetween(entity.lastSeen, db.state.inStoryDate)) <= 30
     )
     .sort((a, b) => dateSortValue(b.lastSeen!) - dateSortValue(a.lastSeen!))
@@ -1053,7 +1059,7 @@ function formatElsewhere(db: AppDatabase) {
     'ELSEWHERE (not in this scene; each is where it says unless the story moves them, and never in two places)',
     ...people.map(
       (entity) =>
-        `- ${narratorName(db, entity)}: ${entity.whereabouts ? truncate(entity.whereabouts, 70) : `last seen at ${truncate(entity.lastSeenAt ?? 'somewhere', 50)}`}`
+        `- ${narratorName(db, entity)}: ${entity.whereabouts ? truncate(entity.whereabouts, 70) : `last seen at ${truncate(entity.lastSeenAt ?? '', 50)}`}`
     ),
   ].join('\n');
 }

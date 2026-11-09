@@ -580,7 +580,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             rawLog: latest.rawLog.map((entry) => (entry.id === turn.turnLogId ? { ...entry, content: FADE_TO_BLACK_LINE } : entry)),
           }));
           turn = { ...turn, narration: FADE_TO_BLACK_LINE };
-          extraction = { intimateScene: false };
+          extraction = { sex: { on: false } };
         }
 
         let followUps: string[] = [];

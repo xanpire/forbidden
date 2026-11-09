@@ -71,7 +71,7 @@ function story(): AppDatabase {
     state: {
       ...db.state,
       location: `${PLANTED} hotel`,
-      sceneMode: { current: 'intimate', exchangeStreak: 0, partners: [], intimateWith: [mara.id] },
+      sceneMode: { current: 'intimate', exchangeStreak: 0, partners: [], sex: { with: [mara.id], since: db.state.inStoryDate, turns: 1, phase: 'build-up', done: [] } },
     },
     entities: db.entities.map((e) => (e.id === mara.id ? { ...e, currentLook: `${PLANTED} dress`, scenePosition: `${PLANTED} position` } : e)),
   };
@@ -197,7 +197,7 @@ describe('storage and privacy', () => {
   test('Picture this only shows in an intimate scene everyone may be in', () => {
     const db = story();
     expect(canPictureThis(db)).toBe(true);
-    const none = { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode!, intimateWith: undefined } } };
+    const none = { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode!, sex: undefined } } };
     expect(canPictureThis(none)).toBe(false);
   });
 });

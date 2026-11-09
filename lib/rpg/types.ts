@@ -17,10 +17,29 @@ export type SceneModeState = {
   lastKind?: TurnKind;
   /** The player's choice from the mode chip; cleared once it no longer applies. */
   override?: SceneModeName;
-  /** An intimate scene is under way, with these people (entity ids). */
-  intimateWith?: string[];
+  /** Sex mode: a sexual scene is under way (sexMode.ts). */
+  sex?: SexScene;
   /** The player chose "fade to black" for this scene. */
   fadeToBlack?: boolean;
+};
+
+/** Where a sexual scene is: building up, escalating, or at its climax. */
+export type SexPhase = 'build-up' | 'escalation' | 'climax';
+/** How a sexual scene ended. */
+export type SexEnd = 'finished' | 'interrupted' | 'stopped';
+
+/** A sexual scene under way (sex mode, sexMode.ts). */
+export type SexScene = {
+  /** The partners: entity ids, never the player. Each passed the adults-only check. */
+  with: string[];
+  since: CalendarDate;
+  /** Narrator turns played in sex mode so far. */
+  turns: number;
+  phase: SexPhase;
+  /** Positions and acts so far, a few words each, for variety (last 16). */
+  done: string[];
+  /** The act ended this way; the next reply is the aftermath, then normal mode. */
+  ended?: SexEnd;
 };
 
 /** The player's one-turn steer from the chips by the input. */
@@ -916,8 +935,20 @@ export type TurnDiff = {
   firsts?: { entityId?: string; name: string; what: string }[];
   preferencesLearned?: { entityId?: string; name: string; preference: string; aboutPlayer: boolean }[];
   outfits?: { entityId?: string; name: string; outfit?: string; position?: string }[];
-  /** true: an intimate scene starts or goes on; false: it ends; undefined: no change. */
-  intimateScene?: boolean;
+  /** Sex mode (sexMode.ts): a sexual scene starts, goes on or ends. */
+  sex?: {
+    /** true: a sexual scene with the player is under way this turn; false: it isn't (any more). */
+    on?: boolean;
+    /** The partners, by id (never the player). */
+    with?: { entityId?: string; name: string }[];
+    phase?: SexPhase;
+    /** Positions and acts shown this turn. */
+    done?: string[];
+    /** The act ended this turn, this way. */
+    ended?: SexEnd;
+    /** The player's next moves, from the scene. */
+    options?: string[];
+  };
   /** The player's hard limit was written. The reply is thrown away. */
   limitCrossed?: boolean;
   /** Someone under 18, of no stated age, or described as a child was sexualised. The reply is thrown away. */

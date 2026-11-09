@@ -1,5 +1,5 @@
 // Scene modes: how a scene plays. The narrator writes normal prose, a real
-// conversation (mostly speech, short *action* lines), or an intimate scene.
+// conversation (mostly speech, short *action* lines), or sex mode (sexMode.ts).
 // The mode is decided before each narrator call from two signals:
 //
 // 1. The player's own input. Speaking, acting in place or leaving is the
@@ -24,9 +24,11 @@ import type {
   SceneModeName,
   SceneModeState,
   ScenePace,
+  SexScene,
 } from './types';
 import { isPlayer, isPlayerName } from './player';
 import { intimacyAllowed } from './intimacy';
+import { eligiblePartners, endSexScene, formatAftermathLine, formatSexLine, newSexScene, sexualMove } from './sexMode';
 
 /** Exchange beats in a row before conversation mode starts by itself. */
 export const CONVERSATION_STREAK = 2;
@@ -96,7 +98,11 @@ export type TurnMode = {
   manual: boolean;
   /** Who the player is talking with (names, for the prompt and the chip). */
   with: string[];
-  /** Intimate mode only: the player chose fade to black for this scene. */
+  /** Sex mode: the scene this turn plays in (a new one when it starts now). */
+  sex?: SexScene;
+  /** The sex scene ended: this reply is its aftermath. */
+  aftermath?: SexScene;
+  /** Sex mode only: the player chose fade to black for this scene. */
   fade?: boolean;
 };
 
@@ -133,12 +139,27 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
     return { mode: 'normal', lean: false, manual: true, with: [] };
   }
 
-  // An intimate scene goes on until the tracker says it ended or the player
-  // moves on, and only while everyone in it passes the adults-only check.
-  const intimateWith = (state.intimateWith ?? []).filter((id) => db.entities.some((entity) => entity.id === id && !isDeceased(entity)));
-  if (intimateWith.length > 0 && !said.changesScene && intimacyAllowed(db, intimateWith)) {
-    const names = intimateWith.map((id) => db.entities.find((entity) => entity.id === id)!).map((entity) => displayName(db, entity));
-    return { mode: 'intimate', lean: false, manual: false, with: names, fade: state.fadeToBlack === true };
+  // Sex mode goes on until the tracker says the act ended or the player moves
+  // on, and only while everyone in it passes the adults-only check. Once it
+  // ended, one reply is the aftermath.
+  const sex = state.sex;
+  const sexWith = (sex?.with ?? []).filter((id) => db.entities.some((entity) => entity.id === id && !isDeceased(entity)));
+  const sexNames = sexWith.map((id) => db.entities.find((entity) => entity.id === id)!).map((entity) => displayName(db, entity));
+  if (sex?.ended && sexWith.length > 0) {
+    return { mode: 'normal', lean: false, manual: false, with: sexNames, aftermath: sex };
+  }
+  if (sex && sexWith.length > 0 && !said.changesScene && intimacyAllowed(db, sexWith)) {
+    return { mode: 'intimate', lean: false, manual: state.override === 'intimate', with: sexNames, sex: { ...sex, with: sexWith }, fade: state.fadeToBlack === true };
+  }
+
+  // It starts by itself when the player's own move is sexual, or from the chip,
+  // with whoever in the scene passes the hard checks.
+  if (!sex && !said.changesScene && (state.override === 'intimate' || sexualMove(input))) {
+    const ids = eligiblePartners(db);
+    if (ids.length > 0) {
+      const names = ids.map((id) => displayName(db, db.entities.find((entity) => entity.id === id)!));
+      return { mode: 'intimate', lean: false, manual: state.override === 'intimate', with: names, sex: newSexScene(db, ids), fade: state.fadeToBlack === true };
+    }
   }
 
   if (state.override === 'conversation') {
@@ -265,19 +286,24 @@ export function applyTurnKind(
     partners: kept,
     lastKind: kind,
     ...(override ? { override } : {}),
-    ...(before.intimateWith ? { intimateWith: before.intimateWith } : {}),
+    ...(before.sex ? { sex: before.sex } : {}),
     ...(before.fadeToBlack ? { fadeToBlack: true } : {}),
   };
 
   return { ...db, state: { ...db.state, sceneMode: next } };
 }
 
-/** The player's choice from the mode chip: a mode, or null for automatic. */
+/**
+ * The player's choice from the mode chip: a mode, or null for automatic.
+ * Normal narration also stops a sexual scene; choosing sex mode starts one
+ * on the next turn, with whoever in the scene passes the hard checks.
+ */
 export function setSceneModeOverride(db: AppDatabase, mode: SceneModeName | null): AppDatabase {
-  const before = sceneModeOf(db);
+  const base = mode === 'normal' && sceneModeOf(db).sex ? endSexScene({ ...db, state: { ...db.state, sceneMode: sceneModeOf(db) } }) : db;
+  const before = sceneModeOf(base);
   const { override: _drop, ...rest } = before;
   const next: SceneModeState = mode ? { ...rest, override: mode } : rest;
-  return { ...db, state: { ...db.state, sceneMode: next } };
+  return { ...base, state: { ...base.state, sceneMode: next } };
 }
 
 /** An offered move as the player's input. */
@@ -303,11 +329,26 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
         : 0,
     partners: Array.isArray(raw.partners) ? raw.partners.filter((item) => typeof item === 'string').slice(0, 6) : [],
     ...(beats.includes(raw.lastKind as TurnKind) ? { lastKind: raw.lastKind } : {}),
-    ...(modes.includes(raw.override as SceneModeName) && raw.override !== 'intimate' ? { override: raw.override } : {}),
-    ...(Array.isArray(raw.intimateWith) && raw.intimateWith.length > 0
-      ? { intimateWith: raw.intimateWith.filter((item) => typeof item === 'string').slice(0, 4) }
-      : {}),
+    ...(modes.includes(raw.override as SceneModeName) ? { override: raw.override } : {}),
+    ...(normalizeSex(raw.sex) ? { sex: normalizeSex(raw.sex) } : {}),
     ...(raw.fadeToBlack === true ? { fadeToBlack: true } : {}),
+  };
+}
+
+function normalizeSex(value: unknown): SexScene | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as Partial<SexScene>;
+  const ids = Array.isArray(raw.with) ? raw.with.filter((item): item is string => typeof item === 'string').slice(0, 4) : [];
+  if (ids.length === 0 || !raw.since || typeof raw.since !== 'object') return undefined;
+  const phases = ['build-up', 'escalation', 'climax'];
+  const ends = ['finished', 'interrupted', 'stopped'];
+  return {
+    with: ids,
+    since: raw.since,
+    turns: typeof raw.turns === 'number' && Number.isFinite(raw.turns) ? Math.max(0, Math.floor(raw.turns)) : 0,
+    phase: phases.includes(raw.phase as string) ? (raw.phase as SexScene['phase']) : 'build-up',
+    done: Array.isArray(raw.done) ? raw.done.filter((item): item is string => typeof item === 'string').slice(-16) : [],
+    ...(ends.includes(raw.ended as string) ? { ended: raw.ended } : {}),
   };
 }
 
@@ -315,14 +356,16 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
 // Prompt lines
 
 /** One or two lines for the narrator: which mode this turn is, and with whom. */
-export function formatSceneModeLine(turn: TurnMode): string {
+export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
   const who = turn.with.length > 0 ? ` with ${turn.with.join(', ')}` : '';
   const chosen = turn.manual ? ' (the player chose this mode: keep it even if the scene moves on)' : '';
 
-  if (turn.mode === 'intimate') {
-    return turn.fade
-      ? `SCENE MODE: an intimate scene${who}, but the player chose to fade to black: cut away from anything intimate and pick up afterwards.`
-      : `SCENE MODE: intimate${who}. Slow, close and sensory, plenty of dialogue; a shorter reply that leaves room for the player.`;
+  if (turn.mode === 'intimate' && turn.sex) {
+    return formatSexLine(db, turn.sex, turn.fade === true);
+  }
+
+  if (turn.aftermath) {
+    return formatAftermathLine(db, turn.aftermath);
   }
 
   if (turn.mode === 'conversation') {

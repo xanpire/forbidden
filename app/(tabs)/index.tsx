@@ -60,6 +60,7 @@ import { paintScene, retouchSceneImage, type PaintedTake } from '@/lib/rpg/paint
 import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { resolveTurnMode, sceneOptionInput } from '@/lib/rpg/sceneMode';
+import { sexStrip } from '@/lib/rpg/sexMode';
 import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
@@ -86,13 +87,14 @@ const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] 
 const MODE_LABEL: Record<SceneModeName, string> = {
   normal: 'Narration',
   conversation: 'Conversation',
-  intimate: 'Intimate',
+  intimate: 'Sex',
 };
 
 const MODE_CHOICES: { value: SceneModeName | null; title: string; body: string }[] = [
-  { value: null, title: 'Automatic', body: 'Talk turns into a conversation on its own.' },
+  { value: null, title: 'Automatic', body: 'Talk turns into a conversation, and sex into sex mode, on their own.' },
   { value: 'conversation', title: 'Conversation', body: 'Mostly speech, even while you walk or drive.' },
-  { value: 'normal', title: 'Normal narration', body: 'Full prose until this conversation is over.' },
+  { value: 'intimate', title: 'Sex mode', body: 'Short, explicit turns with four next moves, with whoever here is an adult.' },
+  { value: 'normal', title: 'Normal narration', body: 'Full prose; ends a sex scene or a conversation now.' },
 ];
 
 const TIME_PRESETS: { value: string; label: string; seconds: number }[] = [
@@ -642,6 +644,7 @@ export default function StoryScreen() {
         ? turnMode.with.slice(0, 2).join(', ')
         : null;
   const location = state.location;
+  const strip = shownMode === 'intimate' && !isNarrating ? sexStrip(db) : null;
 
   return (
     <KeyboardAvoidingView
@@ -869,6 +872,21 @@ export default function StoryScreen() {
                 <RotateCcw color={colors.textMuted} size={12} strokeWidth={2.2} />
                 <Text style={styles.inlineActionLabel}>Retry</Text>
               </Pressable>
+            </View>
+          ) : null}
+          {strip ? (
+            <View accessibilityLabel="Scene" style={styles.sexStrip}>
+              <Text numberOfLines={1} style={styles.sexStripPlace}>
+                {strip.location}
+              </Text>
+              {strip.people.map((person) => (
+                <Text key={person.name} numberOfLines={1} style={styles.sexStripLine}>
+                  <Text style={styles.sexStripName}>{person.name}</Text>
+                  {[person.position, person.wearing].filter(Boolean).length > 0
+                    ? ` · ${[person.position, person.wearing].filter(Boolean).join(' · ')}`
+                    : ''}
+                </Text>
+              ))}
             </View>
           ) : null}
           {latestSceneOptions.length > 0 ? (
@@ -1602,6 +1620,27 @@ const styles = StyleSheet.create({
   modeHint: {
     ...type.rowMeta,
     flexShrink: 1,
+  },
+  sexStrip: {
+    gap: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  sexStripPlace: {
+    ...type.rowMeta,
+  },
+  sexStripLine: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    color: colors.textDim,
+  },
+  sexStripName: {
+    fontFamily: fonts.semibold,
+    color: colors.text,
   },
   sceneOptions: {
     gap: spacing.sm,

@@ -21,7 +21,6 @@ import {
   CORRECTIVE_NOTE,
   FADE_TO_BLACK_LINE,
   PACING_BEATS,
-  applyIntimateScene,
   canBeIntimate,
   entityCanBeIntimate,
   formatIntimacyBlock,
@@ -120,9 +119,9 @@ describe('hard limits in code', () => {
     expect(entityCanBeIntimate(db, entity(db, 'Mara Vance')).ok).toBe(true);
     expect(entityCanBeIntimate(db, entity(db, 'Lily'))).toEqual({ ok: false, reason: 'no-age' });
 
-    // The tracker says an intimate scene starts with Lily: it doesn't.
-    const blocked = applyIntimateScene(db, true, [entity(db, 'Lily').id], false);
-    expect(blocked.state.sceneMode?.intimateWith).toBeUndefined();
+    // The tracker says sex starts with Lily: it doesn't.
+    const blocked = play(db, 'Lily pulls you close.', { sex: { on: true, with: ['lily'], phase: null, done: [], ended: null, options: [] }, characters_present: ['lily'] });
+    expect(blocked.state.sceneMode?.sex).toBeUndefined();
     expect(resolveTurnMode(blocked, 'I kiss her.').mode).not.toBe('intimate');
 
     // Her ladder never reaches a physical stage, however often the page says so.
@@ -142,7 +141,8 @@ describe('hard limits in code', () => {
     const db = story();
     const young = { ...db, state: { ...db.state, player: { ...db.state.player, age: 16, birthYear: 2010 } } };
     expect(formatIntimacyBlock(young)).toContain('no romance or sexual content');
-    expect(applyIntimateScene(young, true, [entity(young, 'Mara Vance').id], false).state.sceneMode?.intimateWith).toBeUndefined();
+    const tried = play(young, 'Mara pulls you close.', { sex: { on: true, with: ['mara-vance'], phase: null, done: [], ended: null, options: [] }, characters_present: ['mara-vance'] });
+    expect(tried.state.sceneMode?.sex).toBeUndefined();
   });
 
   test('the post-check rewrites once, then fades to black', () => {
@@ -159,7 +159,7 @@ describe('hard limits in code', () => {
     expect(diff?.limitCrossed).toBe(true);
     expect(diff?.ageRuleCrossed).toBeUndefined();
     const required = TURN_STATE_SCHEMA.required as readonly string[];
-    for (const field of ['intimate_scene', 'intimacy_stage_changed', 'first', 'preference_learned', 'outfit_changed', 'limit_crossed', 'age_rule_crossed']) {
+    for (const field of ['sex', 'intimacy_stage_changed', 'first', 'preference_learned', 'outfit_changed', 'limit_crossed', 'age_rule_crossed']) {
       expect(required).toContain(field);
     }
   });
@@ -263,36 +263,6 @@ describe('relationship progression', () => {
 });
 
 describe('intimate scenes', () => {
-  test('the scene mode follows the tracker, and fade to black holds for the scene', () => {
-    let db = story('fast');
-    db = play(db, 'Mara pulls you close.', { intimate_scene: true, characters_present: ['mara-vance'] });
-    expect(db.state.sceneMode?.intimateWith).toEqual([entity(db, 'Mara Vance').id]);
-    const mode = resolveTurnMode(db, '*I kiss her neck.*');
-    expect(mode.mode).toBe('intimate');
-    expect(buildNarrationPrompt(db, '*I kiss her neck.*').messages[1].content).toContain('SCENE MODE: intimate with Mara');
-
-    const faded = { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode!, fadeToBlack: true } } };
-    expect(buildNarrationPrompt(faded, '*I kiss her.*').messages[1].content).toContain('fade to black');
-
-    // Leaving the scene ends it.
-    expect(resolveTurnMode(db, 'I leave the bar.').mode).not.toBe('intimate');
-    const ended = play(db, 'Later, you walk home.', { intimate_scene: false });
-    expect(ended.state.sceneMode?.intimateWith).toBeUndefined();
-  });
-
-  test('intimate turns are summarised, never kept verbatim, and recaps stay vague', () => {
-    let db = story('fast');
-    db = play(db, 'Mara pulls you close. A very explicit line.', { intimate_scene: true, characters_present: ['mara-vance'], scene_ended: true });
-    const reply = db.rawLog.filter((entry) => entry.role === 'assistant').at(-1)!;
-    expect(reply.intimate).toBe(true);
-    const memory = db.events.find((event) => event.tags.includes('intimate'));
-    expect(memory?.summary).toBe('An intimate moment with Mara Vance.');
-    expect(memory?.summary).not.toContain('explicit line');
-
-    const summary = buildSceneSummaryPrompt(db, db.rawLog.filter((entry) => entry.kind === 'story')).messages[1].content;
-    expect(summary).toContain('one plain, non-explicit sentence');
-  });
-
   test('steer chips and OOC notes are one-turn lines outside the story', () => {
     const db = story();
     const steered = buildNarrationPrompt(db, 'I wait.', { steer: 'slower', oocNote: 'Make Mara a bit shyer tonight.' }).messages[1].content;

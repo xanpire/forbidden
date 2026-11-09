@@ -199,6 +199,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
   if (diff.firsts) next.firsts = known(diff.firsts);
   if (diff.preferencesLearned) next.preferencesLearned = known(diff.preferencesLearned);
   if (diff.outfits) next.outfits = known(diff.outfits);
+  if (diff.sex?.with) next.sex = { ...diff.sex, with: known(diff.sex.with) };
 
   // A consequence can belong to someone unnamed; a named one is resolved, and
   // witnesses become names.

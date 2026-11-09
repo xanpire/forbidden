@@ -17,7 +17,8 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
-import { applyIntimacyStages, applyIntimateScene, applyFirsts, applyOutfits, applyPreferences } from './intimacy';
+import { applyIntimacyStages, applyFirsts, applyOutfits, applyPreferences } from './intimacy';
+import { applySexStep } from './sexMode';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
@@ -32,7 +33,7 @@ import { mentionsEntity } from './characterRefs';
 import { buildIndices } from './db';
 import { makeId } from './id';
 import { inferScenePace, resolveTurnClock } from './pacing';
-import { CONVERSATION_MODE_MINIMUM_SECONDS, applyTurnKind } from './sceneMode';
+import { CONVERSATION_MODE_MINIMUM_SECONDS, applyTurnKind, readPlayerInput } from './sceneMode';
 import { resolveEntity } from './entities';
 import { applyNameStep, nameLeaks } from './names';
 import { fallbackDiffFromProse } from './proseFallback';
@@ -326,14 +327,27 @@ export function applyStateStep(
 
   // Side characters' lives move on; consequences fade or (witnesses) talk.
   // Intimacy: the ladder (at the story's pacing), firsts, what people learned
-  // about each other, clothes and positions, and the intimate scene itself.
-  const wasIntimate = (latest.state.sceneMode?.intimateWith?.length ?? 0) > 0 || modeUsed === 'intimate';
+  // about each other, clothes and positions, and sex mode itself.
+  const sexBefore = latest.state.sceneMode?.sex;
+  const wasIntimate = Boolean(sexBefore) || modeUsed === 'intimate';
   next = applyIntimacyStages(next, extraction?.intimacyStages);
   next = applyFirsts(next, extraction?.firsts);
   next = applyPreferences(next, extraction?.preferencesLearned);
   next = applyOutfits(next, extraction?.outfits);
-  next = applyIntimateScene(next, extraction?.intimateScene, presentIds, sceneEnded);
-  if (wasIntimate || extraction?.intimateScene) {
+  const sexStep = applySexStep(next, {
+    report: extraction?.sex,
+    modeUsed,
+    aftermath: Boolean(sexBefore?.ended) && modeUsed !== 'intimate',
+    castIds: presentIds,
+    sceneEnded,
+    leftScene: readPlayerInput(turn.userMessage).changesScene,
+  });
+  next = sexStep.db;
+  if (sexStep.options.length > 0) {
+    // The player's four next moves, shown under this reply.
+    next = { ...next, rawLog: next.rawLog.map((entry) => (entry.id === turn.turnLogId ? { ...entry, sceneOptions: sexStep.options } : entry)) };
+  }
+  if (wasIntimate || extraction?.sex?.on) {
     next = markIntimateMemory(next, turn.turnLogId);
   }
   next = applyLifeEvents(next, extraction?.lifeEvents);
@@ -371,13 +385,15 @@ export function applyStateStep(
     followUpIds.push(job.id);
   }
 
+  // A finished sexual scene becomes a memory like any other scene.
   const shouldSummarize =
     extraction?.imageWorthy === true ||
     sceneEnded ||
+    sexStep.closed ||
     storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;
 
   if (shouldSummarize) {
-    const planned = queueSceneJob(next, turn.turnLogId, activeIds, sceneEnded ? 2 : MIN_SCENE_MESSAGES);
+    const planned = queueSceneJob(next, turn.turnLogId, activeIds, sceneEnded || sexStep.closed ? 2 : MIN_SCENE_MESSAGES);
     next = planned.db;
 
     if (planned.jobId) {

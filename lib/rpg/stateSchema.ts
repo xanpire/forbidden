@@ -75,6 +75,8 @@ export const FACT_TYPES = [
 export const FACT_LASTS = ['lasting', 'until_rest', 'days'] as const;
 export const GRUDGE_EVENTS = ['wronged', 'settled', 'forgiven'] as const;
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
+export const SEX_PHASES = ['build-up', 'escalation', 'climax'] as const;
+export const SEX_ENDS = ['finished', 'interrupted', 'stopped'] as const;
 export const CONSEQUENCE_KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
 
 export const TURN_STATE_SCHEMA = object({
@@ -206,9 +208,18 @@ export const TURN_STATE_SCHEMA = object({
   // A title for a new chapter, only when this turn opens one (a major story
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,
-  // Intimacy (intimacy.ts): scene on/off, ladder steps, firsts, learned
-  // preferences, clothes and positions, and the two hard-limit flags.
-  intimate_scene: { type: ['boolean', 'null'] },
+  // Sex mode (sexMode.ts): the scene on or off, partners, where it is, what
+  // was done, how it ended, and the player's next moves.
+  sex: object({
+    on: { type: ['boolean', 'null'] },
+    with: stringList,
+    phase: nullableEnum(SEX_PHASES),
+    done: stringList,
+    ended: nullableEnum(SEX_ENDS),
+    options: stringList,
+  }),
+  // Intimacy (intimacy.ts): ladder steps, firsts, learned preferences,
+  // clothes and positions, and the two hard-limit flags.
   intimacy_stage_changed: list({
     character_id: { type: 'string' },
     stage: { type: 'string' },
