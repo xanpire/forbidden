@@ -6,7 +6,7 @@ export type EncounterRisk = 'none' | 'very-low' | 'low' | 'medium' | 'high';
 
 const SETTLEMENT_WORDS = [
   'village', 'city', 'town', 'street', 'market', 'inn', 'tavern', 'shop',
-  'plaza', 'district', 'port', 'docks', 'camp', 'village hidden', 'compound',
+  'plaza', 'district', 'port', 'docks', 'camp', 'compound',
   'academy', 'hospital', 'temple town', 'outpost', 'checkpoint', 'palace',
   'mansion', 'teahouse', 'restaurant', 'barracks',
 ];

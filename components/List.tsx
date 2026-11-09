@@ -161,7 +161,7 @@ export function FilterPills<T extends string>({
   );
 }
 
-/** Full-width segmented tabs (Bonds / Jutsu / Journal). */
+/** Full-width segmented tabs (Bonds / Journal / Map). */
 export function Segmented<T extends string>({
   options,
   value,

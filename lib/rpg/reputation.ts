@@ -1,78 +1,81 @@
-// Reputation: what the world has on the player.
+// Reputation: what the world's factions have on the player.
 //
-// - Bingo books. Each great village keeps a `heat` for the player (0-100): how badly
-//   it wants him. Deeds its shinobi survive to report raise it (the state
-//   tracker's `reputation`); time without new deeds cools it slowly. Past
-//   LIST_HEAT he is in that village's bingo book with a rank (C → S) and a
-//   bounty, and an entry, once written, is never torn out.
-// - Akatsuki standing (-100..100): how the organization regards him, which
-//   changes how Pain, Konan and his partners treat him once he is a member.
-// - the player does not know what is written about them until the story shows them
-//   (a poster, a hunter naming his price, someone telling him): the tracker's
-//   `bounty_seen` marks a village's entry as known. The narrator always knows,
-//   so strangers react honestly; the player's screen shows only what the player has
-//   seen.
+// - Heat. Each faction keeps a `heat` for the player (0-100): how badly it
+//   wants them. Deeds its people survive to report raise it (the state
+//   tracker's `reputation`); time without new deeds cools it slowly. A
+//   faction that keeps a wanted list (`hasBounties`) lists the player past
+//   LIST_HEAT, with a level and a price in the world's currency; an entry,
+//   once written, is never torn out.
+// - Standing (-100..100): how a faction regards the player, which changes
+//   how its people treat them (a company, a family, a crew).
+// - The player does not know what is written about them until the story
+//   shows them (a poster, a hunter naming their price, someone telling them):
+//   the tracker's `bounty_seen` marks a faction's entry as known. The narrator
+//   always knows, so strangers react honestly; the player's screen shows only
+//   what the player has seen.
 //
-// The narrator gets YOUR NAME OUT THERE: how the people where the player stands
-// would react to his face, and, now and then, an optional bounty hunter.
+// The narrator gets YOUR NAME OUT THERE: how the people where the player
+// stands would react to their face, and, now and then, an optional hunter.
 
-import { dateSortValue, daysBetween, timeOfDayOf } from './calendar';
-import { isCombatPace } from './canon';
+import { daysBetween, timeOfDayOf } from './calendar';
+import { isCombatPace } from './timeline';
 import { encounterRisk, locationKindOf } from './encounters';
-import { localizePlaceNames } from './glossary';
+import { regionOf } from './geography';
+import { currencyOf, formatMoney } from './money';
 import { clamp, hashText, playerTurnCount } from './util';
 import type {
   AppDatabase,
-  BingoEntry,
   CalendarDate,
-  ReputationFaction,
+  FactionDef,
+  FactionStanding,
   ReputationState,
   TurnDiff,
-  VillageFaction,
 } from './types';
 
-export const VILLAGES: VillageFaction[] = ['leaf', 'sand', 'mist', 'cloud', 'stone'];
-export const REPUTATION_FACTIONS: ReputationFaction[] = [...VILLAGES, 'akatsuki'];
-
-export const VILLAGE_NAME: Record<VillageFaction, string> = {
-  leaf: 'Hidden Leaf',
-  sand: 'Hidden Sand',
-  mist: 'Hidden Mist',
-  cloud: 'Hidden Cloud',
-  stone: 'Hidden Stone',
-};
-
-/** Heat at which a village writes the player into its bingo book. */
+/** Heat at which a faction with a wanted list writes the player onto it. */
 export const LIST_HEAT = 15;
 
-/** Rank thresholds (heat at or above). */
-const RANKS: Array<[number, BingoRank]> = [
-  [85, 'S'],
-  [60, 'A'],
-  [35, 'B'],
-  [LIST_HEAT, 'C'],
+export type WantedLevel = 'noted' | 'wanted' | 'high' | 'top';
+
+/** Level thresholds (heat at or above). */
+const LEVELS: Array<[number, WantedLevel]> = [
+  [85, 'top'],
+  [60, 'high'],
+  [35, 'wanted'],
+  [LIST_HEAT, 'noted'],
 ];
 
-export type BingoRank = 'C' | 'B' | 'A' | 'S';
+export const WANTED_LABEL: Record<WantedLevel, string> = {
+  noted: 'on file',
+  wanted: 'wanted',
+  high: 'high priority',
+  top: 'most wanted',
+};
 
-/** Days without a new deed before a village's heat starts to cool. */
+/** Days without a new deed before a faction's heat starts to cool. */
 export const COOL_AFTER_DAYS = 60;
 /** Once cooling, one point of heat per this many days. */
 export const COOL_DAYS_PER_POINT = 20;
 
-/** Per turn, one village's heat moves at most this much. */
+/** Per turn, one faction's heat moves at most this much. */
 const MAX_RISE = 25;
 const MAX_FALL = 15;
 
-/** The Leaf's entry: he vanished the night of the massacre (the story starts that night). */
-export const LEAF_LISTS_ON: CalendarDate = { year: 13, month: 10, day: 2, hour: 6, minute: 0 };
-export const LEAF_START_HEAT = 40;
-export const LEAF_START_REASON =
-  "Vanished from ANBU the night of the Uchiha massacre; wanted as Itachi Uchiha's suspected accomplice.";
-
-/** Bounty hunters: one optional offer per window of player turns, at most. */
+/** Hunters: one optional offer per window of player turns, at most. */
 export const HUNTER_WINDOW_TURNS = 10;
 const HUNTER_MIN_TURN = 8;
+
+export function factionsOf(db: Pick<AppDatabase, 'world'>): FactionDef[] {
+  return Array.isArray(db.world?.factions) ? db.world.factions : [];
+}
+
+export function factionById(db: Pick<AppDatabase, 'world'>, id: string | null | undefined): FactionDef | undefined {
+  return id ? factionsOf(db).find((faction) => faction.id === id) : undefined;
+}
+
+export function factionName(db: Pick<AppDatabase, 'world'>, id: string | null | undefined): string {
+  return factionById(db, id)?.name ?? 'someone';
+}
 
 export function reputationOf(db: AppDatabase): ReputationState {
   return db.state.reputation ?? emptyReputation();
@@ -83,30 +86,7 @@ function withReputation(db: AppDatabase, reputation: ReputationState): AppDataba
 }
 
 function emptyReputation(): ReputationState {
-  return { villages: {}, akatsuki: { standing: 0 }, recent: [] };
-}
-
-/**
- * The morning after the massacre night the Leaf finds the player gone from ANBU and
- * writes him into its book beside Itachi. Before that, nobody has anything on
- * him. Runs every turn; an entry, once there, is never touched again here.
- */
-export function ensureLeafListing(db: AppDatabase): AppDatabase {
-  const reputation = reputationOf(db);
-
-  if (reputation.villages.leaf || dateSortValue(db.state.inStoryDate) < dateSortValue(LEAF_LISTS_ON)) {
-    return db;
-  }
-
-  const now = db.state.inStoryDate;
-
-  return withReputation(db, {
-    ...reputation,
-    villages: {
-      ...reputation.villages,
-      leaf: { heat: LEAF_START_HEAT, listedOn: now, lastDeedOn: now, lastReason: LEAF_START_REASON, known: false },
-    },
-  });
+  return { factions: {}, recent: [] };
 }
 
 export function normalizeReputation(raw: unknown): ReputationState {
@@ -115,32 +95,31 @@ export function normalizeReputation(raw: unknown): ReputationState {
   }
 
   const value = raw as Partial<ReputationState>;
-  const villages: ReputationState['villages'] = {};
+  const factions: ReputationState['factions'] = {};
 
-  for (const village of VILLAGES) {
-    const entry = value.villages?.[village];
-
+  for (const [id, entry] of Object.entries(value.factions ?? {})) {
     if (entry && typeof entry.heat === 'number' && Number.isFinite(entry.heat)) {
-      villages[village] = { ...entry, heat: clamp(Math.round(entry.heat), 0, 100), known: Boolean(entry.known) };
+      factions[id] = {
+        ...entry,
+        heat: clamp(Math.round(entry.heat), 0, 100),
+        ...(typeof entry.standing === 'number' && Number.isFinite(entry.standing)
+          ? { standing: clamp(Math.round(entry.standing), -100, 100) }
+          : {}),
+        known: Boolean(entry.known),
+      };
     }
   }
 
-  const standing = value.akatsuki?.standing;
-
   return {
-    villages,
-    akatsuki: {
-      ...(value.akatsuki ?? {}),
-      standing: typeof standing === 'number' && Number.isFinite(standing) ? clamp(Math.round(standing), -100, 100) : 0,
-    },
+    factions,
     recent: Array.isArray(value.recent)
       ? value.recent.filter((item) => item && typeof item.faction === 'string').slice(-12)
       : [],
   };
 }
 
-/** Heat today: a village forgets slowly, but never takes the player out of its book. */
-export function currentHeat(entry: BingoEntry | undefined, now: CalendarDate): number {
+/** Heat today: a faction forgets slowly, but never takes the player off its list. */
+export function currentHeat(entry: FactionStanding | undefined, now: CalendarDate): number {
   if (!entry) {
     return 0;
   }
@@ -152,58 +131,69 @@ export function currentHeat(entry: BingoEntry | undefined, now: CalendarDate): n
   return Math.max(Math.min(entry.heat, floor), entry.heat - cooled);
 }
 
-export function rankFor(heat: number): BingoRank | null {
-  for (const [threshold, rank] of RANKS) {
+export function levelFor(heat: number): WantedLevel | null {
+  for (const [threshold, level] of LEVELS) {
     if (heat >= threshold) {
-      return rank;
+      return level;
     }
   }
 
   return null;
 }
 
-/** Bounty in ryō, rounded to 100,000: about 1.4M at C, 7M at B, 22M at A, 43M+ at S. */
-export function bountyFor(heat: number): number {
+/** Two significant figures, so a price reads like one a person would name. */
+function roundPrice(amount: number) {
+  if (amount <= 0) return 0;
+
+  const magnitude = 10 ** Math.max(0, Math.floor(Math.log10(amount)) - 1);
+  return Math.round(amount / magnitude) * magnitude;
+}
+
+/**
+ * The price on the player's head, in the world's currency: scaled to what the
+ * player started with, so it means the same in any world (about 3× at the
+ * first level, 50× at the top).
+ */
+export function bountyFor(db: AppDatabase, heat: number): number {
   if (heat < LIST_HEAT) {
     return 0;
   }
 
-  return Math.round((heat * heat * 6000) / 100000) * 100000;
+  const base = Math.max(100, db.state.player?.money ?? 0);
+  return roundPrice((base * heat * heat) / 1500);
 }
 
-export function formatRyo(amount: number) {
-  return `${amount.toLocaleString('en-US')} ryō`;
-}
-
-export type BingoListing = {
-  village: VillageFaction;
+export type WantedListing = {
+  factionId: string;
   name: string;
   heat: number;
-  rank: BingoRank;
+  level: WantedLevel;
   bounty: number;
   known: boolean;
   listedOn?: CalendarDate;
   lastReason?: string;
 };
 
-/** Every village that has the player in its book, worst first. */
-export function bingoListings(db: AppDatabase): BingoListing[] {
+/** Every faction that has the player on its wanted list, worst first. */
+export function wantedListings(db: AppDatabase): WantedListing[] {
   const reputation = reputationOf(db);
   const now = db.state.inStoryDate;
-  const listings: BingoListing[] = [];
+  const listings: WantedListing[] = [];
 
-  for (const village of VILLAGES) {
-    const entry = reputation.villages[village];
+  for (const faction of factionsOf(db)) {
+    if (!faction.hasBounties) continue;
+
+    const entry = reputation.factions[faction.id];
     const heat = currentHeat(entry, now);
-    const rank = rankFor(heat);
+    const level = levelFor(heat);
 
-    if (entry && rank) {
+    if (entry?.listedOn && level) {
       listings.push({
-        village,
-        name: VILLAGE_NAME[village],
+        factionId: faction.id,
+        name: faction.name,
         heat,
-        rank,
-        bounty: bountyFor(heat),
+        level,
+        bounty: bountyFor(db, heat),
         known: Boolean(entry.known),
         listedOn: entry.listedOn,
         lastReason: entry.lastReason,
@@ -214,9 +204,9 @@ export function bingoListings(db: AppDatabase): BingoListing[] {
   return listings.sort((a, b) => b.heat - a.heat);
 }
 
-/** The highest price on the player's head anywhere: what a bounty hunter would chase. */
-export function topBounty(db: AppDatabase): BingoListing | null {
-  return bingoListings(db)[0] ?? null;
+/** The highest price on the player's head anywhere: what a hunter would chase. */
+export function topBounty(db: AppDatabase): WantedListing | null {
+  return wantedListings(db)[0] ?? null;
 }
 
 export type StandingBand = 'suspected' | 'doubted' | 'unproven' | 'trusted' | 'valued';
@@ -237,8 +227,14 @@ export const STANDING_LABEL: Record<StandingBand, string> = {
   valued: 'Valued',
 };
 
-export function isAkatsukiMember(db: AppDatabase) {
-  return (db.state.canonProgress?.completed ?? []).includes('kan-joins-akatsuki');
+/** Factions whose view of the player has moved, with their band. */
+export function factionStandings(db: AppDatabase): { faction: FactionDef; standing: number; band: StandingBand }[] {
+  const reputation = reputationOf(db);
+
+  return factionsOf(db)
+    .map((faction) => ({ faction, standing: reputation.factions[faction.id]?.standing ?? 0 }))
+    .filter((item) => item.standing !== 0)
+    .map((item) => ({ ...item, band: standingBand(item.standing) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -249,22 +245,21 @@ export function applyReputationChanges(
   changes: TurnDiff['reputation'],
   seen: TurnDiff['bountySeen']
 ): AppDatabase {
-  db = ensureLeafListing(db);
-
   if ((!changes || changes.length === 0) && (!seen || seen.length === 0)) {
     return db;
   }
 
   const now = db.state.inStoryDate;
   const current = reputationOf(db);
-  const villages = { ...current.villages };
-  let akatsuki = { ...(current.akatsuki ?? { standing: 0 }) };
+  const factions = { ...current.factions };
   const recent = [...current.recent];
   // One move per faction per turn, however the tracker split it up.
-  const moved = new Set<ReputationFaction>();
+  const moved = new Set<string>();
 
   for (const change of changes ?? []) {
-    if (!REPUTATION_FACTIONS.includes(change.faction) || moved.has(change.faction)) {
+    const faction = factionById(db, change.faction);
+
+    if (!faction || moved.has(faction.id)) {
       continue;
     }
 
@@ -274,185 +269,142 @@ export function applyReputationChanges(
       continue;
     }
 
-    moved.add(change.faction);
+    moved.add(faction.id);
     const reason = change.reason?.trim().slice(0, 160) || undefined;
-    recent.push({ faction: change.faction, change: delta, reason, date: now });
+    recent.push({ faction: faction.id, change: delta, reason, date: now });
 
-    if (change.faction === 'akatsuki') {
-      akatsuki = {
-        standing: clamp(akatsuki.standing + delta, -100, 100),
-        lastReason: reason ?? akatsuki.lastReason,
-        updatedOn: now,
-      };
-      continue;
-    }
-
-    const entry = villages[change.faction];
+    const entry = factions[faction.id];
     // Bake in the cooling so far, then add the new deed.
     const heat = clamp(currentHeat(entry, now) + delta, 0, 100);
-    const listedOn = entry?.listedOn ?? (heat >= LIST_HEAT ? now : undefined);
+    const listedOn = entry?.listedOn ?? (faction.hasBounties && heat >= LIST_HEAT ? now : undefined);
+    // Standing moves the other way from heat: a deed against them lowers it.
+    const standing = clamp((entry?.standing ?? 0) - delta, -100, 100);
 
-    villages[change.faction] = {
+    factions[faction.id] = {
       heat: listedOn ? Math.max(LIST_HEAT, heat) : heat,
+      ...(standing !== 0 ? { standing } : {}),
       ...(listedOn ? { listedOn } : {}),
       lastDeedOn: delta > 0 ? now : (entry?.lastDeedOn ?? now),
-      lastReason: delta > 0 ? (reason ?? entry?.lastReason) : entry?.lastReason,
+      lastReason: reason ?? entry?.lastReason,
       known: entry?.known ?? false,
     };
   }
 
-  for (const village of seen ?? []) {
-    const entry = villages[village];
+  for (const id of seen ?? []) {
+    const entry = factions[id];
 
     if (entry?.listedOn) {
-      villages[village] = { ...entry, known: true };
+      factions[id] = { ...entry, known: true };
     }
   }
 
-  return withReputation(db, { villages, akatsuki, recent: recent.slice(-12) });
+  return withReputation(db, { factions, recent: recent.slice(-12) });
 }
 
 // ---------------------------------------------------------------------------
 // Where the player stands, and who would know their face
 
-const TERRITORY: Array<[RegExp, VillageFaction]> = [
-  [/\b(leaf|konoha|land of fire|fire country|tanzaku|otafuku|uchiha|nakano|forest of death)\b/i, 'leaf'],
-  [/\b(sand|suna|land of wind|wind country|desert)\b/i, 'sand'],
-  [/\b(mist|kiri|land of water|water country)\b/i, 'mist'],
-  [/\b(cloud|kumo|land of lightning|lightning country)\b/i, 'cloud'],
-  [/\b(stone|iwa|land of earth|earth country)\b/i, 'stone'],
-];
+/** The faction whose territory the player is in (by region, or by name in the location), or null. */
+export function territoryOf(db: AppDatabase, location: string): FactionDef | null {
+  const region = regionOf(db, location);
+  const factions = factionsOf(db);
 
-/** The great village whose land the player is in, or null in the small countries and the wilds between. */
-export function territoryOf(location: string): VillageFaction | null {
-  const text = localizePlaceNames(location ?? '');
-  let best: { index: number; village: VillageFaction } | null = null;
+  if (region) {
+    const holder = factions.find((faction) => faction.territoryRegionIds?.includes(region));
 
-  for (const [pattern, village] of TERRITORY) {
-    const match = pattern.exec(text);
-
-    if (match && (!best || match.index < best.index)) {
-      best = { index: match.index, village };
-    }
+    if (holder) return holder;
   }
 
-  return best?.village ?? null;
+  const lower = (location ?? '').toLowerCase();
+
+  return factions.find((faction) => faction.name.trim().length >= 3 && lower.includes(faction.name.toLowerCase())) ?? null;
 }
 
-function shinobiLine(name: string, listing: BingoListing | undefined) {
+function insiderLine(db: AppDatabase, name: string, listing: WantedListing | undefined) {
   if (!listing) {
-    return `${name} has nothing on you: its shinobi see a stranger.`;
+    return `${name} has nothing on you: its people see a stranger.`;
   }
 
-  const entry = `${name}'s bingo book lists you ${listing.rank}-rank (${formatRyo(listing.bounty)})`;
+  const entry = `${name} has you ${WANTED_LABEL[listing.level]} (${formatMoney(listing.bounty, currencyOf(db))} on your head)`;
 
-  switch (listing.rank) {
-    case 'S':
-      return `${entry}. Nearly every one of its shinobi knows your face; patrols attack or flee and send for help on sight.`;
-    case 'A':
-      return `${entry}. Most of its chunin and jonin would know your face; a patrol that spots you reports it or moves on you.`;
-    case 'B':
-      return `${entry}. Its jonin, hunter-nin and sensor teams may know your face; most genin and chunin would not.`;
+  switch (listing.level) {
+    case 'top':
+      return `${entry}. Nearly everyone who works for them knows your face; they act or send for help on sight.`;
+    case 'high':
+      return `${entry}. Most of their people would know your face; anyone who spots you reports it or moves on you.`;
+    case 'wanted':
+      return `${entry}. Their investigators and enforcers may know your face; most of their people would not.`;
     default:
-      return `${entry}. Only a hunter-nin or someone who studies the book would place you, and only with a good look.`;
+      return `${entry}. Only someone who studies their files would place you, and only with a good look.`;
   }
 }
 
-function civilianLine(listing: BingoListing | undefined, year: number, cloak: boolean) {
-  const parts: string[] = [];
-
-  if (listing?.rank === 'S') {
-    parts.push('Your face is on wanted posters here; even civilians may recognize you and run for the guards.');
-  } else {
-    parts.push('Civilians do not know your face.');
-  }
-
-  if (cloak) {
-    parts.push(
-      year < 17
-        ? 'If you wear the Akatsuki cloak, it means little to ordinary people yet; hunter-nin and the underworld already fear it.'
-        : 'If you wear the Akatsuki cloak, anyone who sees it knows what it means: fear, silence, shut doors, or a hand on a weapon.'
-    );
-  }
-
-  return parts.join(' ');
+function publicLine(listing: WantedListing | undefined) {
+  return listing?.level === 'top'
+    ? 'Your face has been shown around here; even ordinary people may recognize you.'
+    : 'Ordinary people do not know your face.';
 }
 
-function hasCloak(db: AppDatabase) {
-  return db.state.inventory.some((item) => /akatsuki/i.test(item) && /cloak|robe/i.test(item));
-}
-
-function standingLine(db: AppDatabase) {
-  if (!isAkatsukiMember(db)) {
-    return '';
-  }
-
-  const standing = reputationOf(db).akatsuki?.standing ?? 0;
-  const band = standingBand(standing);
+function standingLines(db: AppDatabase) {
   const text: Record<StandingBand, string> = {
-    suspected:
-      'Pain suspects you. Your partner watches you and reports on you, missions are tests, and you are told nothing you do not need.',
-    doubted: 'The others doubt you: curt orders, short leashes, and nobody shares more than they must.',
-    unproven: 'You are still unproven: you get orders, not explanations.',
-    trusted: 'You are trusted: harder missions, more freedom between them, and partners who speak a little more openly.',
-    valued:
-      'Pain and Konan value you: they give you room to choose your own methods and share plans above your rank (never the masked man\'s identity or anyone\'s secrets).',
+    suspected: 'they suspect you: you are watched, tested, and told nothing',
+    doubted: 'they doubt you: curt answers, short leashes',
+    unproven: 'you are still unproven to them',
+    trusted: 'they trust you: more freedom, more said openly',
+    valued: 'they value you: room to choose your own way, and plans shared with you',
   };
 
-  return `Within the Akatsuki (${STANDING_LABEL[band].toLowerCase()}): ${text[band]}`;
+  return factionStandings(db).map(({ faction, band }) => `${faction.name} (${STANDING_LABEL[band].toLowerCase()}): ${text[band]}.`);
 }
 
 /**
- * The narrator block: how people where the player stands would react to them. Skipped
- * where nobody would be around, except for his standing inside the Akatsuki.
+ * The narrator block: how people where the player stands would react to
+ * them. Skipped where nobody would be around, except for how groups regard
+ * them.
  */
 export function formatReputationBlock(db: AppDatabase): string {
   const lines: string[] = [];
-  const standing = standingLine(db);
   const risk = encounterRisk(locationKindOf(db), timeOfDayOf(db.state.inStoryDate));
 
   if (risk !== 'none') {
-    const listings = bingoListings(db);
-    const byVillage = new Map(listings.map((listing) => [listing.village, listing]));
-    const here = territoryOf(`${db.state.location} ${db.state.scene ?? ''}`);
-    const cloak = hasCloak(db);
+    const listings = wantedListings(db);
+    const byFaction = new Map(listings.map((listing) => [listing.factionId, listing]));
+    const here = territoryOf(db, `${db.state.location} ${db.state.scene ?? ''}`);
 
-    if (here) {
-      lines.push(shinobiLine(VILLAGE_NAME[here], byVillage.get(here)));
+    if (here && (byFaction.has(here.id) || listings.length > 0)) {
+      lines.push(insiderLine(db, here.name, byFaction.get(here.id)));
     } else if (listings.length > 0) {
       lines.push(
-        `No great village holds this land. Bingo books still travel with bounty hunters and mercenaries: ${listings
-          .map((listing) => `${listing.name} ${listing.rank}-rank (${formatRyo(listing.bounty)})`)
-          .join(', ')}.`
+        `Word of the price on you travels with people who hunt for money: ${listings
+          .map((listing) => `${listing.name}, ${WANTED_LABEL[listing.level]} (${formatMoney(listing.bounty, currencyOf(db))})`)
+          .join('; ')}.`
       );
     }
 
-    const elsewhere = listings.filter((listing) => listing.village !== here);
+    const elsewhere = listings.filter((listing) => listing.factionId !== here?.id);
 
     if (here && elsewhere.length > 0) {
-      lines.push(
-        `Also wanted by: ${elsewhere.map((listing) => `${listing.name} (${listing.rank}-rank)`).join(', ')}; their shinobi here would know you as well as their book does.`
-      );
+      lines.push(`Also wanted by: ${elsewhere.map((listing) => `${listing.name} (${WANTED_LABEL[listing.level]})`).join(', ')}.`);
     }
 
-    lines.push(civilianLine(here ? byVillage.get(here) : undefined, db.state.inStoryDate.year, cloak));
+    if (listings.length > 0) {
+      lines.push(publicLine(here ? byFaction.get(here.id) : listings[0]));
+    }
   }
 
-  if (standing) {
-    lines.push(standing);
-  }
+  lines.push(...standingLines(db));
 
   if (lines.length === 0) {
     return '';
   }
 
-  const unknown = bingoListings(db).filter((listing) => !listing.known);
+  const unknown = wantedListings(db).filter((listing) => !listing.known);
 
   return [
     'YOUR NAME OUT THERE (how strangers react to you; never state these numbers as narration)',
     ...lines.map((line) => `- ${line}`),
     unknown.length > 0
-      ? `- You have not seen what ${unknown.map((listing) => listing.name).join(' or ')} wrote about you; you can find out through a bounty poster, a hunter naming their price, or someone telling you.`
+      ? `- You have not seen what ${unknown.map((listing) => listing.name).join(' or ')} has on you; you can find out through a notice, a hunter naming their price, or someone telling you.`
       : '',
     '- Recognition takes a good look and someone who would know. When it happens, show it: a double take, a lowered voice, a sudden exit, a price named. Nobody recognizes you just because you are wanted.',
   ]
@@ -461,7 +413,7 @@ export function formatReputationBlock(db: AppDatabase): string {
 }
 
 // ---------------------------------------------------------------------------
-// Bounty hunters
+// Hunters
 
 /** True on the one turn of each window that may carry a hunter. */
 function isHunterTurn(db: AppDatabase, turn: number) {
@@ -475,18 +427,18 @@ function isHunterTurn(db: AppDatabase, turn: number) {
   return turn % HUNTER_WINDOW_TURNS === slot;
 }
 
-/** Chance a window's hunter turn actually carries one, by the top rank, in quarters. */
-const HUNTER_ODDS: Record<BingoRank, number> = { C: 1, B: 2, A: 3, S: 4 };
+/** Chance a window's hunter turn actually carries one, by the top level, in quarters. */
+const HUNTER_ODDS: Record<WantedLevel, number> = { noted: 1, wanted: 2, high: 3, top: 4 };
 
 const HUNTER_KINDS = [
-  'a lone bounty hunter who has been asking about you along this road',
-  'a pair of mercenaries who think the price on you is worth the risk',
-  'a bounty-station keeper who recognizes your face and quietly sends word',
-  'a hunter-nin team following a weeks-old report of you',
-  'an informant who would sell your whereabouts to whoever pays',
+  'someone who has been asking about you along this road',
+  'a pair of hired hands who think the price on you is worth the risk',
+  'someone at the counter who recognizes your face and quietly makes a call',
+  "an investigator following a weeks-old lead on you, sent by the group's own people",
+  'an informant who would sell where you are to whoever pays',
 ];
 
-export type HunterOffer = { listing: BingoListing; kind: string };
+export type HunterOffer = { listing: WantedListing; kind: string };
 
 export function hunterOffer(db: AppDatabase): HunterOffer | null {
   if (isCombatPace(db.state.scenePace)) {
@@ -512,37 +464,45 @@ export function hunterOffer(db: AppDatabase): HunterOffer | null {
 
   const window = Math.floor(turn / HUNTER_WINDOW_TURNS);
 
-  if (hashText(`${db.meta.slotId}:hunter-odds:${window}`) % 4 >= HUNTER_ODDS[listing.rank]) {
+  if (hashText(`${db.meta.slotId}:hunter-odds:${window}`) % 4 >= HUNTER_ODDS[listing.level]) {
     return null;
   }
 
-  // Hunter-nin only come for him on their own village's land.
-  const kinds = territoryOf(db.state.location) === listing.village
-    ? HUNTER_KINDS
-    : HUNTER_KINDS.filter((item) => !item.includes('hunter-nin'));
+  // The group's own people only come for the player on its own ground.
+  const kinds =
+    territoryOf(db, db.state.location)?.id === listing.factionId
+      ? HUNTER_KINDS
+      : HUNTER_KINDS.filter((item) => !item.includes("group's own people"));
 
   return { listing, kind: kinds[hashText(`${db.meta.slotId}:hunter-kind:${window}`) % kinds.length] };
 }
 
-export function formatHunterOffer(offer: HunterOffer | null): string {
+export function formatHunterOffer(db: AppDatabase, offer: HunterOffer | null): string {
   if (!offer) {
     return '';
   }
 
   return [
     'A PRICE ON YOUR HEAD (optional)',
-    `${offer.listing.name} pays ${formatRyo(offer.listing.bounty)} for you. Here that could mean ${offer.kind}.`,
-    'If it fits the scene, bring them in: someone watching too long, a name asked at the counter, or an ambush on the road. They are this turn\'s encounter, fight at canon power for their rank, and can be bought off, outrun, fooled, or beaten. If it does not fit, ignore this.',
+    `${offer.listing.name} pays ${formatMoney(offer.listing.bounty, currencyOf(db))} for you. Here that could mean ${offer.kind}.`,
+    "If it fits the scene, bring them in: someone watching too long, a name asked at the counter, a tail on the way home. They are this turn's encounter, as capable as real people in their line of work, and can be bought off, outrun, fooled, or beaten. If it does not fit, ignore this.",
   ].join('\n');
 }
 
 export function reputationTrackingLines(db: AppDatabase): string[] {
-  const unknown = bingoListings(db).filter((listing) => !listing.known);
+  const factions = factionsOf(db);
+
+  if (factions.length === 0) {
+    return ['reputation: []. bounty_seen: [].'];
+  }
+
+  const ids = factions.map((faction) => `${faction.id} (${faction.name})`).join(', ');
+  const unknown = wantedListings(db).filter((listing) => !listing.known);
 
   return [
-    'reputation: a village id (leaf, sand, mist, cloud, stone) or akatsuki, with change and a short reason, only when THIS turn gave that village something to report: its people saw the player and lived, the player hurt or killed its people, worked openly in its land, or was linked to a deed by witnesses. Usually 3-10; 15-25 for killing a known jonin or a public massacre; negative only when the player clearly clears their name or does that village a real service. akatsuki: missions done well or badly, loyalty shown or doubted, defying Pain; usually -10..10. Otherwise [].',
+    `reputation: a faction id (${ids}), with change and a short reason, only when THIS turn gave that faction something to hold against the player: its people saw the player do it, the player hurt or crossed its people, or was linked to a deed by witnesses. Usually 3-10; 15-25 for something serious done to them. Negative when the player clearly earns their trust or does them a real service. Otherwise [].`,
     unknown.length > 0
-      ? `bounty_seen: village ids whose bingo-book entry or bounty on the player they see or are told about this turn (not yet seen: ${unknown.map((listing) => listing.village).join(', ')}). Otherwise [].`
-      : 'bounty_seen: village ids whose bingo-book entry or bounty on the player they see or are told about this turn; otherwise [].',
+      ? `bounty_seen: faction ids whose wanted entry or price on the player they see or are told about this turn (not yet seen: ${unknown.map((listing) => listing.factionId).join(', ')}). Otherwise [].`
+      : 'bounty_seen: faction ids whose wanted entry or price on the player they see or are told about this turn; otherwise [].',
   ];
 }

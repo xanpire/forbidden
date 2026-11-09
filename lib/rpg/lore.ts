@@ -1,28 +1,10 @@
-// Lore entries that switch on or off as the story reaches things: the
-// "you have no Sharingan" note ends when it awakens, "Itachi holds back the
-// truth" ends once he has explained, and so on.
+// Lore entries that switch on or off as the story reaches things: a note that
+// ends once a thread resolves, one that starts after a timeline event, and so on.
 
-import { playerKnowsDeath } from './deaths';
 import type { AppDatabase, LoreCondition, LoreFlag, LoreRecord } from './types';
-
-function hasAbility(db: AppDatabase, pattern: RegExp) {
-  return (db.state.player.abilityStages ?? []).some((ability) => pattern.test(ability.name));
-}
 
 /** State flags lore can wait for. */
 export const LORE_FLAGS: Record<LoreFlag, (db: AppDatabase) => boolean> = {
-  hasSharingan: (db) => hasAbility(db, /sharingan/i),
-  hasMangekyo: (db) => hasAbility(db, /mangeky/i),
-  knowsIzumiDead: (db) => {
-    const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha');
-    return Boolean(izumi && playerKnowsDeath(db, izumi));
-  },
-  headbandScratched: (db) =>
-    db.state.inventory.some((item) => /(forehead protector|headband)/i.test(item) && /scratch|slash/i.test(item)),
-  joinedAkatsuki: (db) => {
-    const progress = db.state.canonProgress;
-    return Boolean(progress?.completed.includes('kan-joins-akatsuki'));
-  },
   // Someone living is your romantic interest or lover.
   inRomance: (db) =>
     db.bonds.some((bond) => {
@@ -34,7 +16,7 @@ export const LORE_FLAGS: Record<LoreFlag, (db: AppDatabase) => boolean> = {
 
 export function conditionHolds(db: AppDatabase, condition: LoreCondition): boolean {
   if (condition.milestone) {
-    const progress = db.state.canonProgress;
+    const progress = db.state.timelineProgress;
     const reached =
       progress?.completed.includes(condition.milestone) || progress?.engaged.includes(condition.milestone);
 

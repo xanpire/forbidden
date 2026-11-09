@@ -3,7 +3,7 @@
 
 import { DEFAULT_DATE } from './calendar';
 import { makeId } from './id';
-import type { ClimateType, LocationKind, WorldDefinition } from './types';
+import type { ClimateType, LocationKind, WorldDefinition, WorldEra } from './types';
 
 export const CLIMATE_TYPE_LIST: ClimateType[] = [
   'temperate',
@@ -28,9 +28,8 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     premise: '',
     genre: '',
     tone: '',
-    abilityCategories: [],
-    abilityLabel: 'Abilities',
-    currency: { name: 'coins', priceGuide: '' },
+    era: { when: 'present', period: 'today' },
+    currency: { name: 'dollars', priceGuide: '' },
     calendar: { yearLabel: 'Year', start: { ...DEFAULT_DATE } },
     factions: [],
     regions: [],
@@ -38,8 +37,9 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     lore: [],
     timeline: [],
     festivals: [],
-    letterCarriers: ['courier'],
-    artStyle: 'painterly concept art',
+    flashbacks: [],
+    letterCarriers: ['phone', 'text message'],
+    artStyle: 'cinematic photo, natural light',
   };
 }
 
@@ -55,6 +55,8 @@ function strings(value: unknown): string[] {
   return list<unknown>(value).filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
+const ERA_WHEN: WorldEra['when'][] = ['past', 'present', 'future'];
+
 /** Fills missing fields and drops broken entries; never adds story. */
 export function normalizeWorld(value: unknown): WorldDefinition {
   const base = emptyWorld();
@@ -63,7 +65,10 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     return base;
   }
 
-  const world = value as Partial<WorldDefinition>;
+  // Older worlds may still carry the removed ability and magic fields: drop them.
+  const { abilityCategories: _a, abilityLabel: _b, techLevel: _c, magicSystem: _d, ...world } =
+    value as Partial<WorldDefinition> & Record<'abilityCategories' | 'abilityLabel' | 'techLevel' | 'magicSystem', unknown>;
+  const era = (world.era ?? {}) as Partial<WorldEra>;
   const currency = (world.currency ?? {}) as Partial<WorldDefinition['currency']>;
   const calendar = (world.calendar ?? {}) as Partial<WorldDefinition['calendar']>;
 
@@ -75,8 +80,11 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     premise: text(world.premise),
     genre: text(world.genre),
     tone: text(world.tone),
-    abilityCategories: strings(world.abilityCategories),
-    abilityLabel: text(world.abilityLabel) || base.abilityLabel,
+    era: {
+      when: ERA_WHEN.includes(era.when as WorldEra['when']) ? (era.when as WorldEra['when']) : base.era.when,
+      period: text(era.period) || base.era.period,
+      ...(text(era.techNotes) ? { techNotes: text(era.techNotes) } : {}),
+    },
     currency: {
       ...currency,
       name: text(currency.name) || base.currency.name,
@@ -116,6 +124,9 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     ),
     festivals: list<WorldDefinition['festivals'][number]>(world.festivals).filter(
       (festival) => festival && typeof festival.id === 'string' && typeof festival.month === 'number'
+    ),
+    flashbacks: list<WorldDefinition['flashbacks'][number]>(world.flashbacks).filter(
+      (record) => record && typeof record.id === 'string' && record.date && typeof record.date === 'object'
     ),
     letterCarriers: strings(world.letterCarriers).length > 0 ? strings(world.letterCarriers) : base.letterCarriers,
     artStyle: text(world.artStyle) || base.artStyle,

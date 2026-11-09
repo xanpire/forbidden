@@ -2,36 +2,29 @@
 //
 // Rules (living-world Stage 2):
 // - At most one yearly offer per turn, never in a fight, each one once a year.
-// - the player only knows the birthdays he plausibly would: the people he grew up
-//   with and is close to (or was), and those he learned in the story.
+// - The player only knows the birthdays they plausibly would: the people they
+//   are close to (or were), and those they learned in the story.
 // - Birthdays come up mostly when the person is in the scene; sometimes the player
 //   thinks of a close person who is far away (rarer). The dead get
 //   remembrance days.
-// - the player's own hard days come first: the massacre (Oct 1), the Nine-Tails
-//   night that took his parents (Oct 10), Itachi's death, joining the cloak.
-// - Festivals only when the player is in or near their village.
+// - The player's own hard days come first: the day someone close to them died.
+// - Festivals (the world's own, `db.world.festivals`) only when the player is
+//   in or near where they are held.
 // - Offered, never forced: the narrator gets one line.
 
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
 import { playerAge } from './player';
 import { displayName, narratorName } from './names';
-import { isCombatPace } from './canon';
+import { isCombatPace } from './timeline';
 import { castWithCompanions } from './companions';
 import { isDeceased, playerKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
-import { BIRTHDAY_HABITS, FESTIVALS, type BirthdayHabit, type YearlyFestival } from './yearlyData';
-import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, TurnDiff, YearlyState } from './types';
+import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, FestivalDef, TurnDiff, YearlyState } from './types';
 import { isPlayerEntity } from './player';
 
-export { BIRTHDAY_HABITS, FESTIVALS } from './yearlyData';
+export type BirthdayHabitKind = 'announces' | 'hides' | 'hates' | 'ritual' | 'quiet';
 
-/** The night of the massacre (the story opens on it). */
-const MASSACRE = { month: 10, day: 1 };
-/** The Nine-Tails attack, Naruto's birthday, the night the player's parents died. */
-const NINE_TAILS_NIGHT = { month: 10, day: 10 };
-
-/** People the player grew up with: he has always known their birthdays. */
-const ALWAYS_KNOWN = new Set(['Itachi Uchiha', 'Izumi Uchiha', 'Shisui Uchiha', 'Hana Inuzuka', 'Suzume']);
+export type BirthdayHabit = { kind: BirthdayHabitKind; note: string };
 
 const CLOSE_STAGES = new Set(['close', 'old friend', 'family', 'romantic interest', 'lover']);
 /** Affinity at which a bond is close enough to know (or be told) a birthday. */
@@ -69,8 +62,13 @@ export function normalizeYearly(raw: unknown): YearlyState | undefined {
   };
 }
 
-export function birthdayHabit(entity: Pick<EntityRecord, 'name'>): BirthdayHabit {
-  return BIRTHDAY_HABITS[entity.name] ?? { kind: 'quiet', note: 'lets the day pass unless someone remembers' };
+export function birthdayHabit(_entity: Pick<EntityRecord, 'name'>): BirthdayHabit {
+  return { kind: 'quiet', note: 'lets the day pass unless someone remembers' };
+}
+
+/** The world's festivals. */
+export function festivalsOf(db: Pick<AppDatabase, 'world'>): FestivalDef[] {
+  return Array.isArray(db.world?.festivals) ? db.world.festivals : [];
 }
 
 /** The day someone's birthday falls on this year: a leap-day birthday is kept on Feb 28 otherwise. */
@@ -89,12 +87,11 @@ function bondOf(db: AppDatabase, entityId: string): BondRecord | null {
 
 /** Close to the player now, or before they died: a strong bond or a close relationship. */
 export function isClose(db: AppDatabase, entity: EntityRecord) {
-  if (ALWAYS_KNOWN.has(entity.name)) return true;
   const bond = bondOf(db, entity.id);
   return Boolean(bond && (bond.affinity >= CLOSE_AFFINITY || CLOSE_STAGES.has(bond.relationship ?? '')));
 }
 
-/** The player knows this birthday: someone he is (or was) close to, or one he learned in the story. */
+/** The player knows this birthday: someone they are (or were) close to, or one they learned in the story. */
 export function knowsBirthday(db: AppDatabase, entity: EntityRecord) {
   if (!entity.birthday || entity.met === false || isPlayerEntity(entity)) return false;
   return isClose(db, entity) || yearlyOf(db).knownBirthdays.includes(entity.id);
@@ -120,10 +117,6 @@ function hash(text: string) {
   return value >>> 0;
 }
 
-function hasHappened(db: AppDatabase, milestoneId: string) {
-  return db.events.some((event) => event.id === `event_canon_${milestoneId}`);
-}
-
 function yearsSince(year: number, now: CalendarDate) {
   const years = now.year - year;
   return years === 1 ? 'one year' : `${years} years`;
@@ -140,10 +133,10 @@ function turns(age: number | undefined) {
 /** The player is in or near a place: its words appear in the location. */
 function nearPlace(db: AppDatabase, words: string[]) {
   const location = db.state.location.toLowerCase();
-  return words.some((word) => location.includes(word));
+  return words.length === 0 || words.some((word) => word.trim().length > 0 && location.includes(word.trim().toLowerCase()));
 }
 
-function festivalToday(festival: YearlyFestival, now: CalendarDate) {
+function festivalToday(festival: FestivalDef, now: CalendarDate) {
   const start = daysFromCivil(now.year, festival.month, festival.day);
   const today = daysFromCivil(now.year, now.month, now.day);
   return today >= start && today < start + (festival.days ?? 1);
@@ -156,42 +149,18 @@ function playerAnniversaries(db: AppDatabase): YearlyOffer[] {
   const now = db.state.inStoryDate;
   const offers: YearlyOffer[] = [];
 
-  if (now.year > 13 && isToday(now, MASSACRE)) {
-    const izumi = db.entities.find((entity) => entity.name === 'Izumi Uchiha');
-    const izumiLine = izumi && playerKnowsDeath(db, izumi) ? ', and Izumi with it' : '';
+  // The day someone close to the player died, once the player knows it.
+  for (const entity of db.entities) {
+    const died = entity.deceased?.date;
+
+    if (entity.type !== 'character' || isPlayerEntity(entity) || !died || !isClose(db, entity)) continue;
+    if (!playerKnowsDeath(db, entity) || now.year <= died.year || !isToday(now, died)) continue;
+
     offers.push({
-      key: 'anniversary:massacre',
+      key: `anniversary:death:${entity.id}`,
       kind: 'anniversary',
-      line: `Today is the anniversary of the Uchiha massacre: ${yearsSince(13, now)} since the night the clan died${izumiLine}. It is the hardest day of your year. Let it weigh on you and on anyone who knows what today is; never announce the date.`,
-    });
-  }
-
-  if (isToday(now, NINE_TAILS_NIGHT)) {
-    offers.push({
-      key: 'anniversary:nine-tails',
-      kind: 'anniversary',
-      line: `Today is the anniversary of the Nine-Tails attack (${yearsSince(5, now)}): a mourning day in the Leaf, and the night your parents, Erisa and Banri, died. It is also Naruto's birthday, which almost no one celebrates.`,
-    });
-  }
-
-  const itachi = db.entities.find((entity) => entity.name === 'Itachi Uchiha');
-  const itachiDeath = itachi?.deceased?.date;
-
-  if (itachi && itachiDeath && playerKnowsDeath(db, itachi) && now.year > itachiDeath.year && isToday(now, itachiDeath)) {
-    offers.push({
-      key: 'anniversary:itachi-death',
-      kind: 'anniversary',
-      line: `Today is ${yearsSince(itachiDeath.year, now)} since Itachi died. A quiet, heavy day; a grave visit fits if you are near.`,
-    });
-  }
-
-  const joined = db.events.find((event) => event.id === 'event_canon_kan-joins-akatsuki')?.inStoryDate;
-
-  if (joined && now.year > joined.year && isToday(now, joined)) {
-    offers.push({
-      key: 'anniversary:akatsuki',
-      kind: 'anniversary',
-      line: `Today is ${yearsSince(joined.year, now)} since you put on the Akatsuki cloak. Nobody marks it but you.`,
+      entity,
+      line: `Today is ${yearsSince(died.year, now)} since ${narratorName(db, entity)} died. A quiet, heavy day; a visit to the grave fits if you are near.`,
     });
   }
 
@@ -217,11 +186,7 @@ function playerAnniversaries(db: AppDatabase): YearlyOffer[] {
       .filter(Boolean)
       .join('; ');
     const age: number | undefined = playerAge(db);
-    // Who is around changes with the era: the cloak, the road, home again.
-    const views = db.entities
-      .filter((entity) => here.has(entity.id) && !rememberers.includes(entity) && BIRTHDAY_HABITS[entity.name])
-      .slice(0, 2)
-      .map((entity) => `${narratorName(db, entity)} ${birthdayHabit(entity).note}`);
+    const views: string[] = [];
 
     offers.push({
       key: 'player-birthday',
@@ -299,18 +264,13 @@ function festivals(db: AppDatabase): YearlyOffer[] {
   const now = db.state.inStoryDate;
   const offers: YearlyOffer[] = [];
 
-  for (const festival of FESTIVALS) {
+  for (const festival of festivalsOf(db)) {
     if (!festivalToday(festival, now) || !nearPlace(db, festival.where)) continue;
-    if (festival.from && !hasHappened(db, festival.from)) continue;
-
-    const quiet = festival.quietUntil && !hasHappened(db, festival.quietUntil);
 
     offers.push({
       key: `festival:${festival.id}`,
       kind: 'festival',
-      line: quiet
-        ? `It is the time of ${festival.name} here (${festival.note}), but in these years it is kept quietly, behind closed doors, if at all.`
-        : `${festival.name.charAt(0).toUpperCase()}${festival.name.slice(1)} is on here (${festival.note}). It can colour the scene: crowds, food, lights, people off duty.`,
+      line: `${festival.name.charAt(0).toUpperCase()}${festival.name.slice(1)} is on here${festival.note ? ` (${festival.note})` : ''}. It can colour the scene: crowds, food, lights, people off work.`,
     });
   }
 
@@ -320,7 +280,7 @@ function festivals(db: AppDatabase): YearlyOffer[] {
       kind: 'new-year',
       line:
         db.state.locationKind === 'settlement'
-          ? "It is New Year's Day: shrine bells, people in their best clothes, the first visit of the year to the shrine."
+          ? "It is New Year's Day: quiet streets, people sleeping off the night before or keeping the day the way people here do."
           : "It is New Year's Day, even out here.",
     });
   }
@@ -428,7 +388,7 @@ export type UpcomingBirthday = {
   dead: boolean;
 };
 
-/** Birthdays the player knows in the next `days` days: the living, and the dead he knows are gone. */
+/** Birthdays the player knows in the next `days` days: the living, and the dead they know are gone. */
 export function upcomingBirthdays(db: AppDatabase, days = 30): UpcomingBirthday[] {
   const now = db.state.inStoryDate;
   const today = daysFromCivil(now.year, now.month, now.day);
@@ -466,8 +426,6 @@ export function todayNotes(db: AppDatabase): string[] {
   const now = db.state.inStoryDate;
   const notes: string[] = [];
 
-  if (now.year > 13 && isToday(now, MASSACRE)) notes.push('The anniversary of the massacre');
-  if (isToday(now, NINE_TAILS_NIGHT)) notes.push('The Nine-Tails anniversary');
   if (db.state.player.birthday && isToday(now, db.state.player.birthday)) notes.push('Your birthday');
   if (now.month === 1 && now.day === 1) notes.push("New Year's Day");
 
@@ -475,8 +433,8 @@ export function todayNotes(db: AppDatabase): string[] {
     notes.push(birthday.dead ? `${displayName(db, birthday.entity)}'s birthday (remembered)` : `${displayName(db, birthday.entity)}'s birthday`);
   }
 
-  for (const festival of FESTIVALS) {
-    if (festivalToday(festival, now) && nearPlace(db, festival.where) && (!festival.from || hasHappened(db, festival.from))) {
+  for (const festival of festivalsOf(db)) {
+    if (festivalToday(festival, now) && nearPlace(db, festival.where)) {
       notes.push(festival.name.charAt(0).toUpperCase() + festival.name.slice(1));
     }
   }

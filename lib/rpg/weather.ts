@@ -1,24 +1,25 @@
 // Seasons and weather (living-world Stage 4, section 13).
 //
-// Weather comes from the calendar and the region the player is in: snow in the north
-// in winter, the Land of Fire's rainy season and monsoon heat, fog that never
-// lifts off the Mist, sandstorms in the Wind, and the Rain that never stops.
+// Weather comes from the calendar and the climate of the region the player is
+// in (`db.world.regions[].climate`, one of the CLIMATE_TYPES below): snow in a
+// continental winter, monsoon heat, coastal fog, desert nights. A region with
+// climate `none` (indoors, underground, a station) has no weather at all.
 // It is deterministic per save, region and six-hour block, and spells last
 // (each block mostly keeps the last one's weather), so the sky doesn't flip
 // from turn to turn.
 //
 // Once a scene starts its weather is held (state.weather) so it stays the
-// same through the scene. The story can change it (a storm rolls in, a jutsu
-// clears the fog): the state tracker reports `weather`, and that holds for a
+// same through the scene. The story can change it (a storm rolls in, the fog
+// lifts): the state tracker reports `weather`, and that holds for a
 // while in that region.
 //
 // The narrator gets one WEATHER line a turn: what it is, the season, and what
 // it does to travel, tracking, footing and mood.
 
 import { daysFromCivil, civilFromDays, secondsBetween, timeOfDayOf } from './calendar';
-import { REGION_NAME, currentRegion, type Region } from './geography';
+import { currentRegion, regionName } from './geography';
 import { locationKindOf } from './encounters';
-import type { AppDatabase, CalendarDate, SceneModeName, WeatherCondition, WeatherLock } from './types';
+import type { AppDatabase, CalendarDate, ClimateType, SceneModeName, WeatherCondition, WeatherLock } from './types';
 import { hashText } from './util';
 
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
@@ -144,7 +145,7 @@ export const CONDITION_INFO: Record<WeatherCondition, ConditionInfo> = {
     label: 'a strong, gusting wind',
     travel: 1.1,
     tracks: 'the wind scatters scent',
-    ground: 'gusts throw off thrown weapons and feed fire jutsu',
+    ground: 'gusts throw off aim, slam doors and carry sound away',
     mood: 'restless',
     short: 'Wind',
   },
@@ -180,10 +181,12 @@ type Weights = Partial<Record<WeatherCondition, number>>;
 type Climate = Record<Season, Weights> & {
   /** The weather sticks around: chance each block keeps the last one's (default 0.78). */
   persistence?: number;
-  /** Per-month overrides (the Land of Fire's rainy season). */
+  /** Per-month overrides (a monsoon's rainy season). */
   months?: Partial<Record<number, Weights>>;
   /** A line about the place's weather that is always true. */
   note?: string;
+  /** Per-month names for the season ("the rainy season"). */
+  seasons?: Partial<Record<number, string>>;
   /** Cold-climate wording for the season. */
   cold?: Partial<Record<Season, string>>;
 };
@@ -195,8 +198,40 @@ const TEMPERATE: Climate = {
   autumn: { clear: 4, cloudy: 2.5, rain: 1.6, wind: 1, fog: 1.2, storm: 0.4 },
 };
 
-export const CLIMATES: Record<Region, Climate> = {
-  fire: {
+/** One climate per ClimateType (`none` has no weather and never reaches these tables). */
+export const CLIMATE_TYPES: Record<Exclude<ClimateType, 'none'>, Climate> = {
+  temperate: TEMPERATE,
+  continental: {
+    winter: { snow: 3, clear: 3, cloudy: 2, blizzard: 0.6, wind: 1 },
+    spring: { clear: 3, rain: 2, cloudy: 2, wind: 1, drizzle: 1 },
+    summer: { clear: 4, heat: 3, storm: 1.5, humid: 1 },
+    autumn: { clear: 3, cloudy: 2, rain: 1.5, wind: 1, snow: 0.4 },
+    cold: { winter: 'a hard continental winter' },
+  },
+  desert: {
+    winter: { clear: 5, wind: 2, sandstorm: 0.6, cloudy: 1 },
+    spring: { clear: 4, wind: 2, sandstorm: 1.2, heat: 2 },
+    summer: { heat: 6, clear: 3, sandstorm: 0.8 },
+    autumn: { clear: 4, heat: 2, sandstorm: 0.8, wind: 1 },
+    note: 'desert: scorching by day, freezing at night',
+  },
+  tundra: {
+    winter: { snow: 5, blizzard: 2, clear: 1, cloudy: 1 },
+    spring: { snow: 2, sleet: 2, cloudy: 2, clear: 2 },
+    summer: { clear: 4, cloudy: 2, rain: 1.5, fog: 1 },
+    autumn: { cloudy: 2, sleet: 2, snow: 2, clear: 2, wind: 1 },
+    note: 'snow lies on the land most of the year',
+    cold: { winter: 'a deep polar winter', spring: 'a late, cold spring', autumn: 'an early winter' },
+  },
+  tropical: {
+    winter: { humid: 3, clear: 3, rain: 2, storm: 1 },
+    spring: { humid: 4, clear: 2, downpour: 1.5, storm: 1.5 },
+    summer: { humid: 4, storm: 3, downpour: 2.5, heat: 1 },
+    autumn: { humid: 3, rain: 3, storm: 2, clear: 1.5 },
+    persistence: 0.7,
+    note: 'warm all year, and the rain comes hard and fast',
+  },
+  monsoon: {
     ...TEMPERATE,
     months: {
       // The rainy season, then monsoon heat with afternoon thunder.
@@ -205,16 +240,9 @@ export const CLIMATES: Record<Region, Climate> = {
       8: { humid: 4, heat: 3, storm: 2, clear: 1.5 },
       9: { clear: 3, humid: 1.5, storm: 1.5, rain: 2, wind: 1 },
     },
+    seasons: { 6: 'the rainy season', 7: 'monsoon heat, high summer', 8: 'monsoon heat, high summer' },
   },
-  rice: { ...TEMPERATE, months: { 6: { rain: 4, drizzle: 3, cloudy: 2, humid: 1.5 } } },
-  rivers: {
-    winter: { cloudy: 3, fog: 3, rain: 1, clear: 2 },
-    spring: { rain: 3, drizzle: 2, clear: 2, fog: 1 },
-    summer: { heat: 3, humid: 2, storm: 1, clear: 3 },
-    autumn: { clear: 3, cloudy: 2, rain: 1, fog: 1 },
-  },
-  rain: {
-    // It almost never stops raining here.
+  rainy: {
     winter: { drizzle: 3, rain: 5, downpour: 2, storm: 1, fog: 1, sleet: 1 },
     spring: { drizzle: 3, rain: 5, downpour: 3, storm: 2, fog: 1 },
     summer: { drizzle: 2, rain: 4, downpour: 4, storm: 3 },
@@ -222,130 +250,33 @@ export const CLIMATES: Record<Region, Climate> = {
     persistence: 0.86,
     note: 'it almost never stops raining here',
   },
-  grass: {
-    winter: { cloudy: 3, rain: 2, fog: 2, sleet: 1, snow: 1 },
-    spring: { drizzle: 2, rain: 2, cloudy: 2, clear: 2, fog: 1 },
-    summer: { humid: 3, storm: 2, clear: 2, rain: 2 },
-    autumn: { rain: 2, cloudy: 3, fog: 2, clear: 2 },
-  },
-  waterfall: {
-    winter: { cloudy: 3, fog: 3, rain: 1.5, snow: 1, clear: 1.5 },
-    spring: { fog: 3, drizzle: 2, rain: 2, clear: 2 },
-    summer: { humid: 4, fog: 2, storm: 2, clear: 2 },
-    autumn: { fog: 3, rain: 2, cloudy: 2, clear: 2 },
-    note: 'spray and mist hang over the falls',
-  },
-  'hot-water': {
-    winter: { snow: 3, clear: 2, cloudy: 2, fog: 2 },
-    spring: { clear: 3, drizzle: 2, cloudy: 2, fog: 1 },
-    summer: { humid: 3, clear: 3, storm: 1 },
-    autumn: { clear: 3, cloudy: 2, rain: 1, fog: 2 },
-    note: 'steam rises from the hot springs',
-  },
-  waves: {
+  coastal: {
     winter: { wind: 3, cloudy: 3, rain: 2, fog: 2, storm: 1 },
     spring: { fog: 3, clear: 2, drizzle: 2, cloudy: 2 },
     summer: { clear: 4, humid: 2, storm: 1 },
     autumn: { storm: 1.5, wind: 2, rain: 2, clear: 2, fog: 1 },
     note: 'the sea is never far',
   },
-  whirlpools: {
-    winter: { wind: 3, storm: 2, rain: 2, cloudy: 2 },
-    spring: { fog: 2, clear: 2, drizzle: 2, wind: 2 },
-    summer: { clear: 4, humid: 2, storm: 1.2 },
-    autumn: { storm: 2, wind: 3, rain: 2, clear: 1.5 },
-    note: 'the whirlpools roar off the coast',
-  },
-  wind: {
-    winter: { clear: 5, wind: 2, sandstorm: 0.6, cloudy: 1 },
-    spring: { clear: 4, wind: 2, sandstorm: 1.2, heat: 2 },
-    summer: { heat: 6, clear: 3, sandstorm: 0.8 },
-    autumn: { clear: 4, heat: 2, sandstorm: 0.8, wind: 1 },
-    note: 'desert: scorching by day, freezing at night',
-  },
-  earth: {
+  mountain: {
     winter: { snow: 3, clear: 3, wind: 2, cloudy: 2, blizzard: 1 },
-    spring: { clear: 4, wind: 2, cloudy: 2, rain: 1 },
-    summer: { clear: 4, heat: 2, storm: 1, wind: 1 },
+    spring: { clear: 4, wind: 2, cloudy: 2, rain: 1, snow: 0.6 },
+    summer: { clear: 4, storm: 1.5, wind: 1, cloudy: 1 },
     autumn: { clear: 3, wind: 2, cloudy: 2, rain: 1, snow: 0.5 },
+    note: 'the weather turns fast up here',
     cold: { winter: 'a hard mountain winter' },
   },
-  water: {
-    winter: { fog: 5, sleet: 2, rain: 2, cloudy: 2, snow: 1 },
-    spring: { fog: 6, drizzle: 2, cloudy: 2 },
-    summer: { fog: 4, humid: 2, rain: 2, storm: 1 },
-    autumn: { fog: 5, rain: 2, cloudy: 2, storm: 1 },
-    persistence: 0.82,
-    note: 'the mist rarely lifts off the islands',
-  },
-  lightning: {
-    winter: { snow: 4, blizzard: 2, storm: 1, cloudy: 2, clear: 1 },
-    spring: { storm: 3, rain: 2, cloudy: 2, clear: 2, snow: 1 },
-    summer: { storm: 4, clear: 2, rain: 2, cloudy: 1 },
-    autumn: { storm: 2, cloudy: 2, rain: 2, clear: 2, snow: 1 },
-    note: 'thunder rolls around the peaks',
-    cold: { winter: 'a bitter northern winter', autumn: 'a cold northern autumn' },
-  },
-  frost: {
-    winter: { snow: 5, blizzard: 2, clear: 1, cloudy: 1 },
-    spring: { snow: 2, sleet: 2, cloudy: 2, clear: 2 },
-    summer: { clear: 4, cloudy: 2, rain: 1.5, fog: 1 },
-    autumn: { cloudy: 2, sleet: 2, snow: 2, clear: 2, wind: 1 },
-    note: 'a cold, snowy country even by the north’s standards',
-    cold: { winter: 'a hard northern winter', autumn: 'an early, cold autumn' },
-  },
-  graveyard: {
-    winter: { snow: 3, wind: 3, cloudy: 2, fog: 1, blizzard: 0.6 },
-    spring: { wind: 3, cloudy: 3, fog: 2, clear: 1.5, drizzle: 1 },
-    summer: { clear: 3, wind: 2, cloudy: 2, storm: 1 },
-    autumn: { wind: 3, cloudy: 3, fog: 2, rain: 1, snow: 0.5 },
-    note: 'wind moans through the great bones',
-    cold: { winter: 'a raw northern winter' },
-  },
-  birds: {
-    winter: { clear: 3, wind: 3, cloudy: 2, snow: 1 },
-    spring: { clear: 4, wind: 2, drizzle: 1.5, cloudy: 2 },
-    summer: { clear: 4, heat: 3, wind: 1, storm: 0.8 },
-    autumn: { clear: 4, wind: 2, cloudy: 2, rain: 1 },
-    note: 'dry wind off the western hills',
-  },
-  silence: {
-    winter: { snow: 2, cloudy: 3, fog: 2, clear: 2, wind: 1 },
-    spring: { fog: 2, drizzle: 2, clear: 3, cloudy: 2 },
-    summer: { clear: 3, humid: 2, storm: 1.2, heat: 1 },
-    autumn: { fog: 2, cloudy: 3, rain: 2, clear: 2 },
-    note: 'mountains and forest close in on every side',
-  },
-  woods: {
-    winter: { cloudy: 3, fog: 3, rain: 2, clear: 1.5, sleet: 0.6 },
-    spring: { drizzle: 3, fog: 2, rain: 2, clear: 2 },
-    summer: { humid: 4, storm: 2, clear: 2, downpour: 1 },
-    autumn: { fog: 3, rain: 2, cloudy: 2, clear: 2 },
-    note: 'the trees never quite let the light in',
-  },
-  tea: {
-    winter: { cloudy: 3, wind: 2, rain: 2, clear: 2 },
-    spring: { clear: 3, drizzle: 2, fog: 2, cloudy: 1 },
-    summer: { clear: 4, humid: 3, storm: 1 },
-    autumn: { clear: 3, wind: 2, rain: 2, storm: 1 },
-    note: 'sea wind blows across the tea terraces',
-  },
-  sea: {
-    winter: { wind: 3, storm: 2, rain: 2, cloudy: 2 },
-    spring: { clear: 3, fog: 2, wind: 2, drizzle: 1 },
-    summer: { clear: 4, humid: 3, storm: 1.5 },
-    autumn: { storm: 2, wind: 3, rain: 2, clear: 2 },
-    note: 'nothing but open water between the islands',
-  },
-  iron: {
-    winter: { snow: 5, blizzard: 3, clear: 1 },
-    spring: { snow: 3, cloudy: 2, clear: 2, sleet: 1 },
-    summer: { clear: 3, cloudy: 2, rain: 1, snow: 1 },
-    autumn: { snow: 3, cloudy: 2, clear: 2, sleet: 1, wind: 1 },
-    note: 'snow lies on the land most of the year',
-    cold: { winter: 'a deep northern winter', spring: 'a late, cold spring', autumn: 'an early northern winter' },
-  },
 };
+
+/** The climate of a region in this world: its written type, or temperate when the world has none. */
+export function climateOf(db: Pick<AppDatabase, 'world'>, region: string | null): ClimateType {
+  const def = region ? db.world?.regions?.find((item) => item.id === region) : undefined;
+
+  return def?.climate ?? 'temperate';
+}
+
+function climateTable(climate: ClimateType): Climate {
+  return climate === 'none' ? TEMPERATE : CLIMATE_TYPES[climate];
+}
 
 export function seasonOf(month: number): Season {
   if (month === 12 || month <= 2) return 'winter';
@@ -355,15 +286,14 @@ export function seasonOf(month: number): Season {
 }
 
 /** "early winter", "the rainy season", "monsoon heat": the season as people there would say it. */
-export function seasonLabel(region: Region | null, date: CalendarDate): string {
+export function seasonLabel(climate: ClimateType, date: CalendarDate): string {
   const season = seasonOf(date.month);
+  const table = climateTable(climate);
+  const named = table.seasons?.[date.month];
 
-  if (region === 'fire' || region === 'rice') {
-    if (date.month === 6) return 'the rainy season';
-    if (region === 'fire' && (date.month === 7 || date.month === 8)) return 'monsoon heat, high summer';
-  }
+  if (named) return named;
 
-  const cold = region ? CLIMATES[region].cold?.[season] : undefined;
+  const cold = table.cold?.[season];
 
   if (cold) return cold;
 
@@ -391,8 +321,8 @@ function monthOfBlock(block: number) {
   return civilFromDays(Math.floor(block / BLOCKS_PER_DAY)).month;
 }
 
-function weightsFor(region: Region, month: number, part: number): Weights {
-  const climate = CLIMATES[region];
+function weightsFor(climateType: ClimateType, month: number, part: number): Weights {
+  const climate = climateTable(climateType);
   const base = { ...(climate.months?.[month] ?? climate[seasonOf(month)]) };
 
   // Fog gathers before and around dawn; summer thunder builds in the afternoon.
@@ -419,7 +349,7 @@ function pick(weights: Weights, roll: number): WeatherCondition {
   return entries[entries.length - 1][0];
 }
 
-function roll(seed: string, region: Region, block: number, salt: string) {
+function roll(seed: string, region: string, block: number, salt: string) {
   return hashText(`${seed}:weather:${region}:${block}:${salt}`) / 4294967296;
 }
 
@@ -427,15 +357,15 @@ function roll(seed: string, region: Region, block: number, salt: string) {
  * The world's own weather in a region at a moment. Same save, region and
  * hour always give the same answer; a spell usually lasts a day or more.
  */
-export function weatherAt(seed: string, region: Region, date: CalendarDate): WeatherCondition {
+export function weatherAt(seed: string, region: string, climate: ClimateType, date: CalendarDate): WeatherCondition {
   const target = blockOf(date);
-  const persistence = CLIMATES[region].persistence ?? 0.78;
+  const persistence = climateTable(climate).persistence ?? 0.78;
   let condition: WeatherCondition | null = null;
 
   const start = Math.floor(target / ANCHOR_BLOCKS) * ANCHOR_BLOCKS - WARM_UP;
 
   for (let block = start; block <= target; block += 1) {
-    const weights = weightsFor(region, monthOfBlock(block), block % BLOCKS_PER_DAY);
+    const weights = weightsFor(climate, monthOfBlock(block), block % BLOCKS_PER_DAY);
     const keeps = condition !== null && (weights[condition] ?? 0) > 0 && roll(seed, region, block, 'keep') < persistence;
 
     if (!keeps) condition = pick(weights, roll(seed, region, block, 'pick'));
@@ -452,7 +382,7 @@ function hoursSince(from: CalendarDate, to: CalendarDate) {
   return secondsBetween(from, to) / 3600;
 }
 
-function lockHolds(lock: WeatherLock | undefined, db: Pick<AppDatabase, 'state'>, region: Region): lock is WeatherLock {
+function lockHolds(lock: WeatherLock | undefined, db: Pick<AppDatabase, 'state'>, region: string): lock is WeatherLock {
   if (!lock || lock.region !== region) return false;
 
   const hours = hoursSince(lock.since, db.state.inStoryDate);
@@ -463,8 +393,13 @@ function lockHolds(lock: WeatherLock | undefined, db: Pick<AppDatabase, 'state'>
   return lock.sceneSeq === db.state.sceneSeq && hours < SCENE_HOLD_HOURS;
 }
 
+/** Region id used when the world has no regions. */
+const NO_REGION = 'unknown';
+
 export type WeatherNow = {
-  region: Region;
+  /** A region id, or 'unknown' when the world has no regions. */
+  region: string;
+  climate: ClimateType;
   condition: WeatherCondition;
   season: Season;
   seasonLabel: string;
@@ -475,18 +410,20 @@ export type WeatherNow = {
 };
 
 /** The weather where the player is right now: the scene's held weather, else the world's. */
-export function currentWeather(db: Pick<AppDatabase, 'state' | 'meta'>): WeatherNow {
-  const region = currentRegion(db);
+export function currentWeather(db: Pick<AppDatabase, 'state' | 'meta' | 'world'>): WeatherNow {
+  const region = currentRegion(db) ?? NO_REGION;
+  const climate = climateOf(db, region);
   const date = db.state.inStoryDate;
   const lock = db.state.weather;
   const held = lockHolds(lock, db, region);
-  const condition = held ? lock.condition : weatherAt(db.meta.slotId, region, date);
+  const condition = held ? lock.condition : weatherAt(db.meta.slotId, region, climate, date);
 
   return {
     region,
+    climate,
     condition,
     season: seasonOf(date.month),
-    seasonLabel: seasonLabel(region, date),
+    seasonLabel: seasonLabel(climate, date),
     text: held ? lock.text : undefined,
     source: held ? lock.source : 'world',
     night: timeOfDayOf(date) === 'night',
@@ -494,10 +431,12 @@ export function currentWeather(db: Pick<AppDatabase, 'state' | 'meta'>): Weather
 }
 
 /** The weather a region has now, for the map (no scene lock unless it is the player's region). */
-export function regionWeather(db: Pick<AppDatabase, 'state' | 'meta'>, region: Region): WeatherCondition {
+export function regionWeather(db: Pick<AppDatabase, 'state' | 'meta' | 'world'>, region: string): WeatherCondition {
   const here = currentWeather(db);
 
-  return here.region === region ? here.condition : weatherAt(db.meta.slotId, region, db.state.inStoryDate);
+  return here.region === region
+    ? here.condition
+    : weatherAt(db.meta.slotId, region, climateOf(db, region), db.state.inStoryDate);
 }
 
 export function weatherTravelFactor(condition: WeatherCondition) {
@@ -505,10 +444,10 @@ export function weatherTravelFactor(condition: WeatherCondition) {
 }
 
 /** How the condition reads at this hour (a clear night, a cold desert night). */
-export function weatherPhrase(now: Pick<WeatherNow, 'condition' | 'night' | 'region'>): string {
+export function weatherPhrase(now: Pick<WeatherNow, 'condition' | 'night' | 'climate'>): string {
   const info = CONDITION_INFO[now.condition];
 
-  if (now.night && now.region === 'wind' && (now.condition === 'heat' || now.condition === 'clear')) {
+  if (now.night && now.climate === 'desert' && (now.condition === 'heat' || now.condition === 'clear')) {
     return 'a bitterly cold, clear desert night';
   }
 
@@ -550,7 +489,8 @@ export function conditionFromText(text: string | undefined | null): WeatherCondi
  * scene's held weather, else hold the world's weather for this new scene.
  */
 export function applyWeather(db: AppDatabase, reported: string | undefined): AppDatabase {
-  const region = currentRegion(db);
+  const region = currentRegion(db) ?? NO_REGION;
+  const climate = climateOf(db, region);
   const fromStory = conditionFromText(reported);
 
   if (fromStory) {
@@ -585,7 +525,7 @@ export function applyWeather(db: AppDatabase, reported: string | undefined): App
       ...db.state,
       weather: {
         region,
-        condition: weatherAt(db.meta.slotId, region, db.state.inStoryDate),
+        condition: weatherAt(db.meta.slotId, region, climate, db.state.inStoryDate),
         since: db.state.inStoryDate,
         sceneSeq: db.state.sceneSeq,
         source: 'world',
@@ -609,11 +549,16 @@ function slowerBy(factor: number) {
  */
 export function formatWeatherLine(db: AppDatabase, mode: SceneModeName = 'normal'): string {
   const now = currentWeather(db);
+
+  // Indoors, underground, a station: no weather at all.
+  if (now.climate === 'none') return '';
+
   const info = CONDITION_INFO[now.condition];
-  const climateNote = CLIMATES[now.region].note;
+  const climateNote = climateTable(now.climate).note;
+  const where = regionName(db, now.region);
   const indoors = locationKindOf(db) === 'structure';
   const phrase = now.text ? `${weatherPhrase(now)} (as the story has it: ${now.text})` : weatherPhrase(now);
-  const head = `WEATHER (${REGION_NAME[now.region]}, ${now.seasonLabel}${climateNote ? `; ${climateNote}` : ''}): ${indoors ? `outside, ${phrase}` : phrase}.`;
+  const head = `WEATHER (${where ? `${where}, ` : ''}${now.seasonLabel}${climateNote ? `; ${climateNote}` : ''}): ${indoors ? `outside, ${phrase}` : phrase}.`;
   const keep = 'Keep it the same through this scene unless the story changes it.';
 
   if (mode === 'conversation') {
@@ -640,12 +585,18 @@ export function formatWeatherLine(db: AppDatabase, mode: SceneModeName = 'normal
 export function formatWeatherTracking(db: AppDatabase): string {
   const now = currentWeather(db);
 
-  return `WEATHER NOW\n${weatherPhrase(now)} (${REGION_NAME[now.region]}, ${now.seasonLabel})`;
+  if (now.climate === 'none') return '';
+
+  const where = regionName(db, now.region);
+
+  return `WEATHER NOW\n${weatherPhrase(now)} (${where ? `${where}, ` : ''}${now.seasonLabel})`;
 }
 
 /** "Rain · late autumn" for the map and the status sheet. */
-export function weatherSummary(db: Pick<AppDatabase, 'state' | 'meta'>): string {
+export function weatherSummary(db: Pick<AppDatabase, 'state' | 'meta' | 'world'>): string {
   const now = currentWeather(db);
+
+  if (now.climate === 'none') return 'Indoors';
 
   return `${CONDITION_INFO[now.condition].short} · ${now.seasonLabel}`;
 }

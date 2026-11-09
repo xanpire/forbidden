@@ -1,11 +1,9 @@
 // One turn's state change (applyTurnDiff) and the model calls behind memory:
 // the state step and the summaries. The pieces live in entities, bonds,
-// facts, clock, jutsu, log and stateBlock.
+// facts, clock, log and stateBlock.
 
 import { type ChatRequest, completeChat } from '../openrouter';
-import { applyAbilityChanges } from './abilities';
 import { applyBondDiff, syncBondSides } from './bonds';
-import { applyCanonEndgames } from './canonEndgame';
 import { daysBetween, formatDate } from './calendar';
 import { applyClockChange, applyClockTick } from './clock';
 import { applyCompanionChanges, applySharedScene, castWithCompanions } from './companions';
@@ -18,7 +16,6 @@ import { applyGrudgeChanges } from './grudges';
 import { applyReputationChanges } from './reputation';
 import { restBlocked } from './safehouses';
 import { applyFactDiff, applyThreadDiff, endFacts, expireFacts, recordSceneEvent } from './facts';
-import { applyJutsuDiff, isBareNatureName, jutsuKey } from './jutsu';
 import { settleNewlyMet } from './met';
 import { cloneDatabase } from './log';
 import { buildArcSummaryPrompt, buildExtractionPrompt, buildSceneSummaryPrompt, buildTimeSkipPrompt } from './prompt';
@@ -48,7 +45,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   }
 
   // A night's rest clears everyone's look of the moment (wet, bloodied,
-  // Sharingan active); this turn's updates then say how they look after it.
+  // eyes red from crying); this turn's updates then say how they look after it.
   if (isRest(diff)) {
     next = {
       ...next,
@@ -88,14 +85,6 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
       }
     }
   }
-
-  if (Array.isArray(diff.jutsuUsed)) {
-    for (const jutsu of diff.jutsuUsed) {
-      next = applyJutsuDiff(next, jutsu);
-    }
-  }
-
-  next = applyAbilityChanges(next, diff);
 
   // Who the scene cast puts in the room this turn. Only they can be met: a
   // bond, grudge or join for someone unmet who isn't here changes nothing.
@@ -180,8 +169,6 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   // Temporary conditions run out; a long stretch of rest ends the "until rest" ones
   // (not in a compromised safehouse: the player may not sleep there at all).
   next = expireFacts(next, { rested: isRest(diff) && !restBlocked(next) });
-  // After the clock: a bond the story set this turn cannot outlast canon.
-  next = applyCanonEndgames(next);
 
   next.indices = buildIndices(next);
 
@@ -222,24 +209,6 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
     next.state.worldDescription = state.worldDescription.trim().slice(0, 220);
   }
 
-  if (Array.isArray(state.jutsuAdded)) {
-    // Same jutsu under "Style" or "Release": keep the name already listed.
-    const listed = new Set(next.state.jutsu.map(jutsuKey));
-    const added = state.jutsuAdded.filter((name) => {
-      if (!name || isBareNatureName(name) || listed.has(jutsuKey(name))) {
-        return false;
-      }
-      listed.add(jutsuKey(name));
-      return true;
-    });
-    next.state.jutsu = uniqueList([...next.state.jutsu, ...added]).slice(-12);
-  }
-
-  if (Array.isArray(state.jutsuRemoved)) {
-    const removed = new Set(state.jutsuRemoved.map(jutsuKey));
-    next.state.jutsu = next.state.jutsu.filter((jutsu) => !removed.has(jutsuKey(jutsu)));
-  }
-
   if (Array.isArray(state.inventoryAdded)) {
     next.state.inventory = uniqueList([
       ...next.state.inventory,
@@ -277,8 +246,8 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   next = applyClockChange(next, state);
 
-  if (typeof state.canonPoint === 'string' && state.canonPoint.trim()) {
-    next.state.canonPoint = state.canonPoint.trim().slice(0, 220);
+  if (typeof state.worldPoint === 'string' && state.worldPoint.trim()) {
+    next.state.worldPoint = state.worldPoint.trim().slice(0, 220);
   }
 
   if (typeof state.chapter === 'number' && Number.isFinite(state.chapter)) {
@@ -387,7 +356,7 @@ export async function extractTurnDiff(options: {
   recordDebugState(debugTurnId, { status: 'running', raw, note });
 
   // Still unreadable: the caller falls back to what the app can read from
-  // the prose itself (clock, pace, who is named, jutsu the player called).
+  // the prose itself (clock, pace, who is named).
   if (!parsed) {
     return null;
   }

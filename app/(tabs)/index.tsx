@@ -47,7 +47,6 @@ import {
   formatStoryDate,
   timeOfDayOf,
 } from '@/lib/rpg/calendar';
-import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { streamingPreview, stripNarrationJson } from '@/lib/rpg/prompt';
 import { useGame } from '@/lib/rpg/game';
 import { companionsOf } from '@/lib/rpg/companions';
@@ -61,7 +60,7 @@ import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { fightOptionInput, resolveTurnMode } from '@/lib/rpg/sceneMode';
 import {
-  FLASHBACK_BY_ID,
+  flashbackById,
   REMEMBER_INPUT,
   activeFlashback,
   flashbackDateLine,
@@ -337,7 +336,7 @@ export default function StoryScreen() {
       const memory = message.flashback;
       // A flashback opens with its date line, so it is never taken for the present.
       const opens = memory && story[index - 1]?.flashback?.id !== memory.id;
-      const record = memory ? FLASHBACK_BY_ID[memory.id] : undefined;
+      const record = memory ? flashbackById(db, memory.id) : undefined;
 
       return {
         id: message.id,
@@ -649,7 +648,7 @@ export default function StoryScreen() {
   const remember = !isNarrating ? rememberChip(db, [...messages].reverse().find((m) => m.role === 'assistant')?.id) : null;
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
   const night = ['night', 'evening'].includes(timeOfDayOf(state.inStoryDate));
-  const weather = db ? currentWeather(playing ? flashbackView(db) ?? db : db) : { condition: 'clear' as const, seasonLabel: '', night, region: 'fire' as const };
+  const weather = db ? currentWeather(playing ? flashbackView(db) ?? db : db) : { condition: 'clear' as const, seasonLabel: '', night, climate: 'none' as const };
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
@@ -663,7 +662,7 @@ export default function StoryScreen() {
       : turnMode?.with.length && shownMode !== 'normal'
         ? turnMode.with.slice(0, 2).join(', ')
         : null;
-  const location = localizePlaceNames(state.location);
+  const location = state.location;
 
   return (
     <KeyboardAvoidingView
@@ -725,17 +724,14 @@ export default function StoryScreen() {
 
           {!storyStarted ? (
             <View style={styles.seed}>
-              <Text style={styles.seedTitle}>The rain hasn’t stopped.</Text>
+              <Text style={styles.seedTitle}>{db.state.location}</Text>
               <Text style={type.prose}>
-                Days ago Itachi told you he would kill the clan. You fought him, you lost, and he
-                sent you here to wait. Now you crouch in the forest outside the Leaf, soaked to the
-                bone, not knowing if he went through with it — or who is still alive. He promised you
-                an answer. Every drop sounds like footsteps.
+                {db.events.find((event) => event.tags.includes('opening'))?.summary ?? db.state.worldDescription}
               </Text>
               <AppButton
                 disabled={!apiKey}
-                label="Wait for him"
-                onPress={() => void submit('*You wait in the rain for Itachi.*')}
+                label="Begin"
+                onPress={() => void submit('*You take in where you are.*')}
                 style={styles.seedButton}
               />
             </View>

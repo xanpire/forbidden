@@ -1,151 +1,52 @@
-// The map (living-world Stage 4, section 14).
+// Where the player has been, and where the people they know are (living-world
+// Stage 4, section 14).
 //
-// A stylised map of the shinobi world built on the same geography as the
-// GEOGRAPHY lore and geography.ts: the countries, the great villages, the
-// places the story uses (the Naka Shrine and the Uzumaki mask shrine in the
-// Leaf, Karin's Grass, Uzushio's ruins, the Land of Silence), the player's road over
-// time, and where the people he knows are, as far as he knows. That last part
-// is what he was told or last saw, never the truth the save holds.
-//
-// Coordinates are on a 100 × 100 board (x east, y south); the outlines are
-// in mapShapes.ts, traced after the canon maps.
+// Built on the world the player wrote: its regions (with travel days between
+// them) and the places inside them. There are no map coordinates; the You tab
+// shows a list (regions → places, the player's road, people as far as the
+// player knows). Where people are is what the player was told or last saw,
+// never the truth the save holds.
 
 import { daysBetween } from './calendar';
 import { companionsOf } from './companions';
 import { isDeceased, playerKnowsDeath } from './deaths';
-import {
-  REGION_NAME,
-  currentRegion,
-  isRegion,
-  regionOf,
-  travelDaysBetween,
-  whereaboutsRegion,
-  type Region,
-} from './geography';
-import { localizePlaceNames } from './glossary';
-import type { AppDatabase, CalendarDate, EntityRecord, TravelStop } from './types';
-import { hashText } from './util';
-import { REGION_SHAPES } from './mapShapes';
+import { currentRegion, isRegion, regionName, regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
+import type { AppDatabase, CalendarDate, EntityRecord, PlaceDef, TravelStop } from './types';
 import { regionWeather, weatherTravelFactor } from './weather';
 import { isPlayer } from './player';
 
-export const MAP_WIDTH = 100;
-export const MAP_HEIGHT = 100;
+type WithWorld = Pick<AppDatabase, 'world'>;
 
-export { REGION_SHAPES, regionAt, type RegionShape } from './mapShapes';
-
-export type MapPlaceKind = 'village' | 'place' | 'shrine' | 'ruin' | 'hideout';
-
-export type MapPlace = {
-  id: string;
-  name: string;
-  /** null for places off every road the player knows (the Land of Silence). */
-  region: Region | null;
-  x: number;
-  y: number;
-  kind: MapPlaceKind;
-  /** Matches the story's location text. */
-  match: RegExp;
-  /** A place inside another (a shrine in the Leaf): listed under it, drawn with it. */
-  parent?: string;
-  /** No known location: never drawn, listed apart (x and y are unused). */
-  unplaced?: boolean;
-  /** Where its name goes when the map is zoomed in (below the dot unless that hits a neighbour). */
-  nameAt?: 'above' | 'right' | 'left';
-  note?: string;
-};
-
-export const MAP_PLACES: MapPlace[] = [
-  // The Land of Fire.
-  { id: 'leaf', name: 'Hidden Leaf Village', region: 'fire', x: 41, y: 33.5, kind: 'village', match: /\b(hidden leaf|konoha(gakure)?|leaf village|the Leaf)\b/i },
-  { id: 'uchiha-district', name: 'Uchiha district', region: 'fire', x: 41, y: 33.5, kind: 'ruin', parent: 'leaf', match: /\buchiha (district|compound|quarter)\b/i, note: 'Your clan’s streets, empty since the massacre.' },
-  { id: 'naka-shrine', name: 'Naka Shrine', region: 'fire', x: 41, y: 33.5, kind: 'shrine', parent: 'leaf', match: /\bnaka shrine\b/i, note: 'The Uchiha stone tablet lies beneath it.' },
-  { id: 'naka-river', name: 'Naka River', region: 'fire', x: 41, y: 33.5, kind: 'place', parent: 'leaf', match: /\bnaka river\b/i },
-  { id: 'mask-shrine', name: 'Uzumaki mask shrine', region: 'fire', x: 41, y: 33.5, kind: 'shrine', parent: 'leaf', match: /\b(uzumaki )?mask shrine\b/i, note: 'Kept by the Uzumaki since Uzushio fell, on the edge of the Leaf.' },
-  { id: 'valley-end', name: 'Valley of the End', region: 'fire', x: 43.05, y: 24.15, kind: 'place', match: /\bvalley of the end\b/i, note: 'On the Land of Fire’s northern border with the Sound.' },
-  { id: 'tanzaku', name: 'Tanzaku Town', region: 'fire', x: 37.6, y: 38.6, kind: 'place', match: /\btanzaku\b/i },
-  { id: 'fire-temple', name: 'Fire Temple', region: 'fire', x: 51, y: 31.5, kind: 'shrine', match: /\bfire temple\b/i },
-  // The west: Wind, Rivers, Rain, Grass, Birds and Silence.
-  { id: 'sand', name: 'Hidden Sand Village', region: 'wind', x: 23.5, y: 40.4, kind: 'village', match: /\b(hidden sand|sunagakure|the Sand)\b/i },
-  { id: 'loran', name: 'Ruins of Loran', region: 'wind', x: 5.65, y: 45.5, kind: 'ruin', match: /\b(loran|rouran)\b/i, note: 'A desert city long since buried in sand.' },
-  { id: 'ceramic', name: 'Ceramic Village', region: 'wind', x: 26.8, y: 49.6, kind: 'place', match: /\bceramic village\b/i, note: 'A potters’ village in the mountains where Wind meets Rivers.' },
-  { id: 'valley-village', name: 'Hidden Valley Village', region: 'rivers', x: 32.5, y: 41.9, kind: 'village', match: /\b(hidden valley|tanigakure|village hidden in the vale)\b/i },
-  { id: 'artisans', name: 'Artisans Village', region: 'rivers', x: 34.7, y: 47.4, kind: 'place', match: /\bartisans'? village\b/i, note: 'Only ever seen in the anime.' },
-  { id: 'rain', name: 'Hidden Rain Village', region: 'rain', x: 25.1, y: 29.2, kind: 'village', match: /\b(hidden rain|amegakure|the Rain)\b/i, note: 'The Akatsuki’s stronghold, in the tower.' },
-  { id: 'grass', name: 'Hidden Grass Village', region: 'grass', x: 25.75, y: 26.25, kind: 'village', nameAt: 'right', match: /\b(hidden grass|kusagakure)\b/i, note: 'Where Karin is from.' },
-  { id: 'tenchi-bridge', name: 'Tenchi Bridge', region: 'grass', x: 27.6, y: 28.3, kind: 'place', nameAt: 'right', match: /\btenchi bridge\b/i },
-  { id: 'hozuki-castle', name: 'Hōzuki Castle', region: 'grass', x: 25.75, y: 26.25, kind: 'place', parent: 'grass', match: /\b(h[oō]zuki castle|blood prison)\b/i, note: 'The Blood Prison. Said to stand by the sea, though Grass has no coast.' },
-  { id: 'hidden-rock', name: 'Hidden Rock Village', region: 'birds', x: 15.5, y: 28.6, kind: 'village', match: /\b(hidden rock|ishigakure)\b/i, note: 'A small village between Earth and Wind; the anime calls the land around it the Land of Birds.' },
-  { id: 'silence', name: 'Curtain Village', region: 'silence', x: 4.2, y: 24.4, kind: 'village', match: /\b(land of silence|curtain village)\b/i, note: 'The walled Land of Silence at the continent’s western edge: it takes in missing-nin, past a guarded checkpoint.' },
-  // The north: Earth, Waterfall, the Graveyard, Iron, Sound, Hot Water, Frost.
-  { id: 'stone', name: 'Hidden Stone Village', region: 'earth', x: 23.75, y: 13, kind: 'village', match: /\b(hidden stone|iwagakure|the Stone)\b/i },
-  { id: 'waterfall', name: 'Hidden Waterfall Village', region: 'waterfall', x: 31.6, y: 16.75, kind: 'village', match: /\b(hidden waterfall|takigakure)\b/i },
-  { id: 'mountain-graveyard', name: 'Mountain Graveyard', region: 'graveyard', x: 43.5, y: 12.6, kind: 'hideout', nameAt: 'above', match: /\b(mountain graveyard|graveyard of (the )?mountains?)\b/i, note: 'A wasteland of enormous bones, with caverns beneath it.' },
-  { id: 'iron', name: 'Samurai of the Land of Iron', region: 'iron', x: 46.8, y: 4.6, kind: 'place', nameAt: 'above', match: /\b(land of iron|iron country|samurai)\b/i, note: 'Canon never shows where the Land of Iron lies: here, on the snowy tip north of the Graveyard, is the best guess.' },
-  { id: 'three-wolves', name: 'Three Wolf Mountains', region: 'iron', x: 40.6, y: 6.6, kind: 'place', nameAt: 'above', match: /\b(three wolf mountains?|land of medicines?|howling wolf|awakening wolf|nourishing wolf)\b/i, note: 'Three wolf-shaped peaks with a village on each, among fields of medicinal flowers.' },
-  { id: 'sound', name: 'Hidden Sound Village', region: 'rice', x: 45.2, y: 19.3, kind: 'hideout', nameAt: 'above', match: /\b(hidden sound|otogakure|sound (village|hideout|base)|orochimaru'?s (hideout|lair|base))\b/i, note: 'Not one village but Orochimaru’s scattered hidden bases.' },
-  { id: 'hot-springs', name: 'Hidden Hot Springs Village', region: 'hot-water', x: 47.4, y: 20.6, kind: 'village', nameAt: 'right', match: /\b(yugakure|hot springs?|hidden steam)\b/i },
-  { id: 'bamboo', name: 'Bamboo Village', region: 'hot-water', x: 58.2, y: 30, kind: 'place', match: /\bbamboo village\b/i, note: 'A village on Hot Water’s coast, on the road north to Lightning.' },
-  { id: 'frost', name: 'Hidden Frost Village', region: 'frost', x: 52.5, y: 18.4, kind: 'village', nameAt: 'right', match: /\b(hidden frost|shimogakure)\b/i },
-  { id: 'cloud', name: 'Hidden Cloud Village', region: 'lightning', x: 64, y: 13.4, kind: 'village', match: /\b(hidden cloud|kumogakure|the Cloud)\b/i },
-  { id: 'genbu', name: 'Island Turtle', region: 'lightning', x: 74.75, y: 17.75, kind: 'place', match: /\b(island turtle|genbu)\b/i, note: 'An island that is really a giant turtle, drifting off Lightning’s coast.' },
-  // The east and the sea.
-  { id: 'uzushio', name: 'Ruins of Uzushio', region: 'whirlpools', x: 60.1, y: 36.7, kind: 'ruin', nameAt: 'above', match: /\b(uzushio(gakure)?|hidden whirlpool|hidden eddy)\b/i, note: 'Your father’s people. Ruins, old seals and graves.' },
-  { id: 'mist', name: 'Hidden Mist Village', region: 'water', x: 79, y: 37.5, kind: 'village', nameAt: 'above', match: /\b(hidden mist|kirigakure|the Mist)\b/i },
-  { id: 'nadeshiko', name: 'Nadeshiko Village', region: 'water', x: 88.5, y: 46, kind: 'place', match: /\bnadeshiko\b/i, note: 'An island village of women shinobi near the Land of Water. Only ever seen in the anime.' },
-  { id: 'waves', name: 'Land of Waves', region: 'waves', x: 39.3, y: 55.2, kind: 'place', nameAt: 'above', match: /\b(land of waves|wave country|tazuna)\b/i, note: 'A small island south of the Leaf, lapped by gentle waves; famous for its mangroves.' },
-  { id: 'naruto-bridge', name: 'Great Naruto Bridge', region: 'waves', x: 43.8, y: 55.35, kind: 'place', nameAt: 'right', match: /\bgreat naruto bridge\b/i },
-  // The anime-only south.
-  { id: 'tea-fishing', name: 'Fishing village of the Land of Tea', region: 'tea', x: 44.7, y: 67.2, kind: 'place', match: /\b(land of tea|tea country)\b.*\bfishing village\b|\bfishing village\b.*\b(land of tea|tea country)\b/i },
-  { id: 'degarashi', name: 'Degarashi Port', region: 'tea', x: 46.7, y: 75.3, kind: 'place', match: /\bdegarashi\b/i },
-  { id: 'modoroki', name: 'Modoroki Shrine', region: 'tea', x: 64, y: 64.3, kind: 'shrine', match: /\b(modoroki shrine|nagi island)\b/i, note: 'On Nagi Island.' },
-  { id: 'todoroki', name: 'Todoroki Great Shrine', region: 'tea', x: 79.8, y: 81.8, kind: 'shrine', match: /\b(todoroki (great )?shrine|ouza island)\b/i, note: 'At the southern end of Ouza Island.' },
-  // Off every map the player knows.
-  { id: 'snow', name: 'Land of Snow', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\b(land of snow|snow country|land of spring)\b/i, note: 'Reached by ship from the Land of Fire; no map you know shows where.' },
-  { id: 'valley-lies', name: 'Valley of Lies', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\b(valley of lies|shangri-?la)\b/i, note: 'A mountain valley far from every village: five days from the Rain, they say.' },
-  { id: 'flowers', name: 'Land of Flowers', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\bland of flowers\b/i, note: 'Somewhere on the Land of Earth’s border.' },
-  { id: 'moon', name: 'Land of the Moon', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\b(land of the moon|moon country|crescent moon kingdom)\b/i, note: 'An island kingdom somewhere in the sea to the south.' },
-];
-
-const PLACE_BY_ID = new Map(MAP_PLACES.map((place) => [place.id, place]));
-
-/** Where a place's name sits when the map is zoomed in, beside its dot. */
-export function placeNameSpot(place: MapPlace): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } {
-  const r = place.kind === 'village' ? 0.85 : 0.55;
-
-  if (place.nameAt === 'above') return { x: place.x, y: place.y - r - 0.45, anchor: 'middle' };
-  if (place.nameAt === 'right') return { x: place.x + r + 0.5, y: place.y + 0.33, anchor: 'start' };
-  if (place.nameAt === 'left') return { x: place.x - r - 0.5, y: place.y + 0.33, anchor: 'end' };
-
-  return { x: place.x, y: place.y + r + 1.1, anchor: 'middle' };
+function placesOf(db: WithWorld | null | undefined): PlaceDef[] {
+  return Array.isArray(db?.world?.places) ? db!.world.places : [];
 }
 
-export function mapPlace(id: string | undefined | null): MapPlace | null {
-  return id ? PLACE_BY_ID.get(id) ?? null : null;
+function escape(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** The map place a location names (earliest mention wins; a shrine in the Leaf beats the Leaf). */
-export function placeIdOf(text: string | undefined | null): string | null {
+export function mapPlace(db: WithWorld | null | undefined, id: string | undefined | null): PlaceDef | null {
+  return id ? placesOf(db).find((place) => place.id === id) ?? null : null;
+}
+
+/** The world place a location names (earliest mention wins; on a tie, the longer name). */
+export function placeIdOf(db: WithWorld | null | undefined, text: string | undefined | null): string | null {
   if (!text) return null;
 
-  const localized = localizePlaceNames(text);
-  let best: { index: number; place: MapPlace } | null = null;
+  let best: { index: number; place: PlaceDef } | null = null;
 
-  for (const place of MAP_PLACES) {
-    const found = place.match.exec(localized);
+  for (const place of placesOf(db)) {
+    const name = place.name.trim();
+
+    if (name.length < 3) continue;
+
+    const found = new RegExp(`\\b${escape(name)}\\b`, 'i').exec(text);
 
     if (!found) continue;
-    // Prefer the earliest mention; on a tie, the more specific (a place with a parent).
-    if (!best || found.index < best.index || (found.index === best.index && place.parent && !best.place.parent)) {
+
+    if (!best || found.index < best.index || (found.index === best.index && name.length > best.place.name.length)) {
       best = { index: found.index, place };
     }
-  }
-
-  // "the Naka Shrine in the ruins of the Hidden Leaf": the shrine, not the Leaf.
-  if (best && !best.place.parent) {
-    const child = MAP_PLACES.find((place) => place.parent === best!.place.id && place.match.test(localized));
-
-    if (child) return child.id;
   }
 
   return best?.place.id ?? null;
@@ -159,7 +60,7 @@ function samePlace(a: string, b: string) {
 
 /**
  * After a turn: a new place goes on the player's road. A place that names no
- * country stays in the country he was last in.
+ * region stays in the region the player was last in.
  */
 export function recordTravel(db: AppDatabase): AppDatabase {
   const log = db.state.travelLog ?? [];
@@ -168,18 +69,22 @@ export function recordTravel(db: AppDatabase): AppDatabase {
 
   if (!place || (last && samePlace(last.place, place))) return db;
 
-  const region = regionOf(place) ?? (last && isRegion(last.region) ? last.region : null) ?? (log.length === 0 ? currentRegion(db) : null);
+  const placeId = placeIdOf(db, place);
+  const region =
+    regionOf(db, place) ??
+    (last && isRegion(db, last.region) ? last.region : null) ??
+    (log.length === 0 ? currentRegion(db) : null);
   const stop: TravelStop = {
     place: place.slice(0, 140),
     ...(region ? { region } : {}),
-    ...(placeIdOf(place) ? { placeId: placeIdOf(place)! } : {}),
+    ...(placeId ? { placeId } : {}),
     date: db.state.inStoryDate,
   };
 
   return { ...db, state: { ...db.state, travelLog: [...log, stop].slice(-TRAVEL_LOG_LIMIT) } };
 }
 
-export function normalizeTravelLog(value: unknown, location: string, date: CalendarDate): TravelStop[] {
+export function normalizeTravelLog(db: WithWorld, value: unknown, location: string, date: CalendarDate): TravelStop[] {
   const stops = Array.isArray(value)
     ? (value as TravelStop[]).filter(
         (stop) => stop && typeof stop.place === 'string' && stop.date && typeof stop.date.year === 'number'
@@ -188,97 +93,60 @@ export function normalizeTravelLog(value: unknown, location: string, date: Calen
 
   if (stops.length > 0) return stops.slice(-TRAVEL_LOG_LIMIT);
 
-  // Older saves: the road starts where the player is now.
-  const region = regionOf(location);
-  const placeId = placeIdOf(location);
+  // A new or older save: the road starts where the player is now.
+  const region = regionOf(db, location);
+  const placeId = placeIdOf(db, location);
 
   return location
     ? [{ place: location.slice(0, 140), ...(region ? { region } : {}), ...(placeId ? { placeId } : {}), date }]
     : [];
 }
 
-export type MapPoint = { x: number; y: number };
-
-/** Where a stop goes on the board: its place, else its country (spread a little so stops don't stack). */
-export function pointOfStop(stop: Pick<TravelStop, 'place' | 'region' | 'placeId'>): MapPoint | null {
-  const place = mapPlace(stop.placeId);
-
-  if (place && !place.unplaced) return { x: place.x, y: place.y };
-  if (!isRegion(stop.region)) return null;
-
-  const shape = REGION_SHAPES[stop.region];
-  const hash = hashText(stop.place.toLowerCase());
-  const angle = ((hash % 360) * Math.PI) / 180;
-  const reach = 0.25 + ((hash >>> 9) % 40) / 100;
-
-  return {
-    x: shape.x + Math.cos(angle) * shape.rx * reach,
-    y: shape.y + Math.sin(angle) * shape.ry * reach,
-  };
-}
-
-/** The player's road as points, oldest first, with repeats of the same spot folded. */
-export function routePoints(db: AppDatabase, limit = 60): (MapPoint & { date: CalendarDate; place: string })[] {
-  const points: (MapPoint & { date: CalendarDate; place: string })[] = [];
-
-  for (const stop of db.state.travelLog ?? []) {
-    const point = pointOfStop(stop);
-
-    if (!point) continue;
-
-    const previous = points[points.length - 1];
-
-    if (previous && Math.abs(previous.x - point.x) < 0.5 && Math.abs(previous.y - point.y) < 0.5) continue;
-
-    points.push({ ...point, date: stop.date, place: stop.place });
-  }
-
-  return points.slice(-limit);
-}
-
 export type PlaceVisits = { count: number; first: CalendarDate; last: CalendarDate };
 
-/** How often and when the player has been at each map place (a shrine also counts for its village). */
+/** How often and when the player has been at each world place. */
 export function placeVisits(db: AppDatabase): Map<string, PlaceVisits> {
   const visits = new Map<string, PlaceVisits>();
-  const add = (id: string, date: CalendarDate) => {
-    const known = visits.get(id);
-
-    visits.set(id, known ? { count: known.count + 1, first: known.first, last: date } : { count: 1, first: date, last: date });
-  };
 
   for (const stop of db.state.travelLog ?? []) {
-    const place = mapPlace(stop.placeId);
+    const place = mapPlace(db, stop.placeId);
 
     if (!place) continue;
 
-    add(place.id, stop.date);
-    if (place.parent) add(place.parent, stop.date);
+    const known = visits.get(place.id);
+
+    visits.set(
+      place.id,
+      known ? { count: known.count + 1, first: known.first, last: stop.date } : { count: 1, first: stop.date, last: stop.date }
+    );
   }
 
   return visits;
 }
 
-/** Countries the player has set foot in. */
+/** Regions the player has set foot in. */
 export function regionsVisited(db: AppDatabase): Set<Region> {
-  return new Set((db.state.travelLog ?? []).map((stop) => stop.region).filter(isRegion));
+  return new Set((db.state.travelLog ?? []).map((stop) => stop.region).filter((region): region is Region => isRegion(db, region)));
 }
 
 /**
- * Shinobi days from where the player is to a place, plain and in the weather
- * where he is now. Null for a place off every road.
+ * Travel days from where the player is to a region, plain and in the weather
+ * where they are now. Null when the world has no geography.
  */
 export function travelEstimate(db: AppDatabase, to: Region | null): { days: number; inWeather: number } | null {
-  if (!to) return null;
-
   const from = currentRegion(db);
-  const days = travelDaysBetween(from, to);
+
+  if (!to || !from) return null;
+
+  const days = travelDaysBetween(db, from, to);
   const factor = Math.max(weatherTravelFactor(regionWeather(db, from)), weatherTravelFactor(regionWeather(db, to)));
 
   return { days, inWeather: Math.round(days * factor * 4) / 4 };
 }
 
 export function formatTravelDays(days: number) {
+  if (days < 1 / 12) return 'a few minutes';
+  if (days < 0.5) return `about ${Math.max(1, Math.round(days * 24))} hours`;
   if (days < 1) return 'under a day';
   if (days === 1) return 'about a day';
 
@@ -289,7 +157,7 @@ export function formatTravelDays(days: number) {
 
 export type KnownWhereabouts = {
   entity: EntityRecord;
-  region: Region;
+  region: Region | null;
   /** told: the story said where they went; seen: where you last saw them; assumed: their home; with-you: travelling with you. */
   basis: 'told' | 'seen' | 'assumed' | 'with-you';
   /** In your words, for the list. */
@@ -298,12 +166,10 @@ export type KnownWhereabouts = {
   daysOld?: number;
 };
 
-const HOME_TAGS = ['akatsuki', 'leaf', 'sand', 'mist', 'cloud', 'stone', 'sound', 'rain', 'waves', 'waterfall'];
-
 /**
- * Where the people the player has met are, as far as he knows: what he was told,
- * else where he last saw them, else where they would usually be. Someone
- * who died without the player knowing is still where he thinks they are.
+ * Where the people the player has met are, as far as they know: what they
+ * were told, else where they last saw them, else where they would usually be.
+ * Someone who died without the player knowing is still where the player thinks.
  */
 export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
   const companions = new Set(companionsOf(db).map((entity) => entity.id));
@@ -316,26 +182,30 @@ export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
     if (isDeceased(entity) && playerKnowsDeath(db, entity)) continue;
 
     if (companions.has(entity.id)) {
-      result.push({ entity, region: here, basis: 'with-you', detail: 'Travelling with you' });
+      result.push({ entity, region: here, basis: 'with-you', detail: 'With you' });
       continue;
     }
 
-    const told = regionOf(entity.whereabouts);
-    const seen = regionOf(entity.lastSeenAt);
     const daysOld = entity.lastSeen ? Math.max(0, daysBetween(entity.lastSeen, now)) : undefined;
     const ago = daysOld === undefined ? '' : daysOld < 1 ? 'today' : daysOld < 2 ? 'yesterday' : `${Math.round(daysOld)} days ago`;
 
-    if (told) {
-      result.push({ entity, region: told, basis: 'told', detail: `Last word: ${localizePlaceNames(entity.whereabouts!)}`, daysOld });
+    if (entity.whereabouts) {
+      result.push({ entity, region: regionOf(db, entity.whereabouts), basis: 'told', detail: `Last word: ${entity.whereabouts}`, daysOld });
       continue;
     }
 
-    if (seen) {
-      result.push({ entity, region: seen, basis: 'seen', detail: `You saw them there${ago ? ` ${ago}` : ''}`, daysOld });
+    if (entity.lastSeenAt) {
+      result.push({
+        entity,
+        region: regionOf(db, entity.lastSeenAt),
+        basis: 'seen',
+        detail: `You saw them at ${entity.lastSeenAt}${ago ? ` ${ago}` : ''}`,
+        daysOld,
+      });
       continue;
     }
 
-    const home = regionOf(entity.role) ?? whereaboutsFromTags(entity);
+    const home = whereaboutsRegion(db, entity);
 
     if (home) result.push({ entity, region: home, basis: 'assumed', detail: 'Where they would usually be', daysOld });
   }
@@ -347,12 +217,6 @@ export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
   );
 }
 
-function whereaboutsFromTags(entity: EntityRecord): Region | null {
-  if (!HOME_TAGS.some((tag) => entity.tags.includes(tag))) return null;
-
-  return whereaboutsRegion({ ...entity, whereabouts: undefined, lastSeenAt: undefined, role: undefined });
-}
-
-export function regionLabel(region: Region | null) {
-  return region ? REGION_NAME[region].replace(/^the /, 'The ') : 'Off the map';
+export function regionLabel(db: WithWorld, region: Region | null) {
+  return regionName(db, region) ?? 'Somewhere else';
 }

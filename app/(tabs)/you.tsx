@@ -5,17 +5,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Segmented } from '@/components/List';
 import { BondsSection } from '@/components/player/BondsSection';
 import { JournalSection } from '@/components/player/JournalSection';
-import { JutsuSection } from '@/components/player/JutsuSection';
 import { MapSection } from '@/components/player/MapSection';
 import { PortraitHeader } from '@/components/player/PortraitHeader';
 import { colors, spacing } from '@/constants/theme';
 import { useGame } from '@/lib/rpg/game';
 
-type YouTab = 'bonds' | 'jutsu' | 'journal' | 'map';
+type YouTab = 'bonds' | 'journal' | 'map';
 
 const TABS: { value: YouTab; label: string }[] = [
   { value: 'bonds', label: 'Bonds' },
-  { value: 'jutsu', label: 'Jutsu' },
   { value: 'journal', label: 'Journal' },
   { value: 'map', label: 'Map' },
 ];
@@ -46,7 +44,6 @@ export default function YouScreen() {
             <Segmented onChange={setTab} options={TABS} value={tab} />
           </View>
           {tab === 'bonds' ? <BondsSection /> : null}
-          {tab === 'jutsu' ? <JutsuSection /> : null}
           {tab === 'journal' ? <JournalSection /> : null}
           {tab === 'map' ? <MapSection /> : null}
         </ScrollView>

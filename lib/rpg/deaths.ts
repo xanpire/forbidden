@@ -3,15 +3,15 @@
 // not only as a fact that may or may not make the 10-fact cut.
 //
 // Two ways someone dies during play:
-// - a canon milestone fires (canonData `deaths`), stamped with the milestone's
-//   event, so the player only "knows" once that news reaches them or he was there;
+// - a timeline event fires (its `deaths`), stamped with that event, so the
+//   player only "knows" once that news reaches them or they were there;
 // - the state tracker reports `deaths` (someone dies on screen, or the player sees
 //   the body or is told), which the player knows at once.
 //
 // What the player knows matters: the bonds screen never shows a death before the
-// story has told him, so it cannot spoil news that is still on its way.
+// story has told them, so it cannot spoil news that is still on its way.
 
-import { CANON_MILESTONES } from './canonData';
+import { eventIdFor } from './timeline';
 import type { AppDatabase, CalendarDate, EntityRecord } from './types';
 import { isPlayer } from './player';
 
@@ -23,8 +23,8 @@ export type DeathMark = {
   cause?: string;
   /** The player saw it or was told. */
   known?: boolean;
-  /** The canon event that killed them; the player knows once this news is heard. */
-  canonEventId?: string;
+  /** The timeline event that killed them; the player knows once this news is heard. */
+  timelineEventId?: string;
 };
 
 /** Dead, whether or not the player knows it yet. */
@@ -49,7 +49,7 @@ export function playerKnowsDeath(db: AppDatabase, entity: EntityRecord): boolean
     return true;
   }
 
-  return Boolean(death.canonEventId && db.state.canonProgress?.heard?.[death.canonEventId]);
+  return Boolean(death.timelineEventId && db.state.timelineProgress?.heard?.[death.timelineEventId]);
 }
 
 export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark): AppDatabase {
@@ -71,15 +71,15 @@ export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark)
     date: previous?.date ?? mark.date ?? db.state.inStoryDate,
     ...(previous?.cause || cause ? { cause: previous?.cause || cause } : {}),
     known: Boolean(previous?.known || mark.known),
-    ...(previous?.canonEventId || mark.canonEventId
-      ? { canonEventId: previous?.canonEventId ?? mark.canonEventId }
+    ...(previous?.timelineEventId || mark.timelineEventId
+      ? { timelineEventId: previous?.timelineEventId ?? mark.timelineEventId }
       : {}),
   };
 
   if (
     previous &&
     previous.known === deceased.known &&
-    previous.canonEventId === deceased.canonEventId &&
+    previous.timelineEventId === deceased.timelineEventId &&
     previous.cause === deceased.cause
   ) {
     return db;
@@ -92,13 +92,13 @@ export function markDeceased(db: AppDatabase, entityId: string, mark: DeathMark)
 }
 
 /**
- * Canon deaths, by exact name or alias only (hidden spoiler names included,
- * since this is the app's own canon data) — so "Inoichi Yamanaka" can never land on Ino and "Shikaku
- * Nara" never on Shikamaru. People the save does not have are skipped.
+ * Timeline deaths, by exact name or alias only (identities included, since
+ * this is the world's own data), so a similar name never lands on the wrong
+ * person. People the save does not have are skipped.
  */
-/** Every name a person goes by in the app's own data, identities included (Nagato, Obito). */
+/** Every name a person goes by in the world's own data, identities included. */
 function identityNames(entity: EntityRecord): string[] {
-  // Never a name someone else owns (the masked man's claimed "Madara Uchiha").
+  // Never a name someone else owns (a claimed identity marked alias: false).
   const identities = (entity.identities ?? []).filter((identity) => identity.alias !== false);
 
   return [
@@ -117,8 +117,8 @@ export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMa
     const entity = next.entities.find(
       (item) =>
         item.type === 'character' &&
-        // Canon data, not story text: an identity the player hasn't learned still
-        // finds its person ("Nagato" is Pain), without revealing it anywhere.
+        // World data, not story text: an identity the player hasn't learned still
+        // finds its person, without revealing it anywhere.
         identityNames(item).some((candidate) => candidate.trim().toLowerCase() === wanted)
     );
 
@@ -151,23 +151,22 @@ export function markAlive(db: AppDatabase, entityId: string): AppDatabase {
 
 /**
  * Brings older saves up to date when they load:
- * - canon milestones that already fired mark their dead (Jiraiya died in
- *   your save before deaths were recorded, so he is marked now);
- * - people who started out "Deceased" get a death record. If a milestone
- *   names them (Izumi and her funeral) the player knows once that news is heard;
- *   otherwise he already knows.
+ * - timeline events that already fired mark their dead;
+ * - people who started out "Deceased" get a death record. If a timeline
+ *   event names them the player knows once that news is heard; otherwise
+ *   they already know.
  * Safe to run on every load: nothing changes once the records exist.
  */
 export function normalizeDeaths(db: AppDatabase): AppDatabase {
   let next = db;
   const fired = new Set(next.events.map((event) => event.id));
-  const canonDeathEvent = new Map<string, string>();
+  const timelineDeathEvent = new Map<string, string>();
 
-  for (const milestone of CANON_MILESTONES) {
-    const eventId = `event_canon_${milestone.id}`;
+  for (const milestone of next.world?.timeline ?? []) {
+    const eventId = eventIdFor(milestone.id);
 
     for (const name of milestone.deaths ?? []) {
-      canonDeathEvent.set(name.toLowerCase(), eventId);
+      timelineDeathEvent.set(name.toLowerCase(), eventId);
     }
 
     if (!milestone.deaths?.length || !fired.has(eventId)) {
@@ -181,7 +180,7 @@ export function normalizeDeaths(db: AppDatabase): AppDatabase {
     };
     const marked = markDeathsByName(living, milestone.deaths, {
       date: event?.inStoryDate,
-      canonEventId: eventId,
+      timelineEventId: eventId,
     });
 
     if (marked !== living) {
@@ -196,12 +195,12 @@ export function normalizeDeaths(db: AppDatabase): AppDatabase {
     }
 
     const eventId = identityNames(entity)
-      .map((name) => canonDeathEvent.get(name.toLowerCase()))
+      .map((name) => timelineDeathEvent.get(name.toLowerCase()))
       .find(Boolean);
 
     return {
       ...entity,
-      deceased: eventId ? { known: false, canonEventId: eventId } : { known: true },
+      deceased: eventId ? { known: false, timelineEventId: eventId } : { known: true },
     };
   });
 

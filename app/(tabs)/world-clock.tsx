@@ -7,7 +7,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { formatClock, formatDayMonth } from '@/lib/rpg/calendar';
-import { newsUrgency, worldClock } from '@/lib/rpg/canon';
+import { newsUrgency, worldClock } from '@/lib/rpg/timeline';
 import { lettersInTransit } from '@/lib/rpg/letters';
 import { waitingConsequences } from '@/lib/rpg/consequences';
 import { livingBearers, newsOffer } from '@/lib/rpg/newsDelivery';
@@ -32,7 +32,7 @@ function Tag({ label, tone = 'plain' }: { label: string; tone?: 'plain' | 'accen
 }
 
 /**
- * Hidden screen (long-press the clock on the Story tab). Shows the canon
+ * Hidden screen (long-press the clock on the Story tab). Shows the timeline
  * scheduler as it really is — including things you haven't heard yet, so it
  * contains spoilers by design.
  */
@@ -143,9 +143,9 @@ export default function WorldClockScreen() {
               {due.map((item) => (
                 <ListRow
                   body={holding ? 'Its date has come. It fires once the fight ends.' : 'Its date has come. It fires after the event before it.'}
-                  key={item.milestone.id}
-                  meta={`${item.milestone.era} · ${dateLabel(item.opensAt)}`}
-                  title={item.milestone.title}
+                  key={item.event.id}
+                  meta={`${item.event.era ? `${item.event.era} · ` : ''}${dateLabel(item.opensAt)}`}
+                  title={item.event.title}
                 />
               ))}
             </ListCard>
@@ -154,16 +154,16 @@ export default function WorldClockScreen() {
 
         <SectionLabel>Queued</SectionLabel>
         {later.length === 0 ? (
-          <EmptyRow title="Nothing left" body="The canon timeline has run its course." />
+          <EmptyRow title="Nothing left" body="The timeline has run its course." />
         ) : (
           <ListCard>
             {visibleLater.map((item) => (
               <ListRow
-                key={item.milestone.id}
-                meta={`${item.milestone.era} · ${dateLabel(item.opensAt)} · in ${item.daysUntil} day${
+                key={item.event.id}
+                meta={`${item.event.era ? `${item.event.era} · ` : ''}${dateLabel(item.opensAt)} · in ${item.daysUntil} day${
                   item.daysUntil === 1 ? '' : 's'
                 }`}
-                title={item.milestone.title}
+                title={item.event.title}
               />
             ))}
             {later.length > QUEUE_PREVIEW ? (
@@ -180,12 +180,12 @@ export default function WorldClockScreen() {
           <>
             <SectionLabel>Open to you</SectionLabel>
             <ListCard>
-              {clock.offers.map((milestone) => (
+              {clock.offers.map((event) => (
                 <ListRow
                   body="A personal moment. It only happens if you choose it."
-                  key={milestone.id}
-                  meta={`${milestone.era}${milestone.to ? ` · until ${formatDayMonth({ ...milestone.to, day: milestone.to.day ?? 28, hour: 0, minute: 0 })}, year ${milestone.to.year}` : ''}`}
-                  title={milestone.title}
+                  key={event.id}
+                  meta={`${event.era ?? ''}${event.to ? `${event.era ? ' · ' : ''}until ${formatDayMonth({ ...event.to, day: event.to.day ?? 28, hour: 0, minute: 0 })}, year ${event.to.year}` : ''}`}
+                  title={event.title}
                 />
               ))}
             </ListCard>
@@ -238,7 +238,7 @@ export default function WorldClockScreen() {
           <ListCard>
             {firedHappened.map((item) => (
               <ListRow
-                key={item.milestone.id}
+                key={item.event.id}
                 meta={[
                   dateLabel(item.date),
                   item.heardFrom
@@ -247,7 +247,7 @@ export default function WorldClockScreen() {
                       : `heard from ${item.heardFrom}`
                     : 'not heard',
                 ].join(' · ')}
-                title={item.milestone.title}
+                title={item.event.title}
               />
             ))}
           </ListCard>
@@ -257,8 +257,8 @@ export default function WorldClockScreen() {
           <>
             <SectionLabel>Passed you by</SectionLabel>
             <ListCard>
-              {clock.missed.map((milestone) => (
-                <ListRow key={milestone.id} meta={milestone.era} title={milestone.title} />
+              {clock.missed.map((event) => (
+                <ListRow key={event.id} meta={event.era ?? null} title={event.title} />
               ))}
             </ListCard>
           </>

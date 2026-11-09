@@ -1,270 +1,158 @@
-// Where things are, in shinobi travel days.
+// Where things are, in travel days, from the world the player wrote.
 //
-// The GEOGRAPHY lore (seed.ts) gives the narrator fixed directions and
-// travel times. This module turns the same numbers into a small graph so the
-// engine can reason about distance too: how long a letter takes, how far a
-// rumour has travelled, whether someone could plausibly cross the player's path.
+// `db.world.regions` lists each region and its neighbours with the days
+// between them. This module turns that into a small graph so the engine can
+// reason about distance: how long a letter takes, how far a rumour has
+// travelled, whether someone could plausibly cross the player's path.
 //
-// Regions are coarse (a country, or the land around a great village). Times
-// are shinobi days at a hard pace with rest, matching the lore; civilians and
-// couriers are slower, birds faster (see letters.ts).
+// Region ids are the ids in `db.world.regions`. A world with no regions has
+// no geography: every lookup returns null and distances fall back to a guess.
 
-import { localizePlaceNames } from './glossary';
-import type { AppDatabase, EntityRecord } from './types';
+import type { AppDatabase, EntityRecord, RegionDef } from './types';
 
-export type Region =
-  | 'fire'
-  | 'rain'
-  | 'grass'
-  | 'waterfall'
-  | 'hot-water'
-  | 'rice'
-  | 'waves'
-  | 'rivers'
-  | 'wind'
-  | 'earth'
-  | 'water'
-  | 'lightning'
-  | 'iron'
-  | 'frost'
-  | 'whirlpools'
-  | 'graveyard'
-  | 'birds'
-  | 'silence'
-  | 'woods'
-  | 'tea'
-  | 'sea';
+/** A region id from `db.world.regions`. */
+export type Region = string;
 
-export const REGION_NAME: Record<Region, string> = {
-  fire: 'the Land of Fire',
-  rain: 'the Land of Rain',
-  grass: 'the Land of Grass',
-  waterfall: 'the Land of Waterfalls',
-  'hot-water': 'the Land of Hot Water',
-  // The old Land of Rice Fields: Orochimaru's Sound rules it now. The id stays 'rice' so old saves still match.
-  rice: 'the Land of Sound',
-  waves: 'the Land of Waves',
-  rivers: 'the Land of Rivers',
-  wind: 'the Land of Wind',
-  earth: 'the Land of Earth',
-  water: 'the Land of Water',
-  lightning: 'the Land of Lightning',
-  iron: 'the Land of Iron',
-  frost: 'the Land of Frost',
-  whirlpools: 'the Land of Whirlpools',
-  graveyard: 'the Mountain Graveyard',
-  birds: 'the Land of Birds',
-  silence: 'the Land of Silence',
-  woods: 'the Land of Woods',
-  tea: 'the Land of Tea',
-  sea: 'the Land of the Sea',
-};
+type WithWorld = Pick<AppDatabase, 'world'>;
 
-// Earliest match in the text wins, so "a teahouse in the Rain, three days
-// from the Leaf" is the Rain.
-const PATTERNS: Array<[RegExp, Region]> = [
-  [/\b(hidden leaf|konoha|leaf village|land of fire|fire country|naka (river|shrine)|uchiha district|valley of the end)\b/i, 'fire'],
-  [/\b(hidden rain|amegakure|land of rain|rain country)\b/i, 'rain'],
-  [/\b(hidden grass|kusagakure|land of grass|grass country)\b/i, 'grass'],
-  [/\b(hidden waterfall|takigakure|land of waterfalls?|waterfall village)\b/i, 'waterfall'],
-  [/\b(land of hot water|hot water country|land of hot ?springs|yugakure|hidden steam|hot springs? town|bamboo village)\b/i, 'hot-water'],
-  [/\b(land of rice( fields| paddies)?|rice country|land of sound|sound country|hidden sound|otogakure|sound village)\b/i, 'rice'],
-  [/\b(mountain graveyard|graveyard of (the )?mountains?)\b/i, 'graveyard'],
-  [/\b(land of birds|bird country|hidden rock|ishigakure)\b/i, 'birds'],
-  [/\b(land of silence|curtain village)\b/i, 'silence'],
-  [/\b(land of woods|woods country)\b/i, 'woods'],
-  [/\b(land of tea|tea country|degarashi|nagi island|ouza island|todoroki (great )?shrine|modoroki shrine)\b/i, 'tea'],
-  [/\b(land of (the )?sea|sea country|demon island|mother island)\b/i, 'sea'],
-  [/\b(land of waves|wave country|great naruto bridge)\b/i, 'waves'],
-  [/\b(land of rivers|river country|hidden valley|tanigakure|artisans'? village)\b/i, 'rivers'],
-  [/\b(hidden sand|sunagakure|land of wind|wind country|loran|rouran)\b/i, 'wind'],
-  [/\b(hidden stone|iwagakure|land of earth|earth country)\b/i, 'earth'],
-  [/\b(hidden mist|kirigakure|land of water|water country)\b/i, 'water'],
-  [/\b(hidden cloud|kumogakure|land of lightning|lightning country|island turtle|genbu)\b/i, 'lightning'],
-  [/\b(land of iron|iron country|samurai|three wolf mountains?|land of medicines?)\b/i, 'iron'],
-  // Only the names: "frost" alone is weather.
-  [/\b(land of frost|frost country|hidden frost|shimogakure)\b/i, 'frost'],
-  // "the Rain", "the Sand": only capitalised, so weather and beaches stay out.
-  [/\bthe Leaf\b/, 'fire'],
-  [/\bthe Rain\b/, 'rain'],
-  [/\bthe Sand\b/, 'wind'],
-  [/\bthe Mist\b/, 'water'],
-  [/\bthe Cloud\b/, 'lightning'],
-  [/\bthe Stone\b/, 'earth'],
-  [/\b(land of whirlpools|whirlpool country|uzushio|uzushiogakure|hidden whirlpool|hidden eddy)\b/i, 'whirlpools'],
-];
+/** Days between two regions when the world gives no road between them. */
+export const UNKNOWN_DISTANCE_DAYS = 4;
 
-/** Travel times between neighbours, in shinobi days (from the GEOGRAPHY lore). */
-const ROADS: Array<[Region, Region, number]> = [
-  // From the Land of Fire.
-  ['fire', 'rain', 3],
-  ['fire', 'grass', 2.5],
-  ['fire', 'waterfall', 2],
-  ['fire', 'rice', 1.5],
-  ['fire', 'hot-water', 1.5],
-  ['fire', 'waves', 2],
-  ['fire', 'rivers', 1.5],
-  ['fire', 'wind', 3],
-  ['fire', 'earth', 5],
-  ['fire', 'whirlpools', 2],
-  ['fire', 'water', 4.5],
-  ['fire', 'lightning', 6],
-  ['fire', 'iron', 3.5],
-  ['fire', 'graveyard', 2.5],
-  ['fire', 'woods', 2],
-  ['fire', 'tea', 2.5],
-  // Shikamaru's team ran from the Leaf to the Land of Silence in three days and nights without rest.
-  ['fire', 'silence', 4.5],
-  // The small countries to the west and north.
-  ['rain', 'grass', 1],
-  ['rain', 'wind', 3],
-  ['rain', 'rivers', 1.5],
-  ['rain', 'earth', 3],
-  ['grass', 'earth', 2.5],
-  ['grass', 'waterfall', 1.5],
-  ['waterfall', 'earth', 3],
-  ['waterfall', 'rice', 1.5],
-  ['rice', 'hot-water', 1.5],
-  ['rivers', 'wind', 1.5],
-  ['earth', 'iron', 3],
-  // West, between Earth and Wind: the Land of Birds (the Hidden Rock), then Silence at the continent's edge.
-  ['birds', 'rain', 1.5],
-  ['birds', 'earth', 2],
-  ['birds', 'wind', 2.5],
-  ['birds', 'silence', 1.5],
-  ['silence', 'earth', 2.5],
-  ['silence', 'wind', 2.5],
-  // North: the Mountain Graveyard runs up from the Sound to the cold tip where the samurai of Iron live.
-  ['graveyard', 'waterfall', 1.5],
-  ['graveyard', 'rice', 1],
-  ['graveyard', 'iron', 1.5],
-  ['graveyard', 'earth', 3],
-  // North-east: Hot Water, then Frost, then across the strait to Lightning.
-  ['hot-water', 'frost', 1.5],
-  ['frost', 'lightning', 2.5],
-  ['iron', 'lightning', 3],
-  // The sea: Whirlpools lies off Fire's east coast on the way to the Mist;
-  // Waves is on the south coast, below the Leaf.
-  ['whirlpools', 'water', 2.5],
-  ['waves', 'water', 3.5],
-  ['woods', 'whirlpools', 1],
-  ['woods', 'hot-water', 2.5],
-  // South, anime lands: Tea hangs off Fire's southern tongue; the Sea's islands lie past it.
-  ['tea', 'waves', 1.5],
-  ['tea', 'sea', 1.5],
-  ['sea', 'waves', 2.5],
-];
-
-/** Within one country: a day or so. */
+/** Within one region, when it has no neighbours to judge by. */
 const SAME_REGION_DAYS = 0.75;
 
-let table: Map<string, number> | null = null;
+function regionsOf(db: WithWorld | null | undefined): RegionDef[] {
+  return Array.isArray(db?.world?.regions) ? db!.world.regions : [];
+}
 
-function distances(): Map<string, number> {
-  if (table) return table;
+function escape(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  const regions = Object.keys(REGION_NAME) as Region[];
-  const dist = new Map<string, number>();
-  const key = (a: Region, b: Region) => `${a}|${b}`;
+function wordPattern(name: string): RegExp | null {
+  const trimmed = name.trim();
+  return trimmed.length >= 3 ? new RegExp(`\\b${escape(trimmed)}\\b`, 'i') : null;
+}
 
-  for (const a of regions) {
-    for (const b of regions) dist.set(key(a, b), a === b ? 0 : Infinity);
+export function isRegion(db: WithWorld | null | undefined, value: unknown): value is Region {
+  return typeof value === 'string' && regionsOf(db).some((region) => region.id === value);
+}
+
+/** The region's name as the player wrote it, or null for an unknown id. */
+export function regionName(db: WithWorld | null | undefined, id: string | null | undefined): string | null {
+  if (!id) return null;
+  return regionsOf(db).find((region) => region.id === id)?.name ?? null;
+}
+
+/**
+ * The region a place description is in, or null when it names none: a region
+ * by name, or a place the world lists (its region). Earliest match wins, so
+ * "a bar in Old Town, ten minutes from the docks" is Old Town.
+ */
+export function regionOf(db: WithWorld | null | undefined, text: string | undefined | null): Region | null {
+  if (!text) return null;
+
+  const regions = regionsOf(db);
+  const places = Array.isArray(db?.world?.places) ? db!.world.places : [];
+  let best: { index: number; region: Region } | null = null;
+
+  const consider = (name: string, region: Region) => {
+    const pattern = wordPattern(name);
+    const match = pattern?.exec(text);
+
+    if (match && (!best || match.index < best.index)) best = { index: match.index, region };
+  };
+
+  for (const region of regions) consider(region.name, region.id);
+
+  for (const place of places) {
+    if (regions.some((region) => region.id === place.regionId)) consider(place.name, place.regionId);
   }
 
-  for (const [a, b, days] of ROADS) {
-    dist.set(key(a, b), Math.min(days, dist.get(key(a, b))!));
-    dist.set(key(b, a), Math.min(days, dist.get(key(b, a))!));
+  return (best as { index: number; region: Region } | null)?.region ?? null;
+}
+
+/** Shortest travel days between two regions over the world's neighbour links. */
+export function travelDaysBetween(db: WithWorld | null | undefined, from: Region, to: Region): number {
+  const regions = regionsOf(db);
+
+  if (from === to) {
+    const own = regions.find((region) => region.id === from);
+    const nearest = Math.min(...(own?.neighbours ?? []).map((link) => link.days));
+
+    return Number.isFinite(nearest) ? Math.min(SAME_REGION_DAYS, nearest / 2) : SAME_REGION_DAYS;
   }
 
-  // Floyd-Warshall: a couple of dozen regions, computed once.
-  for (const k of regions) {
-    for (const i of regions) {
-      for (const j of regions) {
-        const through = dist.get(key(i, k))! + dist.get(key(k, j))!;
+  // Dijkstra over a handful of regions; links count both ways.
+  const edges = new Map<string, { id: string; days: number }[]>();
+  const link = (a: string, b: string, days: number) => {
+    edges.set(a, [...(edges.get(a) ?? []), { id: b, days }]);
+  };
 
-        if (through < dist.get(key(i, j))!) dist.set(key(i, j), through);
-      }
+  for (const region of regions) {
+    for (const neighbour of region.neighbours ?? []) {
+      link(region.id, neighbour.id, neighbour.days);
+      link(neighbour.id, region.id, neighbour.days);
     }
   }
 
-  table = dist;
-  return dist;
-}
+  const dist = new Map<string, number>([[from, 0]]);
+  const done = new Set<string>();
 
-/** The region a place description is in, or null when it names none. */
-export function regionOf(text: string | undefined | null): Region | null {
-  if (!text) return null;
+  while (true) {
+    let current: string | null = null;
 
-  const localized = localizePlaceNames(text);
-  let best: { index: number; region: Region } | null = null;
+    for (const [id, days] of dist) {
+      if (!done.has(id) && (current === null || days < dist.get(current)!)) current = id;
+    }
 
-  for (const [pattern, region] of PATTERNS) {
-    const match = pattern.exec(localized);
+    if (current === null) break;
+    if (current === to) return dist.get(current)!;
 
-    if (match && (!best || match.index < best.index)) best = { index: match.index, region };
+    done.add(current);
+
+    for (const next of edges.get(current) ?? []) {
+      const through = dist.get(current)! + next.days;
+
+      if (through < (dist.get(next.id) ?? Infinity)) dist.set(next.id, through);
+    }
   }
 
-  return best?.region ?? null;
+  return UNKNOWN_DISTANCE_DAYS;
 }
 
-/** Shinobi travel days between two regions. */
-export function travelDaysBetween(from: Region, to: Region): number {
-  if (from === to) return SAME_REGION_DAYS;
-
-  return distances().get(`${from}|${to}`) ?? 4;
-}
-
-const HOME_BY_TAG: Array<[string, Region]> = [
-  ['akatsuki', 'rain'],
-  ['rain', 'rain'],
-  ['leaf', 'fire'],
-  ['sand', 'wind'],
-  ['mist', 'water'],
-  ['cloud', 'lightning'],
-  ['stone', 'earth'],
-  ['sound', 'rice'],
-  ['waves', 'waves'],
-  ['waterfall', 'waterfall'],
-  ['frost', 'frost'],
-  ['tea', 'tea'],
-];
-
-/**
- * Where someone most likely is right now, as far as the save knows: where
- * the story last said they were going, else where the player last saw them, else
- * their home village.
- */
-export function whereaboutsRegion(entity: EntityRecord): Region | null {
-  const told = regionOf(entity.whereabouts);
-
-  if (told) return told;
-
-  const seen = regionOf(entity.lastSeenAt);
-
-  if (seen) return seen;
-
-  const fromRole = regionOf(entity.role);
-
-  if (fromRole) return fromRole;
-
-  for (const [tag, region] of HOME_BY_TAG) {
-    if (entity.tags.includes(tag)) return region;
+/** A faction's home region, from its territory. */
+function factionRegion(db: WithWorld | null | undefined, entity: EntityRecord): Region | null {
+  for (const faction of db?.world?.factions ?? []) {
+    if (entity.tags.includes(faction.id) && faction.territoryRegionIds?.length) {
+      return faction.territoryRegionIds[0];
+    }
   }
 
   return null;
 }
 
-export function isRegion(value: unknown): value is Region {
-  return typeof value === 'string' && value in REGION_NAME;
+/**
+ * Where someone most likely is right now, as far as the save knows: where
+ * the story last said they were going, else where the player last saw them,
+ * else their role, else their faction's territory.
+ */
+export function whereaboutsRegion(db: WithWorld | null | undefined, entity: EntityRecord): Region | null {
+  return (
+    regionOf(db, entity.whereabouts) ??
+    regionOf(db, entity.lastSeenAt) ??
+    regionOf(db, entity.role) ??
+    factionRegion(db, entity)
+  );
 }
 
 /**
- * The region the player is in now: the one their location names, else the last one
- * on his road (a forest clearing is still in the country he was last in),
- * else the Land of Fire, where the story starts.
+ * The region the player is in now: the one their location names, else the
+ * last one on their road (a back alley is still in the district they were
+ * last in), else the world's first region, else null (no geography).
  */
-export function currentRegion(db: Pick<AppDatabase, 'state'>): Region {
-  const named = regionOf(db.state.location);
+export function currentRegion(db: Pick<AppDatabase, 'state' | 'world'>): Region | null {
+  const named = regionOf(db, db.state.location);
 
   if (named) return named;
 
@@ -273,8 +161,8 @@ export function currentRegion(db: Pick<AppDatabase, 'state'>): Region {
   for (let index = road.length - 1; index >= 0; index -= 1) {
     const region = road[index].region;
 
-    if (isRegion(region)) return region;
+    if (isRegion(db, region)) return region;
   }
 
-  return 'fire';
+  return regionsOf(db)[0]?.id ?? null;
 }

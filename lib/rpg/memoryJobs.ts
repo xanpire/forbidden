@@ -5,7 +5,7 @@
  *  1. The narrator streams prose only (no JSON). The prose is saved as soon as
  *     it finishes.
  *  2. The state step: a cheap model reads that prose and returns the state
- *     change (clock, bonds, facts, canon) as structured JSON, which is applied
+ *     change (clock, bonds, facts, timeline) as structured JSON, which is applied
  *     and saved straight away. It never waits on a summary.
  *  3. Summaries (time skip, scene, arc, year) run afterwards as separate jobs.
  *     Each job reads the latest copy of the save, calls the model, and then
@@ -17,14 +17,12 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
-import { bingoListings, formatRyo } from './reputation';
-import { CANON_MILESTONES } from './canonData';
+import { WANTED_LABEL, wantedListings } from './reputation';
+import { timelineEventById } from './timeline';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
-import { applyStoryHooks } from './hooks';
-import { advanceCanon, applyCanonMarks, isCombatPace, markNewsHeard } from './canon';
-import { applyCanonEndgames } from './canonEndgame';
+import { advanceTimeline, applyTimelineMarks, isCombatPace, markNewsHeard, TIMELINE_EVENT_PREFIX, eventIdFor } from './timeline';
 import { deliverLetters, receiveLetters, sendLetters, turnLetterOffer } from './letters';
 import { advanceLives, applyLifeEvents, markReunions } from './lives';
 import { advanceConsequences, applyConsequences, markConsequenceOffered, turnConsequenceOffer } from './consequences';
@@ -33,9 +31,9 @@ import { applyYearly, yearlyOffer } from './yearly';
 import { recordTravel } from './mapData';
 import { applyWeather } from './weather';
 import { applySafehouses } from './safehouses';
-import { applyPurse } from './money';
+import { applyPurse, currencyOf, formatMoney } from './money';
 import {
-  FLASHBACK_BY_ID,
+  flashbackById,
   activeFlashback,
   ageWord,
   applyFlashbackMarks,
@@ -53,7 +51,7 @@ import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, applySceneBeat, cleanFightOptions } from './sceneMode';
 import { resolveEntity } from './entities';
 import { applyNameStep, displayName, nameLeaks } from './names';
-import { fallbackDiffFromProse, preferPlayerJutsuNames } from './proseFallback';
+import { fallbackDiffFromProse } from './proseFallback';
 import {
   applyTurnDiff,
   extractTurnDiff,
@@ -246,7 +244,7 @@ export type StateStepResult = {
   db: AppDatabase;
   /** Follow-up summary jobs that were queued by this step. */
   followUpIds: string[];
-  /** Short "world news" line to show, if a canon event was relayed. */
+  /** Short "world news" line to show, if a timeline event was relayed. */
   notice: string | null;
   /** The diff that was applied, after the app settled the clock. */
   appliedDiff: TurnDiff | null;
@@ -271,12 +269,9 @@ export function applyStateStep(
     return applyMemoryStep(latest, stateReply, turn);
   }
 
-  // Unreadable state reply: still record who the prose shows and the jutsu
-  // The player called in their own message. Clock and pace come from the prose below.
-  // The player's jutsu always keep the names the player wrote.
-  const extraction = stateReply
-    ? preferPlayerJutsuNames(latest, stateReply, turn.userMessage)
-    : fallbackDiffFromProse(latest, turn);
+  // Unreadable state reply: still record who the prose shows.
+  // Clock and pace come from the prose below.
+  const extraction = stateReply ?? fallbackDiffFromProse(latest, turn);
   const beforeDate = latest.state.inStoryDate;
   const parsedTime = detectNarrationTime(turn.narration, beforeDate);
   const reportedSeconds = extraction?.state?.elapsedSeconds ?? 0;
@@ -344,7 +339,7 @@ export function applyStateStep(
   const chapterBefore = next.state.chapter;
   next = applyChapterBreak(latest, next, turn.turnLogId, {
     title: extraction?.chapterTitle,
-    majorCompleted: (extraction?.canonCompleted ?? []).some((id) => CANON_MILESTONES.some((m) => m.id === id && m.major)),
+    majorCompleted: (extraction?.timelineCompleted ?? []).some((id) => timelineEventById(latest, id)?.major === true),
     elapsedSeconds: clock.elapsedSeconds,
   });
 
@@ -362,14 +357,14 @@ export function applyStateStep(
   const relays = (extraction?.newsRelayed ?? []).slice(0, allowance);
   const inCombat = isCombatPace(pace) && !sceneEnded;
 
-  next = applyCanonMarks(
+  next = applyTimelineMarks(
     next,
-    extraction?.canonCompleted ?? [],
-    extraction?.canonEngaged ?? [],
-    extraction?.canonPassed ?? []
+    extraction?.timelineCompleted ?? [],
+    extraction?.timelineEngaged ?? [],
+    extraction?.timelinePassed ?? []
   );
   next = markNewsHeard(next, relays, allowance);
-  next = advanceCanon(next, { inCombat });
+  next = advanceTimeline(next, { inCombat });
   // Names the player heard, read or recognised this turn, and identities the world
   // revealed to him (the mask breaking); labels for anyone he can't name.
   const presentIds =
@@ -381,8 +376,6 @@ export function applyStateStep(
     narration: turn.narration,
     presentIds,
   });
-  // Canon-bound hearts whose time has come go to their canon partners.
-  next = applyCanonEndgames(next);
 
   // Side characters' lives move on; consequences fade or (witnesses) talk.
   next = applyLifeEvents(next, extraction?.lifeEvents);
@@ -424,15 +417,11 @@ export function applyStateStep(
   });
   next = syncBondSides(next);
   next = markKnownDeathsOnBonds(next);
-  // The big personal threads open and close as the story reaches them.
-  next = applyStoryHooks(next);
 
   let notice: string | null = null;
 
   if (relays.length > 0) {
-    const id = relays[0].id.startsWith('event_canon_')
-      ? relays[0].id
-      : `event_canon_${relays[0].id}`;
+    const id = relays[0].id.startsWith(TIMELINE_EVENT_PREFIX) ? relays[0].id : eventIdFor(relays[0].id);
     const delivered = next.events.find((event) => event.id === id);
 
     if (delivered) {
@@ -455,12 +444,12 @@ export function applyStateStep(
     notice = `A letter from ${writer ? displayName(next, writer) : extraction.lettersReceived[0].name}`;
   }
 
-  // The player just learned what a village has on them.
+  // The player just learned what a group has on them.
   if (!notice && extraction?.bountySeen?.length) {
-    const listing = bingoListings(next).find((item) => item.village === extraction.bountySeen![0]);
+    const listing = wantedListings(next).find((item) => item.factionId === extraction.bountySeen![0]);
 
     if (listing) {
-      notice = `${listing.name} bingo book: ${listing.rank}-rank · ${formatRyo(listing.bounty)}`;
+      notice = `${listing.name}: ${WANTED_LABEL[listing.level]} · ${formatMoney(listing.bounty, currencyOf(next))}`;
     }
   }
 
@@ -748,7 +737,7 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
 
   const nextDate = shiftSeconds(db.state.inStoryDate, delta);
   // One clock: everything this turn and later turns stamped (facts, bonds,
-  // events, portraits, canon "heard" dates, letters...) moves with it.
+  // events, portraits, timeline "heard" dates, letters...) moves with it.
   const { rawLog, snapshots, meta, settings, state, ...records } = db;
   const shifted = shiftDatesAfter(
     { ...records, state: { ...state, inStoryDate: undefined } },
@@ -779,7 +768,7 @@ export function correctTurnTime(db: AppDatabase, logId: string, seconds: number)
     ),
   };
 
-  return delta > 0 ? applyCanonEndgames(advanceCanon(next)) : next;
+  return delta > 0 ? advanceTimeline(next) : next;
 }
 
 /**
@@ -944,7 +933,7 @@ export async function runSummaryJob(
     case 'flashback': {
       const wanted = new Set(job.logIds ?? []);
       const messages = base.rawLog.filter((entry) => wanted.has(entry.id));
-      const record = FLASHBACK_BY_ID[job.flashbackId ?? ''];
+      const record = flashbackById(base, job.flashbackId);
       logIds = messages.map((entry) => entry.id);
       result = await summarizeScene({
         apiKey,

@@ -11,11 +11,9 @@ import { knowersOf } from './facts';
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { CANON_VERSION } from './canonData';
-import { dropBareNatureJutsu, normalizeJutsuNature } from './jutsu';
+import { TIMELINE_VERSION } from './timeline';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
-import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
@@ -372,7 +370,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       autoSummarizeThreshold: DEFAULT_SETTINGS.autoSummarizeThreshold,
       temperature: DEFAULT_SETTINGS.temperature,
       maxTokens: DEFAULT_SETTINGS.maxTokens,
-      canonProgress: true,
+      worldTimeline: true,
       promptTokenBudget: normalizePromptBudget(db.settings?.promptTokenBudget),
     },
     rawLog: Array.isArray(db.rawLog)
@@ -382,39 +380,18 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
             : entry
         )
       : [],
-    jutsuRecords: Array.isArray(db.jutsuRecords)
-      ? db.jutsuRecords.map((record) => ({
-          ...record,
-          chakraNature: normalizeJutsuNature(record.chakraNature),
-          effect: record.effect ?? record.description ?? '',
-          visual: record.visual ?? '',
-          description: record.description ?? '',
+    entities: Array.isArray(db.entities)
+      ? db.entities.map((entity) => ({
+          ...entity,
+          mood: entity.mood ?? (entity.type === 'character' ? 'Unknown' : undefined),
+          appearance: entity.appearance ?? (entity.type === 'character' ? 'Unknown' : undefined),
+          gender: entity.type === 'character' ? (entity.gender ?? 'unknown') : undefined,
+          // The player has no romance accessibility of their own. Nobody else's is
+          // decided by gender: it comes from the entity (written or tracked).
+          romanceAccessibility:
+            entity.type !== 'character' || isPlayerEntity(entity) ? undefined : entity.romanceAccessibility,
         }))
       : [],
-    entities: ensureCanonCast(
-      Array.isArray(db.entities)
-        ? db.entities.map((entity) => ({
-          ...entity,
-          mood:
-            entity.mood ??
-            (entity.type === 'character' ? 'Unknown' : undefined),
-          appearance:
-            entity.appearance ??
-            (entity.type === 'character' ? 'Unknown' : undefined),
-          gender: entity.type === 'character' ? (entity.gender ?? genderOf(entity)) : undefined,
-          // The player has no romance accessibility of their own.
-          romanceAccessibility:
-            entity.type !== 'character' || isPlayerEntity(entity)
-              ? undefined
-              : (entity.gender ?? genderOf(entity)) === 'male'
-                ? 'not-applicable'
-                : entity.romanceAccessibility,
-        }))
-        : [],
-      () => makeId('entity'),
-      // People who arrive with a milestone (a birth, a revival) once it has happened.
-      db.state?.canonProgress?.completed ?? []
-    ),
     events: Array.isArray(db.events) ? db.events : [],
     eventEntities: Array.isArray(db.eventEntities) ? db.eventEntities : [],
     bonds: Array.isArray(db.bonds)
@@ -447,7 +424,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
         )
       : [],
     world: normalizeWorld(db.world),
-    state: normalizeState(db.state),
+    state: normalizeState(db.state, normalizeWorld(db.world)),
     indices: db.indices ?? emptyIndex(),
     snapshots: Array.isArray(db.snapshots) ? db.snapshots : [],
     portraits: Array.isArray(db.portraits)
@@ -468,17 +445,10 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
   };
 
-  const withDeaths = ensureNames(dropBareNatureJutsu(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized)))));
+  const withDeaths = ensureNames(repairUnmetLabels(normalizeDeaths(normalizeFactKnowers(normalized))));
   withDeaths.indices = buildIndices(withDeaths);
 
   return withDeaths;
-}
-
-/** A saved person's gender when the save doesn't say: the canon cast's, else unknown. */
-function genderOf(entity: { name: string; tags?: string[] }) {
-  if (FEMALE_CAST.has(entity.name)) return 'female' as const;
-  if (CANON_CAST.some((entry) => entry.name === entity.name)) return 'male' as const;
-  return 'unknown' as const;
 }
 
 /** who_knows holds entity ids (plus group tags); names from older saves and the seed are converted. */
@@ -545,7 +515,7 @@ export function buildIndices(db: AppDatabase): MemoryIndex {
   return index;
 }
 
-function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['state'] {
+function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatabase['world']): AppDatabase['state'] {
   const seeded = seedDatabase(makeId('slot'), DEFAULT_SLOT_NAME).state;
 
   if (!state) {
@@ -556,7 +526,6 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     player: normalizeCharacter(state.player, seeded.player),
     mood: state.mood ?? seeded.mood,
     worldDescription: state.worldDescription ?? seeded.worldDescription,
-    jutsu: Array.isArray(state.jutsu) ? state.jutsu : seeded.jutsu,
     inventory: Array.isArray(state.inventory) ? state.inventory : seeded.inventory,
     location: state.location ?? seeded.location,
     locationKind:
@@ -571,32 +540,24 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
       typeof state.turnsWithoutTimeChange === 'number'
         ? Math.max(0, Math.round(state.turnsWithoutTimeChange))
         : 0,
-    canonPoint: state.canonPoint ?? seeded.canonPoint,
-    canonProgress:
-      state.canonProgress && Array.isArray(state.canonProgress.completed)
+    worldPoint: typeof state.worldPoint === 'string' ? state.worldPoint : seeded.worldPoint,
+    timelineProgress:
+      state.timelineProgress && Array.isArray(state.timelineProgress.completed)
         ? {
-            version: state.canonProgress.version ?? CANON_VERSION,
-            baselineDate: state.canonProgress.baselineDate,
-            baselineTurn: state.canonProgress.baselineTurn ?? 0,
-            completed: state.canonProgress.completed.filter(Boolean),
-            active: Array.isArray(state.canonProgress.active)
-              ? state.canonProgress.active.filter(Boolean)
-              : [],
-            engaged: Array.isArray(state.canonProgress.engaged)
-              ? state.canonProgress.engaged.filter(Boolean)
-              : [],
-            expired: Array.isArray(state.canonProgress.expired)
-              ? state.canonProgress.expired.filter(Boolean)
-              : [],
+            version: state.timelineProgress.version ?? TIMELINE_VERSION,
+            baselineDate: state.timelineProgress.baselineDate,
+            completed: state.timelineProgress.completed.filter(Boolean),
+            active: Array.isArray(state.timelineProgress.active) ? state.timelineProgress.active.filter(Boolean) : [],
+            engaged: Array.isArray(state.timelineProgress.engaged) ? state.timelineProgress.engaged.filter(Boolean) : [],
+            expired: Array.isArray(state.timelineProgress.expired) ? state.timelineProgress.expired.filter(Boolean) : [],
             heard:
-              state.canonProgress.heard && typeof state.canonProgress.heard === 'object'
-                ? state.canonProgress.heard
+              state.timelineProgress.heard && typeof state.timelineProgress.heard === 'object'
+                ? state.timelineProgress.heard
                 : {},
           }
         : {
-            version: CANON_VERSION,
+            version: TIMELINE_VERSION,
             baselineDate: state.inStoryDate,
-            baselineTurn: 0,
             completed: [],
             active: [],
             engaged: [],
@@ -628,8 +589,8 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     renown: normalizeRenown(state.renown),
     consequences: normalizeConsequences(state.consequences),
     weather: normalizeWeather(state.weather),
-    travelLog: normalizeTravelLog(state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
-    flashbacks: normalizeFlashbacks(state.flashbacks),
+    travelLog: normalizeTravelLog({ world }, state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
+    flashbacks: normalizeFlashbacks(state.flashbacks, world.flashbacks),
     safehouses: normalizeSafehouses(state.safehouses),
     purse: normalizePurse(state.purse),
   };

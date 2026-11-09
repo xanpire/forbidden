@@ -39,7 +39,7 @@ export type DebugCall = {
 };
 
 export type DebugChange = {
-  /** e.g. "state.location", "bonds · Itachi Uchiha · trust" */
+  /** e.g. "state.location", "bonds · Mara Voss · trust" */
   path: string;
   from: string;
   to: string;

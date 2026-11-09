@@ -5,32 +5,26 @@ import { colors, fonts, spacing, type } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import {
   STANDING_LABEL,
-  bingoListings,
-  formatRyo,
-  isAkatsukiMember,
+  WANTED_LABEL,
+  factionStandings,
   reputationOf,
-  standingBand,
+  wantedListings,
 } from '@/lib/rpg/reputation';
+import { currencyOf, formatMoney } from '@/lib/rpg/money';
 import { renownOf } from '@/lib/rpg/renown';
 import type { AppDatabase } from '@/lib/rpg/types';
 
-const RANK_NOTE: Record<string, string> = {
-  S: 'Most of their shinobi know your face',
-  A: 'Their chunin and jonin would know you',
-  B: 'Their jonin and hunter-nin may know you',
-  C: 'Only hunter-nin would place you',
-};
-
 /**
- * What the world has on you: the bingo books you have seen yourself in, and
- * your standing inside the Akatsuki. Entries you have not seen stay hidden,
- * like news you have not heard.
+ * What the world has on you: the wanted lists you know you're on, and how the
+ * groups you deal with regard you. Listings you haven't seen stay hidden,
+ * like news you haven't heard.
  */
 export function ReputationCard({ db }: { db: AppDatabase }) {
-  const listings = bingoListings(db);
-  const known = listings.filter((listing) => listing.known);
-  const member = isAkatsukiMember(db);
-  const standing = reputationOf(db).akatsuki?.standing ?? 0;
+  const known = wantedListings(db).filter((listing) => listing.known);
+  const standings = factionStandings(db);
+  const currency = currencyOf(db);
+  const reputation = reputationOf(db);
+  const epithets = renownOf(db).epithets;
 
   return (
     <>
@@ -38,30 +32,30 @@ export function ReputationCard({ db }: { db: AppDatabase }) {
       <ListCard>
         {known.length === 0 ? (
           <ListRow
-            body="As far as you know, no village has put a price on your head. A bounty poster or a hunter naming your price would tell you."
-            title="No bingo book you know of"
+            body="As far as you know, nobody has put a price on your head. A poster, a warrant or someone naming your price would tell you."
+            title="Not wanted, as far as you know"
           />
         ) : (
           known.map((listing) => (
             <ListRow
-              key={listing.village}
-              meta={`${RANK_NOTE[listing.rank]}${listing.listedOn ? ` · listed ${formatDayMonth(listing.listedOn)}, Year ${listing.listedOn.year}` : ''}`}
-              title={`${listing.name} · ${listing.rank}-rank`}
-              trailing={<Text style={styles.rank}>{listing.rank}</Text>}
+              key={listing.factionId}
+              meta={`${WANTED_LABEL[listing.level]}${listing.listedOn ? ` · listed ${formatDayMonth(listing.listedOn)}, Year ${listing.listedOn.year}` : ''}`}
+              title={listing.name}
             >
               <Text style={styles.bounty}>
-                {formatRyo(listing.bounty)}
-                {renownOf(db).epithets[listing.village]?.known ? ` · “${renownOf(db).epithets[listing.village]!.name}”` : ''}
+                {formatMoney(listing.bounty, currency)}
+                {epithets[listing.factionId]?.known ? ` · “${epithets[listing.factionId]!.name}”` : ''}
               </Text>
               {listing.lastReason ? <Text style={type.rowBody}>{listing.lastReason}</Text> : null}
             </ListRow>
           ))
         )}
-        {member ? (
+        {standings.map(({ faction, standing, band }) => (
           <ListRow
-            body={reputationOf(db).akatsuki?.lastReason ?? 'How Pain, Konan and your partners regard you.'}
-            title="Akatsuki"
-            trailing={<Text style={styles.standing}>{STANDING_LABEL[standingBand(standing)]}</Text>}
+            body={reputation.factions[faction.id]?.lastReason ?? `How ${faction.name} regards you.`}
+            key={`standing-${faction.id}`}
+            title={faction.name}
+            trailing={<Text style={styles.standing}>{STANDING_LABEL[band]}</Text>}
           >
             <View style={styles.track}>
               <View style={styles.mid} />
@@ -75,20 +69,13 @@ export function ReputationCard({ db }: { db: AppDatabase }) {
               />
             </View>
           </ListRow>
-        ) : null}
+        ))}
       </ListCard>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  rank: {
-    minWidth: 28,
-    textAlign: 'center',
-    fontFamily: fonts.extrabold,
-    fontSize: 20,
-    color: colors.accentText,
-  },
   bounty: {
     fontFamily: fonts.bold,
     fontSize: 13,

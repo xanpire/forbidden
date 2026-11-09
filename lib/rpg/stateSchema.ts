@@ -74,12 +74,8 @@ export const FACT_TYPES = [
   'other',
 ] as const;
 export const FACT_LASTS = ['lasting', 'until_rest', 'days'] as const;
-export const REPUTATION_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki'] as const;
-export const VILLAGE_FACTIONS = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
 export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as const;
 export const THREAD_STATUSES = ['open', 'update', 'resolved'] as const;
-export const LETTER_CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
-export const EPITHET_AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
 export const SAFEHOUSE_KINDS = ['own', 'rented', 'borrowed', 'base', 'camp'] as const;
 export const SAFEHOUSE_ENDINGS = ['expired', 'destroyed', 'compromised', 'withdrawn', 'given-up'] as const;
 export const CONSEQUENCE_KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
@@ -92,7 +88,7 @@ export const TURN_STATE_SCHEMA = object({
   }),
   scene_pace: nullableEnum(SCENE_PACES),
   // How this turn played (the player's input and the reply together), who the player was
-  // talking with, and, while a fight goes on, a few moves he could make next.
+  // talking with, and, while a fight goes on, a few moves they could make next.
   beat: nullableEnum(SCENE_BEATS),
   beat_with: stringList,
   fight_options: stringList,
@@ -100,29 +96,21 @@ export const TURN_STATE_SCHEMA = object({
   location_kind: nullableEnum(LOCATION_KINDS),
   mood: nullableString,
   world_description: nullableString,
-  canon_point: nullableString,
+  world_point: nullableString,
   inventory_added: stringList,
   inventory_removed: stringList,
-  // Every change to the player's own money this turn, in ryō (negative when he pays),
-  // and his total only when the prose states it.
+  // Every change to the player's own money this turn, in the world's currency
+  // (negative when they pay), and their total only when the prose states it.
   money: list({
     amount: { type: 'number' },
     reason: { type: 'string' },
   }),
   money_counted: nullableNumber,
-  jutsu_used: list({
-    name: { type: 'string' },
-    // A character ID ("player", "old-tom"), or a description for an unnamed user.
-    user: { type: 'string' },
-    chakra_nature: nullableString,
-    effect: nullableString,
-    visual: nullableString,
-  }),
   // People are referred to by their ID from KNOWN CHARACTERS (or, for someone
   // added this turn under new_characters, by that exact name).
   // Two sides: affinity_change / note are how THEY feel about the player (only from
   // what they could see or hear); your_change / your_note are how the player feels
-  // about them (his inner thoughts move only this side).
+  // about them (their inner thoughts move only this side).
   bonds: list({
     character_id: { type: 'string' },
     affinity_change: nullableNumber,
@@ -169,14 +157,13 @@ export const TURN_STATE_SCHEMA = object({
     appearance: nullableString,
     gender: nullableEnum(GENDERS),
     attracted_to: nullableEnum(ATTRACTED_TO),
-    // A one-scene character: a target, a guard, a shopkeeper.
+    // A one-scene character: a waiter, a guard, a shopkeeper.
     minor: { type: 'boolean' },
     // false for a stranger whose name the player has not learned: name is then a
-    // short description of how they look to him ("the scarred ferryman").
+    // short description of how they look to the player ("the scarred ferryman").
     name_known: { type: 'boolean' },
   }),
-  // appearance: how they look right now (clothes, wet, bloodied, Sharingan
-  // active). lasting_appearance: only a real lasting change to their base look.
+  // appearance: how they look right now (clothes, wet, bloodied, dressed up). lasting_appearance: only a real lasting change to their base look.
   character_updates: list({
     character_id: { type: 'string' },
     mood: nullableString,
@@ -185,8 +172,8 @@ export const TURN_STATE_SCHEMA = object({
     whereabouts: nullableString,
   }),
   // A death the prose makes certain this turn — on screen, a body the player sees,
-  // or someone telling the player — by character id. revived is only a true return
-  // to life (Chiyo's jutsu, say), never an Edo Tensei reanimation.
+  // or someone telling the player — by character id. revived is only someone who
+  // turns out to be alive after all (a wrong report, a faked death).
   deaths: list({
     character_id: { type: 'string' },
     cause: nullableString,
@@ -202,16 +189,6 @@ export const TURN_STATE_SCHEMA = object({
   companions_left: list({
     character_id: { type: 'string' },
     reason: nullableString,
-  }),
-  // The player's own chakra natures and abilities, when this turn changes them.
-  natures_gained: list({
-    nature: { type: 'string' },
-    source: { type: 'string', enum: ['innate', 'thousand-souls'] },
-    from: nullableString,
-  }),
-  abilities_changed: list({
-    name: { type: 'string' },
-    stage: nullableString,
   }),
   image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },
@@ -248,9 +225,9 @@ export const TURN_STATE_SCHEMA = object({
   // Flashbacks (see FLASHBACK in the state prompt): an offered memory's
   // trigger was shown, the player let a memory take them, or the memory ended.
   flashback: nullableEnum(FLASHBACK_MARKS),
-  canon_engaged: stringList,
-  canon_completed: stringList,
-  canon_passed: stringList,
+  timeline_engaged: stringList,
+  timeline_completed: stringList,
+  timeline_passed: stringList,
   news_relayed: list({
     id: { type: 'string' },
     from: nullableString,
@@ -262,7 +239,7 @@ export const TURN_STATE_SCHEMA = object({
     to: { type: 'string' },
     gist: nullableString,
     text: nullableString,
-    carrier: nullableEnum(LETTER_CARRIERS),
+    carrier: nullableString,
     coded: { type: ['boolean', 'null'] },
   }),
   // Letters that actually reached the player on the page this turn, with their words.
@@ -284,25 +261,26 @@ export const TURN_STATE_SCHEMA = object({
     part: { type: 'string', enum: ['given', 'family', 'full', 'identity'] },
     how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard', 'recognised'] },
   }),
-  // Someone present learned another name a person goes by (the player told Deidara who Tobi is).
+  // Someone present learned another name a person goes by (the player told them who someone really is).
   names_told: list({
     character_id: { type: 'string' },
     name: { type: 'string' },
     told_to: stringList,
   }),
-  // What a village (or the Akatsuki) now has on the player, from deeds its people
-  // saw or survived this turn; and villages whose entry on him he learned of.
+  // What a faction (by its id) now has on the player, from deeds its people saw
+  // or survived this turn; and factions whose wanted entry on the player they
+  // learned of.
   reputation: list({
-    faction: { type: 'string', enum: [...REPUTATION_FACTIONS] },
+    faction: { type: 'string' },
     change: { type: 'number' },
     reason: nullableString,
   }),
-  bounty_seen: { type: 'array', items: { type: 'string', enum: [...VILLAGE_FACTIONS] } },
+  bounty_seen: stringList,
   // A name the prose calls the player by, and whose name it is.
   epithet: {
     type: ['object', 'null'],
     properties: {
-      audience: { type: 'string', enum: [...EPITHET_AUDIENCES] },
+      audience: { type: 'string' },
       name: { type: 'string' },
     },
     required: ['audience', 'name'],
@@ -316,7 +294,7 @@ export const TURN_STATE_SCHEMA = object({
     what: { type: 'string' },
     want: nullableString,
     witnesses: stringList,
-    faction: nullableEnum(VILLAGE_FACTIONS),
+    faction: nullableString,
     when: nullableEnum(['weeks', 'months', 'years']),
   }),
   consequences_returned: stringList,

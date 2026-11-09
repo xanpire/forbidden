@@ -4,7 +4,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { EmptyRow, FilterPills, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { colors, spacing, type } from '@/constants/theme';
 import { dateSortValue, formatClock, formatDayMonth } from '@/lib/rpg/calendar';
-import { localizePlaceNames } from '@/lib/rpg/glossary';
 import { useGame } from '@/lib/rpg/game';
 import type { AppDatabase, EventRecord, ThreadRecord } from '@/lib/rpg/types';
 import { shortTitle, titleAndBody } from '@/lib/rpg/util';
@@ -12,7 +11,8 @@ import { loreActive } from '@/lib/rpg/lore';
 import { todayNotes } from '@/lib/rpg/yearly';
 import { grudgeKnown } from '@/lib/rpg/disclosure';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
-import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
+import { audienceName, knownEpithets } from '@/lib/rpg/renown';
+import { TIMELINE_TAG } from '@/lib/rpg/timeline';
 import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
 import { displayName } from '@/lib/rpg/names';
@@ -93,7 +93,7 @@ function NowView({ db }: { db: AppDatabase }) {
       <SectionLabel>Now</SectionLabel>
       <ListCard>
         <ListRow
-          meta={`${formatClock(db.state.inStoryDate)}, ${formatDayMonth(db.state.inStoryDate)} · ${localizePlaceNames(db.state.location)}`}
+          meta={`${formatClock(db.state.inStoryDate)}, ${formatDayMonth(db.state.inStoryDate)} · ${db.state.location}`}
           title={`Chapter ${db.state.chapter}${db.state.chapterTitle ? `: ${db.state.chapterTitle}` : ""} · ${db.state.scene}`}
         />
         {today.length > 0 ? <ListRow body={today.join(' · ')} bodyLines={3} title="Today" /> : null}
@@ -145,7 +145,7 @@ function RecapView({ db }: { db: AppDatabase }) {
     }
 
     return [...db.events]
-      .filter((event) => !event.tags.includes('canon'))
+      .filter((event) => !event.tags.includes(TIMELINE_TAG))
       .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
       .slice(0, 20)
       .map((event) => {
@@ -194,19 +194,19 @@ function RecapView({ db }: { db: AppDatabase }) {
 function WorldView({ db }: { db: AppDatabase }) {
   const news = useMemo(() => {
     const now = dateSortValue(db.state.inStoryDate);
-    const heard = db.state.canonProgress?.heard ?? {};
+    const heard = db.state.timelineProgress?.heard ?? {};
 
     return db.events
       .filter(
         (event) =>
-          event.tags.includes('canon') &&
+          event.tags.includes(TIMELINE_TAG) &&
           Boolean(heard[event.id]) &&
           dateSortValue(event.inStoryDate) <= now
       )
       .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
       .slice(0, 40);
   }, [db]);
-  const heard = db.state.canonProgress?.heard ?? {};
+  const heard = db.state.timelineProgress?.heard ?? {};
   const visibleLore = db.loreEntries.filter((lore) => !lore.hidden && loreActive(db, lore));
   // Only the names you have heard yourself called.
   const names = knownEpithets(db);
@@ -216,7 +216,7 @@ function WorldView({ db }: { db: AppDatabase }) {
       <SectionLabel>Word on the road</SectionLabel>
       {news.length === 0 ? (
         <EmptyRow
-          body="News reaches you through people and couriers, never all at once."
+          body="News reaches you through people and messengers, never all at once."
           title="No word yet"
         />
       ) : (
@@ -246,7 +246,7 @@ function WorldView({ db }: { db: AppDatabase }) {
               <ListRow
                 body={epithet.history?.length ? `Before that: ${epithet.history.map((item) => item.name).join(', ')}` : null}
                 key={audience}
-                meta={`${AUDIENCE_NAME[audience].charAt(0).toUpperCase()}${AUDIENCE_NAME[audience].slice(1)} · since ${formatDayMonth(epithet.since)}, year ${epithet.since.year}`}
+                meta={`${audienceName(db, audience).charAt(0).toUpperCase()}${audienceName(db, audience).slice(1)} · since ${formatDayMonth(epithet.since)}, year ${epithet.since.year}`}
                 title={epithet.name}
               />
             ))}
@@ -256,8 +256,8 @@ function WorldView({ db }: { db: AppDatabase }) {
 
       <SectionLabel>The world as you know it</SectionLabel>
       <ListCard>
-        <ListRow body={localizePlaceNames(db.state.worldDescription)} title="The world" />
-        <ListRow body={localizePlaceNames(db.state.canonPoint)} title="Timeline" />
+        <ListRow body={db.state.worldDescription} title="The world" />
+        {db.state.worldPoint ? <ListRow body={db.state.worldPoint} title="Where things stand" /> : null}
       </ListCard>
 
       {visibleLore.length > 0 ? (
@@ -282,7 +282,7 @@ function MemoriesView({ db }: { db: AppDatabase }) {
   const memories = useMemo<EventRecord[]>(
     () =>
       db.events
-        .filter((event) => !event.tags.includes('canon'))
+        .filter((event) => !event.tags.includes(TIMELINE_TAG))
         .sort((a, b) => dateSortValue(b.inStoryDate) - dateSortValue(a.inStoryDate))
         .slice(0, 80),
     [db]

@@ -1,7 +1,6 @@
 import { calculateAge } from './calendar';
 import { playerAge, playerName } from './player';
 import { locationKindOf } from './encounters';
-import { localizePlaceNames } from './glossary';
 import type { PlannedReference } from './referencePlan';
 import type {
   AppDatabase,
@@ -54,14 +53,15 @@ function settingOf(db: AppDatabase): PortraitSetting {
   }
 }
 
-export function wearsAkatsukiCloak(db: AppDatabase) {
-  return db.state.inventory.some((item) => /akatsuki cloak/i.test(item));
+/** What the player wears now, in words (their sheet's outfit, kept current by play). */
+export function currentOutfit(db: AppDatabase): string {
+  return db.state.player?.outfit?.trim() ?? '';
 }
 
 export function portraitSignature(db: AppDatabase): PortraitSignature {
   return {
     age: playerAge(db),
-    outfit: wearsAkatsukiCloak(db) ? 'akatsuki' : 'black',
+    outfit: currentOutfit(db).slice(0, 120),
     expression: expressionFromMood(db.state.mood),
     setting: settingOf(db),
   };
@@ -86,9 +86,7 @@ export function portraitStaleReason(
   const before = latest.signature;
 
   if (before.outfit !== current.outfit) {
-    return current.outfit === 'akatsuki'
-      ? 'Now wearing the Akatsuki cloak'
-      : 'No longer in the Akatsuki cloak';
+    return 'Dressed differently now';
   }
 
   if (before.age !== current.age) {
@@ -123,7 +121,7 @@ export function portraitTag(portrait: PortraitRecord, index: number, all: Portra
     return String(portrait.signature.age);
   }
 
-  return portrait.signature.outfit === 'akatsuki' ? 'CLOAK' : String(portrait.signature.age);
+  return next && next.signature.outfit !== portrait.signature.outfit ? 'OUTFIT' : String(portrait.signature.age);
 }
 
 const EXPRESSION_TEXT: Record<PortraitExpression, string> = {
@@ -140,13 +138,11 @@ export function buildPortraitPrompt(
   signature: PortraitSignature,
   references: PlannedReference[]
 ) {
-  const outfit =
-    signature.outfit === 'akatsuki'
-      ? 'the Akatsuki cloak (black with red clouds)'
-      : 'the plain black shinobi outfit, no Akatsuki cloak';
+  const outfit = signature.outfit || 'their usual clothes';
   const who = playerName(db);
+  const style = db.world?.artStyle?.trim() || 'cinematic photo, natural light';
   const lines = [
-    `Character portrait of ${who}, a shinobi from the Naruto world. Dark cinematic anime illustration.`,
+    `Character portrait of ${who}. ${style}.`,
     'Visual image only. No words, letters, numbers, captions, logos, watermarks or readable text anywhere.',
   ];
 
@@ -176,11 +172,11 @@ export function buildPortraitPrompt(
     `Age: ${signature.age}. Draw ${who} with the build and face of a ${signature.age}-year-old.`,
     `Expression: ${EXPRESSION_TEXT[signature.expression]}. Current mood: ${db.state.mood}.`,
     `Clothing: ${outfit}.`,
-    `Background: softly blurred ${localizePlaceNames(db.state.location)}, ${SETTING_LABEL[signature.setting]}, at ${db.state.inStoryDate.hour}:${String(db.state.inStoryDate.minute).padStart(2, '0')}.`,
+    `Background: softly blurred ${db.state.location}, ${SETTING_LABEL[signature.setting]}, at ${db.state.inStoryDate.hour}:${String(db.state.inStoryDate.minute).padStart(2, '0')}.`,
     `Framing: head and upper body, three-quarter view, centered, vertical portrait. ${who} alone, no other people.`,
-    'Style: Naruto-inspired anime, gritty realism, moody lighting, red accents, high detail.',
+    `Style: ${style}, moody lighting, high detail.`,
     'Final reminder: no text or lettering in the image.'
   );
 
-  return localizePlaceNames(lines.join('\n'));
+  return (lines.join('\n'));
 }

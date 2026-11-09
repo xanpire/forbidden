@@ -26,7 +26,6 @@ import {
   portraitSignature,
   portraitStaleReason,
   portraitTag,
-  wearsAkatsukiCloak,
 } from '@/lib/rpg/portrait';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import {
@@ -121,7 +120,7 @@ export function PortraitHeader() {
     try {
       const [caps, playerRefImages] = await Promise.all([
         ensureImageCaps(db, updateSettings),
-        loadPlayerReferenceImages(wearsAkatsukiCloak(db)),
+        loadPlayerReferenceImages(db),
       ]);
       const previous = latest ? await loadImage(latest.image) : null;
       const plan = planReferences(

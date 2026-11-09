@@ -19,18 +19,17 @@
 // one line. Otherwise CURRENT STATE names the places he can go back to.
 
 import { dateSortValue, daysBetween, formatDayMonth, shiftDate } from './calendar';
-import { isCombatPace } from './canon';
+import { isCombatPace } from './timeline';
 import { characterRefs } from './characterRefs';
 import { castWithCompanions } from './companions';
 import { plantSeed, seedsOf } from './consequences';
 import { isDeceased, playerKnowsDeath } from './deaths';
 import { grudgeKnown } from './disclosure';
 import { resolveEntity } from './entities';
-import { REGION_NAME, isRegion, regionOf, type Region } from './geography';
-import { localizePlaceNames } from './glossary';
+import { isRegion, regionName, regionOf, type Region } from './geography';
 import { makeId } from './id';
 import { placeIdOf } from './mapData';
-import { isAkatsukiMember, territoryOf } from './reputation';
+import { factionsOf, territoryOf, wantedListings } from './reputation';
 import { uniqueList } from './util';
 import type {
   AppDatabase,
@@ -42,7 +41,6 @@ import type {
   SafehouseEnd,
   SafehouseKind,
   SafehouseState,
-  VillageFaction,
 } from './types';
 import { isPlayerEntity, isPlayerName } from './player';
 
@@ -152,7 +150,7 @@ const STOP_WORDS = new Set([
 ]);
 
 function norm(text: string | undefined | null) {
-  return localizePlaceNames(text ?? '')
+  return (text ?? '')
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
@@ -166,14 +164,14 @@ function words(text: string) {
 }
 
 /** Does this location describe the safehouse? Exact place, its name in the words, or enough shared words. */
-export function matchesSafehouse(house: Safehouse, location: string | undefined | null): boolean {
+export function matchesSafehouse(db: AppDatabase, house: Safehouse, location: string | undefined | null): boolean {
   const loc = norm(location);
 
   if (!loc) return false;
 
-  const locRegion = regionOf(location);
+  const locRegion = regionOf(db, location);
 
-  if (locRegion && house.region && isRegion(house.region) && locRegion !== house.region) return false;
+  if (locRegion && house.region && isRegion(db, house.region) && locRegion !== house.region) return false;
 
   const place = norm(house.place);
   const name = norm(house.name);
@@ -202,7 +200,7 @@ function findHere(db: AppDatabase): Safehouse | null {
   const active = activeSafehouses(db);
   const exact = active.find((house) => norm(house.place) === norm(db.state.location));
 
-  return exact ?? active.find((house) => matchesSafehouse(house, db.state.location)) ?? null;
+  return exact ?? active.find((house) => matchesSafehouse(db, house, db.state.location)) ?? null;
 }
 
 export function isOvergrown(db: Pick<AppDatabase, 'state'>, house: Safehouse): boolean {
@@ -212,14 +210,14 @@ export function isOvergrown(db: Pick<AppDatabase, 'state'>, house: Safehouse): b
 // ---------------------------------------------------------------------------
 // Making one
 
-const INN_WORDS = /\b(inn|teahouse|tea house|tavern|lodging|lodge|ryokan|guesthouse|guest house|hostel|boarding house|rented room|bathhouse)\b/i;
-const HIDEOUT_WORDS = /\b(akatsuki|hideout|lair|base)\b/i;
+const INN_WORDS = /\b(inn|hotel|motel|hostel|tavern|lodging|lodge|guesthouse|guest house|bed and breakfast|b&b|boarding house|rented room|airbnb)\b/i;
+const HIDEOUT_WORDS = /\b(hideout|lair|base|headquarters|hq|clubhouse|compound|safehouse)\b/i;
 const WILD_WORDS = /\b(clearing|forest|woods|riverbank|ravine|cliff|hollow|thicket|field|hill|ridge|roadside|under the trees|bedroll|cave|cavern|grotto|ruin|ruins|ruined|rubble|overhang|ledge)\b/i;
-/** An organisation's camp: an army, the Alliance, the Akatsuki. A base, not a night in the wild. */
+/** An organisation's camp: an army, a company's site camp. A base, not a night in the wild. */
 const ORG_CAMP =
-  /\b(akatsuki|army|military|war|field|battle|forward|command|allied|alliance|division|troops?|soldiers?|shinobi|ninja|hunter[- ]nin|anbu|root|samurai|sound|leaf|sand|mist|cloud|stone|rain)['’]?s? (field |war |base |forward |command )?(camp|encampment|bivouac)s?\b|\b(camp|encampment)s? of the\b|\bencampment\b/i;
-/** People's camps: refugees, travellers, merchants. A night among strangers, gone when he leaves. */
-const PEOPLE_CAMP = /\b(refugee|refugees'?|travell?ers'?|merchants?'?|caravan|nomad|nomads'?|bandit|bandits'?|hunting|fishing|logging|miners'?) camps?\b/i;
+  /\b(army|military|war|field|battle|forward|command|division|troops?|soldiers?|police|company|crew|gang|militia)['’]?s? (field |war |base |forward |command )?(camp|encampment|bivouac)s?\b|\b(camp|encampment)s? of the\b|\bencampment\b/i;
+/** People's camps: refugees, travellers, festival-goers. A night among strangers, gone when the player leaves. */
+const PEOPLE_CAMP = /\b(refugee|refugees'?|travell?ers'?|festival|protest|homeless|nomad|nomads'?|hunting|fishing|logging|miners'?|summer|scout) camps?\b/i;
 const CAMP_WORD = /\b(camp|campsite|camped)\b/i;
 
 const CAVE_COVER = /\b(cave|cavern|grotto|tunnel|catacomb|underground|mine shaft)\b/i;
@@ -231,7 +229,7 @@ export type CampCover = 'cave' | 'ruin' | 'walls' | 'open';
 
 /** What a camp is in, from the words: a cave, ruins (half a shelter), walls of some kind, or the open sky. */
 export function campCover(text: string): CampCover {
-  const place = localizePlaceNames(text ?? '');
+  const place = (text ?? '');
 
   if (CAVE_COVER.test(place)) return 'cave';
   if (RUIN_COVER.test(place)) return 'ruin';
@@ -251,8 +249,8 @@ function guessKind(db: AppDatabase): SafehouseKind | null {
   const kind = db.state.locationKind;
 
   if (INN_WORDS.test(location)) return 'rented';
-  if (HIDEOUT_WORDS.test(location) && /\bakatsuki\b/i.test(`${location} ${db.state.scene}`)) return 'base';
-  // An army's or the Akatsuki's camp is theirs, and his place in it lasts while he belongs.
+  if (HIDEOUT_WORDS.test(location) && factionNamed(db, `${location} ${db.state.scene}`)) return 'base';
+  // An organisation's camp is theirs, and the player's place in it lasts while they belong.
   if (ORG_CAMP.test(location) && !PEOPLE_CAMP.test(location)) return 'base';
   if (PEOPLE_CAMP.test(location)) return 'camp';
   if (kind === 'wilderness' || kind === 'road' || WILD_WORDS.test(location) || RUIN_COVER.test(location)) return 'camp';
@@ -262,49 +260,39 @@ function guessKind(db: AppDatabase): SafehouseKind | null {
   return null;
 }
 
-const OWNER_WORDS: Array<[RegExp, string]> = [
-  [/\bakatsuki\b/i, 'the Akatsuki'],
-  [/\b(allied|alliance|division)\b/i, 'the Allied Shinobi Forces'],
-  [/\broot\b/i, 'Root'],
-  [/\bsamurai\b/i, 'the samurai'],
-  [/\bsound\b/i, 'the Hidden Sound'],
-  [/\bleaf\b/i, 'the Hidden Leaf'],
-  [/\bsand\b/i, 'the Hidden Sand'],
-  [/\bmist\b/i, 'the Hidden Mist'],
-  [/\bcloud\b/i, 'the Hidden Cloud'],
-  [/\bstone\b/i, 'the Hidden Stone'],
-  [/\brain\b/i, 'the Hidden Rain'],
-];
-
-/** Whose base it is: the place's words first, then the scene's, then the Akatsuki if he is one of them. */
-function baseOwner(db: AppDatabase): string {
-  const location = localizePlaceNames(db.state.location ?? '');
-  const scene = localizePlaceNames(db.state.scene ?? '');
-
-  for (const text of [location, scene]) {
-    for (const [pattern, owner] of OWNER_WORDS) {
-      if (pattern.test(text)) return owner;
-    }
-  }
-
-  return isAkatsukiMember(db) ? 'the Akatsuki' : 'the people who run it';
+function escape(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** How each owner shows up in a membership fact. */
-const OWNER_KEYS: Record<string, RegExp> = {
-  'the Akatsuki': /\bakatsuki\b/i,
-  'the Allied Shinobi Forces': /\b(allied|alliance)\b/i,
-  Root: /\broot\b/i,
-  'the samurai': /\b(samurai|land of iron)\b/i,
-  'the Hidden Sound': /\b(hidden sound|sound village|orochimaru)\b/i,
-  'the Hidden Leaf': /\b(hidden leaf|leaf village|konoha)\b/i,
-  'the Hidden Sand': /\b(hidden sand|sand village|suna)\b/i,
-  'the Hidden Mist': /\b(hidden mist|mist village|kiri)\b/i,
-  'the Hidden Cloud': /\b(hidden cloud|cloud village|kumo)\b/i,
-  'the Hidden Stone': /\b(hidden stone|stone village|iwa)\b/i,
-  'the Hidden Rain': /\b(hidden rain|rain village|ame)\b/i,
-};
-const LEFT_WORDS = /\b(left|leave|leaves|leaving|defect(ed|s)?|quit|expelled|cast out|thrown out|abandon(ed|s)?|betray(ed|s)?|desert(ed|s)?|no longer|missing[- ]nin|rogue|traitor|broke with|walked away)\b/i;
+/** A pattern for a faction's name (and its id, as words). */
+function factionPattern(name: string, id: string): RegExp {
+  const words = [name.replace(/^the\s+/i, ''), id.replace(/[-_]+/g, ' ')].filter((word) => word.trim().length >= 3).map(escape);
+
+  return new RegExp(`\\b(${words.join('|')})\\b`, 'i');
+}
+
+/** The world faction a piece of text names, if any. */
+function factionNamed(db: AppDatabase, text: string): string | null {
+  for (const faction of factionsOf(db)) {
+    if (factionPattern(faction.name, faction.id).test(text)) return faction.name;
+  }
+
+  return null;
+}
+
+/** Whose base it is: the place's words first, then the scene's, else whoever runs it. */
+function baseOwner(db: AppDatabase): string {
+  return factionNamed(db, db.state.location ?? '') ?? factionNamed(db, db.state.scene ?? '') ?? 'the people who run it';
+}
+
+/** How an owner shows up in a membership fact: the faction it names. */
+function ownerKey(db: AppDatabase, owner: string): { pattern: RegExp; id: string } | null {
+  const faction = factionsOf(db).find((item) => item.name === owner);
+
+  return faction ? { pattern: factionPattern(faction.name, faction.id), id: faction.id } : null;
+}
+
+const LEFT_WORDS = /\b(left|leave|leaves|leaving|defect(ed|s)?|quit|fired|expelled|cast out|thrown out|abandon(ed|s)?|betray(ed|s)?|desert(ed|s)?|no longer|rogue|traitor|broke with|walked away)\b/i;
 
 function isPlayerFact(db: AppDatabase, subjectId: string | null, text: string) {
   const subject = subjectId ? db.entities.find((entity) => entity.id === subjectId) : null;
@@ -313,12 +301,12 @@ function isPlayerFact(db: AppDatabase, subjectId: string | null, text: string) {
 
 /** What the player's newest membership fact about this owner says: in, out, or nothing. */
 function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
-  const key = OWNER_KEYS[owner];
+  const key = ownerKey(db, owner);
 
   if (!key) return null;
 
   const facts = db.facts
-    .filter((fact) => fact.type === 'membership' && fact.validTo === null && key.test(fact.text) && isPlayerFact(db, fact.subjectEntityId, fact.text))
+    .filter((fact) => fact.type === 'membership' && fact.validTo === null && key.pattern.test(fact.text) && isPlayerFact(db, fact.subjectEntityId, fact.text))
     .sort((a, b) => dateSortValue(b.validFrom) - dateSortValue(a.validFrom));
 
   if (facts.length === 0) return null;
@@ -327,26 +315,28 @@ function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
 }
 
 /**
- * Does the player belong to the people who run this base? Membership facts first;
- * for the Akatsuki also the joining beat, or travelling with a member (Itachi
- * before the player joins). An owner the words don't name gets the benefit of the doubt.
+ * Does the player belong to the people who run this base? Membership facts
+ * first, then the player's own tags, then travelling with a member. An owner
+ * the world doesn't name gets the benefit of the doubt.
  */
 export function belongsTo(db: AppDatabase, owner: string): boolean {
-  if (!OWNER_KEYS[owner]) return true;
+  const key = ownerKey(db, owner);
+
+  if (!key) return true;
 
   const said = membershipSays(db, owner);
 
   if (said) return said === 'in';
 
-  if (owner === 'the Akatsuki') {
-    return isAkatsukiMember(db) || db.entities.some((entity) => entity.companion && entity.tags.includes('akatsuki') && !isDeceased(entity));
-  }
+  const player = db.entities.find((entity) => isPlayerEntity(entity));
 
-  return false;
+  if (player?.tags.includes(key.id)) return true;
+
+  return db.entities.some((entity) => entity.companion && entity.tags.includes(key.id) && !isDeceased(entity));
 }
 
 function cleanName(text: string) {
-  const value = localizePlaceNames(text).replace(/\s+/g, ' ').trim().replace(/[.]+$/, '');
+  const value = text.replace(/\s+/g, ' ').trim().replace(/[.]+$/, '');
   return value.slice(0, 70);
 }
 
@@ -390,13 +380,13 @@ function newSafehouse(
   guestOf?: string
 ): Safehouse {
   const location = db.state.location ?? '';
-  const region = regionOf(location) ?? lastRegion(db);
-  const placeId = placeIdOf(location);
+  const region = regionOf(db, location) ?? lastRegion(db);
+  const placeId = placeIdOf(db, location);
   const host = kind === 'borrowed' && diff?.host ? personRef(db, diff.host) : null;
   const groups: string[] = guestOf ? [guestOf] : [];
 
   if (kind === 'base') groups.push(baseOwner(db));
-  if (kind === 'rented') groups.push('the innkeeper');
+  if (kind === 'rented') groups.push('the landlord');
 
   return {
     id: makeId('sh'),
@@ -428,22 +418,14 @@ function newSafehouse(
 function lastRegion(db: AppDatabase): Region | undefined {
   const log = db.state.travelLog ?? [];
   const region = log[log.length - 1]?.region;
-  return isRegion(region) ? region : undefined;
+  return isRegion(db, region) ? region : undefined;
 }
 
 // ---------------------------------------------------------------------------
 // Who knows, and being found
 
-const GROUP_FACTIONS: Array<[RegExp, ReputationFaction | 'territory']> = [
-  [/\broot\b|\bdanz/i, 'leaf'],
-  [/\bakatsuki\b|\bzetsu\b/i, 'akatsuki'],
-  [/\bleaf\b|\bkonoha\b/i, 'leaf'],
-  [/\bsand\b|\bsuna\b/i, 'sand'],
-  [/\bmist\b|\bkiri\b/i, 'mist'],
-  [/\bcloud\b|\bkumo\b/i, 'cloud'],
-  [/\bstone\b|\biwa\b/i, 'stone'],
-  [/\bhunter|\btracker|\banbu\b|\bbounty\b|\bpursuer/i, 'territory'],
-];
+/** People who hunt for a living, or for the law: they come for whoever holds the land. */
+const PURSUER_WORDS = /\b(hunter|tracker|bounty|pursuer|police|detective|investigator|agent|enforcer)/i;
 
 type Threat = { entityId?: string; who: string; want: string; faction?: ReputationFaction };
 
@@ -457,36 +439,21 @@ function personThreat(db: AppDatabase, house: Safehouse, entity: EntityRecord): 
   if (bond && (bond.relationship === 'enemy' || bond.affinity <= -10)) {
     return { entityId: entity.id, who: entity.name, want: 'to catch you where you rest' };
   }
-  if (entity.tags.includes('root') && (bond?.affinity ?? 0) < 10) {
-    return { entityId: entity.id, who: entity.name, want: 'to tell Danzō where you hide', faction: 'leaf' };
-  }
-  // The Akatsuki learns the player has a private place.
-  // (Not their own hideout he is a guest in.)
-  const theirs = house.knownGroups.some((group) => /akatsuki/i.test(group));
-  if (entity.tags.includes('akatsuki') && !theirs && (house.kind === 'own' || house.kind === 'borrowed') && (bond?.affinity ?? 0) < 10) {
-    return { entityId: entity.id, who: entity.name, want: 'to know what you keep from the Akatsuki', faction: 'akatsuki' };
-  }
 
   return null;
 }
 
 function groupThreat(db: AppDatabase, house: Safehouse, group: string): Threat | null {
-  for (const [pattern, faction] of GROUP_FACTIONS) {
-    if (!pattern.test(group)) continue;
+  const named = factionsOf(db).find((faction) => factionPattern(faction.name, faction.id).test(group));
+  const faction = named ?? (PURSUER_WORDS.test(group) ? territoryOf(db, house.place) : null);
 
-    if (faction === 'akatsuki') {
-      if (house.kind !== 'own' && house.kind !== 'borrowed') return null;
-      if (house.knownGroups.some((item) => /akatsuki/i.test(item))) return null;
-      return { who: group, want: 'to know what you keep from the Akatsuki', faction };
-    }
+  if (!faction && !PURSUER_WORDS.test(group)) return null;
 
-    const village: VillageFaction | null = faction === 'territory' ? territoryOf(house.place) : faction;
-    // A village's own people only hunt the player once he's in their book.
-    const listed = village ? Boolean(db.state.reputation?.villages?.[village]?.listedOn) : false;
+  // A faction's own people only come for the player once they want them.
+  const listed = faction ? wantedListings(db).some((item) => item.factionId === faction.id) : false;
 
-    if (faction === 'territory' || /\broot\b/i.test(group) || listed) {
-      return { who: group, want: 'to take you where you sleep', ...(village ? { faction: village } : {}) };
-    }
+  if (PURSUER_WORDS.test(group) || listed) {
+    return { who: group, want: 'to take you where you sleep', ...(faction ? { faction: faction.id } : {}) };
   }
 
   return null;
@@ -812,7 +779,7 @@ function returningCamp(db: AppDatabase): Safehouse | null {
         house.kind === 'camp' &&
         house.ended?.reason === 'left' &&
         daysBetween(house.ended.on, db.state.inStoryDate) <= CAMP_RETURN_DAYS &&
-        matchesSafehouse(house, db.state.location)
+        matchesSafehouse(db, house, db.state.location)
     ) ?? null
   );
 }
@@ -870,9 +837,9 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
       continue;
     }
 
-    // A base he no longer belongs to: his room there is gone once he's left it.
+    // A base the player no longer belongs to: their room there is gone once they've left it.
     if (house.kind === 'base' && house.id !== here) {
-      const owner = house.knownGroups.find((group) => OWNER_KEYS[group]);
+      const owner = house.knownGroups.find((group) => ownerKey(next, group));
 
       if (owner && !belongsTo(next, owner)) {
         next = endHouse(next, house.id, 'withdrawn', `you no longer belong to ${owner}`);
@@ -906,7 +873,7 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
 
     // People living there are there while the player is away.
     if (living.length > 0) {
-      const at = `${house.name} (${localizePlaceNames(house.place)})`.slice(0, 120);
+      const at = `${house.name} (${house.place})`.slice(0, 120);
       next = {
         ...next,
         entities: next.entities.map((entity) =>
@@ -975,11 +942,10 @@ const KIND_LABEL: Record<SafehouseKind, string> = {
 
 export function kindLabel(house: Safehouse): string {
   if (house.kind === 'borrowed' && house.hostName) {
-    return !house.hostId && OWNER_KEYS[house.hostName] ? `a guest of ${house.hostName}` : `${house.hostName}’s, lent to you`;
+    return !house.hostId && /^the\s/i.test(house.hostName) ? `a guest of ${house.hostName}` : `${house.hostName}’s, lent to you`;
   }
   if (house.kind === 'base') {
-    if (house.knownGroups.some((group) => /akatsuki/i.test(group))) return 'an Akatsuki base';
-    const owner = house.knownGroups.find((group) => group !== 'the people who run it' && group !== 'the innkeeper');
+    const owner = house.knownGroups.find((group) => group !== 'the people who run it' && group !== 'the landlord');
     return owner ? `a base of ${owner}` : 'a base';
   }
   return KIND_LABEL[house.kind];
@@ -1016,8 +982,8 @@ function shortDate(date: CalendarDate) {
   return `${formatDayMonth(date)}, year ${date.year}`;
 }
 
-function regionWords(house: Safehouse) {
-  return isRegion(house.region) ? REGION_NAME[house.region] : null;
+function regionWords(db: AppDatabase, house: Safehouse) {
+  return regionName(db, house.region);
 }
 
 function ago(days: number) {
@@ -1102,7 +1068,7 @@ export function formatSafehouseLine(db: AppDatabase, userMessage: string): strin
         : 'A roof and walls: the weather stays outside.';
     const rest =
       quality === 'safe'
-        ? 'Sleeping here is safe: a full night heals you more than the road does and restores your chakra fully.'
+        ? 'Sleeping here is safe: a full night heals you more than the road does, and you wake properly rested.'
         : quality === 'unsafe'
           ? 'Sleeping here is a risk now: you may not sleep at all, and you wake at every sound.'
           : house.kind === 'camp'
@@ -1120,7 +1086,7 @@ export function formatSafehouseLine(db: AppDatabase, userMessage: string): strin
   const heading = headingTo(db, userMessage);
 
   if (heading) {
-    const where = [localizePlaceNames(heading.place), regionWords(heading)].filter(Boolean).join(', ');
+    const where = [heading.place, regionWords(db, heading)].filter(Boolean).join(', ');
     return [
       `SAFEHOUSE (where you are heading): ${heading.name} (${where}), ${kindLabel(heading)}, last there ${shortDate(heading.lastVisit)}.`,
       ...houseFacts(db, heading, false).filter((part) => !part.startsWith('You have not been here')),
@@ -1139,7 +1105,7 @@ export function placesLine(db: AppDatabase): string {
     .sort((a, b) => dateSortValue(b.lastVisit) - dateSortValue(a.lastVisit))
     .slice(0, 4)
     .map((house) => {
-      const region = regionWords(house);
+      const region = regionWords(db, house);
       return `${house.name}${region && !norm(house.name).includes(norm(region)) ? ` (${region})` : ''}`;
     });
 
@@ -1154,13 +1120,13 @@ export function formatSafehouseTracking(db: AppDatabase): string {
     .slice(0, 8)
     .map(
       (house) =>
-        `- ${house.id}: ${house.name} (${house.kind}; ${truncate(localizePlaceNames(house.place), 60)})${house.id === here ? ' [you are here]' : ''}${house.stash.length ? `; stash: ${house.stash.slice(0, 6).join(', ')}` : ''}`
+        `- ${house.id}: ${house.name} (${house.kind}; ${truncate(house.place, 60)})${house.id === here ? ' [you are here]' : ''}${house.stash.length ? `; stash: ${house.stash.slice(0, 6).join(', ')}` : ''}`
     );
 
   return [
     'SAFEHOUSES',
     ...(listed.length > 0 ? listed : ['- none yet']),
-    'safehouse: null on most turns. Fill it when the player sleeps somewhere or the page says they settle in (name: a short name for the place, like "the cave above the falls"; kind: own = a place they take or build themselves, rented = an inn or teahouse room, borrowed = someone\'s home lent to them (host = their id), base = an organisation\'s place the player belongs to, like an Akatsuki hideout or an army\'s field camp (where they are only a guest it is borrowed, host = who lets him stay; a prisoner or an intruder gets null), camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when they come back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items they leave there or pick up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
+    'safehouse: null on most turns. Fill it when the player sleeps somewhere or the page says they settle in (name: a short name for the place, like "the flat above the bakery"; kind: own = a place they own, rent long-term or take themselves, rented = a hotel or hostel room or a short let, borrowed = someone\'s home lent to them (host = their id), base = an organisation\'s place the player belongs to, like a crew\'s clubhouse or a company flat (where they are only a guest it is borrowed, host = who lets them stay; a prisoner or an intruder gets null), camp = a night outdoors or among strangers, like a tent or a car), or when something changes at a listed one: then id = its id (also when they come back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items they leave there or pick up (inventory names). upgrade: something finished there on the page (new locks, a camera, a garden, a bookshelf, a painted wall). shown_to: ids, or group names ("the police", a faction), of whoever the player brings there or who sees them come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone the player hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
   ].join('\n');
 }
 

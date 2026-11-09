@@ -6,7 +6,7 @@ import type { AppDatabase, EntityRecord } from './types';
  * Short, readable IDs for characters in the state tracker's prompt
  * ("mara-vell", "old-tom"). The player is always "player".
  *
- * The tracker refers to everyone by these IDs, so "Kisame", "Hoshigaki" and
+ * The tracker refers to everyone by these IDs, so "Mara", "Voss" and
  * "the shark man" all land on one person. IDs come from the current name, so
  * they stay the same from turn to turn (and keep the prompt cacheable); two
  * people with the same name get "-2", "-3" in save order.
@@ -47,9 +47,9 @@ export function refByEntityId(db: AppDatabase): Map<string, string> {
   return new Map([...characterRefs(db)].map(([ref, entity]) => [entity.id, ref]));
 }
 
-// Names that are also everyday words only count when capitalized ("Pain",
-// not "the pain in your side").
-const COMMON_WORD_NAMES = new Set(['pain', 'kin']);
+// Names that are also everyday words only count when capitalized ("Hope",
+// not "the hope in your voice").
+const COMMON_WORD_NAMES = new Set(['hope', 'grace', 'faith', 'kin', 'will', 'rose', 'mark', 'jack']);
 
 function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -57,7 +57,7 @@ function escapeRegExp(text: string) {
 
 /**
  * True when the text names this person as a whole word: "Lee" is not found
- * in "asleep", "Tobi" is not found in "Sarutobi".
+ * in "asleep", "Ana" is not found in "Banana".
  */
 export function mentionsName(text: string, name: string) {
   const trimmed = name.trim();

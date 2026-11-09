@@ -1,12 +1,12 @@
 // Ambient sound (living-world Stage 5, section 17).
 //
 // Ambience only: no music, no stingers. The point is to make you feel where
-// The player is: water running by a river, birds in a forest by day, a little wind
+// the player is: water running by a river, birds in a forest by day, a little wind
 // on the road, rain on a roof.
 //
 // This module is pure. It reads state the app already tracks (the scene's
-// weather, the location and its kind, the clock, the season, the region and
-// the scene mode) and returns a mix: how loud each sound bed should be. The
+// weather, the location and its kind, the clock, the season, the region's
+// climate and the scene mode) and returns a mix: how loud each sound bed should be. The
 // player (lib/audio/) synthesises the beds and crossfades between mixes. The
 // narrator's prompt is untouched.
 //
@@ -16,12 +16,9 @@
 import { flashbackView } from './flashbacks';
 import { timeOfDayOf, type DayPeriod } from './calendar';
 import { locationKindOf } from './encounters';
-import { localizePlaceNames } from './glossary';
-import type { Region } from './geography';
-import { placeIdOf } from './mapData';
 import { campCover, currentSafehouse } from './safehouses';
 import { sceneModeOf } from './sceneMode';
-import type { AppDatabase, LocationKind, SafehouseKind, WeatherCondition } from './types';
+import type { AppDatabase, ClimateType, LocationKind, SafehouseKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
 
 export const AMBIENCE_BEDS = [
@@ -61,12 +58,11 @@ export type AmbienceInput = {
   period: DayPeriod;
   hour: number;
   season: Season;
-  region: Region;
+  /** The climate of the region the player is in. */
+  climate: ClimateType;
   kind: LocationKind;
-  /** The location, place names in English. */
+  /** The location, in words. */
   place: string;
-  /** A map place id, when the location names one. */
-  placeId: string | null;
   fight: boolean;
   /** The kind of safehouse the player is at: walls and a roof, or a camp under the sky. */
   shelter?: SafehouseKind;
@@ -92,34 +88,29 @@ const FIRE_WORDS = /\b(hearth|fireplace|campfire|camp fire|fire pit|brazier|stov
 const CROWD_WORDS = /\b(inn|teahouse|tea house|tavern|bar|restaurant|bathhouse|dining|common room)\b/i;
 const MARKET_WORDS = /\b(market|bazaar|festival|fair|stalls?|shopping street|crowd|crowded|busy street|main street|port|harbou?r|docks)\b/i;
 const FOREST_WORDS = /\b(forest|woods|woodland|grove|jungle|trees|treetops?|canopy|thicket|clearing|bamboo)\b/i;
-const HIGH_WORDS = /\b(mountain|mountainside|peak|summit|cliff|cliffs|ridge|pass|heights|crag|plateau|tower top|hokage rock|hokage monument)\b/i;
+const HIGH_WORDS = /\b(mountain|mountainside|peak|summit|cliff|cliffs|ridge|pass|heights|crag|plateau|tower top|rooftop)\b/i;
 const DESERT_WORDS = /\b(desert|dunes?|sands|wasteland|badlands)\b/i;
 const WATERFALL_WORDS = /\b(waterfall|waterfalls|falls|cascade)\b/i;
 const RIVER_WORDS = /\b(river|riverbank|riverside|rapids)\b/i;
 const STREAM_WORDS = /\b(stream|creek|brook|spring|hot springs?|onsen|pond|lake|lakeshore|lakeside)\b/i;
 const SEA_WORDS = /\b(sea|seaside|ocean|coast|coastal|shore|shoreline|beach|cove|bay|harbou?r|port|docks?|pier|island|cliffs? over the sea|whirlpools?|boat|ship|ferry)\b/i;
 
-const WATERFALL_PLACES = new Set(['valley-end', 'waterfall']);
-const RIVER_PLACES = new Set(['naka-river']);
-const SEA_PLACES = new Set(['uzushio', 'naruto-bridge', 'mist']);
-const SEA_REGIONS = new Set<Region>(['whirlpools', 'water', 'sea']);
 
 /** Where the player is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
   const house = currentSafehouse(db);
   // A safehouse's own name says what it is ("the cave above the falls").
-  const place = localizePlaceNames([db.state.location ?? '', house?.name ?? ''].filter(Boolean).join(', '));
+  const place = ([db.state.location ?? '', house?.name ?? ''].filter(Boolean).join(', '));
 
   return {
     condition: weather.condition,
     period: timeOfDayOf(db.state.inStoryDate),
     hour: db.state.inStoryDate.hour,
     season: weather.season,
-    region: weather.region,
+    climate: weather.climate,
     kind: locationKindOf(db),
     place,
-    placeId: placeIdOf(db.state.location),
     fight: sceneModeOf(db).current === 'fight',
     ...(house ? { shelter: house.kind } : {}),
   };
@@ -177,11 +168,11 @@ function rainOf(condition: WeatherCondition) {
   }
 }
 
-/** What the player should hear, from where he is. */
+/** What the player should hear, from where they are. */
 export function ambienceMix(input: AmbienceInput): AmbienceMix {
   const beds: Partial<Record<AmbienceBed, number>> = {};
   const indoors = isIndoors(input);
-  const { condition, period, season, kind, place, placeId, region } = input;
+  const { condition, period, season, kind, place, climate } = input;
   const day = period === 'morning' || period === 'afternoon';
   const night = period === 'night';
   const dawn = input.hour >= 5 && input.hour <= 8;
@@ -225,10 +216,10 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
     add(beds, 'wind-high', condition === 'fog' ? 0.3 : 0.55);
     add(beds, 'wind-light', 0.4);
   }
-  if (DESERT_WORDS.test(place) || (region === 'wind' && kind === 'wilderness')) add(beds, 'wind-light', 0.45);
+  if (DESERT_WORDS.test(place) || (climate === 'desert' && kind === 'wilderness')) add(beds, 'wind-light', 0.45);
 
   // ---- Life ---------------------------------------------------------------
-  const desert = DESERT_WORDS.test(place) || (region === 'wind' && kind !== 'settlement');
+  const desert = DESERT_WORDS.test(place) || (climate === 'desert' && kind !== 'settlement');
   const wild = kind === 'wilderness' || kind === 'road' || FOREST_WORDS.test(place);
   const forest = FOREST_WORDS.test(place) || (kind === 'wilderness' && !desert && !SEA_WORDS.test(place));
   const harsh = rain >= 0.6 || condition === 'blizzard' || condition === 'sandstorm' || condition === 'storm';
@@ -244,7 +235,7 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
       if (condition === 'snow') birds *= 0.5;
       add(beds, 'forest-day', birds);
       // Summer heat brings the cicadas.
-      if (season === 'summer' && period === 'afternoon' && (region === 'fire' || region === 'rice' || region === 'hot-water' || region === 'waves' || region === 'woods' || region === 'tea')) {
+      if (season === 'summer' && period === 'afternoon' && (climate === 'temperate' || climate === 'monsoon' || climate === 'tropical' || climate === 'coastal')) {
         add(beds, 'cicadas', forest ? 0.55 : 0.35);
       }
     }
@@ -259,16 +250,12 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
   }
 
   // ---- Water --------------------------------------------------------------
-  if (placeId && WATERFALL_PLACES.has(placeId)) add(beds, 'waterfall', placeId === 'valley-end' ? 0.9 : 0.5);
-  if (placeId && RIVER_PLACES.has(placeId)) add(beds, 'river', 0.7);
-  if (WATERFALL_WORDS.test(place) && !/\bhidden waterfall\b|\bland of waterfalls\b/i.test(place)) add(beds, 'waterfall', 0.8);
+  if (WATERFALL_WORDS.test(place)) add(beds, 'waterfall', 0.8);
   if (RIVER_WORDS.test(place)) add(beds, 'river', kind === 'settlement' ? 0.4 : 0.7);
   if (STREAM_WORDS.test(place)) add(beds, 'stream', 0.6);
-  if (region === 'waterfall' && kind !== 'settlement' && !indoors) add(beds, 'stream', 0.3);
   if (SEA_WORDS.test(place)) add(beds, 'sea', kind === 'settlement' ? 0.55 : 0.8);
-  if (placeId && SEA_PLACES.has(placeId)) add(beds, 'sea', 0.5);
-  // The island countries: the sea is never far.
-  if (SEA_REGIONS.has(region) && kind !== 'structure') add(beds, 'sea', 0.3);
+  // A coastal region: the sea is never far.
+  if (climate === 'coastal' && kind !== 'structure') add(beds, 'sea', 0.3);
 
   // ---- People and places --------------------------------------------------
   if (kind === 'settlement' && !indoors) {

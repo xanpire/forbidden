@@ -11,22 +11,22 @@
 // optional offer to the narrator like a personal beat (SOMETHING COMES
 // BACK), never forced; the tracker marks it returned when it plays out. A
 // witness the player left alive does not need to find them: when the time comes they
-// talk, and the village they talk to wants him more. Seeds that never find a
-// fitting moment fade.
+// talk, and the faction they talk to wants the player more. Seeds that never
+// find a fitting moment fade.
 //
-// Canon characters stay on their canon path: a consequence changes how they
-// see the player, not their story.
+// People on the world timeline stay on their path: a consequence changes how
+// they see the player, not their story.
 
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
-import { isCombatPace } from './canon';
+import { isCombatPace } from './timeline';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
 import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './geography';
 import { makeId } from './id';
 import { grudgeOffer } from './grudges';
-import { canonStoryWeight, isCanonFigure } from './lives';
-import { applyReputationChanges, VILLAGE_NAME } from './reputation';
+import { onTimelinePath } from './lives';
+import { applyReputationChanges, factionById, factionsOf } from './reputation';
 import { hashText, playerTurnCount } from './util';
 import type { AppDatabase, ConsequenceKind, ConsequenceSeed, EntityRecord, TurnDiff } from './types';
 import { isPlayerEntity } from './player';
@@ -35,11 +35,11 @@ import { isPlayerEntity } from './player';
 const MAX_WAITING = 24;
 /** Ended seeds kept for the world clock. */
 const MAX_ENDED = 20;
-/** Close enough to cross paths, in shinobi days. */
+/** Close enough to cross paths, in travel days. */
 const CROSS_PATHS_DAYS = 2.5;
 /** An eligible seed is pressed (offered every fitting turn) this long after it could first return. */
 const PRESS_AFTER_DAYS = 90;
-/** How much a witness who talks raises a village's heat. */
+/** How much a witness who talks raises a faction's heat. */
 const WITNESS_HEAT = 8;
 
 const KINDS = new Set<ConsequenceKind>(['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt', 'intercepted', 'found']);
@@ -88,7 +88,7 @@ export function isImportant(db: AppDatabase, entity: EntityRecord): boolean {
   const bond = db.bonds.find((item) => item.entityId === entity.id);
 
   return Boolean(
-    bond?.isMajor || (bond && Math.abs(bond.affinity) >= 5) || (isCanonFigure(entity) && canonStoryWeight(entity) >= 3)
+    bond?.isMajor || (bond && Math.abs(bond.affinity) >= 5) || onTimelinePath(db, entity)
   );
 }
 
@@ -170,7 +170,7 @@ export function applyConsequences(
       want: item.want?.trim() || undefined,
       witnesses,
       faction: item.faction,
-      region: regionOf(db.state.location) ?? undefined,
+      region: regionOf(db, db.state.location) ?? undefined,
       when: item.when,
     });
 
@@ -203,8 +203,8 @@ export function advanceConsequences(db: AppDatabase): AppDatabase {
       return { ...seed, status: 'faded' as const, resolvedOn: now };
     }
 
-    // A witness the player left alive talks: the village they talk to wants them more.
-    if (seed.kind === 'witness' && seed.faction && seed.faction !== 'akatsuki' && dateSortValue(now) >= dateSortValue(seed.after)) {
+    // A witness the player left alive talks: the faction they talk to wants them more.
+    if (seed.kind === 'witness' && seed.faction && factionById(next, seed.faction) && dateSortValue(now) >= dateSortValue(seed.after)) {
       next = applyReputationChanges(next, [{ faction: seed.faction, change: WITNESS_HEAT, reason: `A witness talked: ${seed.what}` }], []);
       changed = true;
       return { ...seed, status: 'returned' as const, resolvedOn: now };
@@ -231,9 +231,9 @@ function sceneIds(db: AppDatabase): Set<string> {
   return ids;
 }
 
-function near(a: Region | null, b: Region | null | undefined, days = CROSS_PATHS_DAYS) {
+function near(db: AppDatabase, a: Region | null, b: Region | null | undefined, days = CROSS_PATHS_DAYS) {
   if (!a || !b) return false;
-  return travelDaysBetween(a, b as Region) <= days;
+  return travelDaysBetween(db, a, b as Region) <= days;
 }
 
 /** Could this seed realistically come back here and now? */
@@ -243,7 +243,7 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
   const here = sceneIds(db);
   const kind = db.state.locationKind ?? 'wilderness';
   const peopled = kind === 'road' || kind === 'settlement';
-  const playerRegion = regionOf(db.state.location) ?? regionOf(db.state.scene);
+  const playerRegion = regionOf(db, db.state.location) ?? regionOf(db, db.state.scene);
   const person = seed.entityId ? db.entities.find((entity) => entity.id === seed.entityId) ?? null : null;
 
   if (person && (isDeceased(person) || (person.companion && !['lie', 'betrayal', 'promise', 'debt'].includes(seed.kind)))) {
@@ -256,28 +256,25 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
     case 'betrayal':
     case 'promise':
     case 'debt':
-      return person ? here.has(person.id) : peopled && near(playerRegion, seed.region as Region);
+      return person ? here.has(person.id) : peopled && near(db, playerRegion, seed.region as Region);
     case 'helped':
       return playerRegion !== null && playerRegion === seed.region && peopled;
     case 'witness':
-      // Without a village to talk to, the talk reaches a town near the place.
-      return peopled && kind === 'settlement' && near(playerRegion, seed.region as Region, 4);
+      // Without a faction to talk to, the talk reaches a town near the place.
+      return peopled && kind === 'settlement' && near(db, playerRegion, seed.region as Region, 4);
     case 'found':
-      // They come to the place they found, while the player is there (safehouses.ts searches it while he is away).
+      // They come to the place they found, while the player is there (safehouses.ts searches it while they are away).
       return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId && !db.state.flashbacks?.active;
     case 'intercepted':
-      if (seed.faction === 'akatsuki') {
-        return db.entities.some((entity) => here.has(entity.id) && entity.tags.includes('akatsuki'));
-      }
       return peopled;
     default: {
-      // Spared, humiliated: they have to be able to cross his path.
+      // Spared, humiliated: they have to be able to cross the player's path.
       if (!peopled) return false;
       if (person) {
         if (here.has(person.id)) return true;
-        return near(playerRegion, whereaboutsRegion(person) ?? (seed.region as Region));
+        return near(db, playerRegion, whereaboutsRegion(db, person) ?? (seed.region as Region));
       }
-      return near(playerRegion, seed.region as Region, 3);
+      return near(db, playerRegion, seed.region as Region, 3);
     }
   }
 }
@@ -326,15 +323,10 @@ const HOW: Record<ConsequenceKind, string> = {
   found: 'They know where you stay now: watchers on the approach, a visit, an ambush at night, a question at the door. Show how they found it.',
 };
 
-function interceptHow(seed: ConsequenceSeed): string {
-  switch (seed.faction) {
-    case 'leaf':
-      return 'Root read it on the way: watchers, a question put to the person you wrote to, or a Root agent who knows something he should not.';
-    case 'akatsuki':
-      return 'Zetsu read it: someone in the Akatsuki brings it up, or tests your loyalty.';
-    default:
-      return `${seed.faction ? VILLAGE_NAME[seed.faction] : 'A village'} read it at a checkpoint: their hunter-nin now know a name tied to you.`;
-  }
+function interceptHow(db: AppDatabase, seed: ConsequenceSeed): string {
+  const name = factionById(db, seed.faction)?.name ?? 'Someone';
+
+  return `${name} read it on the way: now someone there knows something tied to you, and may bring it up, watch you, or put a question to the person you wrote to.`;
 }
 
 export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | null): string {
@@ -344,25 +336,24 @@ export function formatConsequenceOffer(db: AppDatabase, seed: ConsequenceSeed | 
   const ago = agoLabel(daysBetween(seed.createdOn, db.state.inStoryDate));
   const how =
     seed.kind === 'intercepted'
-      ? interceptHow(seed)
-      : seed.kind === 'found' && seed.faction === 'akatsuki'
-        ? 'Someone in the Akatsuki knows of your private place: a question, a test of your loyalty, or Zetsu in the walls.'
-        : HOW[seed.kind];
-  const canon = person && isCanonFigure(person) ? ' They stay on their canon path; this changes only how they see you.' : '';
+      ? interceptHow(db, seed)
+      : HOW[seed.kind];
+  const onPath = person && onTimelinePath(db, person) ? ' They stay on their path on the world timeline; this changes only how they see you.' : '';
 
   return [
     `SOMETHING COMES BACK (optional: use it only if it fits this scene; never forced). ${ago} ago: ${seed.what} (${seed.who}).`,
     seed.want ? `What they want now: ${seed.want}.` : '',
     how,
-    `Make it realistic: show how it found you.${canon} If it does not fit, leave it for another time.`,
+    `Make it realistic: show how it found you.${onPath} If it does not fit, leave it for another time.`,
   ]
     .filter(Boolean)
     .join(' ');
 }
 
-export function consequenceTrackingLines(seed: ConsequenceSeed | null): string[] {
+export function consequenceTrackingLines(db: AppDatabase, seed: ConsequenceSeed | null): string[] {
+  const factions = factionsOf(db).map((faction) => faction.id);
   const lines = [
-    "consequences: only for a real choice someone would remember that could plausibly come back later: you spare an enemy, lie to someone, help a village or a person in need, leave a witness alive after a deed a village would want you for, betray, humiliate, promise, or owe someone. kind (spared, lie, helped, witness, betrayal, humiliated, promise, debt); character_id (their id, or null for someone unnamed); who (their name, or a short description: 'the bandit you spared at the ford'); what (what you did, second person); want (what they would want now); witnesses (ids); faction (the village whose people would hear of it, or null); when (weeks, months, years: how soon it could return). Most turns [].",
+    `consequences: only for a real choice someone would remember that could plausibly come back later: you spare an enemy, lie to someone, help a person or a group in need, leave a witness after a deed a group would want you for, betray, humiliate, promise, or owe someone. kind (spared, lie, helped, witness, betrayal, humiliated, promise, debt); character_id (their id, or null for someone unnamed); who (their name, or a short description: 'the mugger you let go in the alley'); what (what you did, second person); want (what they would want now); witnesses (ids); faction (${factions.length ? `the faction id whose people would hear of it: ${factions.join(', ')}; or null` : 'null'}); when (weeks, months, years: how soon it could return). Most turns [].`,
   ];
 
   if (seed) {

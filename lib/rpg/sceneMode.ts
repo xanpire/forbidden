@@ -51,7 +51,7 @@ export function sceneModeOf(db: AppDatabase): SceneModeState {
 
 const QUOTED = /["“”„«»]([^"“”„«»]*[\p{L}\p{N}][^"“”„«»]*)["“”„«»]/u;
 const ATTACK =
-  /\b(attack|attacks|attacking|strike|strikes|striking|punch|punches|kick|kicks|stab|stabs|slash|slashes|cut (?:him|her|them|it|at|down|through)|lunge|lunges|charge (?:at|him|her|them)|tackle|tackles|throw (?:a |my |the |two |three )?(?:kunai|shuriken|senbon|needles?|blades?)|hurl|fling|fire (?:at|a|my)|swing (?:at|my)|draw (?:my|a) (?:sword|blade|kunai)|go for (?:his|her|their) (?:throat|neck|eyes|heart)|kill (?:him|her|them)|choke|strangle|headbutt|ambush)\b/gi;
+  /\b(attack|attacks|attacking|strike|strikes|striking|punch|punches|kick|kicks|stab|stabs|slash|slashes|cut (?:him|her|them|it|at|down|through)|lunge|lunges|charge (?:at|him|her|them)|tackle|tackles|throw (?:a |my |the |two |three )?(?:knife|knives|punch|punches|bottle|blades?)|hurl|fling|fire (?:at|a|my)|swing (?:at|my)|draw (?:my|a) (?:sword|blade|knife|gun|pistol)|go for (?:his|her|their) (?:throat|neck|eyes|heart)|kill (?:him|her|them)|choke|strangle|headbutt|ambush)\b/gi;
 // Fighting back only counts once a fight is on ("I block his path" is not a fight).
 const DEFEND = /\b(counter(?:attack)?s?|block|blocks|parry|parries|dodge|dodges|duck under|sidestep|roll (?:away|aside|under)|jump back|leap back|guard)\b/gi;
 const NEGATED = /\b(not|never|won't|wouldn't|don't|do not|can't|cannot|refuse to|without)\s+(?:\w+\s+){0,2}$/i;

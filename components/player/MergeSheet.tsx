@@ -198,8 +198,8 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
             <>
               <Text style={styles.title}>Make them one person?</Text>
               <Text style={styles.body}>
-                {dropName} becomes another name for {keepName}. Bonds, shared memories, facts and
-                jutsu are combined. This can’t be undone.
+                {dropName} becomes another name for {keepName}. Bonds, shared memories and facts
+                are combined. This can’t be undone.
               </Text>
 
               <Text style={[type.sectionLabel, styles.keepLabel]}>Name to keep</Text>

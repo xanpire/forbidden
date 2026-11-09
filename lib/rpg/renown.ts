@@ -1,35 +1,36 @@
 // Rumours, posters and the player's name (living-world Stage 3, section 10).
 //
-// - Deeds: every time the people of a village (or the Akatsuki) see the player do
-//   something and live to tell it (the state tracker's `reputation`), the
-//   deed is kept with where and when it happened.
-// - the player's name grows by itself: each audience (a village's bingo book, the
-//   Akatsuki, the people of the Rain, the underworld of bounty hunters and
-//   mercenaries) calls him by an epithet that grows from what they saw, never
-//   one the player picks. It can change over the years as new deeds outweigh
-//   old ones. A name the story itself gives him (someone in the prose calls
-//   him by it: the tracker's `epithet`) is kept for that audience.
-// - Rumours: in inns, teahouses, markets and at checkpoints, people talk
-//   about his deeds. News travels only as far and as fast as people carry
+// - Deeds: every time a faction's people see the player do something and live
+//   to tell it (the state tracker's `reputation`), the deed is kept with where
+//   and when it happened.
+// - The player's name grows by itself: each audience (a faction, or ordinary
+//   people) calls them by an epithet that grows from what they saw, never one
+//   the player picks. It can change over the years as new deeds outweigh old
+//   ones. A name the story itself gives them (someone in the prose calls them
+//   by it: the tracker's `epithet`) is kept for that audience.
+// - Rumours: in bars, cafés, markets and at checkpoints, people talk about
+//   the player's deeds. News travels only as far and as fast as people carry
 //   it, and it is distorted by distance and time: close to the truth nearby,
 //   grown in the telling further off, a monster story far away.
-// - Wanted posters: where a village that lists him at B-rank or above holds
-//   the land, its poster hangs in towns and at checkpoints with his rank,
-//   bounty and name; the sketch is poor at B, fair at A, good at S.
+// - Wanted notices: where a faction that has the player wanted or worse holds
+//   the land, its notice is up with the price and a name; the picture is poor
+//   at first, good at the top.
 //
-// The narrator gets one line of what they call him here (inside YOUR NAME
-// OUT THERE) and, now and then, an optional TALK OF YOU line.
+// The narrator gets one line of what they call the player here (inside YOUR
+// NAME OUT THERE) and, now and then, an optional TALK OF YOU line.
 
-import { dateSortValue, daysBetween, timeOfDayOf } from './calendar';
-import { isCombatPace } from './canon';
-import { castWithCompanions } from './companions';
+import { daysBetween, timeOfDayOf } from './calendar';
+import { isCombatPace } from './timeline';
 import { encounterRisk, locationKindOf } from './encounters';
-import { resolveEntity } from './entities';
-import { REGION_NAME, regionOf, travelDaysBetween, type Region } from './geography';
+import { regionName, regionOf, travelDaysBetween, type Region } from './geography';
 import { makeId } from './id';
-import { LEAF_START_REASON, VILLAGE_NAME, bingoListings, formatRyo, territoryOf } from './reputation';
+import { currencyOf, formatMoney } from './money';
+import { WANTED_LABEL, factionById, factionsOf, territoryOf, wantedListings, type WantedLevel } from './reputation';
 import { hashText, playerTurnCount } from './util';
-import type { AppDatabase, Audience, Deed, Epithet, RenownState, TurnDiff, VillageFaction } from './types';
+import type { AppDatabase, Audience, Deed, Epithet, RenownState, TurnDiff } from './types';
+
+/** Ordinary people: everyone who is not a faction. */
+export const COMMON_AUDIENCE = 'common';
 
 const MAX_DEEDS = 40;
 /** A theme needs this much weight before an audience names the player after it. */
@@ -42,100 +43,65 @@ const RENAME_AFTER_DAYS = 120;
 const RUMOUR_WINDOW_TURNS = 5;
 const RUMOUR_MIN_TURN = 4;
 
-export const AUDIENCES: Audience[] = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'];
+/** Every audience in this world: its factions, then ordinary people. */
+export function audiencesOf(db: Pick<AppDatabase, 'world'>): Audience[] {
+  return [...factionsOf(db).map((faction) => faction.id), COMMON_AUDIENCE];
+}
 
-export const AUDIENCE_NAME: Record<Audience, string> = {
-  leaf: "the Hidden Leaf's bingo book",
-  sand: "the Hidden Sand's bingo book",
-  mist: "the Hidden Mist's bingo book",
-  cloud: "the Hidden Cloud's bingo book",
-  stone: "the Hidden Stone's bingo book",
-  akatsuki: 'the Akatsuki',
-  rain: 'the people of the Rain',
-  underworld: 'bounty hunters and the underworld',
-};
+export function audienceName(db: Pick<AppDatabase, 'world'>, audience: Audience): string {
+  return audience === COMMON_AUDIENCE ? 'ordinary people' : factionById(db, audience)?.name ?? 'someone';
+}
 
-type Tone = 'formal' | 'street' | 'akatsuki';
+type Tone = 'formal' | 'street';
 
 type Theme = {
   id: string;
   test: RegExp;
-  names: { formal: string; street: [string, string]; akatsuki: string };
+  names: { formal: string; street: string };
   /** Old news counts for less. */
   fades?: boolean;
 };
 
 const THEMES: Theme[] = [
   {
-    id: 'uchiha',
-    test: /\b(itachi|uchiha|massacre|accomplice)\b/i,
-    names: { formal: "Itachi's Shadow", street: ['the Other Uchiha', 'the Uchiha Stray'], akatsuki: "Itachi's Pup" },
-    fades: true,
-  },
-  {
-    id: 'eyes',
-    test: /\b(sharingan|mangeky[oō]|genjutsu|red eyes?|his eyes)\b/i,
-    names: { formal: 'the Red-Eyed Ghost', street: ['Red Eyes', 'the Crow-Eyed Man'], akatsuki: 'the Starer' },
-  },
-  {
-    id: 'fire',
-    test: /\b(fire style|fire release|flames?|burn(ed|ing|t)?|blaze|ash|inferno|scorch(ed)?|fireball)\b/i,
-    names: { formal: 'the Ash Wraith', street: ['the Burning Ghost', 'the Grey Fire'], akatsuki: 'the Matchstick' },
-  },
-  {
-    id: 'thief',
-    test: /\b(thousand souls|drain(ed|ing)? (their|his|her)? ?chakra|stole (their|his|her)? ?chakra|husks?|siphon(ed)?)\b/i,
-    names: { formal: 'the Soul Thief', street: ['the Hollower', 'the Chakra Drinker'], akatsuki: 'the Leech' },
-  },
-  {
     id: 'ghost',
-    test: /\b(vanish(ed)?|unseen|without a trace|slipped (away|past|through)|disappear(ed)?|escaped|evaded|no one saw)\b/i,
-    names: { formal: 'the Uncatchable', street: ['the Ghost', 'Smoke'], akatsuki: 'the Draft' },
+    test: /\b(vanish(ed)?|unseen|without a trace|slipped (away|past|through)|disappear(ed)?|escaped|evaded|got away|no one saw)\b/i,
+    names: { formal: 'the Ghost', street: 'the One Who Got Away' },
   },
   {
-    id: 'butcher',
-    test: /\b(killed|slaughter(ed)?|cut down|butcher(ed)?|bodies|wiped out|murdered)\b/i,
-    names: { formal: 'the Quiet Butcher', street: ['the Red Hand', 'the Butcher of the Roads'], akatsuki: 'the Tidy One' },
+    id: 'violence',
+    test: /\b(killed|beat (up|down)?|beaten|stabbed|shot|hurt|broke (his|her|their) |murdered|attacked)\b/i,
+    names: { formal: 'the Butcher', street: 'the Red Hand' },
   },
   {
     id: 'mercy',
-    test: /\b(spared|saved|protected|helped|sheltered|healed|rescued|let (them|him|her) (live|go))\b/i,
-    names: { formal: 'the Merciful Missing-nin', street: ['the Kind Devil', 'the Wolf Who Spares'], akatsuki: 'the Soft One' },
+    test: /\b(spared|saved|protected|helped|sheltered|rescued|let (them|him|her) (live|go))\b/i,
+    names: { formal: 'the Samaritan', street: 'the Kind Stranger' },
   },
   {
-    id: 'seal',
-    test: /\b(seal(ed|ing)?|chakra chains?|chains|uzumaki|barrier)\b/i,
-    names: { formal: 'the Red Chain', street: ['the Chainmaker', 'Red Chains'], akatsuki: 'the Locksmith' },
+    id: 'thief',
+    test: /\b(stole|robbed|conned|broke in|burgl(ed|ary)|pickpocket(ed)?|swindled)\b/i,
+    names: { formal: 'the Thief', street: 'Light Fingers' },
   },
   {
-    id: 'lightning',
-    test: /\b(lightning style|lightning release|chidori|thunder|storm)\b/i,
-    names: { formal: 'the Stormcrow', street: ['Thunderhand', 'the Storm Walker'], akatsuki: 'Sparks' },
+    id: 'liar',
+    test: /\b(lied|forged|fake[d]?|disguise[d]?|impersonat(ed|ing)|posed as)\b/i,
+    names: { formal: 'the Impostor', street: 'Two Faces' },
   },
   {
-    id: 'water',
-    test: /\b(water style|water release|drown(ed)?|flood(ed)?)\b/i,
-    names: { formal: 'the Drowner', street: ['the Tide Ghost', 'the Wet Death'], akatsuki: 'the Puddle' },
+    id: 'charmer',
+    test: /\b(seduced|charmed|flirted|kissed|slept with|affair)\b/i,
+    names: { formal: 'the Charmer', street: 'the Heartbreaker' },
   },
   {
-    id: 'wind',
-    test: /\b(wind style|wind release|gale|wind blades?)\b/i,
-    names: { formal: 'the Gale Blade', street: ['the Cutting Wind', 'Whisper Blade'], akatsuki: 'the Breeze' },
+    id: 'money',
+    test: /\b(bribed|paid off|bought|spent|tipped|threw money)\b/i,
+    names: { formal: 'Deep Pockets', street: 'the Big Spender' },
   },
   {
-    id: 'earth',
-    test: /\b(earth style|earth release|quake|landslide|buried)\b/i,
-    names: { formal: 'the Mountain Breaker', street: ['the Quake', 'Stonefist'], akatsuki: 'the Mole' },
-  },
-  {
-    id: 'susanoo',
-    test: /\b(susanoo|spectral (giant|warrior|ribcage)|giant of (bone|chakra))\b/i,
-    names: { formal: "the Giant's Shadow", street: ['the Demon of Bones', 'the Red Giant'], akatsuki: 'the Big One' },
-  },
-  {
-    id: 'cloak',
-    test: /\b(akatsuki|red clouds?|black cloak)\b/i,
-    names: { formal: 'the Red-Cloud Uchiha', street: ['Red Clouds', 'the Cloak'], akatsuki: 'the New Cloak' },
+    id: 'fire',
+    test: /\b(burn(ed|ing|t)?|arson|set fire|torched|blaze)\b/i,
+    names: { formal: 'the Arsonist', street: 'Firestarter' },
   },
 ];
 
@@ -163,25 +129,15 @@ export function normalizeRenown(raw: unknown): RenownState | undefined {
     : [];
   const epithets: RenownState['epithets'] = {};
 
-  for (const audience of AUDIENCES) {
-    const epithet = value.epithets?.[audience];
-
+  for (const [audience, epithet] of Object.entries(value.epithets ?? {})) {
     if (epithet && typeof epithet.name === 'string' && epithet.since) epithets[audience] = epithet;
   }
 
   return { deeds: deeds.slice(-MAX_DEEDS), epithets };
 }
 
-function audienceTone(audience: Audience): Tone {
-  if (audience === 'akatsuki') return 'akatsuki';
-  if (audience === 'rain' || audience === 'underworld') return 'street';
-  return 'formal';
-}
-
 function nameFor(theme: Theme, audience: Audience): string {
-  const tone = audienceTone(audience);
-
-  if (tone === 'street') return theme.names.street[audience === 'rain' ? 1 : 0];
+  const tone: Tone = audience === COMMON_AUDIENCE ? 'street' : 'formal';
   return theme.names[tone];
 }
 
@@ -191,16 +147,8 @@ function deedWeightFor(db: AppDatabase, deed: Deed, audience: Audience): number 
   const fresh = age > 730 ? 0.5 : 1;
   const base = Math.abs(deed.weight) * fresh;
 
-  switch (audience) {
-    case 'akatsuki':
-      return deed.faction === 'akatsuki' ? base : 0;
-    case 'rain':
-      return deed.region === 'rain' ? base : deed.faction === 'akatsuki' ? base * 0.5 : 0;
-    case 'underworld':
-      return deed.faction && deed.faction !== 'akatsuki' ? base * 0.6 : 0;
-    default:
-      return deed.faction === audience ? base : 0;
-  }
+  if (audience === COMMON_AUDIENCE) return base * 0.6;
+  return deed.faction === audience ? base : 0;
 }
 
 /** Theme scores for one audience, highest first. */
@@ -216,7 +164,7 @@ export function themeScores(db: AppDatabase, audience: Audience): { theme: Theme
     for (const theme of THEMES) {
       if (!theme.test.test(deed.text)) continue;
 
-      // The massacre is the Leaf's first word on the player; later deeds outgrow it.
+      // Old news fades for themes that do; later deeds outgrow it.
       const fade = theme.fades && age(deed) > 365 ? 0.35 : 1;
       scores.set(theme.id, (scores.get(theme.id) ?? 0) + weight * fade);
     }
@@ -224,7 +172,7 @@ export function themeScores(db: AppDatabase, audience: Audience): { theme: Theme
 
   return [...scores.entries()]
     .map(([id, score]) => ({ theme: THEME_BY_ID.get(id)!, score }))
-    // Ties go to the theme listed first (the massacre before "vanished").
+    // Ties go to the theme listed first.
     .sort((a, b) => b.score - a.score || THEMES.indexOf(a.theme) - THEMES.indexOf(b.theme));
 }
 
@@ -235,7 +183,7 @@ function settleEpithets(db: AppDatabase): AppDatabase {
   const epithets = { ...renown.epithets };
   let changed = false;
 
-  for (const audience of AUDIENCES) {
+  for (const audience of audiencesOf(db)) {
     const [top] = themeScores(db, audience);
 
     if (!top || top.score < NAME_AT) continue;
@@ -267,25 +215,17 @@ function settleEpithets(db: AppDatabase): AppDatabase {
   return changed ? withRenown(db, { ...renownOf(db), epithets }) : db;
 }
 
-/**
- * Keeps this turn's deeds (from the tracker's reputation changes) and lets
- * the names follow. The Leaf's first entry on the player counts as its first deed.
- */
+/** Keeps this turn's deeds (from the tracker's reputation changes) and lets the names follow. */
 export function recordDeeds(db: AppDatabase, changes: TurnDiff['reputation']): AppDatabase {
   let renown = renownOf(db);
   const now = db.state.inStoryDate;
-  const region = regionOf(db.state.location) ?? regionOf(db.state.scene) ?? undefined;
+  const region = regionOf(db, db.state.location) ?? regionOf(db, db.state.scene) ?? undefined;
   const deeds = [...renown.deeds];
-  const leaf = db.state.reputation?.villages.leaf;
-
-  if (leaf?.listedOn && !deeds.some((deed) => deed.faction === 'leaf')) {
-    deeds.push({ id: makeId('deed'), date: leaf.listedOn, text: leaf.lastReason ?? LEAF_START_REASON, faction: 'leaf', region: 'fire', weight: 20 });
-  }
 
   for (const change of changes ?? []) {
     if (!change.reason?.trim() || change.change === 0) continue;
-    // A deed that cooled them toward him (an Akatsuki punishment, say) still counts as something seen.
-    if (change.faction !== 'akatsuki' && change.change < 0) continue;
+    // A deed that won them over is not what people gossip about.
+    if (change.change < 0) continue;
 
     deeds.push({
       id: makeId('deed'),
@@ -305,7 +245,7 @@ export function recordDeeds(db: AppDatabase, changes: TurnDiff['reputation']): A
 
 /** The tracker's epithet: someone called the player by a name on the page. */
 export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDatabase {
-  if (!heard?.name?.trim() || !AUDIENCES.includes(heard.audience)) return db;
+  if (!heard?.name?.trim() || !audiencesOf(db).includes(heard.audience)) return db;
 
   const renown = renownOf(db);
   const name = heard.name.trim().replace(/^["'“”]+|["'“”]+$/g, '').slice(0, 60);
@@ -316,7 +256,7 @@ export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDa
   }
 
   // Heard under another audience's name: the player learns that one.
-  for (const audience of AUDIENCES) {
+  for (const audience of Object.keys(renown.epithets)) {
     const other = renown.epithets[audience];
 
     if (other && other.name.toLowerCase() === name.toLowerCase()) {
@@ -339,19 +279,19 @@ export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDa
   });
 }
 
-/** The player saw a village's poster or bingo book: he now knows what it calls them. */
-export function markEpithetsSeen(db: AppDatabase, villages: TurnDiff['bountySeen']): AppDatabase {
-  if (!villages?.length) return db;
+/** The player saw a faction's wanted notice: they now know what it calls them. */
+export function markEpithetsSeen(db: AppDatabase, factions: TurnDiff['bountySeen']): AppDatabase {
+  if (!factions?.length) return db;
 
   const renown = renownOf(db);
   const epithets = { ...renown.epithets };
   let changed = false;
 
-  for (const village of villages) {
-    const epithet = epithets[village];
+  for (const faction of factions) {
+    const epithet = epithets[faction];
 
     if (epithet && !epithet.known) {
-      epithets[village] = { ...epithet, known: true };
+      epithets[faction] = { ...epithet, known: true };
       changed = true;
     }
   }
@@ -359,21 +299,16 @@ export function markEpithetsSeen(db: AppDatabase, villages: TurnDiff['bountySeen
   return changed ? withRenown(db, { ...renown, epithets }) : db;
 }
 
-/** Whose name for the player strangers use where he stands. */
+/** Whose name for the player strangers use where they stand. */
 export function localAudience(db: AppDatabase): Audience {
-  const place = `${db.state.location} ${db.state.scene ?? ''}`;
-  const village = territoryOf(place);
-
-  if (village) return village;
-  if (regionOf(place) === 'rain') return 'rain';
-  return 'underworld';
+  return territoryOf(db, `${db.state.location} ${db.state.scene ?? ''}`)?.id ?? COMMON_AUDIENCE;
 }
 
 /** The name strangers here would use, if there is one yet. */
 export function localEpithet(db: AppDatabase): { audience: Audience; epithet: Epithet } | null {
   const epithets = renownOf(db).epithets;
   const audience = localAudience(db);
-  const order: Audience[] = [audience, 'underworld'];
+  const order: Audience[] = [audience, COMMON_AUDIENCE];
 
   for (const item of order) {
     const epithet = epithets[item];
@@ -384,11 +319,11 @@ export function localEpithet(db: AppDatabase): { audience: Audience; epithet: Ep
   return null;
 }
 
-/** Names the player has heard themselves called, for the the player tab. */
+/** Names the player has heard themselves called, for the You tab. */
 export function knownEpithets(db: AppDatabase): { audience: Audience; epithet: Epithet }[] {
   const epithets = renownOf(db).epithets;
 
-  return AUDIENCES.flatMap((audience) => {
+  return Object.keys(epithets).flatMap((audience) => {
     const epithet = epithets[audience];
 
     return epithet?.known ? [{ audience, epithet }] : [];
@@ -398,56 +333,43 @@ export function knownEpithets(db: AppDatabase): { audience: Audience; epithet: E
 // ---------------------------------------------------------------------------
 // The narrator
 
-function sceneHasAkatsuki(db: AppDatabase) {
-  return castWithCompanions(db, db.state.sceneCast ?? []).some((name) => resolveEntity(db, name)?.tags.includes('akatsuki'));
-}
-
-/** One line for YOUR NAME OUT THERE: what they call him here (and inside the Akatsuki). */
+/** One line for YOUR NAME OUT THERE: what they call the player here. */
 export function epithetLines(db: AppDatabase): string[] {
-  const lines: string[] = [];
   const local = localEpithet(db);
   const risk = encounterRisk(locationKindOf(db), timeOfDayOf(db.state.inStoryDate));
 
-  if (local && risk !== 'none') {
-    lines.push(
-      `What strangers here call you: "${local.epithet.name}" (${AUDIENCE_NAME[local.audience]}); people who talk about you use it${local.epithet.known ? '' : ', and you have never heard it'}.`
-    );
-  }
+  if (!local || risk === 'none') return [];
 
-  const akatsuki = renownOf(db).epithets.akatsuki;
-
-  if (akatsuki && sceneHasAkatsuki(db)) {
-    lines.push(`Inside the Akatsuki they call you "${akatsuki.name}" behind your back.`);
-  }
-
-  return lines;
+  return [
+    `What strangers here call you: "${local.epithet.name}" (${audienceName(db, local.audience)}); people who talk about you use it${local.epithet.known ? '' : ', and you have never heard it'}.`,
+  ];
 }
 
 function checkpoint(db: AppDatabase) {
   return /\b(checkpoint|border|gate|toll|barrier station|outpost)\b/i.test(`${db.state.location} ${db.state.scene ?? ''}`);
 }
 
-/** Where people gather and talk: towns, and checkpoints on the road. */
+/** Where people gather and talk: towns and busy places, and checkpoints on the road. */
 function placeThatTalks(db: AppDatabase) {
   const kind = locationKindOf(db);
 
   return kind === 'settlement' || (kind === 'road' && checkpoint(db));
 }
 
-const SKETCH: Record<string, string> = { B: 'poor', A: 'fair', S: 'good' };
+const PICTURE: Partial<Record<WantedLevel, string>> = { wanted: 'poor', high: 'fair', top: 'good' };
 
-/** The wanted poster that hangs here, if any. */
+/** The wanted notice that is up here, if any. */
 export function posterLine(db: AppDatabase): string {
   if (!placeThatTalks(db)) return '';
 
-  const village = territoryOf(`${db.state.location} ${db.state.scene ?? ''}`);
-  const listing = bingoListings(db).find((item) => item.village === village && item.rank !== 'C');
+  const faction = territoryOf(db, `${db.state.location} ${db.state.scene ?? ''}`);
+  const listing = wantedListings(db).find((item) => item.factionId === faction?.id && item.level !== 'noted');
 
-  if (!listing || !village) return '';
+  if (!listing || !faction) return '';
 
-  const name = renownOf(db).epithets[village as VillageFaction]?.name;
+  const name = renownOf(db).epithets[faction.id]?.name;
 
-  return `WANTED POSTERS: ${VILLAGE_NAME[village]}'s poster for you hangs here (inns, the notice board, the checkpoint): ${listing.rank}-rank, ${formatRyo(listing.bounty)}${name ? `, as "${name}"` : ''}, with a ${SKETCH[listing.rank]} sketch. Only if you look at one do you learn what it says.`;
+  return `WANTED NOTICES: ${faction.name}'s notice for you is up here (bars, the notice board, the checkpoint): ${WANTED_LABEL[listing.level]}, ${formatMoney(listing.bounty, currencyOf(db))}${name ? `, as "${name}"` : ''}, with a ${PICTURE[listing.level]} picture. Only if you look at one do you learn what it says.`;
 }
 
 export type RumourOffer = { deed: Deed; level: 0 | 1 | 2; daysAgo: number; from: Region | null };
@@ -461,12 +383,12 @@ export function rumourOffer(db: AppDatabase): RumourOffer | null {
 
   if (turn < RUMOUR_MIN_TURN || hashText(`${db.meta.slotId}:rumour:${turn}`) % RUMOUR_WINDOW_TURNS !== 0) return null;
 
-  const here = regionOf(db.state.location) ?? regionOf(db.state.scene);
+  const here = regionOf(db, db.state.location) ?? regionOf(db, db.state.scene);
   const now = db.state.inStoryDate;
   const heard = renownOf(db)
     .deeds.map((deed) => {
       const daysAgo = Math.max(0, daysBetween(deed.date, now));
-      const distance = here && deed.region ? travelDaysBetween(here, deed.region as Region) : 3;
+      const distance = here && deed.region ? travelDaysBetween(db, here, deed.region as Region) : 3;
 
       return { deed, daysAgo, distance };
     })
@@ -485,7 +407,7 @@ export function rumourOffer(db: AppDatabase): RumourOffer | null {
 const DISTORTION = [
   'Close to the truth: a detail or two wrong.',
   'It has grown in the telling: wrong numbers, the wrong place, a worse version of you.',
-  'Barely recognisable by now, a monster story ("they say the Uchiha ate a man\'s heart").',
+  'Barely recognisable by now, a monster story ("they say you put a man in the harbour with your bare hands").',
 ];
 
 function ago(days: number) {
@@ -503,7 +425,7 @@ export function formatRenownBlock(db: AppDatabase): string {
     const name = localEpithet(db)?.epithet.name;
 
     lines.push(
-      `TALK OF YOU (optional; only if people here would gossip): someone at an inn, teahouse, market or checkpoint talks about a thing you did ${ago(rumour.daysAgo)}${rumour.from ? ` in ${REGION_NAME[rumour.from]}` : ''}: ${rumour.deed.text}. ${DISTORTION[rumour.level]}${name ? ` They call you "${name}".` : ''} They do not know they are talking to you unless they recognize you.`
+      `TALK OF YOU (optional; only if people here would gossip): someone at a bar, café, market or checkpoint talks about a thing you did ${ago(rumour.daysAgo)}${rumour.from && regionName(db, rumour.from) ? ` in ${regionName(db, rumour.from)}` : ''}: ${rumour.deed.text}. ${DISTORTION[rumour.level]}${name ? ` They call you "${name}".` : ''} They do not know they are talking to you unless they recognize you.`
     );
   }
 
@@ -516,6 +438,9 @@ export function formatRenownBlock(db: AppDatabase): string {
 
 export function renownTrackingLine(db: AppDatabase): string {
   const local = localEpithet(db);
+  const audiences = audiencesOf(db)
+    .map((audience) => (audience === COMMON_AUDIENCE ? `${COMMON_AUDIENCE} (ordinary people)` : `${audience} (${audienceName(db, audience)})`))
+    .join(', ');
 
-  return `epithet: {audience, name} only when someone in the prose calls you by a name or title of their own for you (a nickname, a bingo-book title, "the Ghost of the Rain"); audience = whose name it is: leaf, sand, mist, cloud, stone (their bingo book or people), akatsuki, rain (the people of the Land of Rain), underworld (bounty hunters, mercenaries, other countries); otherwise null.${local ? ` Here they call you "${local.epithet.name}" (${local.audience}).` : ''}`;
+  return `epithet: {audience, name} only when someone in the prose calls you by a name or title of their own for you (a nickname, a title on a wanted notice); audience = whose name it is: ${audiences}; otherwise null.${local ? ` Here they call you "${local.epithet.name}" (${local.audience}).` : ''}`;
 }

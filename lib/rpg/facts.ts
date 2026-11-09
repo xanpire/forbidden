@@ -57,7 +57,7 @@ function groupTag(name: string) {
 
 /**
  * Who knows a fact: people as entity ids, everyone else as group tags
- * ("Hidden Leaf leadership" → "hidden-leaf-leadership"). Entity ids already
+ * ("Harbour Police leadership" → "harbour-police-leadership"). Entity ids already
  * in the list stay as they are.
  */
 export function knowersOf(db: AppDatabase, names: string[]): { ids: string[]; groups: string[] } {
@@ -364,7 +364,7 @@ export function applyThreadDiff(
     const newThread: ThreadRecord = {
       id: makeId('thread'),
       type: thread.type ?? 'other',
-      // Keeps the tracker's casing ("Itachi's offer", not "itachi's offer").
+      // Keeps the tracker's casing ("Mara's offer", not "mara's offer").
       title: title.charAt(0).toUpperCase() + title.slice(1),
       description: secondPerson(thread.description?.trim() || '', playerDisplayNames(db)),
       status: 'open' as const,

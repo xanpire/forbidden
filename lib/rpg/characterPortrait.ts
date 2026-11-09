@@ -1,5 +1,4 @@
 import { entityAge } from './calendar';
-import { localizePlaceNames } from './glossary';
 import { shownField } from './disclosure';
 import { makeId } from './id';
 import { expressionFromMood } from './portrait';
@@ -133,8 +132,9 @@ export function buildCharacterPortraitPrompt(
   references: PlannedReference[]
 ) {
   const name = entity.name;
+  const style = db.world?.artStyle?.trim() || 'cinematic photo, natural light';
   const lines = [
-    `Character portrait of ${name}, a person from the Naruto world. Dark cinematic anime illustration.`,
+    `Character portrait of ${name}. ${style}.`,
     'Visual image only. No words, letters, numbers, captions, logos, watermarks or readable text anywhere.',
   ];
 
@@ -152,9 +152,9 @@ export function buildCharacterPortraitPrompt(
     }
   });
 
-  if (!references.some((reference) => reference.kind === 'face')) {
+  if (!references.some((reference) => reference.kind === 'face') && db.world?.knownUniverse && entity.fame) {
     lines.push(
-      `If ${name} is a character from the Naruto series, draw them with their canon design. Otherwise, follow the description below.`
+      `If ${name} is a known character from ${db.world.knownUniverse.name}, draw them with their known design. Otherwise, follow the description below.`
     );
   }
 
@@ -176,11 +176,11 @@ export function buildCharacterPortraitPrompt(
     `Expression: ${EXPRESSION_TEXT[signature.expression]}.${entity.mood && entity.mood !== 'Unknown' ? ` Current mood: ${entity.mood}.` : ''}`,
     'Background: dark, softly blurred and atmospheric, nothing that competes with the face.',
     `Framing: head and upper body, three-quarter view, centered, vertical portrait. ${name} alone, no other people.`,
-    'Style: Naruto-inspired anime, gritty realism, moody lighting, red accents, high detail.',
+    `Style: ${style}, moody lighting, high detail.`,
     'Final reminder: no text or lettering in the image.'
   );
 
-  return localizePlaceNames(lines.join('\n'));
+  return (lines.join('\n'));
 }
 
 export function faceReferenceWarning(model: string) {

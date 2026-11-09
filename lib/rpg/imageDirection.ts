@@ -1,14 +1,14 @@
 // How scene images are framed: the director's shot vocabulary, the light
-// line built from the real weather and clock, jutsu visuals, canon art
-// direction, and the variety tracker. Pure, so it can be tested.
+// line built from the real weather and clock, timeline art direction, and
+// the variety tracker. Pure, so it can be tested.
 //
 // See docs: claude/image-generator-cinematic.md.
 
-import { CANON_MILESTONES } from './canonData';
+import { eventIdFor, timelineOf } from './timeline';
 import { mentionsEntity } from './characterRefs';
 import { secondsBetween } from './calendar';
 import { currentWeather } from './weather';
-import type { AppDatabase, CalendarDate, JutsuRecord, RawLogEntry, WeatherCondition } from './types';
+import type { AppDatabase, CalendarDate, RawLogEntry, WeatherCondition } from './types';
 import { isPlayer } from './player';
 
 // ---------------------------------------------------------------------------
@@ -67,12 +67,12 @@ export function isScaleShot(type: ShotType | null) {
 // Shot chips
 // ---------------------------------------------------------------------------
 
-export type ShotChip = 'auto' | 'closeup' | 'jutsu' | 'impact' | 'epic' | 'ensemble' | 'aftermath';
+export type ShotChip = 'auto' | 'closeup' | 'action' | 'impact' | 'epic' | 'ensemble' | 'aftermath';
 
 export const SHOT_CHIPS: { value: ShotChip; label: string; hint: string }[] = [
   { value: 'auto', label: 'Auto', hint: 'The director picks the shot.' },
   { value: 'closeup', label: 'Close-up', hint: 'A face at its peak emotion.' },
-  { value: 'jutsu', label: 'Jutsu', hint: 'Low angle, the technique filling the frame.' },
+  { value: 'action', label: 'Action', hint: 'Low angle, the action filling the frame.' },
   { value: 'impact', label: 'Impact', hint: 'The instant a blow lands, in an impact frame.' },
   { value: 'epic', label: 'Epic wide', hint: 'A tiny figure in a huge landscape and sky.' },
   { value: 'ensemble', label: 'Ensemble', hint: 'Everyone in the scene in one frame.' },
@@ -81,7 +81,7 @@ export const SHOT_CHIPS: { value: ShotChip; label: string; hint: string }[] = [
 
 const CHIP_DIRECTION: Record<Exclude<ShotChip, 'auto'>, string> = {
   closeup: 'close-up or extreme close-up on the face at the emotional peak',
-  jutsu: "low angle or worm's-eye, the jutsu or power filling most of the frame",
+  action: "low angle or worm's-eye, the action filling most of the frame",
   impact: 'impact frame: the instant the blow lands or the shock hits',
   epic: 'extreme wide: the figures tiny, a huge landscape and sky around them',
   ensemble: 'ensemble: everyone in the scene in one frame, using one of the ensemble layouts',
@@ -159,14 +159,12 @@ function lightOfHour(hour: number, indoors: boolean) {
 
 /** Colour accents a scene's effects give it, from its words. */
 const ACCENTS: [RegExp, string][] = [
-  [/\bamaterasu\b|\bblack flames?\b/i, 'black and violet flames'],
-  [/\bsusanoo\b|\bsusano'?o\b/i, 'ghostly Susanoo glow'],
-  [/\b(chidori|kirin|lightning|raiton|lightning style)\b/i, 'white-blue lightning'],
-  [/\b(fire|flames?|fireball|katon|fire style|burning|blaze|embers?)\b/i, 'orange and red firelight'],
-  [/\b(water style|suiton|tidal|water dragon|shark)\b/i, 'deep ocean blue'],
-  [/\b(rasengan|wind style|futon)\b/i, 'swirling pale blue chakra'],
-  [/\bsand\b/i, 'gold sand'],
-  [/\b(sharingan|mangeky[oō])\b/i, 'the red glow of the Sharingan'],
+  [/\b(lightning|thunder ?storm)\b/i, 'white-blue lightning'],
+  [/\b(fire|flames?|burning|blaze|embers?|candle ?light|fireplace)\b/i, 'orange and red firelight'],
+  [/\b(neon|sign ?light)\b/i, 'neon pink and blue'],
+  [/\b(sea|ocean|harbou?r|waves?)\b/i, 'deep ocean blue'],
+  [/\b(sand|desert|dunes?)\b/i, 'gold sand'],
+  [/\b(police lights?|sirens?)\b/i, 'flashing red and blue'],
   [/\b(blood|bleeding|bloodied|wound)\b/i, 'crimson blood'],
 ];
 
@@ -221,40 +219,10 @@ export function lightLine(db: AppDatabase, sceneText: string, inMemory = false):
 }
 
 // ---------------------------------------------------------------------------
-// Jutsu on screen (#5)
+// Timeline art direction (#13)
 // ---------------------------------------------------------------------------
 
-function jutsuNamed(text: string, record: JutsuRecord) {
-  const lower = text.toLowerCase();
-  const name = record.name.toLowerCase();
-
-  if (lower.includes(name)) return true;
-
-  // "Fire Style: Great Fireball Technique" is often just "Great Fireball".
-  const short = name.replace(/^[^:]+:\s*/, '').replace(/\s+(technique|jutsu)$/, '').trim();
-  return short.length >= 6 && lower.includes(short);
-}
-
-/** Recorded jutsu named in the scene text, with a visual, most used first. */
-export function jutsuOnScreen(db: Pick<AppDatabase, 'jutsuRecords'>, text: string, limit = 2): JutsuRecord[] {
-  return (db.jutsuRecords ?? [])
-    .filter((record) => record.visual?.trim() && jutsuNamed(text, record))
-    .sort((a, b) => b.timesUsed - a.timesUsed)
-    .slice(0, limit);
-}
-
-export function jutsuLines(records: JutsuRecord[]): string[] {
-  return records.map(
-    (record) =>
-      `Jutsu on screen: ${record.name} — ${record.visual.trim().replace(/\.$/, '')}. Make it the visual centrepiece: scale, glow, motion, debris.`
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Canon art direction (#13)
-// ---------------------------------------------------------------------------
-
-const STOPWORDS = new Set(['the', 'of', 'land', 'village', 'hidden', 'an', 'a', 'near', 'outside', 'in', 'at']);
+const STOPWORDS = new Set(['the', 'of', 'land', 'village', 'an', 'a', 'near', 'outside', 'in', 'at']);
 
 function placeWords(text: string) {
   return text
@@ -263,49 +231,44 @@ function placeWords(text: string) {
     .filter((word) => word.length > 2 && !STOPWORDS.has(word));
 }
 
-/** Within this long after a milestone happened, its art direction still applies. */
+/** Within this long after a timeline event happened, its art direction still applies. */
 const ART_DIRECTION_WINDOW_SECONDS = 2 * 24 * 3600;
 
 /**
- * A fixed visual hint when the story is at, or just past, a big canon
- * moment the player is part of or near: the beat he took on, or a milestone that
- * happened in the last two days where he is.
+ * A fixed visual hint when the story is at, or just past, a timeline event
+ * that carries one (`artDirection`): the beat the player took on, or an event
+ * that happened in the last two days where they are.
  */
-export function canonArtDirection(db: AppDatabase): string | null {
+export function timelineArtDirection(db: AppDatabase): string | null {
   const date = db.state.inStoryDate;
-
-  // The massacre night, if the player is where it happened.
-  if (date.year === 13 && date.month === 10 && date.day <= 1 && /\buchiha\b|\bdistrict\b|\bcompound\b/i.test(db.state.location ?? '')) {
-    return 'the night of the Uchiha massacre: a huge blood-red full moon low in the sky, silhouettes on rooftops, deep red and black';
-  }
-
-  const progress = db.state.canonProgress;
+  const progress = db.state.timelineProgress;
 
   if (!progress) return null;
 
   const here = new Set(placeWords(db.state.location ?? ''));
 
-  for (const milestone of CANON_MILESTONES) {
-    if (!milestone.artDirection) continue;
+  for (const event of timelineOf(db)) {
+    if (!event.artDirection) continue;
 
-    if (progress.engaged.includes(milestone.id) && !progress.completed.includes(milestone.id)) {
-      return milestone.artDirection;
+    if (progress.engaged.includes(event.id) && !progress.completed.includes(event.id)) {
+      return event.artDirection;
     }
 
-    if (!progress.completed.includes(milestone.id)) continue;
+    if (!progress.completed.includes(event.id)) continue;
 
-    const event = db.events.find((item) => item.id === `event_canon_${milestone.id}`);
+    const record = db.events.find((item) => item.id === eventIdFor(event.id));
 
-    if (!event) continue;
+    if (!record) continue;
 
-    const since = secondsBetween(event.inStoryDate, date);
+    const since = secondsBetween(record.inStoryDate, date);
 
     if (since < 0 || since > ART_DIRECTION_WINDOW_SECONDS) continue;
 
-    const there = placeWords(`${milestone.location ?? ''} ${milestone.region ?? ''}`);
+    const region = event.regionId ? db.world.regions.find((item) => item.id === event.regionId)?.name ?? '' : '';
+    const there = placeWords(`${event.location ?? ''} ${region}`);
 
     if (there.some((word) => here.has(word))) {
-      return milestone.artDirection;
+      return event.artDirection;
     }
   }
 
@@ -313,10 +276,10 @@ export function canonArtDirection(db: AppDatabase): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Look tags for canon characters (#6c)
+// Look tags for the people in a shot (#6c)
 // ---------------------------------------------------------------------------
 
-/** "Kisame: tall, blue-grey skin…" for each person named in the action. */
+/** "Mara: short dark-red hair…" for each person named in the action. */
 export function lookTags(
   db: AppDatabase,
   action: string,

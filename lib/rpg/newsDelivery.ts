@@ -1,37 +1,36 @@
 // News delivery: who brings the player the news, and how it reaches them.
 //
-// canon.ts decides WHAT the player has not heard yet. This module decides how the
-// next piece reaches him this turn:
+// timeline.ts decides WHAT the player has not heard yet. This module decides how the
+// next piece reaches them this turn:
 //
-// - Bearers: anyone in the scene who could plausibly know (a companion, an
-//   original contact, a local in a town) is offered first, then the fixed
-//   lists from canonData.ts, with the dead removed.
+// - Bearers: anyone in the scene who could plausibly know (a companion, a
+//   contact, a local) is offered first, then the event's named bearers, with
+//   the dead removed.
 // - Delivery style: one way of hearing it that fits the place and the kind
-//   of news (teahouse gossip, a new bounty poster, a wounded messenger, a
-//   sealed scroll at a dead drop, a summoned animal...). The pick is
+//   of news (gossip at the next table, a notice, a call, a message from the
+//   group itself...). The pick is
 //   deterministic per turn, so a regenerate gets the same one, and it varies
 //   from turn to turn.
 // - Catch-up reports: when the player has heard nothing for a while (a time skip, a
-//   long stretch in the wilds) and news has piled up, it can come as ONE
-//   report — a bundle of letters at an inn, a companion catching him up over
-//   a fire — covering several events at once.
+//   long stretch away) and news has piled up, it can come as ONE report: a
+//   stack of messages, a friend catching them up over a drink, covering
+//   several events at once.
 
 import {
   NEWS_PER_TURN,
   isCombatPace,
   lastNewsHeardDate,
   newsUrgency,
-  unheardCanonNews,
+  unheardNews,
   type UnheardNews,
-} from './canon';
+} from './timeline';
 import { displayName, narratorName } from './names';
-import { BEARER_TENURE } from './canonData';
 import { daysBetween } from './calendar';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { locationKindOf } from './encounters';
 import { resolveEntity } from './entities';
-import { isOriginalCharacter } from './returning';
+import { isFreeCharacter } from './returning';
 import { hashText, playerTurnCount, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, LocationKind } from './types';
 import { isPlayerEntity } from './player';
@@ -54,7 +53,7 @@ export type NewsOffer = {
 export type OfferedNews = UnheardNews & {
   /** People in the scene who could know, best first, with a short label. */
   sceneBearers: string[];
-  /** The fixed fallbacks, minus the dead and anyone already in the scene. */
+  /** The named bearers, minus the dead and anyone already in the scene. */
   otherBearers: string[];
   urgency: 'fresh' | 'due' | 'overdue';
 };
@@ -89,6 +88,16 @@ function sameEntity(db: AppDatabase, entity: EntityRecord, names: string[]) {
   return names.some((name) => resolveEntity(db, name)?.id === entity.id);
 }
 
+/** A member of this faction: tagged with its id, or its name in their role or notes. */
+function inFaction(db: AppDatabase, entity: EntityRecord, factionId: string | undefined) {
+  if (!factionId) return false;
+  if (entity.tags.includes(factionId)) return true;
+
+  const name = db.world?.factions?.find((faction) => faction.id === factionId)?.name?.toLowerCase();
+
+  return Boolean(name && name.length >= 3 && profileText(entity).includes(name));
+}
+
 /** Could this person in the scene plausibly know about this event? */
 export function couldKnow(db: AppDatabase, entity: EntityRecord, item: UnheardNews): boolean {
   const named = item.bearers;
@@ -97,12 +106,8 @@ export function couldKnow(db: AppDatabase, entity: EntityRecord, item: UnheardNe
     case 'secret':
     case 'witnesses':
       return sameEntity(db, entity, named);
-    case 'akatsuki':
-      // Canon members know the organization's business only while they are in it.
-      if (!inTenure(db, entity.name)) return false;
-      return entity.tags.includes('akatsuki') || /akatsuki/.test(profileText(entity)) || sameEntity(db, entity, named);
-    case 'village':
-      return entity.tags.includes('leaf') || /\bleaf\b/.test(profileText(entity)) || sameEntity(db, entity, named);
+    case 'faction':
+      return inFaction(db, entity, item.factionId) || sameEntity(db, entity, named);
     case 'public':
     default:
       // Public news is everywhere: anyone in the scene may have heard it.
@@ -113,14 +118,14 @@ export function couldKnow(db: AppDatabase, entity: EntityRecord, item: UnheardNe
 function bearerLabel(db: AppDatabase, entity: EntityRecord) {
   const name = narratorName(db, entity);
   if (entity.companion) return `${name} (travelling with you)`;
-  if (isOriginalCharacter(entity)) return `${name} (here with you; someone you know)`;
+  if (isFreeCharacter(db, entity)) return `${name} (here with you; someone you know)`;
   return `${name} (here with you)`;
 }
 
 /** Locals who carry public talk, by kind of place. */
 const LOCAL_BEARERS: Partial<Record<LocationKind, string>> = {
-  settlement: 'someone local here (an innkeeper, a teahouse regular, a bounty-board keeper)',
-  road: 'a traveler or merchant passing on this road',
+  settlement: 'someone local here (a bartender, a regular, a shopkeeper)',
+  road: 'a traveller passing on this road',
 };
 
 function sceneBearersFor(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): string[] {
@@ -134,36 +139,12 @@ function sceneBearersFor(db: AppDatabase, item: UnheardNews, present: EntityReco
   return local ? [...labels, local] : labels;
 }
 
-/** True while a fixed bearer belongs to the organization (see BEARER_TENURE). */
-export function inTenure(db: AppDatabase, name: string): boolean {
-  const tenure = BEARER_TENURE[name];
-
-  if (!tenure) {
-    return true;
-  }
-
-  const completed = new Set(db.state.canonProgress?.completed ?? []);
-
-  if (tenure.joins && !completed.has(tenure.joins)) {
-    return false;
-  }
-
-  return !(tenure.leaves && completed.has(tenure.leaves));
-}
-
-/**
- * The fixed list for an event, minus the dead, anyone not (or no longer) in
- * the organization at this point in the story, and anyone already in the scene.
- */
+/** The event's named bearers, minus the dead and anyone already in the scene. */
 export function livingBearers(db: AppDatabase, item: UnheardNews, present: EntityRecord[] = []): string[] {
   const presentIds = new Set(present.map((entity) => entity.id));
 
   return uniqueList(
     item.bearers.filter((name) => {
-      if (!inTenure(db, name)) {
-        return false;
-      }
-
       const entity = resolveEntity(db, name);
 
       return !entity || (!isDeceased(entity) && !presentIds.has(entity.id));
@@ -176,66 +157,46 @@ export function livingBearers(db: AppDatabase, item: UnheardNews, present: Entit
 
 const PLACE_STYLES: Record<LocationKind, string[]> = {
   settlement: [
-    'gossip overheard at the next table in a teahouse or tavern',
-    'a fresh poster nailed to the bounty board, still smelling of ink',
-    'a town crier or a notice read aloud at the gate',
-    'a merchant grumbling about prices, because a border closed or a road turned dangerous',
-    'the innkeeper passing it on while pouring tea',
-    'a cheap broadsheet or wanted notice changing hands in the market',
+    'gossip overheard at the next table',
+    'a notice or headline someone points out',
+    'the news on a screen or a radio in the background, or a paper left on a table',
+    'someone complaining about what it has done to prices or plans',
+    'a bartender or shopkeeper passing it on',
+    'people on the street talking about nothing else',
   ],
   road: [
-    'a wounded or exhausted messenger met on the road',
-    'a merchant comparing prices, because a border closed or a route shut',
-    'travelers or refugees heading the other way, talking about what they left behind',
-    'a checkpoint with doubled guards and new orders posted',
-    'a caravan guard swapping stories at a waystation',
+    'a traveller met on the way, still talking about it',
+    'a driver or passenger who heard it before setting out',
+    'a checkpoint or roadblock with new orders',
+    'a stop on the way where everyone is talking about it',
   ],
   wilderness: [
-    'a summoned animal or a messenger bird that finds you',
-    'a sealed scroll waiting at a dead drop',
-    'a hunter or woodcutter who heard it in the last town',
-    'a lone shinobi crossing your path, talking more than they should',
+    'someone who heard it in the last town',
+    'a message that finally gets through',
+    'a lone traveller crossing your path, talking more than they should',
   ],
   structure: [
-    'a sealed scroll waiting at a dead drop',
-    'a message left where only a shinobi would look',
-    'a summoned animal or a messenger bird that finds you',
+    'a message waiting for you',
+    'someone coming in with the news',
+    'the news on a screen or a radio, or a paper left lying around',
   ],
 };
 
 const KNOWLEDGE_STYLES: Partial<Record<UnheardNews['knowledge'], string[]>> = {
-  akatsuki: [
-    "Itachi's crow, or Konan's paper butterfly unfolding into a message",
-    'Zetsu rising out of the ground or a wall with a report',
-    "a summons through your ring: the Leader's projection passes it on",
-    'a coded scroll at an Akatsuki dead drop',
-  ],
-  village: [
-    'a Leaf messenger hawk overhead, or a Leaf patrol overheard at a distance',
-    'an updated bingo book or Leaf bulletin that changed hands',
-  ],
+  faction: ['a message from inside the group', 'someone from the group letting it slip'],
   secret: ['told privately, face to face, away from other ears'],
   witnesses: ['someone who was actually there, still shaken, telling it'],
 };
 
 const CATCH_UP_STYLES: Record<LocationKind, string[]> = {
   settlement: [
-    'a bundle of letters, notices, and messages waiting for you at an inn',
-    'an informant or contact in town running through everything that changed',
-    'a stack of old broadsheets and bounty posters at the waystation, read one after another',
+    'a pile of messages waiting for you',
+    'a contact in town running through everything that changed',
+    'an evening of catching up on the news you missed',
   ],
-  road: [
-    'a long talk at a waystation with travelers who have heard it all',
-    'a merchant caravan full of news from every border it crossed',
-  ],
-  wilderness: [
-    'a messenger bird carrying a whole bundle of messages at once',
-    'a dead drop stuffed with weeks of unread scrolls',
-  ],
-  structure: [
-    'a dead drop stuffed with weeks of unread scrolls',
-    'a ring summons where the Leader runs through what the organization learned',
-  ],
+  road: ['a long talk at a stop with people who have heard it all', 'a driver who has been following every story'],
+  wilderness: ['a whole bundle of messages arriving at once', 'the first signal or the first town in a long while'],
+  structure: ['a pile of messages waiting for you', 'someone sitting you down to tell you everything you missed'],
 };
 
 function pick<T>(list: T[], seed: string): T {
@@ -264,7 +225,7 @@ function singleStyle(db: AppDatabase, item: OfferedNews, present: EntityRecord[]
   // Overdue news cannot wait for a chance meeting: it comes looking for the player.
   if (item.urgency === 'overdue') {
     return pick(
-      [item.channel, 'a messenger bird or a summoned animal that finds you', 'a rider or runner who tracked you down'],
+      [item.channel, 'a message that finds you wherever you are', 'someone who tracked you down to tell you'],
       `${turnSeed(db)}:${item.eventId}`
     );
   }
@@ -277,7 +238,7 @@ function catchUpStyle(db: AppDatabase, present: EntityRecord[]): string {
   const pool = [...CATCH_UP_STYLES[locationKindOf(db)]];
 
   if (companion) {
-    pool.unshift(`${displayName(db, companion)} catching you up over a fire on everything they have heard`);
+    pool.unshift(`${displayName(db, companion)} catching you up on everything they have heard`);
   }
 
   return pick(pool, `${turnSeed(db)}:catch-up`);
@@ -290,7 +251,7 @@ function offered(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): O
   return {
     ...item,
     sceneBearers: sceneBearersFor(db, item, present),
-    // As the player knows them: the masked man is not "Tobi" to them before he hears it.
+    // As the player knows them: a name they have not learned stays a label.
     otherBearers: livingBearers(db, item, present).map((name) => {
       const entity = db.entities.find((person) => person.type === 'character' && person.name === name);
 
@@ -309,7 +270,7 @@ export function newsOffer(db: AppDatabase, options: { ignoreCombat?: boolean } =
     return null;
   }
 
-  const unheard = unheardCanonNews(db, 99);
+  const unheard = unheardNews(db, 99);
 
   if (unheard.length === 0) {
     return null;
@@ -375,7 +336,7 @@ export function formatNewsOffer(offer: NewsOffer | null): string {
 
   if (offer.mode === 'catch-up') {
     return [
-      `NEWS & RUMORS — CATCH-UP (you have heard no news for about ${offer.quietDays} days, and these events piled up). Deliver them together as ONE report this turn, not one at a time: ${offer.style}. Each event can only come from someone or something that could know it (listed per line), so split the report between sources where needed, like public news from the bundle and organization business from a comrade. Make clear who or what brings each part, and that some of it is old news by now. Never deliver any other world news.`,
+      `NEWS & RUMORS — CATCH-UP (you have heard no news for about ${offer.quietDays} days, and these events piled up). Deliver them together as ONE report this turn, not one at a time: ${offer.style}. Each event can only come from someone or something that could know it (listed per line), so split the report between sources where needed, like public news from the papers and a group's own business from one of its people. Make clear who or what brings each part, and that some of it is old news by now. Never deliver any other world news.`,
       ...offer.items.map((item) => `- ${item.title} (${item.location}, ${item.region}). ${bearerLine(item)}`),
     ].join('\n');
   }
@@ -388,7 +349,7 @@ export function formatNewsOffer(offer: NewsOffer | null): string {
   ].join('\n');
 }
 
-/** Lines for the state tracker's CANON TRACKING block. */
+/** Lines for the state tracker's WORLD TIMELINE TRACKING block. */
 export function newsTrackingLines(offer: NewsOffer | null): string[] {
   if (!offer) {
     return [];
@@ -397,12 +358,12 @@ export function newsTrackingLines(offer: NewsOffer | null): string[] {
   if (offer.mode === 'catch-up') {
     return offer.items.map(
       (item) =>
-        `- ${item.milestoneId}: ${item.title} (news, part of a catch-up report). news_relayed with "from" = the speaker or channel, for each event the report actually told the player this turn.`
+        `- ${item.timelineId}: ${item.title} (news, part of a catch-up report). news_relayed with "from" = the speaker or channel, for each event the report actually told the player this turn.`
     );
   }
 
   return offer.items.map(
     (item) =>
-      `- ${item.milestoneId}: ${item.title} (news the player has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told the player this turn.`
+      `- ${item.timelineId}: ${item.title} (news the player has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told the player this turn.`
   );
 }

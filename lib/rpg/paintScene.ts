@@ -21,7 +21,6 @@ import {
 import { checkSceneImage, imageCheckEnabled, sharperActorRule, type ImageCheck } from './imageCheck';
 import { wantsEnsemble, type ShotChip } from './imageDirection';
 import { loadImage } from './imageStore';
-import { wearsAkatsukiCloak } from './portrait';
 import { faceDroppedWarning, loadPlayerReferenceImages, planReferences, type PlannedReference } from './referenceImages';
 import type { AppDatabase, SceneImageMeta } from './types';
 import { playerName } from './player';
@@ -63,7 +62,7 @@ export async function paintScene({
   const [written, recentLoaded, playerRefImages] = await Promise.all([
     writeImageAction(apiKey, db, undefined, { chip }),
     Promise.all(recentRefs.map((ref) => loadImage(ref))),
-    loadPlayerReferenceImages(wearsAkatsukiCloak(db)),
+    loadPlayerReferenceImages(db),
   ]);
 
   if (written) {
@@ -77,8 +76,8 @@ export async function paintScene({
   // A memory: the player is a child there, so their present outfits stay out.
   const inMemory = Boolean(latestAssistant.flashback);
 
-  // People named in the action with a face reference or a portrait; original
-  // characters first, since the model already knows the canon cast.
+  // People named in the action with a face reference or a portrait; people
+  // the model can't already know come first.
   const sceneRefs = sceneCharacterReferences(db, action, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT, true);
   const loaded = await Promise.all(
     sceneRefs.map(async (person) => ({
@@ -235,7 +234,7 @@ export async function retouchSceneImage({
   }
 
   const entry = db.rawLog.find((item) => item.id === logId);
-  const playerRefImages = await loadPlayerReferenceImages(wearsAkatsukiCloak(db));
+  const playerRefImages = await loadPlayerReferenceImages(db);
   const plan = planReferences(
     [
       { kind: 'edit', uri: image },

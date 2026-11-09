@@ -7,9 +7,7 @@
 
 import { calculateAge, dateSortValue } from './calendar';
 import { playerAgeAt, playerDisplayNames } from './player';
-import { CANON_ERA_ORDER, CANON_MILESTONES } from './canonData';
-import { localizePlaceNames } from './glossary';
-import { FLASHBACK_BY_ID } from './flashbackData';
+import { flashbackById } from './flashbacks';
 import type { AppDatabase, CalendarDate, RawLogEntry } from './types';
 import { firstSentences, secondPerson } from './util';
 
@@ -41,22 +39,34 @@ function dateValue(date: { year: number; month: number; day?: number }) {
   return (date.year * 12 + date.month) * 32 + (date.day ?? 1);
 }
 
-// World events only: personal beats have wide windows and would blur the line.
-const ERA_STARTS = CANON_MILESTONES.filter((milestone) => !milestone.playerDriven)
-  .map((milestone) => ({ era: milestone.era, at: dateValue(milestone.from) }))
-  .sort((a, b) => a.at - b.at);
+/** The era every photo falls in when the world's timeline names none. */
+export const STORY_ERA = 'The story';
 
-/** The era a date falls in: the era of the last world event that had begun by then. */
-export function eraOfDate(date: CalendarDate): string {
+/**
+ * The era a date falls in: the era of the last world timeline event that had
+ * begun by then (world events only: personal beats have wide windows and
+ * would blur the line). Eras only move forward, in the order the timeline
+ * first reaches them.
+ */
+export function eraOfDate(db: Pick<AppDatabase, 'world'>, date: CalendarDate): string {
+  const starts = (db.world?.timeline ?? [])
+    .filter((event) => !event.playerDriven && event.era?.trim())
+    .map((event) => ({ era: event.era!.trim(), at: dateValue(event.from) }))
+    .sort((a, b) => a.at - b.at);
+  const order: string[] = [];
+
+  for (const start of starts) {
+    if (!order.includes(start.era)) order.push(start.era);
+  }
+
   const at = dateValue(date);
-  let era = CANON_ERA_ORDER[0];
-  let rank = 0;
+  let era = STORY_ERA;
+  let rank = -1;
 
-  for (const start of ERA_STARTS) {
+  for (const start of starts) {
     if (start.at > at) break;
 
-    // Eras only move forward, so a late-listed early-era event can't pull it back.
-    const startRank = CANON_ERA_ORDER.indexOf(start.era);
+    const startRank = order.indexOf(start.era);
 
     if (startRank >= rank) {
       era = start.era;
@@ -96,7 +106,7 @@ export function placeAt(db: AppDatabase, date: CalendarDate): string | null {
     place = stop.place;
   }
 
-  return place ? localizePlaceNames(place) : null;
+  return place ? place : null;
 }
 
 export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
@@ -106,7 +116,7 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
     .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
     .map((entry) => {
       // A flashback photo keeps the memory's own date, place and the player's age then.
-      const memory = entry.flashback ? FLASHBACK_BY_ID[entry.flashback.id] : undefined;
+      const memory = entry.flashback ? flashbackById(db, entry.flashback.id) : undefined;
       const date = entry.flashback?.date ?? entry.inStoryDate;
 
       return {
@@ -115,7 +125,7 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
         date,
         chapter: memory ? -memory.number : entry.chapter,
         caption: captionOf(entry, names),
-        place: memory ? localizePlaceNames(memory.place) : placeAt(db, entry.inStoryDate),
+        place: memory ? memory.place : placeAt(db, entry.inStoryDate),
         age: playerAgeAt(db, date),
         ...(memory ? { memory: memory.title } : {}),
       };
@@ -137,7 +147,7 @@ export function scrapbook(db: AppDatabase): ScrapbookEra[] {
   const eras: ScrapbookEra[] = [];
 
   for (const photo of scrapbookPhotos(db)) {
-    const era = photo.memory ? MEMORY_ERA : eraOfDate(photo.date);
+    const era = photo.memory ? MEMORY_ERA : eraOfDate(db, photo.date);
     let group = eras[eras.length - 1];
 
     if (!group || group.era !== era) {

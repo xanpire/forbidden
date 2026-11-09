@@ -239,7 +239,7 @@ export function CharacterPortraitCard({
           body={
             face
               ? `Sent every time ${name} is painted, so their face stays the same. Tap to replace it.`
-              : `Optional. Choose a picture of ${name}'s face — for canon characters, an official image works best. It keeps them on-model and stays on this device.`
+              : `Optional. Choose a picture of ${name}'s face. It keeps them looking the same and stays on this device.`
           }
           leading={
             <View style={styles.faceThumb}>

@@ -15,7 +15,7 @@ type CharacterRef = { entityId?: string; name: string };
 
 /**
  * Turns the state tracker's character IDs back into people. Each reference is
- * a KNOWN CHARACTERS ID ("kisame-hoshigaki"), the exact name of someone added
+ * a KNOWN CHARACTERS ID ("mara-voss"), the exact name of someone added
  * this turn under new_characters, or — when the model slipped — a name or
  * alias of someone already known. Anything else is dropped rather than
  * becoming a new person: only new_characters with is_new: true can add one.
@@ -53,7 +53,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     return byName ? { entityId: byName.id, name: byName.name } : null;
   };
 
-  /** For free-text fields (fact subjects, jutsu users): an ID becomes a name, anything else stays. */
+  /** For free-text fields (fact subjects): an ID becomes a name, anything else stays. */
   const nameOf = (raw: string | undefined) => (raw ? (resolve(raw)?.name ?? raw) : raw);
   const people = (names: string[]) =>
     uniqueList(names.map((name) => resolve(name)?.name).filter((name): name is string => Boolean(name)));
@@ -98,10 +98,6 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
       claimedBy: fact.claimedBy ? resolve(fact.claimedBy)?.name : undefined,
       whoKnows: fact.whoKnows ? uniqueList(fact.whoKnows.map((name) => nameOf(name) ?? name)) : fact.whoKnows,
     }));
-  }
-
-  if (diff.jutsuUsed) {
-    next.jutsuUsed = diff.jutsuUsed.map((jutsu) => ({ ...jutsu, user: nameOf(jutsu.user) ?? jutsu.user }));
   }
 
   if (diff.threads) {
@@ -235,175 +231,18 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
   return next;
 }
 
-// Shared-identity clusters (Naruto lore): characters known by many names, or
-// bodies controlled by one mind. Members of the same group are ONE character:
-// - Tobi, the man in the orange mask, also claims the name Madara.
-// - The REAL Madara Uchiha is a separate person who appears later.
-// - Pain is the Six Paths of Pain — six bodies (Deva, Asura, Animal, Human,
-//   Preta, Naraka) controlled by one hidden mind.
-// - Zetsu is one being split into Black Zetsu and White Zetsu halves.
-// Only names count, never descriptions ("the masked man" is how anyone in a
-// mask is described), and never an identity the player has not learned (names.ts).
-const FAKE_HINTS = ['tobi', 'fake madara', 'masked madara'];
-
-const REAL_MADARA_HINTS = ['madara'];
-
-const PAIN_HINTS = [
-  'pain',
-  'six paths of pain',
-  'deva path',
-  'asura path',
-  'animal path',
-  'human path',
-  'preta path',
-  'naraka path',
-];
-
-const ZETSU_HINTS = ['zetsu', 'black zetsu', 'white zetsu'];
-
-const PERSON_HINTS = [...FAKE_HINTS, ...REAL_MADARA_HINTS, ...PAIN_HINTS, ...ZETSU_HINTS];
-
-type IdentityGroup = 'masked-man' | 'real-madara' | 'pain' | 'zetsu';
-
-function countWords(text: string) {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function containsHint(name: string, hint: string) {
-  // "pain" is a common English word; only treat it as a name hint in short
-  // proper names ("Pain", "Nagato's Pain", "Six Paths of Pain" via its own hint).
-  if (hint === 'pain') {
-    return countWords(name) <= 3 && containsWord(name, 'pain');
-  }
-
-  return containsWord(name, hint);
-}
-
-export function entityGroup(hints: Set<string>): IdentityGroup | null {
-  if ([...hints].some((hint) => FAKE_HINTS.includes(hint))) {
-    return 'masked-man';
-  }
-
-  if (hints.has('madara')) {
-    return 'real-madara';
-  }
-
-  if ([...hints].some((hint) => PAIN_HINTS.includes(hint))) {
-    return 'pain';
-  }
-
-  if ([...hints].some((hint) => ZETSU_HINTS.includes(hint))) {
-    return 'zetsu';
-  }
-
-  return null;
-}
-
-export function entityHints(entity: EntityRecord): Set<string> {
-  const names = [entity.name.toLowerCase(), ...entity.aliases.map((alias) => alias.toLowerCase())];
-
-  return new Set(
-    [...names, ...names.flatMap((name) => nameCandidates(name))].flatMap((name) =>
-      PERSON_HINTS.filter((hint) => containsHint(name, hint))
-    )
-  );
-}
-
-function nameHints(rawName: string): Set<string> {
-  const names = [rawName.toLowerCase(), ...nameCandidates(rawName).map((candidate) => candidate.toLowerCase())];
-
-  return new Set(
-    PERSON_HINTS.filter((hint) => names.some((name) => containsHint(name, hint)))
-  );
-}
-
-function entityIsFake(entity: EntityRecord): boolean {
-  return entityGroup(entityHints(entity)) === 'masked-man';
-}
-
-// Bare "Madara" refers to the masked man, who claims that name. Qualified
-// real-Madara names ("Madara Uchiha", "the real Madara") refer to the real
-// Madara, who appears much later in the story.
-function isBareMadara(rawName: string) {
-  return normalizeName(rawName).toLowerCase() === 'madara';
-}
-
-function findFakeEntity(db: AppDatabase): EntityRecord | null {
-  return findEntityByGroup(db, 'masked-man');
-}
-
-function findEntityByGroup(db: AppDatabase, group: IdentityGroup): EntityRecord | null {
-  return (
-    db.entities.find(
-      (entity) => entity.type === 'character' && entityGroup(entityHints(entity)) === group
-    ) ?? null
-  );
-}
-
-function findRealMadara(db: AppDatabase): EntityRecord | null {
-  return findEntityByGroup(db, 'real-madara');
-}
-
+/**
+ * Duplicates are merged by hand (MergeSheet, mergeEntityPair): names alone
+ * never prove two records are one person. Kept so callers stay the same.
+ */
 export function mergeDuplicateEntities(db: AppDatabase): AppDatabase {
-  let next = db;
-
-  for (let i = 0; i < next.entities.length; i += 1) {
-    const primary = next.entities[i];
-
-    if (primary.type !== 'character') {
-      continue;
-    }
-
-    const primaryHints = entityHints(primary);
-
-    if (primaryHints.size === 0) {
-      continue;
-    }
-
-    for (let j = next.entities.length - 1; j > i; j -= 1) {
-      const other = next.entities[j];
-
-      if (other.type !== 'character') {
-        continue;
-      }
-
-      const otherHints = entityHints(other);
-
-      if (otherHints.size === 0) {
-        continue;
-      }
-
-      // Merge only when both entities belong to the same identity group
-      // (duplicates of the masked man, of Pain, of Zetsu, or of the real
-      // Madara). Members of different groups are different people.
-      const primaryGroup = entityGroup(primaryHints);
-      const otherGroup = entityGroup(otherHints);
-
-      if (!primaryGroup || primaryGroup !== otherGroup) {
-        continue;
-      }
-
-      const keep = i < j ? primary : other;
-      const drop = keep === primary ? other : primary;
-
-      next = mergeEntityPair(next, keep.id, drop.id);
-    }
-  }
-
-  return next;
+  return db;
 }
 
 function known(value: string | undefined) {
   return value && value !== 'Unknown' ? value : undefined;
 }
 
-/**
- * Folds one character into another: the dropped person's names become
- * aliases, missing details are filled in, and every bond, fact, memory link,
- * thread, jutsu record and scene reference moves to the kept person. Used by
- * the automatic identity merge (Tobi / masked man, Pain / Nagato) and by
- * "Merge with…" on the bond screen.
- */
 /** A stranger's label, made unique so two look-alikes stay two people. */
 function strangerName(db: AppDatabase, raw: string) {
   const base = /^(?:the|a|an)\s/i.test(raw) ? raw.replace(/^(?:a|an)\s/i, 'the ') : `the ${raw}`;
@@ -442,6 +281,12 @@ function mergeKnown(keep: EntityRecord, drop: EntityRecord): EntityRecord['known
   };
 }
 
+/**
+ * Folds one character into another: the dropped person's names become
+ * aliases, missing details are filled in, and every bond, fact, memory link,
+ * thread and scene reference moves to the kept person. Used by "Merge with…"
+ * on the bond screen.
+ */
 export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string): AppDatabase {
   const keep = db.entities.find((entity) => entity.id === keepId);
   const drop = db.entities.find((entity) => entity.id === dropId);
@@ -570,7 +415,6 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
       ...thread,
       participants: renameAll(thread.participants),
     })),
-    jutsuRecords: db.jutsuRecords.map((record) => ({ ...record, user: rename(record.user) })),
     state: {
       ...db.state,
       sceneCast: Array.isArray(db.state.sceneCast) ? renameAll(db.state.sceneCast) : db.state.sceneCast,
@@ -605,14 +449,6 @@ function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function containsWord(haystack: string, needle: string) {
-  if (needle.length < 3) {
-    return false;
-  }
-
-  return new RegExp(`\\b${escapeRegExp(needle)}\\b`, 'i').test(haystack);
-}
-
 function normalizeName(rawName: string) {
   return rawName.replace(/\s*\([^)]*\)\s*/g, '').trim();
 }
@@ -628,7 +464,7 @@ function nameCandidates(rawName: string) {
 }
 
 // Words that describe or address someone rather than name them: "Lady
-// Tsunade", "Kisame of the Mist", "old man Teuchi".
+// Voss", "Mara from the docks", "old man Teo".
 const DESCRIPTOR_WORDS = new Set([
   'the', 'of', 'from', 'a', 'an', 'lady', 'lord', 'sir', 'old', 'young', 'little',
   'big', 'great', 'granny', 'grandpa', 'master', 'sensei', 'sama', 'san', 'kun',
@@ -642,7 +478,7 @@ const DESCRIPTOR_WORDS = new Set([
 const GENERIC_WORDS = new Set([
   ...DESCRIPTOR_WORDS,
   'masked', 'mask', 'hooded', 'cloaked', 'tall', 'short', 'stranger', 'leader',
-  'person', 'figure', 'someone', 'shinobi', 'ninja', 'guard', 'man\'s', 'men',
+  'person', 'figure', 'someone', 'guard', 'man\'s', 'men',
   'women', 'other', 'one', 'that', 'this', 'his', 'her', 'their', 'your',
   'partner', 'boss', 'traveler', 'merchant', 'hunter', 'stitched', 'scarred',
   'red-haired', 'dark-haired', 'blond', 'hidden', 'cloak', 'orange',
@@ -650,8 +486,8 @@ const GENERIC_WORDS = new Set([
 
 const SINGLE_GENERIC_WORDS = new Set([
   'man', 'woman', 'boy', 'girl', 'kid', 'stranger', 'leader', 'person', 'figure',
-  'someone', 'guard', 'shinobi', 'ninja', 'partner', 'boss', 'traveler', 'merchant',
-  'hunter', 'masked', 'mask', 'elder', 'captain', 'sensei', 'master', 'lord', 'lady',
+  'someone', 'guard', 'partner', 'boss', 'traveler', 'merchant',
+  'hunter', 'masked', 'mask', 'elder', 'captain', 'officer', 'master', 'lord', 'lady',
 ]);
 
 /** True for a description ("the masked man") rather than a name. */
@@ -667,7 +503,7 @@ export function isGenericDescription(rawName: string) {
   }
 
   // One word is only a description when it is a plain noun ("Stranger"):
-  // a lone "A" is the Fourth Raikage, not an article.
+  // a lone "A" may be someone's name, not an article.
   if (words.length === 1) {
     return SINGLE_GENERIC_WORDS.has(words[0]);
   }
@@ -678,7 +514,7 @@ export function isGenericDescription(rawName: string) {
 const LEADING_TITLES = /^(?:the|lady|lord|sir|master|granny|grandpa|elder|captain|mister|miss)\s+/i;
 const TRAILING_HONORIFICS = /(?:\s*-\s*|\s+)(?:sama|san|kun|chan|sensei|senpai|dono)$/i;
 
-/** The ways a written name can be the same exact name: "Lady Tsunade", "Itachi-san". */
+/** The ways a written name can be the same exact name: "Lady Vance", "Mara-san". */
 function exactCandidates(rawName: string) {
   const out = new Set<string>();
 
@@ -710,9 +546,8 @@ function matchNames(entity: EntityRecord) {
 
 /**
  * Finds the person a name refers to: only an exact name or visible alias,
- * allowing for titles and honorifics ("Lady Tsunade", "Itachi-san").
- * Descriptions ("the masked man") and hidden spoiler names never match. The
- * one group rule left is a bare "Madara": Tobi until the real Madara exists.
+ * allowing for titles and honorifics ("Lady Vance", "Mara-san").
+ * Descriptions ("the masked man") and hidden spoiler names never match.
  * `exactOnly` is kept for callers; every lookup is exact now.
  */
 export function resolveEntity(
@@ -730,18 +565,8 @@ export function resolveEntity(
     return null;
   }
 
-  const hints = nameHints(rawName);
-  const isRealMadara = hints.has('madara') && ![...hints].some((hint) => FAKE_HINTS.includes(hint));
-  const realMadaraExists = isRealMadara ? findEntityByGroup(db, 'real-madara') !== null : false;
-
   for (const entity of db.entities) {
     if (entity.type !== 'character') {
-      continue;
-    }
-
-    // Once the real Madara exists, "Madara" (and any real-Madara name) refers
-    // to him — never to Tobi, even via Tobi's aliases.
-    if (isRealMadara && realMadaraExists && entityIsFake(entity)) {
       continue;
     }
 
@@ -750,17 +575,6 @@ export function resolveEntity(
     if (candidates.some((candidate) => names.includes(candidate))) {
       return entity;
     }
-  }
-
-  // A bare "Madara" before the real one appears is Tobi, who claims the name.
-  if (entityGroup(hints) === 'real-madara') {
-    const realMadara = findEntityByGroup(db, 'real-madara');
-
-    if (realMadara) {
-      return realMadara;
-    }
-
-    return isBareMadara(rawName) ? findEntityByGroup(db, 'masked-man') : null;
   }
 
   return null;
@@ -772,37 +586,16 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   }
 
   const name = entity.name.trim();
-  const hints = nameHints(name);
-  const group = entityGroup(hints);
 
   const byId = entity.entityId
     ? (db.entities.find((item) => item.id === entity.entityId) ?? null)
     : null;
   // Someone flagged as new is only a known person under a name they already
-  // go by: "Haku the Fisherman" is not Haku, "Hayate Moriya" is not Hayate.
+  // go by: "Dan the Fisherman" is not Dan, "Mara Kell" is not Mara Vance.
   // A stranger the player cannot name yet is always someone new: their "name" is
-  // only how they look to him, and two strangers can look alike.
+  // only how they look to the player, and two strangers can look alike.
   const stranger = !byId && entity.isNew === true && entity.nameKnown === false;
   let existing = stranger ? null : (byId ?? resolveEntity(db, name, { exactOnly: entity.isNew === true }));
-
-  // The real Madara must never be merged into the masked man entity.
-  // (An exact ID from the state tracker is trusted as-is.)
-  if (!byId && existing && group === 'real-madara' && entityIsFake(existing)) {
-    existing = findRealMadara(db);
-  }
-
-  // Shared-identity names always resolve to their one entity, never a new
-  // character: Tobi, Pain and the six paths, Zetsu halves (visible names only).
-  if (!byId && !existing && group) {
-    existing = findEntityByGroup(db, group);
-
-    // Bare "Madara" with no real Madara in the story yet refers to the masked
-    // man, who claims that name. Qualified names ("Madara Uchiha") create the
-    // real Madara as a new character.
-    if (!existing && group === 'real-madara' && isBareMadara(name)) {
-      existing = findFakeEntity(db);
-    }
-  }
 
   // Only someone the tracker flagged as new may be created; an update for a
   // person who cannot be found is dropped instead of becoming a duplicate.
@@ -838,7 +631,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
       gender: entity.gender ?? 'unknown',
       ...(entity.minor ? { tier: 'minor' as const } : {}),
       // From who they are, never a default of "winnable".
-      romanceAccessibility: romanceFor(entity.gender, { attractedTo: entity.attractedTo }),
+      romanceAccessibility: romanceFor(entity.attractedTo, db.state.player?.gender),
       ...(entity.attractedTo && entity.attractedTo !== 'unknown' ? { orientation: `Attracted to ${entity.attractedTo}` } : {}),
       tags: [],
     } as EntityRecord;
@@ -854,7 +647,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   const nextMood = entity.mood?.trim() || existing.mood;
 
-  // An identity the player has not learned (Obito, before the mask breaks) never becomes a matchable alias.
+  // An identity the player has not learned never becomes a matchable alias.
   const hidden = new Set(
     (existing.identities ?? [])
       .filter((identity) => !existing.aliases.some((alias) => alias.toLowerCase() === identity.name.toLowerCase()))
@@ -903,12 +696,12 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   };
 }
 
-/** Whether the player has learned what a canon milestone reveals: its news reached them, or he was part of it. */
+/** Whether the player has learned what a timeline event reveals: its news reached them, or they were part of it. */
 export function milestoneKnown(db: AppDatabase, milestoneId: string) {
-  const progress = db.state.canonProgress;
+  const progress = db.state.timelineProgress;
 
   return Boolean(
-    progress?.heard?.[`event_canon_${milestoneId}`] ||
+    progress?.heard?.[`event_timeline_${milestoneId}`] ||
       progress?.heard?.[milestoneId] ||
       progress?.engaged?.includes(milestoneId)
   );

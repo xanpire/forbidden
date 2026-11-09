@@ -2,20 +2,15 @@ import { characterFaceOf, latestCharacterPortrait } from './characterPortrait';
 import { resolveEntity } from './entities';
 import { displayName } from './names';
 import { mentionsEntity } from './characterRefs';
-import { localizePlaceNames } from './glossary';
 import { completeChat, type CallUsage } from '../openrouter';
-import { wearsAkatsukiCloak } from './portrait';
+import { currentOutfit } from './portrait';
 import type { PlannedReference } from './referencePlan';
 import { flashbackImageNote, playerAgeAt, latestReplyIsFlashback } from './flashbacks';
-import { CANON_CAST } from './canonCast';
 import { entityAge, timeOfDayOf } from './calendar';
 import {
-  canonArtDirection,
   chipDirection,
   impactFrameAllowed,
   isScaleShot,
-  jutsuLines,
-  jutsuOnScreen,
   lightLine,
   lookTags,
   recentShots,
@@ -23,6 +18,7 @@ import {
   shotTypeOf,
   type ShotChip,
   type ShotType,
+  timelineArtDirection,
 } from './imageDirection';
 import { CONDITION_INFO } from './weather';
 import type { AppDatabase, EntityRecord } from './types';
@@ -63,16 +59,13 @@ function sceneCast(db: AppDatabase, limit = SCENE_CAST_LIMIT): string[] {
 /** Most people sent as references in one scene image (more for an ensemble). */
 export const SCENE_CHARACTER_LIMIT = 3;
 
-/** The canon cast, plus the canon people the save starts with (seed.ts). */
-const CANON_NAMES = new Set(
-  [...CANON_CAST.map((entry) => entry.name), 'Itachi Uchiha', 'Hana Inuzuka', 'Izumi Uchiha', 'Suzume'].map((name) =>
-    name.toLowerCase()
-  )
-);
-
-/** Canon characters the image model already knows by name. */
-export function isCanonCharacter(entity: Pick<EntityRecord, 'name'>) {
-  return CANON_NAMES.has(entity.name.toLowerCase());
+/**
+ * People the image model may already know by name: only in a known universe,
+ * and only someone famous there (`fame`). Everyone else needs a reference or
+ * a description.
+ */
+export function modelKnowsCharacter(db: Pick<AppDatabase, 'world'>, entity: Pick<EntityRecord, 'fame'>) {
+  return Boolean(db.world?.knownUniverse && entity.fame);
 }
 
 /**
@@ -93,7 +86,7 @@ export function sceneCharacterReferences(
   db: AppDatabase,
   action: string,
   limit = SCENE_CHARACTER_LIMIT,
-  /** Spend slots on original characters first: the model can't guess them (#6c). */
+  /** Spend slots on people the model can't already know first (#6c). */
   originalsFirst = false
 ): Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait' }> {
   const found: Array<{ entity: EntityRecord; name: string; image: string; source: 'face' | 'portrait'; at: number }> = [];
@@ -122,7 +115,7 @@ export function sceneCharacterReferences(
     found.push({ entity, name: entity.name, image, source: face ? 'face' : 'portrait', at });
   }
 
-  const rank = (entry: { entity: EntityRecord }) => (originalsFirst && isCanonCharacter(entry.entity) ? 1 : 0);
+  const rank = (entry: { entity: EntityRecord }) => (originalsFirst && modelKnowsCharacter(db, entry.entity) ? 1 : 0);
 
   return found
     .sort((a, b) => rank(a) - rank(b) || a.at - b.at)
@@ -201,28 +194,28 @@ export function fallbackImageAction(db: AppDatabase) {
   return tailOf(cleanProse(reply?.content ?? db.state.scene), 700);
 }
 
-const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive Naruto story, like an anime storyboard artist. The player character is named on the PLAYER line.
+const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive story, like a film storyboard artist. The player character is named on the PLAYER line.
 
 Read the narrator's latest reply and pick the single most dramatic INSTANT from it, normally the one at the END of the reply: a freeze frame, not a summary. Then write three lines.
 
 ACTION: exactly who does what to whom at that instant, and where.
 - One or two sentences, at most 45 words (up to 80 words for an ensemble shot, so you can place everyone), present tense, third person.
 - The actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
-- Name people by name (the player by their name, "Itachi"). Unnamed people get a short description ("a Stone ninja").
-- Only people physically present in that moment. Include body positions, expressions at their peak, and any visible jutsu, weapon, or weather.
+- Name people by name (the player by their name, "Mara"). Unnamed people get a short description ("a security guard").
+- Only people physically present in that moment. Include body positions, expressions at their peak, and anything visible that matters: a weapon, a vehicle, the weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
 
-SHOT: frame that instant like an anime key frame in a wide 16:9 frame. One line, in this order:
+SHOT: frame that instant like a film still in a wide 16:9 frame. One line, in this order:
 - shot type: extreme close-up | close-up | medium | full body | wide | extreme wide | aerial | ensemble | impact frame
 - angle: worm's-eye | low angle | eye level | high angle | bird's-eye | over-the-shoulder | dutch tilt
 - lens feel: wide-angle distortion | telephoto compression | shallow depth of field
-- composition: where the subject sits (lower third, off-center, tiny in frame, filling the frame), and what fills the rest of the wide frame (open sky, smoke, flames, the jutsu, the landscape)
+- composition: where the subject sits (lower third, off-center, tiny in frame, filling the frame), and what fills the rest of the wide frame (open sky, city lights, smoke, the room, the landscape)
 - focus: the ONE person who gets the sharpest light and the most space in the frame (usually the player)
-- emotion at its peak, shown physically (screaming with veins on the neck, tears streaking a bloodied face, eyes wide with Sharingan spinning)
-- light and effects: light source and colour, motion (wind-whipped hair and cloak, speed lines, debris, embers, dust, chakra glow)
+- emotion at its peak, shown physically (screaming with veins on the neck, tears streaking a face, eyes wide)
+- light and effects: light source and colour, motion (wind-whipped hair and coat, rain, debris, embers, dust, steam)
 Pick the shot that sells the moment:
 - emotional peak: close-up or extreme close-up on a face
-- jutsu or power: low angle or worm's-eye, the effect filling most of the frame
+- action or power: low angle or worm's-eye, the action filling most of the frame
 - the instant a blow lands, a shocking reveal: impact frame
 - arrival, journey, calm: extreme wide, tiny figure, big landscape and sky
 - aftermath or destruction: aerial or bird's-eye
@@ -230,12 +223,12 @@ Pick the shot that sells the moment:
 - a group together, a gathering, one against many: ensemble, with one of these layouts:
   - line-up: everyone facing the camera in a staggered V, the leader at the front, low angle, like an opening-credits shot
   - battle lines: the player in the foreground seen from behind or over the shoulder, facing a row of opponents across the frame
-  - circle: a high angle looking down on figures in a ring (an Akatsuki meeting: members as glowing ghostly projections standing on the fingers of the giant statue, faces lit from below)
+  - circle: a high angle looking down on figures in a ring (a meeting around a table, faces lit from below)
   - depth layers: 1-2 sharp hero faces in front, the others in mid-ground, silhouettes or out-of-focus figures at the back
-  - clash: two groups colliding mid-air, jutsu crossing between them
+  - clash: two groups colliding, the space between them charged
 Avoid: eye-level medium shots of people standing, centered symmetrical framing, neutral faces, posing for the camera.
 
-CAPTION: the same moment for the player's scrapbook of photos of their life. The caption calls the player "you" and "your", never their name, "he", "she", "his" or "her": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
+CAPTION: the same moment for the player's scrapbook of photos of their life. The caption calls the player "you" and "your", never their name, "he", "she", "his" or "her": one sentence, at most 20 words, present tense, plain words ("You kneel at the grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
 
 Output exactly three lines and nothing else:
 ACTION: <the action sentences>
@@ -296,7 +289,7 @@ function peopleNotes(db: AppDatabase, cast: string[]) {
     .filter(Boolean);
 }
 
-/** What the director reads besides the reply: who, how they feel, light, jutsu, variety. */
+/** What the director reads besides the reply: who, how they feel, light, variety. */
 export function directorContext(db: AppDatabase, options: DirectorOptions = {}): string | null {
   const reply = latestStoryReply(db);
 
@@ -310,10 +303,10 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
   const memory = reply.flashback ? db.state.flashbacks?.active ?? null : null;
   const moment = sceneMoment(db, Boolean(reply.flashback));
   const sceneText = `${playerAction} ${reply.content}`;
-  const jutsu = jutsuOnScreen(db, sceneText);
   const shots = recentShots(db);
   const forced = chipDirection(options.chip);
-  const art = reply.flashback ? null : canonArtDirection(db);
+  const art = reply.flashback ? null : timelineArtDirection(db);
+  const outfit = currentOutfit(db);
   const notes = reply.flashback ? [] : peopleNotes(db, cast);
 
   const who = playerName(db);
@@ -324,7 +317,7 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
       ? `This reply is a memory from Year ${reply.flashback!.date.year}: ${who} is ${playerAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
       : `Location: ${db.state.location}.`,
     reply.flashback ? '' : `Scene: ${db.state.scene}.`,
-    reply.flashback ? '' : `${who} wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
+    reply.flashback || !outfit ? '' : `${who} wears ${outfit.replace(/\.$/, '')}.`,
     reply.flashback || !db.state.mood ? '' : `${who}'s mood: ${db.state.mood}.`,
     reply.flashback
       ? ''
@@ -336,8 +329,7 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
         }).join(', ')}.` : `Known people in the scene: none besides ${who}.`,
     notes.length > 0 ? `How they are: ${notes.join('; ')}.` : '',
     `Time and weather: ${timeOfDayOf(moment.date)}, ${String(moment.date.hour ?? 12).padStart(2, '0')}:${String(moment.date.minute ?? 0).padStart(2, '0')}; ${moment.weatherText ?? CONDITION_INFO[moment.condition].label}${moment.indoors ? ' (indoors)' : ''}.`,
-    ...jutsu.map((record) => `Jutsu in this turn: ${record.name} looks like this: ${record.visual.trim()}`),
-    art ? `ART DIRECTION for this moment in canon (a hint; still frame it around ${who} and what they do): ${art}.` : '',
+    art ? `ART DIRECTION for this moment in the story (a hint; still frame it around ${who} and what they do): ${art}.` : '',
     reply.imageWorthy && !forced ? 'This is a key moment: go big.' : '',
     forced ? `The player asked for this shot: ${forced}. Use it.` : '',
     shots.length > 0
@@ -444,11 +436,15 @@ function playerLook(db: AppDatabase) {
   return `${playerName(db)}: ${look.replace(/\.$/, '')}.`;
 }
 
-const STYLE_OPENER =
-  'A dramatic widescreen anime key frame, like a still from a high-budget Naruto Shippuden fight episode: bold cel shading, clean line art, saturated colour with strong contrast, dynamic composition, film grain.';
+/** The image style opener: the world's art style, framed as a widescreen still. */
+function styleOpener(db: AppDatabase) {
+  const style = db.world?.artStyle?.trim() || 'cinematic photo, natural light';
+
+  return `A dramatic widescreen still: ${style.replace(/\.$/, '')}; dynamic composition, strong contrast.`;
+}
 
 function impactOpener(accent: string) {
-  return `An anime impact frame: inverted, limited palette of black, white and ${accent}; rough expressive sketch lines; radial speed lines exploding from the point of impact; flat background.`;
+  return `An impact frame: inverted, limited palette of black, white and ${accent}; rough expressive sketch lines; radial speed lines exploding from the point of impact; flat background.`;
 }
 
 const IDENTITY_ONLY =
@@ -472,20 +468,10 @@ export function buildSceneImagePrompt(
   const shotType = options.shotType ?? shotTypeOf(options.shot);
   const ensemble = shotType === 'ensemble';
   const cast = memoryNote ? [] : sceneCast(db, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
-  const cloak = wearsAkatsukiCloak(db);
-  const reply = latestStoryReply(db);
   const sceneText = `${action} ${options.shot ?? ''}`;
-  const jutsu = jutsuOnScreen(db, `${sceneText} ${reply?.content ?? ''}`);
-  const art = memoryNote ? null : canonArtDirection(db);
+  const art = memoryNote ? null : timelineArtDirection(db);
   const impact = shotType === 'impact frame';
-
-  const currentOutfit = cloak
-    ? 'the Akatsuki cloak'
-    : 'the plain black shinobi outfit without the Akatsuki cloak';
-
-  const alternateOutfit = cloak
-    ? 'the plain black shinobi outfit without the Akatsuki cloak'
-    : 'the Akatsuki cloak';
+  const outfit = currentOutfit(db).replace(/\.$/, '') || 'their usual clothes';
 
   const hasFace = references.some((reference) => reference.kind === 'face');
   const hasOutfit = references.some((reference) => reference.kind === 'outfit');
@@ -495,11 +481,11 @@ export function buildSceneImagePrompt(
     )
   );
   const date = memoryReply?.flashback?.date ?? db.state.inStoryDate;
-  // Canon characters the model already knows, and anyone without a reference, get a look tag.
+  // People the model already knows, and anyone without a reference, get a look tag.
   const looks = lookTags(db, action, {
     exclude: new Set(
       db.entities
-        .filter((entity) => referenced.has(entity.name) && !isCanonCharacter(entity))
+        .filter((entity) => referenced.has(entity.name) && !modelKnowsCharacter(db, entity))
         .map((entity) => entity.name)
     ),
     limit: ensemble ? 10 : 5,
@@ -510,14 +496,9 @@ export function buildSceneImagePrompt(
   });
 
   // 1. Frame and style first: image models weight the start most.
-  const accentText = `${sceneText} ${jutsu.map((record) => record.visual).join(' ')}`;
-  const accent = /\bamaterasu\b|black flame/i.test(accentText)
-    ? 'violet'
-    : /\b(chidori|lightning|raiton)\b/i.test(accentText)
-      ? 'electric blue'
-      : 'red';
+  const accent = /\blightning\b/i.test(sceneText) ? 'electric blue' : 'red';
   const lines = [
-    impact ? impactOpener(accent) : STYLE_OPENER,
+    impact ? impactOpener(accent) : styleOpener(db),
     'Visual image only: no words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere.',
   ];
 
@@ -531,8 +512,6 @@ export function buildSceneImagePrompt(
   if (art) {
     lines.push(`ART DIRECTION: ${art}.`);
   }
-
-  lines.push(...jutsuLines(jutsu));
 
   // 4. Light and atmosphere from the real weather and clock (not for impact frames: flat colour).
   if (!impact) {
@@ -552,13 +531,9 @@ export function buildSceneImagePrompt(
 
   if (!memoryNote) {
     if (!hasOutfit) {
-      lines.push(
-        cloak
-          ? `${who} wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.`
-          : `${who} wears a plain black shinobi outfit: fitted black top and pants, no Akatsuki cloak.`
-      );
+      lines.push(`${who} wears ${outfit}.`);
     } else {
-      lines.push(`${who} currently wears ${currentOutfit}.`);
+      lines.push(`${who} currently wears ${outfit}.`);
     }
   }
 
@@ -578,15 +553,15 @@ export function buildSceneImagePrompt(
       lines.push(`Reference image ${n}: the image to edit.`);
     } else if (reference.kind === 'face') {
       lines.push(
-        `Reference image ${n}: ${who}'s face sheet (front, both profiles, back of head; no clothes). Match the face exactly: hair, eyes, facial structure, hairline. ${IDENTITY_ONLY}`
+        `Reference image ${n}: ${who}'s face. Match the face exactly: hair, eyes, facial structure, hairline. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'outfit') {
       lines.push(
-        `Reference image ${n}: the clothes ${who} currently wears (${currentOutfit}), front, side and back views with NO person. Dress ${who} in exactly these clothes. ${IDENTITY_ONLY}`
+        `Reference image ${n}: the clothes ${who} currently wears (${outfit}). Dress ${who} in exactly these clothes. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'alternate') {
       lines.push(
-        `Reference image ${n}: the alternate outfit (${alternateOutfit}), views with NO person. Use only if the story explicitly changes their clothing.`
+        `Reference image ${n}: another outfit of ${who}'s. Use only if the story explicitly changes their clothing.`
       );
     } else if (reference.kind === 'character') {
       const name = reference.name ?? 'this person';
@@ -610,7 +585,7 @@ export function buildSceneImagePrompt(
   if (hasFace) {
     lines.push(
       references.some((reference) => reference.kind === 'character' || reference.kind === 'cast')
-        ? `${who}'s face sheet and outfit images are for ${who} only; each other person's reference is for that person only, and never give one person another's face. Do not redesign ${who}'s face or hairstyle.`
+        ? `${who}'s face and outfit images are for ${who} only; each other person's reference is for that person only, and never give one person another's face. Do not redesign ${who}'s face or hairstyle.`
         : `The reference images are for ${who}'s face and clothing only, and any other people in them must not appear. Do not redesign ${who}'s face or hairstyle.`
     );
   }
@@ -619,8 +594,8 @@ export function buildSceneImagePrompt(
   lines.push(
     `ACTOR RULE: ${who} performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict ${who} as the victim of their own action. If the ACTION says ${who} chokes someone, draw ${who} choking the other person, never ${who} holding their own throat.`,
     isScaleShot(shotType)
-      ? 'Only the people named in the ACTION may appear with recognisable faces. Unnamed extras described there are allowed, and so are tiny, distant, faceless figures, rooftops, smoke columns, a whole village or battlefield below. No other recognisable faces.'
-      : 'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',
+      ? 'Only the people named in the ACTION may appear with recognisable faces. Unnamed extras described there are allowed, and so are tiny, distant, faceless figures, rooftops, smoke columns, a whole city or crowd below. No other recognisable faces.'
+      : 'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a security guard") are allowed. No other faces, no crowd, no bystanders.',
     cast.length > 0
       ? `Named people in this scene besides ${who}: ${cast.join(', ')}.`
       : `Named people in this scene besides ${who}: none — any other person must come from the ACTION text itself.`,
@@ -631,7 +606,7 @@ export function buildSceneImagePrompt(
     'Final reminder: no text, lettering, captions, or watermarks in the image.',
   );
 
-  return localizePlaceNames(lines.filter(Boolean).join('\n'));
+  return (lines.filter(Boolean).join('\n'));
 }
 
 /** A short edit of an existing image (#12): the image, plus the player's face so it doesn't drift. */
@@ -646,7 +621,7 @@ export function buildRetouchPrompt(tweak: string, references: PlannedReference[]
     if (reference.kind === 'edit') {
       lines.push(`Reference image ${n}: the image to edit.`);
     } else if (reference.kind === 'face') {
-      lines.push(`Reference image ${n}: ${name}'s face sheet. Keep that face exactly like this. ${IDENTITY_ONLY}`);
+      lines.push(`Reference image ${n}: ${name}'s face. Keep that face exactly like this. ${IDENTITY_ONLY}`);
     }
   });
 

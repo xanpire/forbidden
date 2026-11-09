@@ -1,6 +1,6 @@
 // Reading the state model's reply: JSON parsing and snake_case → TurnDiff.
 
-import { readRyo } from './money';
+import { readAmount } from './money';
 import type {
   AppDatabase,
   Audience,
@@ -14,16 +14,21 @@ import type {
   SafehouseDiff,
   SafehouseKind,
   TurnDiff,
-  VillageFaction,
 } from './types';
 import { isPlayerRef, playerName, playerRefs } from './player';
 
-const CARRIERS = ['bird', 'ninken', 'summon', 'courier', 'dead-drop', 'hand'] as const;
-const AUDIENCES = ['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki', 'rain', 'underworld'] as const;
 const KINDS = ['spared', 'lie', 'helped', 'witness', 'betrayal', 'humiliated', 'promise', 'debt'] as const;
-const VILLAGES = ['leaf', 'sand', 'mist', 'cloud', 'stone'] as const;
 
-/** How the state reply may name the player: the name for the jutsu user field, and every ref. */
+/** A faction id, audience or carrier as the tracker wrote it: trimmed, or undefined. Checked against the world later. */
+function idString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  const text = value.trim();
+
+  return text && text.toLowerCase() !== 'null' ? text.slice(0, 60) : undefined;
+}
+
+/** How the state reply may name the player: their name, and every ref. */
 export type StatePlayer = { name: string; refs: readonly string[] };
 
 const GENERIC_PLAYER: StatePlayer = { name: 'You', refs: playerRefs(null) };
@@ -56,20 +61,20 @@ export function convertStateBlock(
   const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
 
-  if (Array.isArray(block.canon_completed)) {
-    diff.canonCompleted = block.canon_completed.filter(
+  if (Array.isArray(block.timeline_completed)) {
+    diff.timelineCompleted = block.timeline_completed.filter(
       (id): id is string => typeof id === 'string' && id.trim().length > 0
     );
   }
 
-  if (Array.isArray(block.canon_engaged)) {
-    diff.canonEngaged = block.canon_engaged.filter(
+  if (Array.isArray(block.timeline_engaged)) {
+    diff.timelineEngaged = block.timeline_engaged.filter(
       (id): id is string => typeof id === 'string' && id.trim().length > 0
     );
   }
 
-  if (Array.isArray(block.canon_passed)) {
-    diff.canonPassed = block.canon_passed.filter(
+  if (Array.isArray(block.timeline_passed)) {
+    diff.timelinePassed = block.timeline_passed.filter(
       (id): id is string => typeof id === 'string' && id.trim().length > 0
     );
   }
@@ -91,7 +96,7 @@ export function convertStateBlock(
         name: typeof item.to === 'string' ? item.to.trim() : '',
         gist: typeof item.gist === 'string' && item.gist.trim() ? item.gist.trim().slice(0, 160) : undefined,
         text: cleanString(item.text)?.slice(0, 4000),
-        carrier: (CARRIERS as readonly string[]).includes(String(item.carrier)) ? (item.carrier as LetterCarrierKind) : undefined,
+        carrier: idString(item.carrier) as LetterCarrierKind | undefined,
         coded: item.coded === true ? true : undefined,
       }))
       .filter((item) => item.name.length > 0)
@@ -170,15 +175,14 @@ export function convertStateBlock(
   }
 
   if (Array.isArray(block.reputation)) {
-    const factions = new Set(['leaf', 'sand', 'mist', 'cloud', 'stone', 'akatsuki']);
     const changes = block.reputation
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
       .map((item) => ({
-        faction: (typeof item.faction === 'string' ? item.faction.trim().toLowerCase() : '') as ReputationFaction,
+        faction: (idString(item.faction) ?? '') as ReputationFaction,
         change: typeof item.change === 'number' && Number.isFinite(item.change) ? item.change : 0,
         reason: cleanString(item.reason)?.slice(0, 160),
       }))
-      .filter((item) => factions.has(item.faction) && item.change !== 0)
+      .filter((item) => item.faction.length > 0 && item.change !== 0)
       .slice(0, 6);
 
     if (changes.length > 0) {
@@ -187,8 +191,8 @@ export function convertStateBlock(
   }
 
   const seen = stringItems(block.bounty_seen)
-    .map((item) => item.toLowerCase())
-    .filter((item): item is VillageFaction => ['leaf', 'sand', 'mist', 'cloud', 'stone'].includes(item));
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 
   if (seen.length > 0) {
     diff.bountySeen = [...new Set(seen)];
@@ -210,10 +214,10 @@ export function convertStateBlock(
 
   if (epithet && typeof epithet === 'object' && !Array.isArray(epithet)) {
     const value = epithet as Record<string, unknown>;
-    const audience = cleanString(value.audience)?.toLowerCase();
+    const audience = idString(value.audience);
     const name = cleanString(value.name);
 
-    if (audience && name && (AUDIENCES as readonly string[]).includes(audience)) {
+    if (audience && name) {
       diff.epithet = { audience: audience as Audience, name: name.slice(0, 60) };
     }
   }
@@ -232,7 +236,7 @@ export function convertStateBlock(
           what: cleanString(item.what)?.slice(0, 200) ?? '',
           want: cleanString(item.want)?.slice(0, 160),
           witnesses: stringItems(item.witnesses).slice(0, 6),
-          faction: (VILLAGES as readonly string[]).includes(String(item.faction)) ? (item.faction as VillageFaction) : undefined,
+          faction: idString(item.faction),
           when: ['weeks', 'months', 'years'].includes(String(item.when)) ? (item.when as 'weeks' | 'months' | 'years') : undefined,
         };
       })
@@ -423,7 +427,7 @@ export function convertStateBlock(
     diff.money = money;
   }
 
-  const counted = readRyo(block.money_counted);
+  const counted = readAmount(block.money_counted);
 
   if (counted !== null && counted >= 0) {
     diff.moneyCounted = counted;
@@ -452,16 +456,16 @@ export function convertStateBlock(
 
   const flatLocation = cleanString(block.location);
   const flatLocationKind = asLocationKind(block.location_kind);
-  const flatCanonPoint = cleanString(block.canon_point);
+  const flatWorldPoint = cleanString(block.world_point);
   const inventoryAdded = stringItems(block.inventory_added);
   const inventoryRemoved = stringItems(block.inventory_removed);
 
-  if (flatLocation || flatLocationKind || flatCanonPoint || inventoryAdded.length || inventoryRemoved.length) {
+  if (flatLocation || flatLocationKind || flatWorldPoint || inventoryAdded.length || inventoryRemoved.length) {
     diff.state = {
       ...diff.state,
       ...(flatLocation ? { location: flatLocation } : {}),
       ...(flatLocationKind ? { locationKind: flatLocationKind } : {}),
-      ...(flatCanonPoint ? { canonPoint: flatCanonPoint } : {}),
+      ...(flatWorldPoint ? { worldPoint: flatWorldPoint } : {}),
       ...(inventoryAdded.length ? { inventoryAdded } : {}),
       ...(inventoryRemoved.length ? { inventoryRemoved } : {}),
     };
@@ -472,15 +476,15 @@ export function convertStateBlock(
   if (state && typeof state === 'object' && !Array.isArray(state)) {
     const rawState = state as {
       location?: unknown;
-      canon_point?: unknown;
-      inventory_and_jutsu_changes?: unknown;
+      world_point?: unknown;
+      inventory_changes?: unknown;
       location_kind?: unknown;
     };
 
     const inventoryChanges =
-      Array.isArray(rawState.inventory_and_jutsu_changes) &&
-      rawState.inventory_and_jutsu_changes.length > 0
-        ? rawState.inventory_and_jutsu_changes.filter(
+      Array.isArray(rawState.inventory_changes) &&
+      rawState.inventory_changes.length > 0
+        ? rawState.inventory_changes.filter(
             (item): item is string => typeof item === 'string' && item.trim().length > 0
           )
         : [];
@@ -498,41 +502,12 @@ export function convertStateBlock(
         rawState.location_kind === 'structure'
           ? rawState.location_kind
           : undefined,
-      canonPoint:
-        typeof rawState.canon_point === 'string' && rawState.canon_point.trim()
-          ? rawState.canon_point.trim()
+      worldPoint:
+        typeof rawState.world_point === 'string' && rawState.world_point.trim()
+          ? rawState.world_point.trim()
           : undefined,
       inventoryAdded: inventoryChanges,
     };
-  }
-
-  if (Array.isArray(block.jutsu_used)) {
-    diff.jutsuUsed = block.jutsu_used
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => {
-        const jutsu = item as {
-          name?: unknown;
-          user?: unknown;
-          chakra_nature?: unknown;
-          chakraNature?: unknown;
-          effect?: unknown;
-          visual?: unknown;
-        };
-
-        return {
-          name: typeof jutsu.name === 'string' ? jutsu.name : '',
-          user: typeof jutsu.user === 'string' && jutsu.user.trim() ? jutsu.user.trim() : player.name,
-          chakraNature:
-            typeof jutsu.chakra_nature === 'string'
-              ? jutsu.chakra_nature
-              : typeof jutsu.chakraNature === 'string'
-                ? jutsu.chakraNature
-                : undefined,
-          effect: typeof jutsu.effect === 'string' ? jutsu.effect : undefined,
-          visual: typeof jutsu.visual === 'string' ? jutsu.visual : undefined,
-        };
-      })
-      .filter((item) => item.name.trim().length > 0);
   }
 
   if (Array.isArray(block.bonds)) {
@@ -738,33 +713,6 @@ export function convertStateBlock(
     }
   }
 
-  if (Array.isArray(block.natures_gained)) {
-    const natures = block.natures_gained
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({
-        nature: cleanString(item.nature) ?? '',
-        source: (item.source === 'thousand-souls' ? 'thousand-souls' : 'innate') as 'innate' | 'thousand-souls',
-        from: cleanString(item.from),
-      }))
-      .filter((item) => item.nature.length > 0)
-      .map((item) => (item.from ? item : { nature: item.nature, source: item.source }));
-
-    if (natures.length > 0) {
-      diff.naturesGained = natures;
-    }
-  }
-
-  if (Array.isArray(block.abilities_changed)) {
-    const abilities = block.abilities_changed
-      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({ name: cleanString(item.name) ?? '', stage: cleanString(item.stage) }))
-      .filter((item) => item.name.length > 0);
-
-    if (abilities.length > 0) {
-      diff.abilitiesChanged = abilities;
-    }
-  }
-
   if (imageWorthy) {
     diff.imageWorthy = true;
   }
@@ -948,7 +896,7 @@ function convertMoney(value: unknown): { amount: number; reason: string }[] {
       if (!item || typeof item !== 'object') return null;
 
       const entry = item as Record<string, unknown>;
-      const amount = readRyo(entry.amount);
+      const amount = readAmount(entry.amount);
 
       if (amount === null || amount === 0) return null;
 

@@ -1,65 +1,21 @@
-import { Asset } from 'expo-asset';
+import { loadImage } from './imageStore';
+import type { AppDatabase } from './types';
 
-const playerFaceSheet = require('../../assets/images/kan-face-sheet.jpg');
-const playerOutfitBlack = require('../../assets/images/kan-outfit-black.jpg');
-const playerOutfitAkatsuki = require('../../assets/images/kan-outfit-akatsuki.jpg');
-
-let referencesPromise: Promise<string[]> | null = null;
-
+/**
+ * The player's own reference images: the face and outfit pictures they
+ * uploaded for their character (`state.player.faceImage` / `outfitImage`).
+ * Either may be missing; then the prompt describes the player in words.
+ * There is no bundled alternate outfit any more: `alternate` is always empty.
+ */
 export type PlayerReferences = { face: string; outfit: string; alternate: string };
 
-export function loadPlayerReferenceImages(wearsAkatsukiCloak: boolean): Promise<PlayerReferences> {
-  if (!referencesPromise) {
-    referencesPromise = Promise.all([
-      toDataUri(Asset.fromModule(playerFaceSheet)),
-      toDataUri(Asset.fromModule(playerOutfitBlack)),
-      toDataUri(Asset.fromModule(playerOutfitAkatsuki)),
-    ]).then((values) => values.filter(Boolean));
-  }
+export async function loadPlayerReferenceImages(db: Pick<AppDatabase, 'state'>): Promise<PlayerReferences> {
+  const [face, outfit] = await Promise.all([
+    loadImage(db.state.player?.faceImage ?? null),
+    loadImage(db.state.player?.outfitImage ?? null),
+  ]);
 
-  return referencesPromise.then(([face, black, akatsuki]) => {
-    const current = wearsAkatsukiCloak ? akatsuki : black;
-    const alternate = wearsAkatsukiCloak ? black : akatsuki;
-
-    return { face: face ?? '', outfit: current ?? '', alternate: alternate ?? '' };
-  });
-}
-
-async function toDataUri(asset: Asset) {
-  try {
-    await asset.downloadAsync();
-  } catch {
-    // downloadAsync is a no-op for web assets; the remote URI still works.
-  }
-
-  const uri = asset.localUri ?? asset.uri;
-
-  if (!uri) {
-    return '';
-  }
-
-  if (uri.startsWith('data:')) {
-    return uri;
-  }
-
-  try {
-    const response = await fetch(uri);
-
-    if (!response.ok) {
-      return uri;
-    }
-
-    const blob = await response.blob();
-
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ''));
-      reader.onerror = () => reject(new Error('Could not read reference image.'));
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return uri;
-  }
+  return { face: face ?? '', outfit: outfit ?? '', alternate: '' };
 }
 
 export { faceDroppedWarning, planReferences } from './referencePlan';

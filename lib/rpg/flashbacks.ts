@@ -8,26 +8,25 @@
  *   a small trigger touch the player; the reply that showed it gets a "Remember"
  *   chip, and the player can follow it by the chip or in their own words.
  * - Playing: the memory has its own clock, place and weather. Its turns never
- *   move the present clock, place, inventory, jutsu, injuries or canon; the
- *   narrator gets a FLASHBACK block (the player's age and what he could do then,
+ *   move the present clock, place, inventory, injuries or the world timeline; the
+ *   narrator gets a FLASHBACK block (the player's age and what they could do then,
  *   who is there at their age, what is fixed and what must stay hidden)
  *   instead of the present state.
  * - Ending: after about 3-10 turns the narrator closes it and carries the player
- *   back to the second he left. It becomes a memory dated in the past,
+ *   back to the second they left. It becomes a memory dated in the past,
  *   tagged `flashback`, shared by everyone in it, and it can nudge a bond by
  *   one point at most. Each flashback plays once.
+ * - The records live in `db.world.flashbacks`, written by the player (or
+ *   drafted and approved later). Empty by default: then nothing is offered.
  */
 import { advanceSeconds, calculateAge, daysBetween, daysFromCivil, entityAge, formatDate, timeOfDayOf } from './calendar';
 import { isPlayer, playerAgeAt, playerName } from './player';
 
 export { playerAgeAt };
-import { FLASHBACKS, FLASHBACK_BY_ID, KAN_PARENTS, type FlashbackRecord } from './flashbackData';
-import { milestoneStage } from './canon';
-import { CANON_MILESTONES } from './canonData';
+import { eventIdFor, timelineEventById, timelineStage } from './timeline';
 import { resolveEntity } from './entities';
 import { mentionsEntity } from './characterRefs';
 import { placeIdOf } from './mapData';
-import { localizePlaceNames } from './glossary';
 import { conditionFromText } from './weather';
 import { regionOf } from './geography';
 import { inferScenePace, resolveTurnClock, validateScenePace } from './pacing';
@@ -42,14 +41,23 @@ import type {
   CalendarDate,
   EntityRecord,
   EventRecord,
+  FlashbackRecord,
   FlashbackState,
   RawLogEntry,
   SceneModeName,
   TurnDiff,
 } from './types';
 
-export { FLASHBACKS, FLASHBACK_BY_ID } from './flashbackData';
-export type { FlashbackRecord } from './flashbackData';
+export type { FlashbackRecord } from './types';
+
+/** The world's playable memories (empty by default). */
+export function flashbacksOf(db: Pick<AppDatabase, 'world'> | null | undefined): FlashbackRecord[] {
+  return Array.isArray(db?.world?.flashbacks) ? db!.world.flashbacks : [];
+}
+
+export function flashbackById(db: Pick<AppDatabase, 'world'> | null | undefined, id: string | undefined | null): FlashbackRecord | undefined {
+  return id ? flashbacksOf(db).find((record) => record.id === id) : undefined;
+}
 
 /** One offer per in-story month at most. */
 export const FLASHBACK_OFFER_GAP_DAYS = 30;
@@ -83,21 +91,22 @@ function withFlashbacks(db: AppDatabase, patch: Partial<FlashbackState>): AppDat
 }
 
 /** Load-time repair: unknown ids dropped, a broken active flashback let go. */
-export function normalizeFlashbacks(raw: unknown): FlashbackState | undefined {
+export function normalizeFlashbacks(raw: unknown, records: FlashbackRecord[] = []): FlashbackState | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const value = raw as Partial<FlashbackState>;
-  const played = Array.isArray(value.played) ? value.played.filter((id) => typeof id === 'string' && FLASHBACK_BY_ID[id]) : [];
+  const known = new Set(records.map((record) => record.id));
+  const played = Array.isArray(value.played) ? value.played.filter((id) => typeof id === 'string' && known.has(id)) : [];
   const offered: Record<string, CalendarDate> = {};
 
   for (const [id, date] of Object.entries(value.offered ?? {})) {
-    if (FLASHBACK_BY_ID[id] && date && typeof date === 'object') offered[id] = date as CalendarDate;
+    if (known.has(id) && date && typeof date === 'object') offered[id] = date as CalendarDate;
   }
 
   const active =
-    value.active && FLASHBACK_BY_ID[value.active.id] && value.active.date && !played.includes(value.active.id)
+    value.active && known.has(value.active.id) && value.active.date && !played.includes(value.active.id)
       ? { ...value.active, castIds: value.active.castIds ?? [], nudges: value.active.nudges ?? {}, turns: value.active.turns ?? 0 }
       : undefined;
-  const pending = value.pending && FLASHBACK_BY_ID[value.pending.id] && !played.includes(value.pending.id) ? value.pending : undefined;
+  const pending = value.pending && known.has(value.pending.id) && !played.includes(value.pending.id) ? value.pending : undefined;
 
   return {
     played: [...new Set(played)],
@@ -105,14 +114,14 @@ export function normalizeFlashbacks(raw: unknown): FlashbackState | undefined {
     ...(value.lastOfferOn ? { lastOfferOn: value.lastOfferOn } : {}),
     ...(pending && !active ? { pending } : {}),
     ...(active ? { active } : {}),
-    ...(value.returned && FLASHBACK_BY_ID[value.returned.id] ? { returned: value.returned } : {}),
+    ...(value.returned && known.has(value.returned.id) ? { returned: value.returned } : {}),
   };
 }
 
 /** The flashback playing now, with its record. */
-export function activeFlashback(db: Pick<AppDatabase, 'state'>): { record: FlashbackRecord; active: ActiveFlashback } | null {
+export function activeFlashback(db: Pick<AppDatabase, 'state' | 'world'>): { record: FlashbackRecord; active: ActiveFlashback } | null {
   const active = flashbackStateOf(db).active;
-  const record = active ? FLASHBACK_BY_ID[active.id] : undefined;
+  const record = active ? flashbackById(db, active.id) : undefined;
   return active && record ? { record, active } : null;
 }
 
@@ -131,7 +140,7 @@ export function flashbackView(db: AppDatabase): AppDatabase | null {
   if (!playing) return null;
 
   const { active } = playing;
-  const region = regionOf(active.place) ?? 'fire';
+  const region = regionOf(db, active.place) ?? db.state.travelLog?.[db.state.travelLog.length - 1]?.region ?? 'unknown';
 
   return {
     ...db,
@@ -150,7 +159,7 @@ export function flashbackView(db: AppDatabase): AppDatabase | null {
 }
 
 // ---------------------------------------------------------------------------
-// The player as he was
+// The player as they were
 
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen'];
 
@@ -158,39 +167,32 @@ export function ageWord(age: number): string {
   return NUMBER_WORDS[age] ?? String(age);
 }
 
-
 /** What the player could do at an age, for the narrator. */
 export function playerThen(age: number): string {
   if (age <= 5) {
-    return `a small child of ${ageWord(age)}: no jutsu and no chakra training; he can run, climb, hide and cry like any child his age, and his size and strength are a child’s`;
+    return `a small child of ${ageWord(age)}: they can run, climb, hide and cry like any child their age, and their size and strength are a child's`;
   }
 
-  if (age <= 8) {
-    return `an Academy student of ${ageWord(age)}: shuriken and kunai practice, basic taijutsu and the first, shaky tries at the Clone, Transformation and Substitution jutsu; a child’s size and stamina`;
+  if (age <= 12) {
+    return `a child of ${ageWord(age)}: a child's size and stamina, a child's understanding; only what a child their age could know or do`;
   }
 
-  if (age <= 11) {
-    return `a genin of ${ageWord(age)} on Team 3: the Academy jutsu, shuriken and kunai, taijutsu and tree-climbing chakra control; he picks up jutsu fast by watching, but uses only what a genin his age could; a boy’s size`;
+  if (age <= 17) {
+    return `a teenager of ${ageWord(age)}: not yet grown, with only what they had learned by then`;
   }
 
-  return `an ANBU operative of ${ageWord(age)}: everything a sharp chunin-level shinobi knows, quick and quiet; he picks up jutsu fast by watching; a boy’s size, not yet grown`;
+  return `a younger adult of ${ageWord(age)}: only what they knew and could do by then, nothing they learned later`;
 }
 
-/** How the player looks at an age, for images (their reference sheets show them at 13 and older). */
-export function playerLookAt(age: number, name = 'The player'): string {
-  if (age <= 5) {
-    return `${name} as a small child of ${age}: round face, short black spiky hair, the same brown eyes, small and slight, in plain child’s clothes`;
-  }
+/** How the player looks at an age, for images (their references show them as they are now). */
+export function playerLookAt(age: number, name = 'The player', appearance = ''): string {
+  const look = appearance.trim() ? ` (as an adult: ${appearance.trim().replace(/\.$/, '')})` : '';
 
-  if (age <= 8) {
-    return `${name} at ${age}: a skinny Academy boy with black spiky hair and brown eyes, in a plain dark shirt and shorts`;
-  }
+  if (age <= 5) return `${name} as a small child of ${age}${look}: a child's round face and small, slight build`;
+  if (age <= 12) return `${name} as a child of ${age}${look}: a child's size and proportions`;
+  if (age <= 17) return `${name} as a teenager of ${age}${look}: not yet grown`;
 
-  if (age <= 11) {
-    return `${name} at ${age}: a young genin with black spiky hair and brown eyes, a Leaf forehead protector, dark shinobi clothes cut small`;
-  }
-
-  return `${name} at ${age}: a boy in ANBU gear, black spiky hair and brown eyes, grey armour and arm guards, an animal mask pushed up on his head or worn over his face`;
+  return `${name} at ${age}${look}: younger than now`;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,18 +216,18 @@ function nearDay(now: CalendarDate, day: { month: number; day: number }) {
 }
 
 function beatJustReached(db: AppDatabase, id: string) {
-  const eventId = `event_canon_${id}`;
+  const eventId = eventIdFor(id);
   const event = db.events.find((entry) => entry.id === eventId);
-  const milestone = CANON_MILESTONES.find((item) => item.id === id);
+  const milestone = timelineEventById(db, id);
 
   if (!event || !milestone) return false;
 
   // A world event counts from the day word of it reached the player, never before.
   const since = milestone.playerDriven
-    ? milestoneStage(db, id) === 'completed' || milestoneStage(db, id) === 'accepted'
+    ? timelineStage(db, id) === 'completed' || timelineStage(db, id) === 'accepted'
       ? event.inStoryDate
       : null
-    : db.state.canonProgress?.heard?.[eventId]?.date ?? null;
+    : db.state.timelineProgress?.heard?.[eventId]?.date ?? null;
 
   if (!since) return false;
 
@@ -256,17 +258,20 @@ export function flashbackScore(db: AppDatabase, record: FlashbackRecord, text: s
   const gated = triggers.afterFight === true && !fought;
   const now = db.state.inStoryDate;
   const cast = sceneNames(db);
-  const location = localizePlaceNames(db.state.location ?? '');
-  const placeId = placeIdOf(db.state.location);
+  const location = (db.state.location ?? '').toLowerCase();
+  const placeId = placeIdOf(db, db.state.location);
+  const lowerText = text.toLowerCase();
+  const hasWord = (words: string[] | undefined, haystack: string) =>
+    (words ?? []).some((word) => word.trim().length > 0 && new RegExp(`\\b${word.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(haystack));
   let score = 0;
 
   if (triggers.dates?.some((day) => nearDay(now, day))) score += 3;
   if (triggers.beats?.some((id) => beatJustReached(db, id))) score += 3;
-  if (triggers.places && ((placeId && triggers.places.ids?.includes(placeId)) || triggers.places.words?.test(location))) score += 2;
+  if (triggers.places && ((placeId && triggers.places.ids?.includes(placeId)) || hasWord(triggers.places.words, location))) score += 2;
 
   if (!gated) {
     if (triggers.people?.some((name) => cast.has(name))) score += 2;
-    if (triggers.words?.test(text)) score += triggers.afterFight ? 1 : 2;
+    if (hasWord(triggers.words, lowerText)) score += triggers.afterFight ? 1 : 2;
     if (triggers.afterFight && fought) score += 1;
   }
 
@@ -286,15 +291,16 @@ export function flashbackOffer(db: AppDatabase, input: string, mode: SceneModeNa
   if (db.state.scenePace && !['downtime', 'conversation'].includes(db.state.scenePace)) return null;
   if (storyTurnCount(db) < FLASHBACK_MIN_TURN) return null;
   if (state.lastOfferOn && daysBetween(state.lastOfferOn, db.state.inStoryDate) < FLASHBACK_OFFER_GAP_DAYS) return null;
-  // Not before the story's own opening has settled: the forest, the first night.
-  if (daysBetween({ year: 13, month: 10, day: 1, hour: 0, minute: 0 }, db.state.inStoryDate) < 3) return null;
+  // Not before the story's own opening has settled.
+  const opening = db.state.timelineProgress?.baselineDate ?? db.rawLog[0]?.inStoryDate ?? db.state.inStoryDate;
+  if (daysBetween(opening, db.state.inStoryDate) < 3) return null;
 
   const text = `${(lastPresentReply(db)?.content ?? '').slice(-1500)}\n${input}`;
   let best: { record: FlashbackRecord; score: number } | null = null;
 
-  for (const record of FLASHBACKS) {
+  for (const record of flashbacksOf(db)) {
     if (state.played.includes(record.id)) continue;
-    if (record.requires?.some((id) => milestoneStage(db, id) !== 'completed')) continue;
+    if (record.requires?.some((id) => timelineStage(db, id) !== 'completed')) continue;
 
     const score = flashbackScore(db, record, text);
 
@@ -315,7 +321,7 @@ function whenLine(db: AppDatabase, record: FlashbackRecord, date: CalendarDate =
 export function formatFlashbackOffer(db: AppDatabase, record: FlashbackRecord | null): string {
   if (!record) return '';
 
-  return `A MEMORY (optional): a flashback fits here: ${record.title} (${whenLine(db, record)}: ${record.memoryLine.replace(/\.$/, '')}). If it fits the moment, let one small trigger touch you this turn, drawn from what is really here (${record.hint}), and leave it there: do not start the memory, do not narrate it, do not say what he feels. He can follow it or let it pass. If nothing here fits, leave it out.`;
+  return `A MEMORY (optional): a flashback fits here: ${record.title} (${whenLine(db, record)}: ${record.memoryLine.replace(/\.$/, '')}). If it fits the moment, let one small trigger touch you this turn, drawn from what is really here (${record.hint}), and leave it there: do not start the memory, do not narrate it, do not say what you feel. You can follow it or let it pass. If nothing here fits, leave it out.`;
 }
 
 /** The date line shown above a flashback in the chat ("Year 5, Oct 10. You are five."). */
@@ -328,37 +334,32 @@ export function flashbackDateLine(db: Pick<AppDatabase, 'state'>, date: Calendar
 // ---------------------------------------------------------------------------
 // Starting
 
-/** The player's parents enter the save the first time a memory needs them. */
+/** People a memory names who are not in the save yet enter it the first time a memory needs them. */
 export function ensureFlashbackPeople(db: AppDatabase, record: FlashbackRecord): AppDatabase {
-  const missing = KAN_PARENTS.filter(
-    (parent) => record.cast.includes(parent.name) && !db.entities.some((entity) => entity.name === parent.name)
+  const missing = record.cast.filter(
+    (name) => name.trim().length > 0 && !isPlayerNameIn(db, name) && !resolveEntity(db, name)
   );
 
   if (missing.length === 0) return db;
 
-  const died: CalendarDate = { year: 5, month: 10, day: 10, hour: 23, minute: 0, second: 0 };
-  const added: EntityRecord[] = missing.map((parent) => ({
+  const added: EntityRecord[] = missing.map((name) => ({
     id: makeId('entity'),
-    name: parent.name,
+    name: name.trim(),
     type: 'character',
-    aliases: parent.aliases,
-    role: parent.role,
-    personality: parent.personality,
-    speechStyle: parent.speechStyle,
-    appearance: parent.appearance,
-    status: 'Deceased',
-    notes: 'One of your parents. Died in the Nine-Tails attack when you were five.',
-    deceased: { date: died, cause: 'the Nine-Tails attack', known: true },
-    gender: parent.gender,
-    romanceAccessibility: 'not-applicable',
+    aliases: [],
+    role: 'Someone from your past',
     met: true,
-    lastSeen: died,
-    lastSeenAt: 'Hidden Leaf',
-    tags: ['original', 'family', 'player-parent', parent.name.includes('Uzumaki') ? 'uzumaki' : 'uchiha'],
+    lastSeen: record.date,
+    lastSeenAt: record.place,
+    tags: [],
   }));
 
   const next = { ...db, entities: [...db.entities, ...added] };
   return { ...next, indices: buildIndices(next) };
+}
+
+function isPlayerNameIn(db: AppDatabase, name: string) {
+  return name.trim().toLowerCase() === playerName(db).trim().toLowerCase();
 }
 
 /**
@@ -366,7 +367,7 @@ export function ensureFlashbackPeople(db: AppDatabase, record: FlashbackRecord):
  * in the present changes except that its pace and mode are kept to put back.
  */
 export function beginFlashback(db: AppDatabase, id: string): AppDatabase {
-  const record = FLASHBACK_BY_ID[id];
+  const record = flashbackById(db, id);
   const state = flashbackStateOf(db);
 
   if (!record || state.active || state.played.includes(id)) return db;
@@ -403,7 +404,7 @@ export function rememberChip(db: AppDatabase, logId: string | undefined): Flashb
 
   if (!pending || !logId || pending.logId !== logId || flashbackStateOf(db).active) return null;
 
-  return FLASHBACK_BY_ID[pending.id] ?? null;
+  return flashbackById(db, pending.id) ?? null;
 }
 
 /** What the player sends when they tap the chip. */
@@ -432,14 +433,8 @@ function castLines(db: AppDatabase, record: FlashbackRecord, date: CalendarDate)
   });
 }
 
-function hiddenLines(db: AppDatabase, record: FlashbackRecord): string[] {
-  const lines = [...(record.hidden ?? [])];
-
-  if (milestoneStage(db, 'shisui-truth') !== 'completed') {
-    lines.push('how Shisui really died');
-  }
-
-  return [...new Set(lines)];
+function hiddenLines(_db: AppDatabase, record: FlashbackRecord): string[] {
+  return [...new Set(record.hidden ?? [])];
 }
 
 function pacingLine(turns: number): string {
@@ -460,7 +455,7 @@ function pacingLine(turns: number): string {
 
 /**
  * Replaces the present state for the narrator while a flashback plays: the
- * memory's date and place, the player as he was, who is there at their age, what is
+ * memory's date and place, the player as they were, who is there at their age, what is
  * fixed and what must stay hidden, and where the present stands still.
  */
 export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): string {
@@ -480,7 +475,7 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
     `WHEN: ${formatDate(active.date)}. You are ${ageWord(age)}. It is ${timeOfDayOf(active.date)}.`,
     `WHERE: ${active.place}.`,
     weatherLine,
-    `YOU THEN: ${playerThen(age)}. No Sharingan: it awakens only in Year 13, when Itachi tells you the truth. Your real strength stays hidden; never show its limit. The jutsu, abilities, inventory and wounds listed above belong to the present and do not exist here; Thousand Souls is never used or seen.`,
+    `YOU THEN: ${playerThen(age)}. The skills, inventory and wounds listed above belong to the present and do not exist here unless you already had them then.`,
     'WHO IS THERE THEN (everyone at their age on this date, with the personality they had then; the dead are alive in this memory, so THE DEAD list does not apply inside it):',
     ...castLines(db, record, active.date),
     ...(record.castNotes ?? []).map((note) => `- ${note}`),
@@ -488,7 +483,7 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
     'FREE: inside that, the player’s choices are their own and become real: what they say, do and feel, and the small things that happen.',
     `NEVER REVEALED: ${hidden.length > 0 ? `${hidden.join('; ')}. ` : ''}Nobody in the memory tells the player anything they do not already know in the present, and nothing from after this date is mentioned.`,
     `PACING: ${pacingLine(active.turns)} If the player pulls out of the memory, end it this reply the same way.`,
-    `THE PRESENT (frozen at ${formatDate(active.startedOn)}, ${localizePlaceNames(db.state.location)})${presentTail ? `: the last moment there was "…${presentTail}"` : ''}`,
+    `THE PRESENT (frozen at ${formatDate(active.startedOn)}, ${db.state.location})${presentTail ? `: the last moment there was "…${presentTail}"` : ''}`,
   ]
     .filter(Boolean)
     .join('\n');
@@ -497,7 +492,7 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
 /** The first present turn after a flashback: pick up the same second. */
 export function formatFlashbackReturn(db: AppDatabase): string {
   const returned = flashbackStateOf(db).returned;
-  const record = returned ? FLASHBACK_BY_ID[returned.id] : undefined;
+  const record = returned ? flashbackById(db, returned.id) : undefined;
 
   if (!returned || !record) return '';
 
@@ -514,13 +509,13 @@ export function flashbackTrackingLines(db: AppDatabase, offeredId: string | unde
   if (playing) {
     const age = playerAgeAt(db, playing.active.date);
     return [
-      `THIS TURN IS A MEMORY (flashback "${playing.record.title}", ${formatDate(playing.active.date)}, you are ${ageWord(age)}). Report time and location as they pass inside the memory. characters_present: who is in the memory scene (the dead are alive in it: list them). bonds: only how someone in the memory feels about you because of it, affinity_change -1..1. Leave inventory, jutsu, facts, threads, canon, news, letters, reputation, consequences, deaths, revived, companions, natures and abilities empty: the memory is recorded separately. flashback: "ended" when the reply closes the memory and brings you back to the present; otherwise null.`,
+      `THIS TURN IS A MEMORY (flashback "${playing.record.title}", ${formatDate(playing.active.date)}, you are ${ageWord(age)}). Report time and location as they pass inside the memory. characters_present: who is in the memory scene (the dead are alive in it: list them). bonds: only how someone in the memory feels about you because of it, affinity_change -1..1. Leave inventory, facts, threads, timeline marks, news, letters, reputation, consequences, deaths, revived and companions empty: the memory is recorded separately. flashback: "ended" when the reply closes the memory and brings you back to the present; otherwise null.`,
     ];
   }
 
   const lines: string[] = [];
-  const offered = offeredId ? FLASHBACK_BY_ID[offeredId] : undefined;
-  const waiting = state.pending ? FLASHBACK_BY_ID[state.pending.id] : undefined;
+  const offered = offeredId ? flashbackById(db, offeredId) : undefined;
+  const waiting = state.pending ? flashbackById(db, state.pending.id) : undefined;
 
   if (offered) {
     lines.push(
@@ -540,7 +535,7 @@ export function flashbackTrackingLines(db: AppDatabase, offeredId: string | unde
 
 /**
  * The present turn's flashback marks: an offer the reply showed waits for
- * The player (the chip), the player following one starts it from the next turn, and a
+ * the player (the chip), the player following one starts it from the next turn, and a
  * waiting offer runs out. The month gap counts from the offer, shown or not.
  */
 export function applyFlashbackMarks(
@@ -554,7 +549,7 @@ export function applyFlashbackMarks(
     state = { ...state, returned: undefined };
   }
 
-  if (options.offeredId && FLASHBACK_BY_ID[options.offeredId] && !state.played.includes(options.offeredId)) {
+  if (options.offeredId && flashbackById(next, options.offeredId) && !state.played.includes(options.offeredId)) {
     state = {
       ...state,
       lastOfferOn: next.state.inStoryDate,
@@ -786,7 +781,7 @@ export function flashbacksWith(db: AppDatabase, entityId: string): string[] {
 export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'flashback' | 'content'> | undefined): string | null {
   if (!entry?.flashback) return null;
 
-  const record = FLASHBACK_BY_ID[entry.flashback.id];
+  const record = flashbackById(db, entry.flashback.id);
   const date = entry.flashback.date;
   const age = playerAgeAt(db, date);
   const people = db.entities
@@ -799,9 +794,9 @@ export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'fl
 
   return [
     `THIS IS A MEMORY from Year ${date.year}${record ? ` (${record.title})` : ''}, before the story: draw everyone at their age then.`,
-    `${playerLookAt(age, playerName(db))}. Keep the face recognisable from the face sheet, but make them truly ${age} years old: a child's proportions and size, not a teenager.`,
+    `${playerLookAt(age, playerName(db), db.state.player.appearance)}. Keep the face recognisable from the reference, but make them truly ${age} years old.`,
     people.length > 0 ? `Others at their age then: ${people.join(', ')}.` : '',
-    record ? `Place: ${localizePlaceNames(record.place)}.` : '',
+    record ? `Place: ${record.place}.` : '',
     'A warm, faded, nostalgic tint over the whole image, like an old memory.',
   ]
     .filter(Boolean)

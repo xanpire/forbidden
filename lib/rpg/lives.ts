@@ -1,28 +1,25 @@
 // People with their own lives (living-world Stage 3, section 8).
 //
 // - Side characters do not freeze between the player's visits. As story time passes,
-//   the people the player knows who have little canon story of their own (Hana,
-//   Suzume, the people the player met on the road) get small life events: a hard
-//   mission, an injury, a posting, a new team, a move, a promotion, a
-//   wedding. Canon characters only get events that cannot touch their canon
-//   path; romance, moves and promotions are for original characters only.
+//   the people the player knows who have little timeline story of their own get
+//   small life events: a hard stretch at work, an injury, a new job, a move,
+//   a promotion, a wedding. People the world's timeline already follows
+//   (named in several of its events) only get events that cannot touch that
+//   path; romance, moves and promotions are for everyone else.
 // - When the player meets someone again after a long time, the narrator gets a short
-//   "since you last saw them" note: their canon events since then (from the
-//   fired milestones that name them), their life events, how the era has
-//   changed them, and, where canon says nothing, room for one small change
-//   of the narrator's own that the state tracker then keeps (life_events).
+//   "since you last saw them" note: the timeline events since then that name
+//   them, their life events, and, where nothing is known, room for one small
+//   change of the narrator's own that the state tracker then keeps (life_events).
 //
 // Everything is deterministic per save and person, so a regenerated turn
 // gets the same world.
 
 import { dateSortValue, daysBetween, entityAge, shiftDate } from './calendar';
-import { CANON_MILESTONES } from './canonData';
 import { mentionsEntity } from './characterRefs';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
-import { eraNoteFor } from './romance';
-import { isOriginalCharacter } from './returning';
+import { TIMELINE_TAG } from './timeline';
 import { hashText } from './util';
 import type { AppDatabase, CalendarDate, EntityRecord, LifeEvent, LifeEventKind, TurnDiff } from './types';
 import { isPlayerEntity } from './player';
@@ -37,8 +34,8 @@ export const LIFE_EVENT_SPREAD_DAYS = 90;
 /** Each person keeps at most this many life events. */
 const LIFE_EVENTS_KEPT = 8;
 
-/** A canon character named in this many world milestones has a canon story of their own. */
-const CANON_STORY_MILESTONES = 3;
+/** Someone named in this many world timeline events has a story of their own there. */
+const TIMELINE_STORY_EVENTS = 3;
 
 /** Reunion notes per narrator turn. */
 const REUNION_NOTES_PER_TURN = 2;
@@ -56,42 +53,28 @@ function sceneIds(db: AppDatabase): Set<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Who has a canon story of their own
+// Who has a story on the world's timeline
 
-/** Canon people seeded with the story itself (they carry no `canon` tag). */
-const SEEDED_CANON = new Set(['Itachi Uchiha', 'Hana Inuzuka', 'Suzume', 'Izumi Uchiha', 'Shisui Uchiha']);
-
-/** A Naruto character (from the canon cast or seeded with the story), not one the story made up. */
-export function isCanonFigure(entity: EntityRecord): boolean {
-  return SEEDED_CANON.has(entity.name) || (entity.type === 'character' && !isPlayerEntity(entity) && !isOriginalCharacter(entity));
-}
-
-const canonStoryCache = new Map<string, number>();
-
-/** How many world (not personal) milestones name this person. */
-export function canonStoryWeight(entity: Pick<EntityRecord, 'name' | 'aliases'>): number {
-  const key = entity.name;
-  const cached = canonStoryCache.get(key);
-
-  if (cached !== undefined) return cached;
-
-  const count = CANON_MILESTONES.filter((milestone) => {
-    if (milestone.playerDriven) return false;
-    const text = [milestone.title, milestone.description, ...milestone.facts, ...(milestone.deaths ?? [])].join(' ');
+/** How many world (not personal) timeline events name this person. */
+export function timelineStoryWeight(db: AppDatabase, entity: Pick<EntityRecord, 'name' | 'aliases'>): number {
+  return (db.world?.timeline ?? []).filter((event) => {
+    if (event.playerDriven) return false;
+    const text = [event.title, event.description, ...(event.facts ?? []), ...(event.deaths ?? [])].join(' ');
 
     return mentionsEntity(text, entity);
   }).length;
-
-  canonStoryCache.set(key, count);
-  return count;
 }
 
-/** Someone whose life the canon timeline does not already fill. */
-export function isSideCharacter(entity: EntityRecord): boolean {
-  if (entity.type !== 'character' || isPlayerEntity(entity)) return false;
-  if (entity.tags.includes('tailed-beast') || entity.tags.includes('summon')) return false;
+/** Someone the world's timeline already follows: their path is not the narrator's to change. */
+export function onTimelinePath(db: AppDatabase, entity: EntityRecord): boolean {
+  return entity.type === 'character' && !isPlayerEntity(entity) && timelineStoryWeight(db, entity) >= TIMELINE_STORY_EVENTS;
+}
 
-  return !isCanonFigure(entity) || canonStoryWeight(entity) < CANON_STORY_MILESTONES;
+/** Someone whose life the timeline does not already fill. */
+export function isSideCharacter(db: AppDatabase, entity: EntityRecord): boolean {
+  if (entity.type !== 'character' || isPlayerEntity(entity)) return false;
+
+  return !onTimelinePath(db, entity);
 }
 
 // ---------------------------------------------------------------------------
@@ -100,64 +83,74 @@ export function isSideCharacter(entity: EntityRecord): boolean {
 type Template = {
   kind: LifeEventKind;
   text: string;
-  /** Safe for canon characters: cannot touch their canon path. */
-  canonSafe: boolean;
+  /** Safe for people on the timeline: cannot touch their path. */
+  safe: boolean;
   /** Only from this age. */
   minAge?: number;
 };
 
-type Walk = 'shinobi' | 'medic' | 'teacher' | 'merchant' | 'civilian' | 'child';
+type Walk = 'service' | 'medic' | 'teacher' | 'trade' | 'office' | 'civilian' | 'child';
 
 const TEMPLATES: Record<Walk, Template[]> = {
-  shinobi: [
-    { kind: 'mission', text: 'spent weeks on a hard mission far from home and came back thinner and quieter', canonSafe: true },
-    { kind: 'injury', text: 'was hurt on a mission; it has healed, but they favour that side now', canonSafe: true },
-    { kind: 'posting', text: 'was posted to the border for a season, long nights on watch', canonSafe: true },
-    { kind: 'team', text: 'worked with a new squad for a stretch of missions', canonSafe: true },
-    { kind: 'loss', text: 'lost a comrade on a mission and does not talk about it', canonSafe: true },
-    { kind: 'skill', text: 'worked hard on a new technique and is quietly proud of it', canonSafe: true },
-    { kind: 'promotion', text: 'was promoted', canonSafe: false, minAge: 14 },
-    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', canonSafe: false, minAge: 17 },
+  service: [
+    { kind: 'work', text: 'spent weeks on a hard assignment far from home and came back thinner and quieter', safe: true },
+    { kind: 'injury', text: 'was hurt on the job; it has healed, but they favour that side now', safe: true },
+    { kind: 'posting', text: 'was moved to night shifts for a season', safe: true },
+    { kind: 'team', text: 'worked with a new partner for a stretch', safe: true },
+    { kind: 'loss', text: 'lost a colleague and does not talk about it', safe: true },
+    { kind: 'skill', text: 'passed a hard qualification and is quietly proud of it', safe: true },
+    { kind: 'promotion', text: 'was promoted', safe: false, minAge: 20 },
+    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', safe: false, minAge: 18 },
   ],
   medic: [
-    { kind: 'work', text: 'worked through a fever season at the hospital, short on sleep for weeks', canonSafe: true },
-    { kind: 'work', text: 'has been training a junior medic, and complains about it fondly', canonSafe: true },
-    { kind: 'loss', text: 'lost a patient they had fought hard for', canonSafe: true },
-    { kind: 'injury', text: 'caught a blade meant for someone else on a field posting; it healed clean', canonSafe: true },
-    { kind: 'romance', text: 'has started seeing someone from the hospital', canonSafe: false, minAge: 17 },
+    { kind: 'work', text: 'worked through a bad flu season at the hospital, short on sleep for weeks', safe: true },
+    { kind: 'work', text: 'has been training a junior colleague, and complains about it fondly', safe: true },
+    { kind: 'loss', text: 'lost a patient they had fought hard for', safe: true },
+    { kind: 'skill', text: 'finished a specialist course', safe: true },
+    { kind: 'romance', text: 'has started seeing someone from work', safe: false, minAge: 18 },
   ],
   teacher: [
-    { kind: 'team', text: 'took on a new class, and already has opinions about every one of them', canonSafe: true },
-    { kind: 'work', text: 'saw a student they taught come home from a mission in a coffin', canonSafe: true },
-    { kind: 'mission', text: 'was called back to field duty for a few weeks, and liked it more than they admit', canonSafe: true },
-    { kind: 'posting', text: 'was asked to help run the Academy exams this year', canonSafe: true },
+    { kind: 'team', text: 'took on a new class, and already has opinions about every one of them', safe: true },
+    { kind: 'work', text: 'had a former student come back to thank them', safe: true },
+    { kind: 'work', text: 'fought the school board over something and lost', safe: true },
+    { kind: 'posting', text: 'was asked to run the exams this year', safe: true },
   ],
-  merchant: [
-    { kind: 'work', text: 'had a bad season when the roads closed and is still making up for it', canonSafe: true },
-    { kind: 'work', text: 'took on an apprentice', canonSafe: true },
-    { kind: 'work', text: 'opened a second stall in the next town over', canonSafe: false },
-    { kind: 'move', text: 'moved their trade to another town', canonSafe: false },
-    { kind: 'family', text: 'got married in a small ceremony', canonSafe: false, minAge: 18 },
-    { kind: 'injury', text: 'was robbed on the road and still has the scar', canonSafe: true },
+  trade: [
+    { kind: 'work', text: 'had a bad season and is still making up for it', safe: true },
+    { kind: 'work', text: 'took on an apprentice', safe: true },
+    { kind: 'work', text: 'opened a second place across town', safe: false },
+    { kind: 'move', text: 'moved their business to another part of town', safe: false },
+    { kind: 'family', text: 'got married in a small ceremony', safe: false, minAge: 18 },
+    { kind: 'injury', text: 'was robbed and still has the scar', safe: true },
+  ],
+  office: [
+    { kind: 'work', text: 'survived a round of layoffs and is still nervous about it', safe: true },
+    { kind: 'work', text: 'landed a big project and has been working late', safe: true },
+    { kind: 'team', text: 'got a new boss they cannot stand', safe: true },
+    { kind: 'promotion', text: 'was promoted', safe: false, minAge: 20 },
+    { kind: 'move', text: 'moved to a new flat', safe: false },
+    { kind: 'romance', text: 'has started seeing someone, and is guarded about it', safe: false, minAge: 18 },
   ],
   civilian: [
-    { kind: 'move', text: 'moved to another part of town', canonSafe: false },
-    { kind: 'loss', text: 'lost someone in the family over the winter', canonSafe: true },
-    { kind: 'work', text: 'found new work and seems steadier for it', canonSafe: true },
-    { kind: 'family', text: 'got married', canonSafe: false, minAge: 18 },
-    { kind: 'romance', text: 'has started courting someone', canonSafe: false, minAge: 16 },
-    { kind: 'move', text: 'moved away to another town', canonSafe: false },
+    { kind: 'move', text: 'moved to another part of town', safe: false },
+    { kind: 'loss', text: 'lost someone in the family over the winter', safe: true },
+    { kind: 'work', text: 'found new work and seems steadier for it', safe: true },
+    { kind: 'family', text: 'got married', safe: false, minAge: 18 },
+    { kind: 'romance', text: 'has started seeing someone', safe: false, minAge: 18 },
+    { kind: 'move', text: 'moved away to another town', safe: false },
   ],
   child: [
-    { kind: 'growth', text: 'has grown a head taller', canonSafe: true },
-    { kind: 'skill', text: 'is proud of something new they learned to do', canonSafe: true },
-    { kind: 'growth', text: 'made a new best friend and talks about them constantly', canonSafe: true },
+    { kind: 'growth', text: 'has grown a head taller', safe: true },
+    { kind: 'skill', text: 'is proud of something new they learned to do', safe: true },
+    { kind: 'growth', text: 'made a new best friend and talks about them constantly', safe: true },
   ],
 };
 
 const NEXT_RANK: Array<[RegExp, string]> = [
-  [/\bgenin\b/i, 'chunin'],
-  [/\bch[uū]nin\b/i, 'jonin'],
+  [/junior/i, 'senior'],
+  [/assistant/i, 'associate'],
+  [/officer/i, 'sergeant'],
+  [/sergeant/i, 'lieutenant'],
 ];
 
 function walkOf(entity: EntityRecord, age: number | null): Walk {
@@ -165,15 +158,11 @@ function walkOf(entity: EntityRecord, age: number | null): Walk {
 
   const role = `${entity.role ?? ''} ${entity.notes ?? ''}`.toLowerCase();
 
-  if (/\b(medic|healer|vet|doctor|nurse|herbalist)\b/.test(role)) return 'medic';
-  if (/\b(sensei|teacher|instructor|academy)\b/.test(role)) return 'teacher';
-  if (/\b(merchant|shop|trader|innkeeper|teahouse|vendor|smith|cook|peddler|tavern|baker)\b/.test(role)) return 'merchant';
-  if (
-    /\b(genin|ch[uū]nin|j[oō]nin|ninja|shinobi|anbu|nin|kunoichi|hunter|mercenary|samurai|guard|ronin|bodyguard)\b/.test(role) ||
-    ['leaf', 'sand', 'mist', 'cloud', 'stone', 'rain', 'sound', 'anbu', 'root'].some((tag) => entity.tags.includes(tag))
-  ) {
-    return 'shinobi';
-  }
+  if (/\b(medic|doctor|nurse|paramedic|surgeon|vet|pharmacist)\b/.test(role)) return 'medic';
+  if (/\b(teacher|professor|lecturer|instructor|tutor|coach)\b/.test(role)) return 'teacher';
+  if (/\b(shop|owner|trader|barkeep|bartender|runs|cafe|café|bar|restaurant|chef|cook|baker|vendor|mechanic|smith)\b/.test(role)) return 'trade';
+  if (/\b(police|officer|detective|soldier|guard|security|firefighter|agent|investigator|military|enforcer)\b/.test(role)) return 'service';
+  if (/\b(analyst|manager|lead|clerk|accountant|lawyer|engineer|developer|executive|assistant|consultant)\b/.test(role)) return 'office';
 
   return 'civilian';
 }
@@ -184,7 +173,7 @@ function lifeOf(entity: EntityRecord): LifeEvent[] {
 
 /** People whose lives move on by themselves while the player is away. */
 function livesOnOwn(db: AppDatabase, entity: EntityRecord, here: Set<string>): boolean {
-  if (!isSideCharacter(entity) || entity.met === false || isDeceased(entity)) return false;
+  if (!isSideCharacter(db, entity) || entity.met === false || isDeceased(entity)) return false;
   if (entity.companion || entity.tier === 'minor' || here.has(entity.id)) return false;
 
   return db.bonds.some((bond) => bond.entityId === entity.id);
@@ -192,10 +181,10 @@ function livesOnOwn(db: AppDatabase, entity: EntityRecord, here: Set<string>): b
 
 function pickTemplate(db: AppDatabase, entity: EntityRecord, date: CalendarDate, past: LifeEvent[]): Template | null {
   const age = entityAge(date, entity) ?? null;
-  const canon = isCanonFigure(entity);
+  const onPath = onTimelinePath(db, entity);
   const options = TEMPLATES[walkOf(entity, age)].filter(
     (template) =>
-      (!canon || template.canonSafe) &&
+      (!onPath || template.safe) &&
       (template.minAge === undefined || (age !== null && age >= template.minAge)) &&
       // The same thing twice in a row reads like a loop.
       past[past.length - 1]?.text !== template.text &&
@@ -377,14 +366,14 @@ function apartLabel(days: number) {
 }
 
 /** The fired world events since then that name this person, oldest first. */
-function canonSince(db: AppDatabase, entity: EntityRecord, since: CalendarDate): string[] {
+function timelineSince(db: AppDatabase, entity: EntityRecord, since: CalendarDate): string[] {
   const now = dateSortValue(db.state.inStoryDate);
   const from = dateSortValue(since);
 
   return db.events
     .filter(
       (event) =>
-        event.tags.includes('canon') &&
+        event.tags.includes(TIMELINE_TAG) &&
         dateSortValue(event.inStoryDate) > from &&
         dateSortValue(event.inStoryDate) <= now &&
         mentionsEntity(event.summary, entity)
@@ -412,20 +401,15 @@ export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
   const days = daysBetween(lastSeen, now);
   const where = reunion?.lastSeenAt ?? entity.lastSeenAt;
   const parts: string[] = [];
-  const canon = canonSince(db, entity, lastSeen);
+  const world = timelineSince(db, entity, lastSeen);
 
-  if (canon.length) parts.push(`canon: ${canon.join('; ')}`);
+  if (world.length) parts.push(`in the world: ${world.join('; ')}`);
 
   const life = lifeOf(entity).filter(
     (event) => dateSortValue(event.date) > dateSortValue(lastSeen) && dateSortValue(event.date) <= dateSortValue(now)
   );
 
   if (life.length) parts.push(`their life: ${life.slice(-3).map((event) => event.text).join('; ')}`);
-
-  const then = eraNoteFor(entity.name, lastSeen.year);
-  const nowNote = eraNoteFor(entity.name, now.year);
-
-  if (nowNote && nowNote !== then) parts.push(`they have changed: ${nowNote}`);
 
   const ageThen = entityAge(lastSeen, entity);
   const ageNow = entityAge(now, entity);
@@ -434,10 +418,10 @@ export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
 
   // Named but not here yet: only if they turn up.
   const opening = `${reunion ? '' : 'Only if they appear: '}Since you last saw them (${apartLabel(days)} ago${where ? `, at ${where}` : ''})`;
-  const canonPath = isCanonFigure(entity) ? ' Nothing that changes their canon path.' : '';
+  const onPath = onTimelinePath(db, entity) ? ' Nothing that changes their path on the world timeline.' : '';
 
   if (parts.length === 0) {
-    return `${opening}: canon says nothing of their life since. Give them one small change of their own that fits who they are (a mission, an injury, new work, a move), and make it plain on the page so it is kept.${canonPath}`;
+    return `${opening}: nothing is known of their life since. Give them one small change of their own that fits who they are (new work, an injury, a move, a new habit), and make it plain on the page so it is kept.${onPath}`;
   }
 
   return `${opening}: ${parts.join('. ')}. Let it show in how they look and talk; they tell you only what they would share.`;

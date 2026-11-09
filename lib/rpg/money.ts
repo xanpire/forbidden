@@ -1,44 +1,57 @@
 /**
- * The player's money (`state.purse`): how many ryō he carries, and what moved it.
+ * The player's money (`state.purse`): how much they carry, in the world's
+ * currency, and what moved it.
  *
- * The narrator sees one Purse line in CURRENT STATE and the prices below; the
- * state tracker reports every change to the player's own money (`money`) and, when
- * the prose states his total, the total (`money_counted`). Someone else
- * paying for him changes nothing. A flashback never touches the present
- * purse (its turns go through applyMemoryStep).
+ * The narrator sees one Purse line in CURRENT STATE and the world's price
+ * guide; the state tracker reports every change to the player's own money
+ * (`money`) and, when the prose states the total, the total
+ * (`money_counted`). Someone else paying for them changes nothing. A
+ * flashback never touches the present purse (its turns go through
+ * applyMemoryStep).
  */
 
-import type { AppDatabase, CalendarDate, PurseEntry, PurseState } from './types';
+import type { AppDatabase, CalendarDate, PurseEntry, PurseState, WorldDefinition } from './types';
 
-/** What the player had in their pouch the night he left the Leaf. */
-export const STARTING_RYO = 4000;
-
-/** Changes kept for the the player tab, newest last. */
+/** Changes kept for the You tab, newest last. */
 const HISTORY_LIMIT = 40;
 /** No single change or total goes past this (a sanity cap on the tracker). */
-const MAX_RYO = 1_000_000_000;
+const MAX_AMOUNT = 1_000_000_000;
 
-/** Under this the narrator is told the purse is nearly empty. */
-export const LOW_PURSE_RYO = 1000;
+type Currency = Pick<WorldDefinition['currency'], 'name' | 'symbol'>;
 
-/**
- * One price scale for the narrator and the tracker, so a meal, a room and a
- * mission's pay stay believable next to the bingo-book bounties (about 1.4M
- * ryō at C-rank, see reputation.ts).
- */
-export const PRICE_GUIDE =
-  'PRICES (ryō): a meal or a bowl of noodles 300-800; tea or a cheap drink 100-300; a night at a cheap inn 2,000-5,000, a good one 10,000+; a kunai 200, ten shuriken 1,000, an explosive tag 500; a travelling cloak 3,000; passage on a boat 2,000-8,000; a bribe or an informant 1,000-20,000. Mission pay: D-rank 5,000-50,000, C 30,000-100,000, B 80,000-200,000, A 150,000-1,000,000, S 1,000,000+.';
+const FALLBACK_CURRENCY: Currency = { name: 'money' };
 
-export function startingPurse(estimated = false): PurseState {
-  return { ryo: STARTING_RYO, history: [], ...(estimated ? { estimatedStart: true } : {}) };
+export function currencyOf(db: Pick<AppDatabase, 'world'> | null | undefined): Currency {
+  return db?.world?.currency?.name ? db.world.currency : FALLBACK_CURRENCY;
 }
 
-/** Old saves get the starting amount, marked as a guess until the player counts their money. */
-export function normalizePurse(value: unknown): PurseState {
-  if (!value || typeof value !== 'object') return startingPurse(true);
+/** The world's price scale, for the narrator and the tracker. Empty when the player wrote none. */
+export function priceGuideOf(db: Pick<AppDatabase, 'world'>): string {
+  return db.world?.currency?.priceGuide?.trim() ?? '';
+}
+
+/** What the player started with (their sheet), so "nearly empty" scales with the world's money. */
+function startingAmount(db: AppDatabase) {
+  const money = db.state.player?.money;
+  return typeof money === 'number' && money > 0 ? money : 0;
+}
+
+/** Under this the narrator is told the purse is nearly empty: a fifth of what the player started with. */
+export function lowPurseAmount(db: AppDatabase) {
+  return Math.max(1, Math.round(startingAmount(db) / 5));
+}
+
+export function startingPurse(amount = 0, estimated = false): PurseState {
+  return { amount: clampAmount(amount), history: [], ...(estimated ? { estimatedStart: true } : {}) };
+}
+
+/** Repairs a stored purse. */
+export function normalizePurse(value: unknown, fallbackAmount = 0): PurseState {
+  if (!value || typeof value !== 'object') return startingPurse(fallbackAmount, true);
 
   const purse = value as Partial<PurseState>;
-  const ryo = typeof purse.ryo === 'number' && Number.isFinite(purse.ryo) ? clampRyo(purse.ryo) : STARTING_RYO;
+  const raw = purse.amount;
+  const amount = typeof raw === 'number' && Number.isFinite(raw) ? clampAmount(raw) : clampAmount(fallbackAmount);
   const history = Array.isArray(purse.history)
     ? purse.history
         .filter(
@@ -58,23 +71,23 @@ export function normalizePurse(value: unknown): PurseState {
         .slice(-HISTORY_LIMIT)
     : [];
 
-  return { ryo, history, ...(purse.estimatedStart ? { estimatedStart: true } : {}) };
+  return { amount, history, ...(purse.estimatedStart ? { estimatedStart: true } : {}) };
 }
 
 export function purseOf(db: AppDatabase): PurseState {
-  return db.state.purse ?? startingPurse(true);
+  return db.state.purse ?? startingPurse(startingAmount(db), true);
 }
 
-function clampRyo(amount: number) {
-  return Math.max(0, Math.min(MAX_RYO, Math.round(amount)));
+function clampAmount(amount: number) {
+  return Math.max(0, Math.min(MAX_AMOUNT, Math.round(amount)));
 }
 
-/** A number the tracker wrote, as a number ("-1,200", "500 ryō" and 500 all work). */
-export function readRyo(value: unknown): number | null {
+/** A number the tracker wrote, as a number ("-1,200", "$500", "500 dollars" and 500 all work). */
+export function readAmount(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value) : null;
   if (typeof value !== 'string') return null;
 
-  const match = value.replace(/[,\s_]/g, '').match(/^([+\-−]?)(\d+(?:\.\d+)?)/);
+  const match = value.replace(/[,\s_]/g, '').replace(/^([+\-−]?)[^\d+\-−]+/, '$1').match(/^([+\-−]?)(\d+(?:\.\d+)?)/);
 
   if (!match) return null;
 
@@ -87,7 +100,7 @@ export type MoneyChange = { amount: number; reason: string };
 
 /**
  * Applies this turn's money changes, then the total if the prose stated one.
- * A payment can't take the player below nothing: he pays what he has.
+ * A payment can't take the player below nothing: they pay what they have.
  */
 export function applyPurse(
   db: AppDatabase,
@@ -101,28 +114,28 @@ export function applyPurse(
 
   const date: CalendarDate = db.state.inStoryDate;
   const before = purseOf(db);
-  let ryo = before.ryo;
+  let amount = before.amount;
   const added: PurseEntry[] = [];
 
   for (const change of changes ?? []) {
-    const amount = Math.max(-MAX_RYO, Math.min(MAX_RYO, Math.round(change.amount)));
-    // Paying more than he has: he pays what he has.
-    const applied = amount < 0 ? Math.max(amount, -ryo) : amount;
+    const wanted = Math.max(-MAX_AMOUNT, Math.min(MAX_AMOUNT, Math.round(change.amount)));
+    // Paying more than they have: they pay what they have.
+    const applied = wanted < 0 ? Math.max(wanted, -amount) : wanted;
 
     if (applied === 0) continue;
 
-    ryo = clampRyo(ryo + applied);
+    amount = clampAmount(amount + applied);
     added.push({ date, change: applied, reason: cleanReason(change.reason, applied) });
   }
 
   let estimatedStart = before.estimatedStart;
 
   if (hasCount) {
-    const total = clampRyo(counted!);
+    const total = clampAmount(counted!);
 
-    if (total !== ryo) {
-      added.push({ date, change: total - ryo, reason: 'You counted what you have', counted: true });
-      ryo = total;
+    if (total !== amount) {
+      added.push({ date, change: total - amount, reason: 'You counted what you have', counted: true });
+      amount = total;
     }
 
     // Once the player has counted their money, the starting guess no longer matters.
@@ -136,7 +149,7 @@ export function applyPurse(
     state: {
       ...db.state,
       purse: {
-        ryo,
+        amount,
         history: [...before.history, ...added].slice(-HISTORY_LIMIT),
         ...(estimatedStart ? { estimatedStart: true } : {}),
       },
@@ -154,34 +167,39 @@ function cleanReason(reason: string, amount: number) {
 
 /** The narrator's and tracker's line in CURRENT STATE. */
 export function formatPurseLine(db: AppDatabase) {
-  const { ryo } = purseOf(db);
+  const { amount } = purseOf(db);
   const note =
-    ryo === 0
+    amount === 0
       ? ' (empty: you cannot pay for anything yourself)'
-      : ryo < LOW_PURSE_RYO
+      : amount < lowPurseAmount(db)
         ? ' (nearly empty)'
         : '';
 
-  return `Purse: ${formatRyo(ryo)}${note}`;
+  return `Purse: ${formatMoney(amount, currencyOf(db))}${note}`;
 }
 
-/** "4,000 ryō" (the same form as the bingo books in reputation.ts). */
-export function formatRyo(amount: number) {
-  return `${amount.toLocaleString('en-US')} ryō`;
+/** "$600" with a symbol, else "600 dollars". */
+export function formatMoney(amount: number, currency: Currency = FALLBACK_CURRENCY) {
+  const number = amount.toLocaleString('en-US');
+
+  return currency.symbol?.trim() ? `${currency.symbol.trim()}${number}` : `${number} ${currency.name}`;
 }
 
-/** "+1,200 ryō" / "−500 ryō", for the the player tab. */
-export function formatChange(change: number) {
-  return `${change < 0 ? '−' : '+'}${formatRyo(Math.abs(change))}`;
+/** "+$1,200" / "−500 dollars", for the You tab. */
+export function formatChange(change: number, currency: Currency = FALLBACK_CURRENCY) {
+  return `${change < 0 ? '−' : '+'}${formatMoney(Math.abs(change), currency)}`;
 }
 
-/** What the purse looks like, in a few words, for the the player tab. */
-export function purseFeel(ryo: number) {
-  if (ryo === 0) return 'Empty';
-  if (ryo < LOW_PURSE_RYO) return 'Nearly empty';
-  if (ryo < 20_000) return 'Enough for the road';
-  if (ryo < 200_000) return 'A comfortable sum';
-  if (ryo < 2_000_000) return 'A small fortune';
+/** What the purse looks like, in a few words, for the You tab (scaled to what the player started with). */
+export function purseFeel(db: AppDatabase) {
+  const { amount } = purseOf(db);
+  const start = Math.max(1, startingAmount(db));
+
+  if (amount === 0) return 'Empty';
+  if (amount < lowPurseAmount(db)) return 'Nearly empty';
+  if (amount < start * 2) return 'Getting by';
+  if (amount < start * 10) return 'Comfortable';
+  if (amount < start * 100) return 'Well off';
 
   return 'A fortune';
 }

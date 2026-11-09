@@ -1,10 +1,12 @@
-// Personal letters: the people the player is close to write to them, and he can write
-// back. Separate from canon news (newsDelivery.ts): these are their own
-// words, about their own lives and how they feel about him.
+// Personal letters and messages: the people the player is close to write to
+// them, and they can write back. Separate from world news (newsDelivery.ts):
+// these are their own words, about their own lives and how they feel about
+// the player. "Letter" covers whatever fits the era: a letter by post, a
+// courier, an email, a text message.
 //
 // - Incoming, unprompted: now and then someone the player is close to who is far
-//   away (not travelling with him, not in the scene, not seen for a while)
-//   sends a letter, a crow, or a coded note. At most one in a few weeks of
+//   away (not travelling with them, not in the scene, not seen for a while)
+//   writes, by one of the world's carriers. At most one in a few weeks of
 //   story time, and each person at most every month and a half. On the player's
 //   birthday someone close and far away may write regardless.
 // - Outgoing: when the story shows the player send a letter (the state tracker's
@@ -15,10 +17,10 @@
 // - Letters are kept: the archive holds the player's own words (the player writes
 //   them; only spelling and punctuation are tidied) and the words the
 //   narrator gave each writer.
-// - The road is real: Root, the Akatsuki or a village can read a letter on
-//   the way (an interception plants a delayed consequence, consequences.ts),
-//   and a letter can be lost: the courier died, a war closed the roads, the
-//   reader moved on or died first. Ciphers, dead drops and summons are safer.
+// - The road is real: a faction that reads mail (`readsMail`) or wants the
+//   player can read a letter on the way (an interception plants a delayed
+//   consequence, consequences.ts), and a letter can be lost: it went astray,
+//   the reader moved on or died first. Codes and hand delivery are safer.
 // - Letters to the dead are never sent; they are kept.
 // - Delivery is always on the page: the narrator is offered the letter
 //   (A LETTER FOR YOU) and the state tracker marks it received
@@ -30,7 +32,7 @@
 import { applyBondDiff } from './bonds';
 import { displayName, displayNameOf } from './names';
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
-import { isCombatPace } from './canon';
+import { isCombatPace } from './timeline';
 import { castWithCompanions } from './companions';
 import { plantSeed } from './consequences';
 import { isDeceased, playerKnowsDeath } from './deaths';
@@ -40,7 +42,7 @@ import { regionOf, travelDaysBetween, whereaboutsRegion, type Region } from './g
 import { makeId } from './id';
 import { markLifeKnown, newsOfTheirLife } from './lives';
 import { newsOffer } from './newsDelivery';
-import { bingoListings, isAkatsukiMember, reputationOf, standingBand, territoryOf, VILLAGE_NAME } from './reputation';
+import { factionById, factionName, factionsOf, territoryOf, wantedListings } from './reputation';
 import { clamp, hashText } from './util';
 import type {
   AppDatabase,
@@ -88,8 +90,6 @@ const ARCHIVE_WITH_TEXT = 200;
 const ARCHIVE_WITHOUT_TEXT = 40;
 
 const CLOSE_STAGES = new Set(['close', 'old friend', 'family', 'partner', 'mentor', 'romantic interest', 'lover']);
-/** People the player grew up with: they remember their birthday. */
-const GREW_UP_WITH = new Set(['Itachi Uchiha', 'Hana Inuzuka', 'Suzume']);
 
 /** Turns a letter, once offered, may wait before the offer is pressed. */
 const LETTER_LINGER_DAYS = 5;
@@ -162,104 +162,87 @@ function dayKey(date: CalendarDate) {
 }
 
 export function playerRegion(db: AppDatabase): Region | null {
-  return regionOf(db.state.location) ?? regionOf(db.state.scene);
+  return regionOf(db, db.state.location) ?? regionOf(db, db.state.scene);
 }
 
 // ---------------------------------------------------------------------------
-// How a letter finds a missing-nin
+// How a letter travels
 
-const CARRIERS_BY_NAME: Array<[RegExp, string, LetterCarrierKind]> = [
-  [/^itachi\b/i, 'one of his crows', 'bird'],
-  [/^hana\b/i, 'one of her ninken tracking your scent, or a Leaf hawk she sent off the books', 'ninken'],
-  [/^suzume\b/i, 'a coded note in the old Team 3 cipher, passed through a courier', 'courier'],
-  [/^konan\b/i, 'a paper butterfly that unfolds into the message', 'summon'],
-  [/^kisame\b/i, 'a scroll left at an Akatsuki dead drop', 'dead-drop'],
-  [/^jiraiya\b/i, 'one of his toads, or a note tucked inside a cheap novel', 'summon'],
-  [/^kakashi\b/i, 'one of his ninken', 'ninken'],
-];
+export type CarrierSpeed = 'instant' | 'fast' | 'normal' | 'slow';
 
-const CARRIERS_BY_TAG: Array<[string, string, LetterCarrierKind]> = [
-  ['akatsuki', 'a coded message through an Akatsuki dead drop', 'dead-drop'],
-  ['leaf', 'a Leaf messenger hawk sent off the books', 'bird'],
-];
+/** How fast a carrier is, from its name: a text arrives at once, a ship takes its time. */
+export function carrierSpeed(carrier: LetterCarrierKind | undefined): CarrierSpeed {
+  const name = (carrier ?? '').toLowerCase();
 
-const GENERIC_CARRIERS: Array<[string, LetterCarrierKind]> = [
-  ['a letter passed along by a courier who owes them a favor', 'courier'],
-  ['a carrier bird that knows your chakra', 'bird'],
-  ['a coded note slipped to you by a merchant', 'courier'],
-  ['a letter left at a dead drop you both know', 'dead-drop'],
-];
+  if (/\b(phone|text|sms|e-?mail|message|messag|call|radio|telegra|dm|chat|video|voicemail|app)\b/.test(name)) return 'instant';
+  if (/\b(express|rider|pigeon|bird|raven|hawk|drone|telex)\b/.test(name)) return 'fast';
+  if (/\b(ship|boat|caravan|dead[- ]drop|sea mail|surface mail)\b/.test(name)) return 'slow';
+  return 'normal';
+}
 
-function carrierOf(entity: EntityRecord): [string, LetterCarrierKind] {
-  for (const [pattern, carrier, kind] of CARRIERS_BY_NAME) {
-    if (pattern.test(entity.name)) return [carrier, kind];
+/** Travel days times this: how fast each kind of carrier is. */
+const SPEED_FACTOR: Record<CarrierSpeed, number> = { instant: 0, fast: 0.5, normal: 1.2, slow: 1.8 };
+
+/** The carriers this person would use: their faction's own, else the world's. */
+function carriersFor(db: AppDatabase, entity: EntityRecord): string[] {
+  for (const faction of factionsOf(db)) {
+    if (entity.tags.includes(faction.id) && faction.carriers?.length) return faction.carriers;
   }
 
-  for (const [tag, carrier, kind] of CARRIERS_BY_TAG) {
-    if (entity.tags.includes(tag)) return [carrier, kind];
-  }
+  const world = db.world?.letterCarriers ?? [];
 
-  return GENERIC_CARRIERS[hashText(entity.id) % GENERIC_CARRIERS.length];
+  return world.length > 0 ? world : ['courier'];
 }
 
-export function letterCarrier(entity: EntityRecord): string {
-  return carrierOf(entity)[0];
+function carrierOf(db: AppDatabase, entity: EntityRecord): LetterCarrierKind {
+  const carriers = carriersFor(db, entity);
+
+  return carriers[hashText(entity.id) % carriers.length];
 }
 
-/** Teams that write in a cipher by habit. */
-function writesInCipher(entity: EntityRecord) {
-  return /^suzume\b/i.test(entity.name) || entity.tags.includes('akatsuki') || entity.tags.includes('anbu');
+/** How a letter from this person reaches the player, in words ("text message"). */
+export function letterCarrier(db: AppDatabase, entity: EntityRecord): string {
+  return carrierOf(db, entity);
 }
-
-/** Shinobi days times this: how fast each carrier is. */
-const CARRIER_SPEED: Record<LetterCarrierKind, number> = {
-  summon: 0.3,
-  bird: 0.5,
-  ninken: 0.9,
-  hand: 1,
-  courier: 1.6,
-  'dead-drop': 1.8,
-};
 
 /** Days on the road between two regions for this carrier, fixed by its seed. */
-export function letterDays(from: Region | null, to: Region | null, carrier: LetterCarrierKind, seed: string): number {
+export function letterDays(
+  db: AppDatabase,
+  from: Region | null,
+  to: Region | null,
+  carrier: LetterCarrierKind,
+  seed: string
+): number {
+  const speed = carrierSpeed(carrier);
+
+  if (speed === 'instant') return 0;
+
   const jitter = hashText(seed) % 3;
 
   if (!from || !to) {
     return UNKNOWN_MIN_DAYS + (hashText(seed) % UNKNOWN_SPREAD_DAYS);
   }
 
-  const days = Math.round(travelDaysBetween(from, to) * CARRIER_SPEED[carrier]) + jitter + (carrier === 'dead-drop' ? 1 : 0);
+  const days = Math.round(travelDaysBetween(db, from, to) * SPEED_FACTOR[speed]) + jitter;
 
   return clamp(days, LETTER_MIN_DAYS, LETTER_MAX_DAYS);
 }
 
 /** Days on the road for one letter when nobody knows where anyone is (older callers). */
-export function travelDays(seed: string) {
-  return letterDays(null, null, 'courier', seed);
+export function travelDays(db: AppDatabase, seed: string) {
+  return letterDays(db, null, null, 'courier', seed);
 }
 
 // ---------------------------------------------------------------------------
 // The road: who reads it, and why it never arrives
 
-function danzoActive(db: AppDatabase) {
-  const danzo = db.entities.find((entity) => /^danz[oō]\b/i.test(entity.name));
-
-  return !danzo || !isDeceased(danzo);
-}
-
-/** The Fourth War closes every road it touches. */
-function wartime(date: CalendarDate) {
-  return date.year === 23 && (date.month === 1 || (date.month === 2 && date.day <= 15)) && !(date.month === 1 && date.day < 10);
-}
-
-const SAFETY: Partial<Record<LetterCarrierKind, number>> = { summon: 0.3, 'dead-drop': 0.5, hand: 0.2 };
+const SAFETY: Partial<Record<string, number>> = { hand: 0.2 };
 
 /**
- * Who might read a letter between the player and this person, with the chance in
- * percent: Root while Danzō lives (anything to or from the Leaf), Zetsu once
- * The player is in the Akatsuki (anything outside it), and a village that wants the player
- * when the letter crosses its land.
+ * Who might read a letter between the player and this person, with the chance
+ * in percent: a faction that reads mail (`readsMail`, 0-1) on whose ground
+ * either end is, and a faction that wants the player whose ground the letter
+ * crosses.
  */
 export function interceptionRisks(
   db: AppDatabase,
@@ -268,23 +251,20 @@ export function interceptionRisks(
   coded: boolean
 ): { who: Interceptor; chance: number }[] {
   const risks: { who: Interceptor; chance: number }[] = [];
-  const theirs = whereaboutsRegion(entity);
-  const leafSide = entity.tags.includes('leaf') && !entity.tags.includes('akatsuki');
+  const theirs = territoryOf(db, entity.whereabouts ?? entity.lastSeenAt ?? '');
+  const mine = territoryOf(db, `${db.state.location} ${db.state.scene ?? ''}`);
+  const listings = wantedListings(db);
 
-  if (leafSide || theirs === 'fire') {
-    risks.push(danzoActive(db) ? { who: 'root', chance: 22 } : { who: 'leaf', chance: 8 });
-  }
+  for (const faction of factionsOf(db)) {
+    const onTheirGround = faction.id === theirs?.id || faction.id === mine?.id;
 
-  if (isAkatsukiMember(db) && !entity.tags.includes('akatsuki')) {
-    const band = standingBand(reputationOf(db).akatsuki?.standing ?? 0);
-    risks.push({ who: 'akatsuki', chance: band === 'suspected' || band === 'doubted' ? 18 : 12 });
-  }
+    if (!onTheirGround || entity.tags.includes(faction.id)) continue;
 
-  const territory = territoryOf(entity.whereabouts ?? entity.lastSeenAt ?? '');
-  const listing = bingoListings(db).find((item) => item.village === territory);
+    const reads = typeof faction.readsMail === 'number' ? Math.max(0, Math.min(1, faction.readsMail)) : 0;
+    const wanted = listings.find((item) => item.factionId === faction.id);
+    const chance = Math.round(reads * 30) + (wanted ? 6 + { noted: 0, wanted: 4, high: 8, top: 12 }[wanted.level] : 0);
 
-  if (territory && territory !== 'leaf' && listing) {
-    risks.push({ who: territory, chance: 6 + { C: 0, B: 4, A: 8, S: 12 }[listing.rank] });
+    if (chance > 0) risks.push({ who: faction.id, chance });
   }
 
   const safety = (SAFETY[carrier] ?? 1) * (coded ? 0.5 : 1);
@@ -292,15 +272,8 @@ export function interceptionRisks(
   return risks.map((risk) => ({ ...risk, chance: Math.round(risk.chance * safety) }));
 }
 
-const INTERCEPTOR_WANT: Record<string, string> = {
-  root: 'to use the person you wrote to as a way to find you, or to learn what you know',
-  akatsuki: 'to know who you write to outside the organization, and why',
-};
-
-function interceptorName(who: Interceptor) {
-  if (who === 'root') return 'Root';
-  if (who === 'akatsuki') return 'Zetsu';
-  return `the ${VILLAGE_NAME[who]}`;
+function interceptorName(db: AppDatabase, who: Interceptor) {
+  return factionName(db, who);
 }
 
 /** Reads a letter on the way, perhaps. Returns the letter and the save (with a seed planted). */
@@ -311,15 +284,16 @@ function crossTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): { 
     if (roll(db, 'intercept', risk.who, entity.name, dayKey(letter.sentOn), letter.direction) >= risk.chance) continue;
 
     const towards = letter.direction === 'from-player' ? `your letter to ${entity.name}` : `${entity.name}'s letter to you`;
-    const seized = risk.who !== 'root' && risk.who !== 'akatsuki' && roll(db, 'seized', entity.name, dayKey(letter.sentOn)) < 34;
+    const seized = carrierSpeed(carrier) !== 'instant' && roll(db, 'seized', entity.name, dayKey(letter.sentOn)) < 34;
+    const name = interceptorName(db, risk.who);
     const next = plantSeed(db, {
       kind: 'intercepted',
-      who: interceptorName(risk.who),
-      what: `${interceptorName(risk.who)} read ${towards}${letter.gist ? ` (${letter.gist})` : ''} on its way`,
-      want: INTERCEPTOR_WANT[risk.who] ?? 'to find you through it',
+      who: name,
+      what: `${name} read ${towards}${letter.gist ? ` (${letter.gist})` : ''} on its way`,
+      want: 'to find you through it, or to learn what you know',
       witnesses: [entity.id],
-      faction: risk.who === 'root' ? 'leaf' : risk.who,
-      region: whereaboutsRegion(entity) ?? undefined,
+      faction: factionById(db, risk.who) ? risk.who : undefined,
+      region: whereaboutsRegion(db, entity) ?? undefined,
       letterId: letter.id,
       when: 'weeks',
     });
@@ -329,7 +303,7 @@ function crossTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): { 
       letter: {
         ...letter,
         interceptedBy: risk.who,
-        ...(seized ? { status: 'lost' as const, lostReason: 'seized at a checkpoint' } : {}),
+        ...(seized ? { status: 'lost' as const, lostReason: 'it was taken on the way' } : {}),
       },
     };
   }
@@ -340,30 +314,19 @@ function crossTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): { 
 /** Why this letter never arrives, or null. Rolled once, when it is due. */
 function lossOnTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): string | null {
   if (letter.carrier === 'hand') return null;
-  if (wartime(letter.sentOn) && roll(db, 'war', letter.name, dayKey(letter.sentOn)) < 25) {
-    return 'the war closed the roads and it never got through';
-  }
 
   const days = Math.max(0, daysBetween(letter.sentOn, letter.arrivesOn));
-  const base: Record<LetterCarrierKind, number> = { courier: 4, bird: 3, ninken: 2, 'dead-drop': 3, summon: 0, hand: 0 };
-  const chance = base[letter.carrier ?? 'courier'] + Math.floor(days / 2);
+  const speed = carrierSpeed(letter.carrier ?? 'courier');
+  const base: Record<CarrierSpeed, number> = { instant: 1, fast: 3, normal: 4, slow: 3 };
+  const chance = base[speed] + Math.floor(days / 2);
 
   if (roll(db, 'loss', letter.name, dayKey(letter.sentOn), letter.direction) < chance) {
-    switch (letter.carrier) {
-      case 'bird':
-        return 'the bird never arrived';
-      case 'dead-drop':
-        return 'the dead drop was found and cleared';
-      case 'ninken':
-        return 'the ninken lost the trail';
-      default:
-        return 'the courier was killed on the road';
-    }
+    return speed === 'instant' ? 'it never went through' : 'it went astray on the way and never arrived';
   }
 
   // They moved on before it got there.
   if (letter.direction === 'from-player' && letter.toRegion) {
-    const now = whereaboutsRegion(entity);
+    const now = whereaboutsRegion(db, entity);
 
     if (now && now !== letter.toRegion && roll(db, 'moved', letter.name, dayKey(letter.sentOn)) < 50) {
       return 'they had moved on before it arrived';
@@ -453,7 +416,7 @@ function lastLetterFrom(db: AppDatabase, entityId: string): CalendarDate | null 
 }
 
 function storyStart(db: AppDatabase): CalendarDate {
-  return db.state.canonProgress?.baselineDate ?? db.rawLog[0]?.inStoryDate ?? db.state.inStoryDate;
+  return db.state.timelineProgress?.baselineDate ?? db.rawLog[0]?.inStoryDate ?? db.state.inStoryDate;
 }
 
 function writesToPlayer(db: AppDatabase, entity: EntityRecord, here: Set<string>, pending: Set<string>) {
@@ -544,7 +507,7 @@ function birthdayWriter(db: AppDatabase): EntityRecord | null {
         const bond = bondOf(db, entity.id);
 
         if (!bond || bond.affinity < 0) return false;
-        return GREW_UP_WITH.has(entity.name) || bond.affinity >= 6 || CLOSE_STAGES.has(bond.relationship ?? '');
+        return bond.affinity >= 6 || CLOSE_STAGES.has(bond.relationship ?? '');
       })
       .sort((a, b) => warmth(db, b) - warmth(db, a))[0] ?? null
   );
@@ -586,7 +549,7 @@ export function letterOffer(db: AppDatabase): LetterOffer | null {
       kind: 'reply',
       entity,
       bond: bondOf(db, entity.id),
-      carrier: letterCarrier(entity),
+      carrier: letterCarrier(db, entity),
       letter,
       answering: post.letters.find((item) => item.id === letter.replyTo),
       daysWaiting: Math.max(0, daysBetween(letter.arrivesOn, now)),
@@ -601,7 +564,7 @@ export function letterOffer(db: AppDatabase): LetterOffer | null {
       kind: 'birthday',
       entity: birthday,
       bond: bondOf(db, birthday.id),
-      carrier: letterCarrier(birthday),
+      carrier: letterCarrier(db, birthday),
       daysWaiting: 0,
       theirNews: news(birthday),
     };
@@ -623,7 +586,7 @@ export function letterOffer(db: AppDatabase): LetterOffer | null {
     kind: 'unprompted',
     entity,
     bond: bondOf(db, entity.id),
-    carrier: letterCarrier(entity),
+    carrier: letterCarrier(db, entity),
     daysWaiting: Math.max(0, daysBetween(since, now) - LETTER_GAP_DAYS),
     theirNews: news(entity),
   };
@@ -659,14 +622,19 @@ export function formatLetterOffer(offer: LetterOffer | null, address?: string, w
     `A LETTER FOR YOU (personal, from someone far away; never mid-fight). ${writer ?? entity.name} has written to you${answering}.`,
     address
       ? `It reaches you by ${offer.carrier}, or it was waiting for you at ${address}: they know you stay here.`
-      : `It reaches you by ${offer.carrier}. You are a missing-nin with no address, so show how it found you; if nothing could have found you here, leave it for later.`,
-    `Write the letter out in their own voice, in full on the page (it is kept): short, in character, about their own life and what they could know, shaped by how they feel about you (${feeling}). No canon news you have not heard.${life}${press}`,
+      : `It reaches you by ${offer.carrier}. Show how it found you; if nothing could have reached you here, leave it for later.`,
+    `Write the letter out in their own voice, in full on the page (it is kept): short, in character, about their own life and what they could know, shaped by how they feel about you (${feeling}). No world news you have not heard.${life}${press}`,
   ].join(' ');
 }
 
-export function letterTrackingLines(offer: LetterOffer | null, idOf: (entity: EntityRecord) => string): string[] {
+export function letterTrackingLines(
+  db: AppDatabase,
+  offer: LetterOffer | null,
+  idOf: (entity: EntityRecord) => string
+): string[] {
+  const carriers = [...new Set([...(db.world?.letterCarriers ?? []), ...factionsOf(db).flatMap((faction) => faction.carriers ?? [])])];
   const lines = [
-    "- letters_sent: {to: id, gist, text, carrier, coded} only when the player actually writes and sends (or hands off) a letter or message to someone NOT in the scene this turn, or writes to someone dead (it is kept, never sent). gist = what it says, in a few words. text = the letter exactly as the player wrote it in their input, with ONLY spelling, commas and punctuation corrected: never change a word choice, the tone or the content; null if the player's words are not given. carrier: bird, ninken, summon (a toad, a crow, a paper butterfly), courier, dead-drop, or hand (a trusted person carries it). coded: true if it is in a cipher or code.",
+    `- letters_sent: {to: id, gist, text, carrier, coded} only when the player actually writes and sends (or hands off) a letter or message to someone NOT in the scene this turn, or writes to someone dead (it is kept, never sent). gist = what it says, in a few words. text = the letter exactly as the player wrote it in their input, with ONLY spelling, commas and punctuation corrected: never change a word choice, the tone or the content; null if the player's words are not given. carrier: how it goes (${carriers.length ? carriers.join(', ') : 'courier'}), or hand (a trusted person carries it). coded: true if it is in a cipher or code.`,
   ];
 
   if (offer) {
@@ -731,8 +699,8 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
     // A note handed across the fire is not a letter.
     if (here.has(entity.id)) continue;
 
-    const carrier = item.carrier ?? 'courier';
-    const to = whereaboutsRegion(entity);
+    const carrier = item.carrier?.trim() || db.world?.letterCarriers?.[0] || 'courier';
+    const to = whereaboutsRegion(db, entity);
     const seed = `${db.meta.slotId}:${entity.name}:${dayKey(now)}`;
     let letter: Letter = {
       id,
@@ -740,7 +708,7 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
       entityId: entity.id,
       name: entity.name,
       sentOn: now,
-      arrivesOn: shiftDate(now, letterDays(from, to, carrier, seed)),
+      arrivesOn: shiftDate(now, letterDays(next, from, to, carrier, seed)),
       gist: item.gist,
       text,
       status: 'travelling',
@@ -795,14 +763,14 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
 
       if (!entity) continue;
 
-      const [, carrier] = carrierOf(entity);
+      const carrier = carrierOf(db, entity);
 
       letters.push({
         id: makeId('letter'),
         direction: 'to-player',
         entityId,
         name: entity.name,
-        sentOn: shiftDate(now, -letterDays(whereaboutsRegion(entity), playerRegion(db), carrier, `${db.meta.slotId}:${entityId}:${now.year}-${now.month}`)),
+        sentOn: shiftDate(now, -letterDays(db, whereaboutsRegion(db, entity), playerRegion(db), carrier, `${db.meta.slotId}:${entityId}:${now.year}-${now.month}`)),
         arrivesOn: now,
         status: 'delivered',
         deliveredOn: now,
@@ -890,7 +858,7 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
 
     if (affinity + gain >= LETTER_REPLY_FLOOR) {
       const id = makeId('letter');
-      const [, carrier] = carrierOf(entity);
+      const carrier = carrierOf(db, entity);
       let reply: Letter = {
         id,
         direction: 'to-player',
@@ -899,12 +867,11 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
         sentOn: letter.arrivesOn,
         arrivesOn: shiftDate(
           letter.arrivesOn,
-          letterDays(whereaboutsRegion(entity), playerRegion(next), carrier, `${db.meta.slotId}:reply:${entity.name}:${dayKey(letter.arrivesOn)}`)
+          letterDays(next, whereaboutsRegion(next, entity), playerRegion(next), carrier, `${db.meta.slotId}:reply:${entity.name}:${dayKey(letter.arrivesOn)}`)
         ),
         status: 'travelling',
         replyTo: letter.id,
         carrier,
-        ...(writesInCipher(entity) ? { coded: true } : {}),
       };
       const road = crossTheRoad(next, reply, entity);
 

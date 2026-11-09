@@ -34,7 +34,7 @@ export type EventEntityRole = 'present' | 'mentioned' | 'participant';
 
 /**
  * The fixed set of fact types (see FACT_TYPE_RULES in prompt.ts for what each
- * one is for): a tied headband is not an injury, and "the clan is dead" is an
+ * one is for): a tied scarf is not an injury, and "the clan is dead" is an
  * event, not a death fact about whoever did it.
  */
 export type FactType =
@@ -64,41 +64,20 @@ export type SummaryLevel = 'chapter' | 'arc' | 'year';
 
 export type LogKind = 'story' | 'summary' | 'extraction' | 'diff' | 'error';
 
-export type NatureRecord = {
-  /** Fire, Water, Wind, Earth, Lightning, Wood, Ice, Lava… */
-  nature: string;
-  source: 'innate' | 'thousand-souls';
-  /** Whose chakra it came from (Thousand Souls). */
-  from?: string;
-  acquiredOn: CalendarDate;
-};
-
-export type AbilityRecord = {
-  /** "Sharingan", "Mangekyō Sharingan", "Susanoo"… */
-  name: string;
-  /** "1 tomoe", "2 tomoe", "3 tomoe", "awakened", "ribcage", "full body"… */
-  stage: string;
-  acquiredOn: CalendarDate;
-  /** When it reached its current stage. */
-  stageOn: CalendarDate;
-  /** Every stage it has had, oldest first. */
-  history?: { stage: string; date: CalendarDate }[];
-};
-
 export type LocationKind = 'settlement' | 'road' | 'wilderness' | 'structure';
 
 export type GameState = {
   player: CharacterDefinition;
   mood: string;
   worldDescription: string;
-  jutsu: string[];
   inventory: string[];
   location: string;
   locationKind?: LocationKind;
   inStoryDate: CalendarDate;
   turnsWithoutTimeChange?: number;
-  canonPoint: string;
-  canonProgress?: CanonProgress;
+  /** A free line on where the world stands now; the timeline can set it. */
+  worldPoint: string;
+  timelineProgress?: TimelineProgress;
   /** The current chapter: a narrative unit, moved on only by real breaks (see applyChapterBreak). */
   chapter: number;
   /** The current chapter's title, from its break. */
@@ -122,7 +101,7 @@ export type GameState = {
   sceneClosed?: boolean;
   /** Personal letters to and from the player (see letters.ts). */
   post?: PostState;
-  /** Bingo books and Akatsuki standing (see reputation.ts). */
+  /** What each faction has on the player (see reputation.ts). */
   reputation?: ReputationState;
   /** Birthdays, anniversaries and festivals (see yearly.ts). */
   yearly?: YearlyState;
@@ -145,19 +124,19 @@ export type GameState = {
 /** One change to the player's money (see money.ts). */
 export type PurseEntry = {
   date: CalendarDate;
-  /** Ryō, negative when the player paid, lost or gave it away. */
+  /** In the world's currency, negative when the player paid, lost or gave it away. */
   change: number;
   reason: string;
-  /** The story stated his total and the count was set to it. */
+  /** The story stated the player's total and the count was set to it. */
   counted?: boolean;
 };
 
 export type PurseState = {
-  /** Ryō the player carries now. */
-  ryo: number;
+  /** Money the player carries now, in the world's currency. */
+  amount: number;
   /** The last 40 changes, oldest first. */
   history: PurseEntry[];
-  /** An older save: the amount is the starting guess until the story states his total. */
+  /** An older save: the amount is the starting guess until the story states the total. */
   estimatedStart?: boolean;
 };
 
@@ -167,7 +146,7 @@ export type SafehouseEnd = 'expired' | 'destroyed' | 'compromised' | 'withdrawn'
 /** A place the player stays (see safehouses.ts). */
 export type Safehouse = {
   id: string;
-  /** A short name: "the cave above the falls", "a room at the Tanzaku inn". */
+  /** A short name: "the flat above the bakery", "a room at the harbour inn". */
   name: string;
   kind: SafehouseKind;
   /** state.location when it became his. */
@@ -184,7 +163,7 @@ export type Safehouse = {
   /** A borrowed place: whose it is. */
   hostId?: string;
   hostName?: string;
-  /** People (entity ids) and groups ("akatsuki", "the innkeeper") who know of it. */
+  /** People (entity ids) and groups (a faction id, "the landlord") who know of it. */
   knownBy: string[];
   knownGroups: string[];
   stash: string[];
@@ -265,7 +244,7 @@ export type WeatherCondition =
 /**
  * The weather a scene is played in, held so it stays the same through the
  * scene: the world's own weather for the region, or what the story changed
- * it to (a storm rolling in, a jutsu clearing the fog).
+ * it to (a storm rolling in, the fog lifting).
  */
 export type WeatherLock = {
   /** A geography region id, or 'unknown'. */
@@ -297,14 +276,16 @@ export type YearlyState = {
   offered: Record<string, number>;
 };
 
-export type VillageFaction = 'leaf' | 'sand' | 'mist' | 'cloud' | 'stone';
-export type ReputationFaction = VillageFaction | 'akatsuki';
+/** A faction id from `db.world.factions`. */
+export type ReputationFaction = string;
 
-/** What one great village has on the player (see reputation.ts). */
-export type BingoEntry = {
-  /** 0-100: how badly they want him, before cooling since lastDeedOn. */
+/** What one faction has on the player (see reputation.ts). */
+export type FactionStanding = {
+  /** 0-100: how badly they want the player, before cooling since lastDeedOn. */
   heat: number;
-  /** When they wrote him into their bingo book. An entry is never removed. */
+  /** -100..100: how they regard the player. */
+  standing?: number;
+  /** When they put the player on their wanted list (factions with bounties). Never removed. */
   listedOn?: CalendarDate;
   /** Their last new reason to want him; cooling counts from here. */
   lastDeedOn?: CalendarDate;
@@ -314,9 +295,7 @@ export type BingoEntry = {
 };
 
 export type ReputationState = {
-  villages: Partial<Record<VillageFaction, BingoEntry>>;
-  /** -100..100: how the Akatsuki regard him. */
-  akatsuki?: { standing: number; lastReason?: string; updatedOn?: CalendarDate };
+  factions: Record<string, FactionStanding>;
   /** The last few changes, newest last. */
   recent: { faction: ReputationFaction; change: number; reason?: string; date: CalendarDate }[];
 };
@@ -373,9 +352,11 @@ export type Letter = {
   occasion?: 'birthday';
 };
 
-export type LetterCarrierKind = 'bird' | 'ninken' | 'summon' | 'courier' | 'dead-drop' | 'hand';
+/** How a letter travels: one of the world's carriers (free text), or 'hand' (delivered in person). */
+export type LetterCarrierKind = string;
 
-export type Interceptor = 'root' | 'akatsuki' | VillageFaction;
+/** The faction id that read a letter on the way. */
+export type Interceptor = string;
 
 export type PostState = {
   letters: Letter[];
@@ -388,7 +369,7 @@ export type Deed = {
   id: string;
   date: CalendarDate;
   text: string;
-  /** Whose people saw it, when a village or the Akatsuki did. */
+  /** Whose people saw it, when a faction did. */
   faction?: ReputationFaction;
   /** Where it happened (geography.ts region). */
   region?: string;
@@ -396,13 +377,13 @@ export type Deed = {
   weight: number;
 };
 
-/** Who calls the player by a name of their own. */
-export type Audience = VillageFaction | 'akatsuki' | 'rain' | 'underworld';
+/** Who calls the player by a name of their own: a faction id, or 'common' for ordinary people. */
+export type Audience = string;
 
 export type Epithet = {
   name: string;
   since: CalendarDate;
-  /** The theme it grew from (renown.ts), or 'story' when the story named him. */
+  /** The theme it grew from (renown.ts), or 'story' when the story named the player. */
   theme: string;
   /** The player has heard themselves called this. */
   known: boolean;
@@ -412,7 +393,7 @@ export type Epithet = {
 
 export type RenownState = {
   deeds: Deed[];
-  epithets: Partial<Record<Audience, Epithet>>;
+  epithets: Record<string, Epithet>;
 };
 
 /**
@@ -434,7 +415,7 @@ export type ConsequenceSeed = {
   want?: string;
   /** Ids of anyone else who saw it. */
   witnesses: string[];
-  /** A village or the Akatsuki it could reach. */
+  /** A faction it could reach. */
   faction?: ReputationFaction;
   /** Where it happened (geography.ts region). */
   region?: string;
@@ -527,7 +508,7 @@ export type EntityRecord = {
   type: EntityType;
   aliases: string[];
   birthday?: { month: number; day: number };
-  /** True when canon gives no birthday and the app chose one (see yearly.ts). */
+  /** True when nobody wrote a birthday and the app chose one (see yearly.ts). */
   birthdayInvented?: boolean;
   birthYear?: number;
   age?: number;
@@ -538,13 +519,12 @@ export type EntityRecord = {
   notes?: string;
   mood?: string;
   /**
-   * Their base appearance: the lasting look (canon or original design), changed
+   * Their base appearance: the lasting look, changed
    * only by real lasting changes like aging, scars or new clothing.
    */
   appearance?: string;
   /**
-   * How they look right now: what they are wearing, wet, bloodied, Sharingan
-   * active. Cleared when the scene changes or after rest, unless renewed.
+   * How they look right now: what they are wearing, wet, bloodied, dressed up. Cleared when the scene changes or after rest, unless renewed.
    */
   currentLook?: string;
   /** The scene (GameState.sceneSeq) currentLook was last set in. */
@@ -556,27 +536,26 @@ export type EntityRecord = {
   lastSeenAt?: string;
   /**
    * Set once this person has died in the story (see deaths.ts). `known` is
-   * whether the player has seen it or been told; a canon death also becomes known
-   * when the news of `canonEventId` reaches him.
+   * whether the player has seen it or been told; a timeline death also becomes known
+   * when the news of `timelineEventId` reaches them.
    */
   deceased?: {
     date?: CalendarDate;
     cause?: string;
     known?: boolean;
-    canonEventId?: string;
+    timelineEventId?: string;
   };
   /** male, female, or unknown when the story hasn't said. */
   gender?: Gender;
   /**
-   * Whether the player (straight: only women) could ever win their heart:
-   * winnable, lore-locked (a woman whose heart belongs elsewhere), or
-   * not-applicable (men, and women not attracted to men). The player has none.
+   * Whether the player could ever win their heart: winnable, lore-locked
+   * (their heart belongs elsewhere), or not-applicable. The player has none.
    */
   romanceAccessibility?: 'winnable' | 'lore-locked' | 'not-applicable';
   canonDevotion?: string;
   orientation?: string;
   /**
-   * false for canon cast members loaded at the start whom you have not met
+   * false for people written into the world whom you have not met
    * yet: they are known to the state tracker but stay off the bonds list.
    * Missing means met (older saves, and everyone the story introduced).
    */
@@ -584,8 +563,8 @@ export type EntityRecord = {
   /** How their name splits (see names.ts); worked out from the name when missing. */
   nameParts?: NameParts;
   /**
-   * More than one identity (Tobi: persona "Tobi", claimed "Madara Uchiha",
-   * true "Obito Uchiha"), with who in the world knows each (names.ts).
+   * More than one identity (a persona, a claimed name, the true one), with
+   * who in the world knows each (names.ts).
    */
   identities?: Identity[];
   /**
@@ -594,6 +573,8 @@ export type EntityRecord = {
    * only their label.
    */
   known?: NameKnowledge;
+  /** Recognised on sight, or known by name, without having met the player (names.ts). */
+  fame?: 'sight' | 'heard';
   /** The story has not given them a name yet: `name` is only their label. */
   unnamed?: true;
   /**
@@ -666,13 +647,13 @@ export type FameLevel = 'sight' | 'heard' | 'unknown';
 export type IdentityKind = 'true' | 'claimed' | 'persona';
 
 export type IdentityKnower = {
-  /** Canon names or entity ids. */
+  /** Names or entity ids. */
   who: string[];
-  /** From this milestone (in the world, not the player's hearing of it). */
+  /** From this timeline event (in the world, not the player's hearing of it). */
   from?: string;
   /** Or from this in-story date (the player told them). */
   on?: CalendarDate;
-  /** They know the truth but call him by the name he goes by (Zetsu). */
+  /** They know the truth but use the name the person goes by. */
   playsAlong?: boolean;
   note?: string;
 };
@@ -680,15 +661,15 @@ export type IdentityKnower = {
 export type Identity = {
   name: string;
   kind: IdentityKind;
-  /** The player learns this identity when one of these milestones reaches them. */
+  /** The player learns this identity when one of these timeline events reaches them. */
   learnedWith?: string[];
   /** Who in the world knows them by this name, and from when. */
   knownBy?: IdentityKnower[];
-  /** Everyone knows it from this milestone ("start": from the beginning). */
+  /** Everyone knows it from this timeline event ("start": from the beginning). */
   publicFrom?: string;
-  /** The identity exists only from this milestone (Tobi's act). */
+  /** The identity exists only from this timeline event. */
   existsFrom?: string;
-  /** Once this milestone has happened, the name reads differently (Masked Madara). */
+  /** Once this timeline event has happened, the name reads differently. */
   renamed?: { after: string; name: string };
   /** false: never added to aliases for matching (a name another person owns). */
   alias?: false;
@@ -701,7 +682,7 @@ export type NameKnowledge = {
   label?: string;
   given?: boolean;
   family?: boolean;
-  /** Names of the identities he has learned. */
+  /** Names of the identities the player has learned. */
   identities?: string[];
   history?: { name: string; part: NamePart; how: NameHow; date: CalendarDate }[];
 };
@@ -711,7 +692,7 @@ export type Companion = {
   since: CalendarDate;
   /** Where they joined (state.location at the time). */
   sinceLocation?: string;
-  /** Why, in a few words ("assigned as your Akatsuki partner"). */
+  /** Why, in a few words ("hired as your driver"). */
   reason?: string;
   /** Scenes that ended with them at the player's side. */
   sharedScenes: number;
@@ -745,20 +726,6 @@ export type EventRecord = {
    */
   povs?: { entityId: string; text: string }[];
   createdAt: number;
-};
-
-export type JutsuRecord = {
-  id: string;
-  name: string;
-  user: string;
-  chakraNature: string;
-  effect: string;
-  visual: string;
-  firstSeen: CalendarDate;
-  lastSeen: CalendarDate;
-  timesUsed: number;
-  description: string;
-  tags: string[];
 };
 
 export type EventEntityRecord = {
@@ -801,7 +768,7 @@ export type FactRecord = {
   text: string;
   /** Entity ids of the people who know it. */
   whoKnows: string[];
-  /** Groups who know it, as tags ("hidden-leaf-leadership", "anbu-command"). */
+  /** Groups who know it, as tags ("police", "the-family"). */
   whoKnowsGroups?: string[];
   validFrom: CalendarDate;
   /** Set when the fact ended: replaced, contradicted, expired. Only facts without it are active. */
@@ -846,7 +813,7 @@ export type LoreRecord = {
   enabled: boolean;
   /** Narrator-only guidance; never shown in the Journal. */
   hidden?: boolean;
-  /** Always in the narrator's prompt, whatever the turn mentions (geography, say). */
+  /** Always in the narrator's prompt, whatever the turn mentions. */
   always?: boolean;
   /** Only once this holds (see loreActive). */
   activeAfter?: LoreCondition;
@@ -856,7 +823,7 @@ export type LoreRecord = {
 
 /**
  * Something the story reaches. Every field given must hold.
- * - milestone: a canon milestone the player completed or took part in
+ * - milestone: a timeline event the player completed or took part in
  * - thread / threadStatus: a thread (by title) with that status (default resolved)
  * - fact: an active fact containing this text
  * - flag: a state flag the app works out (see LORE_FLAGS in lore.ts)
@@ -869,7 +836,7 @@ export type LoreCondition = {
   flag?: LoreFlag;
 };
 
-export type LoreFlag = 'hasSharingan' | 'hasMangekyo' | 'knowsIzumiDead' | 'headbandScratched' | 'joinedAkatsuki' | 'inRomance';
+export type LoreFlag = 'inRomance';
 
 export type SummaryRecord = {
   id: string;
@@ -945,7 +912,8 @@ export type Settings = {
   autoSummarizeThreshold: number;
   temperature: number;
   maxTokens: number;
-  canonProgress: boolean;
+  /** Run the world timeline (default on). */
+  worldTimeline: boolean;
   /** Upper bound on the narrator prompt, in estimated tokens. */
   promptTokenBudget: number;
   /** Frames each scene image (the "director"); empty = the narrator model. */
@@ -956,10 +924,9 @@ export type Settings = {
   imageTwoTakes?: boolean;
 };
 
-export type CanonProgress = {
+export type TimelineProgress = {
   version?: number;
   baselineDate?: CalendarDate;
-  baselineTurn?: number;
   completed: string[];
   active: string[];
   engaged: string[];
@@ -985,7 +952,6 @@ export type AppDatabase = {
   settings: Settings;
   rawLog: RawLogEntry[];
   entities: EntityRecord[];
-  jutsuRecords: JutsuRecord[];
   events: EventRecord[];
   eventEntities: EventEntityRecord[];
   bonds: BondRecord[];
@@ -1006,7 +972,8 @@ export type AppDatabase = {
   memoryJobs?: MemoryJob[];
 };
 
-export type PortraitOutfit = 'black' | 'akatsuki';
+/** What the player wore, in words (their sheet's outfit). */
+export type PortraitOutfit = string;
 
 export type PortraitExpression = 'calm' | 'grim' | 'angry' | 'tired' | 'warm' | 'sad';
 
@@ -1075,8 +1042,6 @@ export type TurnDiff = {
   state?: {
     mood?: string;
     worldDescription?: string;
-    jutsuAdded?: string[];
-    jutsuRemoved?: string[];
     inventoryAdded?: string[];
     inventoryRemoved?: string[];
     location?: string;
@@ -1085,7 +1050,7 @@ export type TurnDiff = {
     elapsedSeconds?: number;
     clockTime?: { hour: number; minute: number };
     scenePace?: ScenePace;
-    canonPoint?: string;
+    worldPoint?: string;
     chapter?: number;
     scene?: string;
     sceneCast?: string[];
@@ -1100,10 +1065,6 @@ export type TurnDiff = {
   chapterTitle?: string;
   /** A flashback offered this turn showed its trigger, the player followed one into the memory, or the memory ended. */
   flashback?: 'offered' | 'started' | 'ended';
-  /** Chakra natures the player gained this turn: found innate, or taken with Thousand Souls. */
-  naturesGained?: { nature: string; source: 'innate' | 'thousand-souls'; from?: string }[];
-  /** Abilities the player gained or that changed stage this turn (Sharingan 2 tomoe, Mangekyō...). */
-  abilitiesChanged?: { name: string; stage?: string }[];
   /**
    * People the prose seems to show, read by the app when the state reply was
    * unreadable. Only a suggestion: it never marks anyone met or seen, and
@@ -1132,18 +1093,10 @@ export type TurnDiff = {
     minor?: boolean;
     /** Who they are drawn to: men, women, both, none, or unknown. */
     attractedTo?: 'men' | 'women' | 'both' | 'none' | 'unknown';
-    /** A short description of how they look to the player, for someone he cannot name. */
+    /** A short description of how they look to the player, for someone they cannot name. */
     label?: string;
     /** false: the player doesn't know their name yet (a stranger: `name` is then only their label). */
     nameKnown?: boolean;
-  }[];
-  jutsuUsed?: {
-    name: string;
-    user: string;
-    chakraNature?: string;
-    effect?: string;
-    visual?: string;
-    description?: string;
   }[];
   bonds?: {
     /** Set when the state tracker referred to a known character by ID. */
@@ -1188,15 +1141,15 @@ export type TurnDiff = {
   }[];
   /** People who died this turn, or whose death the player saw or was told of. */
   deaths?: { entityId?: string; name: string; cause?: string }[];
-  /** People genuinely brought back to life (never Edo Tensei). */
+  /** People who turned out to be alive after all (a wrong report, a faked death). */
   revived?: { entityId?: string; name: string }[];
   /** People who start travelling with the player this turn. */
   companionsJoined?: { entityId?: string; name: string; reason?: string }[];
   /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];
-  canonCompleted?: string[];
-  canonEngaged?: string[];
-  canonPassed?: string[];
+  timelineCompleted?: string[];
+  timelineEngaged?: string[];
+  timelinePassed?: string[];
   newsRelayed?: { id: string; from?: string }[];
   /** Letters or messages the player sent this turn to someone far away (or wrote to the dead). */
   lettersSent?: {
@@ -1231,20 +1184,20 @@ export type TurnDiff = {
   weather?: string;
   /** A place the player settles in or sleeps at, and what changed there (see safehouses.ts). */
   safehouse?: SafehouseDiff;
-  /** Changes to the player's own money this turn, in ryō (negative when he pays). */
+  /** Changes to the player's own money this turn, in the world's currency (negative when they pay). */
   money?: { amount: number; reason: string }[];
   /** The total the player has, when the prose states it. */
   moneyCounted?: number;
-  /** What a village or the Akatsuki now has on the player. */
+  /** What a faction now has on the player. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
   /** People whose birthday the player learned this turn (they said it, someone told them). */
   birthdaysLearned?: { entityId?: string; name: string }[];
   /** Names the player heard, read or recognised this turn (names.ts). */
   namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
-  /** Someone in the scene learned another identity of a person (the player told Deidara who Tobi is). */
+  /** Someone in the scene learned another identity of a person (the player told them who someone really is). */
   namesTold?: { entityId?: string; character: string; name: string; toldTo: string[] }[];
-  /** Villages whose bingo-book entry on the player he saw or was told of this turn. */
-  bountySeen?: VillageFaction[];
+  /** Factions whose wanted entry on the player they saw or were told of this turn. */
+  bountySeen?: string[];
   /** Grudges started, acted on, settled or forgiven this turn. */
   grudges?: {
     entityId?: string;
@@ -1308,7 +1261,7 @@ export type OpenRouterMessage = {
 // build step (seed.ts) only turns them into save records.
 // ---------------------------------------------------------------------------
 
-/** A region's weather pattern. `none` = indoors, space, underground: no weather. */
+/** A region's weather pattern. `none` = indoors, underground, a station: no weather. */
 export type ClimateType =
   | 'temperate'
   | 'continental'
@@ -1321,7 +1274,7 @@ export type ClimateType =
   | 'mountain'
   | 'none';
 
-/** A group in the world: a kingdom, guild, gang, corporation, order. */
+/** A group in the world: a company, a family, a gang, a police force, a crew, a church. */
 export type FactionDef = {
   id: string;
   name: string;
@@ -1330,7 +1283,7 @@ export type FactionDef = {
   territoryRegionIds?: string[];
   /** Keeps a wanted list and pays bounties in the world's currency. */
   hasBounties?: boolean;
-  /** How its people send word: "courier", "raven", "radio"… */
+  /** How its people send word: "courier", "phone", "text message"… */
   carriers?: string[];
   /** 0–1: how likely it reads letters that cross its land. */
   readsMail?: number;
@@ -1387,10 +1340,6 @@ export type TimelineEvent = {
   requires?: LoreCondition;
   /** The moment on the page that completes this beat, for the state tracker. */
   completesWhen?: string;
-  /** Abilities the player gains (or that reach a stage) when it completes. */
-  grantsAbilities?: { name: string; stage: string }[];
-  /** New ability records the player gains when it completes. */
-  grantsAbilityRecords?: { name: string; category: string; effect: string; visual: string; description: string }[];
   facts: string[];
   /** People it kills, by name. */
   deaths?: string[];
@@ -1428,13 +1377,14 @@ export type WorldDefinition = {
   premise: string;
   genre: string;
   tone: string;
+  /**
+   * When the story is set. Grounded in reality: no magic or powers; a past
+   * setting uses that period's real technology and customs, a future one
+   * plausible technology only.
+   */
+  era: WorldEra;
+  /** A known grounded setting (a real period, a realistic show or novel). */
   knownUniverse?: { name: string; canonStrictness: 'loose' | 'faithful' | 'strict' };
-  techLevel?: string;
-  magicSystem?: string;
-  /** "Fire magic", "Swordsmanship"… */
-  abilityCategories: string[];
-  /** What abilities are called: "Spells", "Skills"… */
-  abilityLabel: string;
   currency: { name: string; symbol?: string; priceGuide: string };
   calendar: { yearLabel: string; start: CalendarDate; monthNames?: string[] };
   factions: FactionDef[];
@@ -1444,22 +1394,67 @@ export type WorldDefinition = {
   lore: LoreRecord[];
   timeline: TimelineEvent[];
   festivals: FestivalDef[];
-  /** How letters travel: "courier", "raven", "radio"… */
+  /** Playable memories of the player's life before the story (see flashbacks.ts). Empty = none offered. */
+  flashbacks: FlashbackRecord[];
+  /** How letters and messages travel, fitting the era: "courier", "post", "phone", "text message"… */
   letterCarriers: string[];
-  /** Image style opener, e.g. "painterly dark-fantasy concept art". */
+  /** Image style opener, e.g. "cinematic photo, 35mm film". */
   artStyle: string;
   /** The player's own extra rules for the narrator. */
   narratorNotes?: string;
 };
 
-/** An ability on the character sheet the player wrote. */
-export type AbilityDef = {
-  name: string;
-  category: string;
-  /** What it does. */
-  effect: string;
-  /** How it looks. */
-  visual: string;
+export type WorldEra = {
+  when: 'past' | 'present' | 'future';
+  /** Free text: "Paris, 1920s", "today", "2140, a crowded Earth". */
+  period: string;
+  /** What exists and what doesn't, in plain words. */
+  techNotes?: string;
+};
+
+/** What sets a flashback off in the present (all matching is plain words, case-insensitive). */
+export type FlashbackTriggers = {
+  /** Words in the present scene (the last reply and the player's input). */
+  words?: string[];
+  /** People in the present scene, by their entity name. */
+  people?: string[];
+  /** Place ids or place words in the present location. */
+  places?: { ids?: string[]; words?: string[] };
+  /** Days of the year it fits, within FLASHBACK_DATE_WINDOW days. */
+  dates?: { month: number; day: number }[];
+  /** Timeline events reached in the last few days. */
+  beats?: string[];
+  /** Only right after a fight. */
+  afterFight?: boolean;
+};
+
+/** A playable memory of the player's life before the story. */
+export type FlashbackRecord = {
+  id: string;
+  /** Its place in the player's life, 1, 2, 3… */
+  number: number;
+  title: string;
+  date: CalendarDate;
+  place: string;
+  locationKind: LocationKind;
+  /** Who is in it, by entity name. */
+  cast: string[];
+  /** What the scene is, for the narrator. */
+  scene: string;
+  /** How some of them were at the time. */
+  castNotes?: string[];
+  /** Ideas for the trigger the narrator lets touch the player in the present. */
+  hint: string;
+  triggers: FlashbackTriggers;
+  /** What the memory cannot change. */
+  fixed: string[];
+  /** What it must never show or tell the player. */
+  hidden?: string[];
+  /** Timeline events the player must have reached first. */
+  requires?: string[];
+  /** The memory a sentence long, until its write-up lands. */
+  memoryLine: string;
+  importance: 3 | 4 | 5;
 };
 
 /**
@@ -1480,7 +1475,8 @@ export type CharacterDefinition = {
   /** The player's own text, kept verbatim. */
   backstory: string;
   role: string;
-  abilities: AbilityDef[];
+  /** Plain text: job, training, languages, what they're good at. No ability records. */
+  skills?: string;
   inventory: string[];
   money: number;
   secrets: string[];
@@ -1491,10 +1487,6 @@ export type CharacterDefinition = {
 
   /** In-story year of birth, worked out from `age` and the opening date. */
   birthYear?: number;
-  /** Ability categories the player has (innate, or gained in play). */
-  natures?: NatureRecord[];
-  /** Abilities that grow in stages, each at its current stage. */
-  abilityStages?: AbilityRecord[];
 };
 
 /** Someone the player adds before the story starts. */

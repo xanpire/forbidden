@@ -1,20 +1,19 @@
 import { daysBetween, entityAge } from './calendar';
 import { narratorName } from './names';
-import { isCombatPace } from './canon';
-import { CANON_CAST } from './canonCast';
+import { isCombatPace } from './timeline';
+import { onTimelinePath } from './lives';
 import { mentionsEntity } from './characterRefs';
 import { isDeceased } from './deaths';
 import { encounterRisk, locationKindOf } from './encounters';
 import { timeOfDayOf } from './calendar';
-import { localizePlaceNames } from './glossary';
 import type { AppDatabase, BondRecord, EntityRecord, LocationKind } from './types';
 import { isPlayerEntity } from './player';
 
 /**
  * Characters who come back.
  *
- * Every so often the narrator is offered ONE original character (someone the
- * story introduced, not the canon cast) whom the player has not seen in a while and
+ * Every so often the narrator is offered ONE free character (anyone the world
+ * timeline does not already follow) whom the player has not seen in a while and
  * who would plausibly be at the current place: they were last seen there,
  * their role or notes tie them to it, or they travel for a living and the player is
  * on a road or in a town. The offer is optional; the narrator uses it only if
@@ -36,20 +35,16 @@ const STOPWORDS = new Set([
   'the', 'and', 'for', 'near', 'outside', 'inside', 'edge', 'side', 'just',
   'north', 'south', 'east', 'west', 'northern', 'southern', 'eastern', 'western',
   'upper', 'lower', 'old', 'new', 'small', 'little', 'great', 'big', 'deep',
-  'hidden', 'village', 'land', 'country', 'area', 'region', 'border', 'somewhere',
+  'village', 'land', 'country', 'area', 'region', 'border', 'somewhere',
   'town', 'city', 'street', 'road', 'path', 'trail', 'forest', 'woods', 'outskirts',
   'inn', 'camp', 'room', 'house', 'home', 'place', 'there', 'from', 'with', 'into',
   'toward', 'towards', 'between', 'along', 'beyond', 'above', 'below', 'under',
   'hideout', 'district', 'market', 'river', 'mountain', 'mountains', 'hills',
-  'clearing', 'gate', 'gates', 'square', 'plaza', 'shop', 'teahouse', 'tavern',
+  'clearing', 'gate', 'gates', 'square', 'plaza', 'shop', 'cafe', 'bar', 'office', 'flat', 'apartment',
 ]);
 
 const TRAVELLER_ROLE =
-  /\b(merchant|trader|peddler|courier|messenger|mercenary|ronin|wanderer|wandering|travell?ing|travell?er|bounty hunter|smuggler|performer|pilgrim|monk|caravan|drifter|sellsword|informant|spy|missing-nin|rogue)\b/i;
-
-const CANON_NAMES = new Set(
-  CANON_CAST.flatMap((entry) => [entry.name, ...entry.aliases]).map((name) => name.toLowerCase())
-);
+  /\b(merchant|trader|salesman|saleswoman|courier|driver|delivery|messenger|mercenary|wanderer|wandering|travell?ing|travell?er|bounty hunter|smuggler|performer|musician|pilgrim|drifter|informant|spy|journalist|reporter|trucker)\b/i;
 
 export type ReturningOffer = {
   entity: EntityRecord;
@@ -75,7 +70,7 @@ export function placeTokens(text: string | undefined): Set<string> {
   }
 
   return new Set(
-    localizePlaceNames(text)
+    text
       .toLowerCase()
       .split(/[^a-z]+/)
       .filter((word) => word.length >= 3 && !STOPWORDS.has(word))
@@ -108,16 +103,12 @@ export function isReturnTurn(db: AppDatabase, turn = playerTurn(db)) {
   return turn % RETURN_WINDOW_TURNS === slot;
 }
 
-export function isOriginalCharacter(entity: EntityRecord) {
+/** Someone the story is free to bring back: a character, not the player, not on the world timeline's path. */
+export function isFreeCharacter(db: AppDatabase, entity: EntityRecord) {
   if (entity.type !== 'character') return false;
   if (isPlayerEntity(entity)) return false;
-  if (entity.tags.includes('canon')) return false;
 
-  // A one-word alias ("Mei" for Mei Tsukada) is a shared given name, not proof
-  // this is the canon person; their own name or a full alias is.
-  return ![entity.name, ...entity.aliases.filter((alias) => alias.trim().includes(' '))].some((name) =>
-    CANON_NAMES.has(name.toLowerCase())
-  );
+  return !onTimelinePath(db, entity);
 }
 
 function fitFor(
@@ -154,7 +145,7 @@ export function returningCandidates(db: AppDatabase, recentText = ''): Returning
 
   for (const entity of db.entities) {
     // Companions never left, so they can't come back.
-    if (!isOriginalCharacter(entity) || entity.met === false || isDeceased(entity) || entity.companion || !entity.lastSeen) {
+    if (!isFreeCharacter(db, entity) || entity.met === false || isDeceased(entity) || entity.companion || !entity.lastSeen) {
       continue;
     }
 
@@ -246,7 +237,7 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
   const who = [narratorName(db, entity), age !== undefined ? `age ${age}` : '', clip(entity.role, 50)]
     .filter(Boolean)
     .join(', ');
-  const where = entity.lastSeenAt ? ` at ${localizePlaceNames(entity.lastSeenAt)}` : '';
+  const where = entity.lastSeenAt ? ` at ${entity.lastSeenAt}` : '';
   const why =
     reason === 'last-seen-here'
       ? 'you last met them around here'

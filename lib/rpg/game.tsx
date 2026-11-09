@@ -47,7 +47,6 @@ import { markAlive, markDeceased } from './deaths';
 import { endCompanion, setCompanion } from './companions';
 import { mergeEntityPair } from './entities';
 import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortrait';
-import { deleteJutsuRecord, renameJutsuRecord } from './jutsu';
 import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
 import { beginFlashback } from './flashbacks';
@@ -166,10 +165,6 @@ type GameContextValue = {
     patch: Partial<Pick<EventRecord, 'summary' | 'tags' | 'importance' | 'pinned'>>
   ) => Promise<void>;
   deleteMemory: (eventId: string) => Promise<void>;
-  /** Hand correction: renames a jutsu (merging it into one already by that name). */
-  renameJutsu: (recordId: string, name: string) => Promise<void>;
-  /** Hand correction: removes a jutsu record. */
-  deleteJutsu: (recordId: string) => Promise<void>;
   attachImage: (logId: string, image: string, meta?: SceneImageMeta) => Promise<void>;
   /** Sets how many in-story seconds a reply took; the clock shifts to match. */
   correctTurnTime: (logId: string, seconds: number) => Promise<void>;
@@ -1125,40 +1120,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
-  const renameJutsu = useCallback(
-    async (recordId: string, name: string) => {
-      const current = dbRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const next = renameJutsuRecord(current, recordId, name);
-
-      if (next !== current) {
-        await commitDb(next);
-      }
-    },
-    [commitDb]
-  );
-
-  const deleteJutsu = useCallback(
-    async (recordId: string) => {
-      const current = dbRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const next = deleteJutsuRecord(current, recordId);
-
-      if (next !== current) {
-        await commitDb(next);
-      }
-    },
-    [commitDb]
-  );
-
   const deleteMemory = useCallback(
     async (eventId: string) => {
       const current = dbRef.current;
@@ -1383,8 +1344,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       toggleMemoryPin,
       editMemory,
       deleteMemory,
-      renameJutsu,
-      deleteJutsu,
       attachImage,
       correctTurnTime,
       addPortrait,
@@ -1396,8 +1355,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       createNewSlot,
       db,
       deleteMemory,
-      renameJutsu,
-      deleteJutsu,
       attachImage,
       addPortrait,
       addCharacterPortrait,

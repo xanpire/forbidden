@@ -190,8 +190,8 @@ function baseVerb(verb: string) {
 /**
  * Text that reaches the player calls the player "you". Rewrites the common
  * shapes of the player's name ("<Name>'s", "<Name> is", "<Name> knows",
- * "with <Name>") so app-written text reads in second person; ids and the
- * jutsu user field never go through it. `names` are the player's names
+ * "with <Name>") so app-written text reads in second person; ids and
+ * tracker fields never go through it. `names` are the player's names
  * (see playerDisplayNames); without them the text is returned unchanged.
  */
 export function secondPerson(text: string, names: readonly string[] = []): string {

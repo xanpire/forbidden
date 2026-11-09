@@ -120,8 +120,12 @@ export function normalizeCharacter(value: unknown, fallback: CharacterDefinition
   const strings = (item: unknown) =>
     Array.isArray(item) ? item.filter((entry): entry is string => typeof entry === 'string') : [];
 
+  // Older sheets may carry the removed ability fields: drop them.
+  const { abilities: _abilities, natures: _natures, abilityStages: _stages, ...rest } = sheet as Partial<CharacterDefinition> &
+    Record<'abilities' | 'natures' | 'abilityStages', unknown>;
+
   return {
-    ...sheet,
+    ...rest,
     name: text(sheet.name, fallback.name).trim() || fallback.name,
     aliases: strings(sheet.aliases),
     age: typeof sheet.age === 'number' && Number.isFinite(sheet.age) ? sheet.age : fallback.age,
@@ -132,7 +136,7 @@ export function normalizeCharacter(value: unknown, fallback: CharacterDefinition
     speechStyle: text(sheet.speechStyle, ''),
     backstory: text(sheet.backstory, ''),
     role: text(sheet.role, ''),
-    abilities: Array.isArray(sheet.abilities) ? sheet.abilities.filter((item) => item && typeof item.name === 'string') : [],
+    ...(typeof sheet.skills === 'string' && sheet.skills.trim() ? { skills: sheet.skills } : {}),
     inventory: strings(sheet.inventory),
     money: typeof sheet.money === 'number' && Number.isFinite(sheet.money) ? sheet.money : 0,
     secrets: strings(sheet.secrets),

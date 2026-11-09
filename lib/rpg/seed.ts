@@ -1,705 +1,248 @@
-import { DEFAULT_DATE } from './calendar';
-import { ensureCanonCast } from './canonCast';
+// Builds a new save from what the player wrote: the world, their character,
+// the people they added and the opening scene. It only converts that input
+// into save records; it never adds story of its own.
+
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { knowersOf } from './facts';
 import { makeId } from './id';
-import { STARTING_RYO, startingPurse } from './money';
-import { emptyWorld } from './world';
+import { startingPurse } from './money';
+import { PLAYER_TAG } from './player';
+import { normalizeRelationship } from './romance';
+import { testSeedInput, type SeedInput } from './testWorld';
+import { normalizeWorld } from './world';
 import type {
   AppDatabase,
+  Attraction,
   BondRecord,
+  CalendarDate,
   EntityRecord,
+  EventEntityRecord,
   EventRecord,
   FactRecord,
-  JutsuRecord,
-  LoreRecord,
+  Gender,
+  StartingPerson,
   ThreadRecord,
 } from './types';
 
+export type { SeedInput } from './testWorld';
+
+function genderOf(value: string | undefined): Gender {
+  const lower = (value ?? '').trim().toLowerCase();
+
+  if (/^(m|male|man)$/.test(lower)) return 'male';
+  if (/^(f|female|woman)$/.test(lower)) return 'female';
+  return 'unknown';
+}
+
+function attractionOf(value: number | undefined): Attraction {
+  if (typeof value !== 'number') return 'none';
+  if (value >= 7) return 'strong';
+  if (value >= 4) return 'warm';
+  return 'none';
+}
+
+function clampAffinity(value: number) {
+  return Math.max(-10, Math.min(10, Math.round(value)));
+}
+
+function personEntity(person: StartingPerson, id: string, date: CalendarDate): EntityRecord {
+  return {
+    id,
+    name: person.name.trim(),
+    type: 'character',
+    aliases: (person.aliases ?? []).filter((alias) => alias.trim().length > 0),
+    ...(typeof person.age === 'number' ? { age: person.age, birthYear: date.year - person.age } : {}),
+    role: person.role,
+    personality: person.personality,
+    speechStyle: person.speechStyle,
+    mood: 'Unknown',
+    appearance: person.appearance || 'Unknown',
+    gender: genderOf(person.gender),
+    ...(person.romanceAccessibility === 'winnable'
+      ? { romanceAccessibility: 'winnable' as const }
+      : person.romanceAccessibility === 'taken'
+        ? { romanceAccessibility: 'lore-locked' as const }
+        : person.romanceAccessibility
+          ? { romanceAccessibility: 'not-applicable' as const }
+          : {}),
+    ...(person.whereabouts ? { whereabouts: person.whereabouts } : {}),
+    ...(person.alive ? {} : { deceased: { known: true }, status: 'Deceased' }),
+    ...(person.knownName ? {} : { known: { label: person.role || 'someone you know' } }),
+    met: true,
+    tags: [],
+  };
+}
+
 /**
- * Where things are and how long a shinobi takes to get there: always in the
- * narrator's prompt, so directions and travel times stay consistent.
+ * A new save from the player's world, character, people and opening scene.
+ * Without input it uses the built-in test world.
  */
-export const GEOGRAPHY_LORE =
-  'GEOGRAPHY (fixed; directions and shinobi travel times at a hard pace, with rest): The Land of Fire is the large forested country in the middle of the continent; Hidden Leaf sits near its center, below the Hokage Rock. Along its northern border, west to east: the Land of Waterfalls (Hidden Waterfall); the Mountain Graveyard, a barren land of giant bones that runs north as a long peninsula; the small Land of Sound (once called the Land of Rice Fields, and many still call it that; Orochimaru\'s Hidden Sound and its small hidden bases; the Valley of the End is on its border with Fire); and the Land of Hot Water (hot-spring towns, Bamboo Village on its coast), which wraps down Fire\'s north-east coast. North of Hot Water lies the small, cold Land of Frost, and past Frost the Land of Lightning (Hidden Cloud), whose mountains fill the far north-east; a gulf of sea lies between the Graveyard peninsula and Lightning. The Land of Iron (samurai) lies on the snowy northern tip of the Graveyard peninsula, among the Three Wolf Mountains. West of Fire lies the Land of Rain (Hidden Rain), a small, always-raining country of iron towers squeezed between Fire, Wind and Earth; the Land of Grass is NORTH of Rain (Hidden Grass, Tenchi Bridge), between Rain, Earth, the Waterfall and Fire, and the Land of Rivers (Hidden Valley) is a strip south-west of Fire, between Fire and Wind, running down to the southern sea. Far west lies the desert Land of Wind (Hidden Sand), walled by mountains on its north; north-west, the mountainous Land of Earth (Hidden Stone). Between Earth and Wind, west of Rain, runs a strip of small lands: the Land of Birds (the small Hidden Rock village) next to Rain, and the walled Land of Silence (Curtain Village) at the continent\'s western edge. The Land of Waves is a small island off the southern coast, south of Hidden Leaf, joined to Fire by the Great Naruto Bridge. Fire\'s south-east runs down in a long tongue of land to the Land of Tea, a crescent coast with fishing villages and Degarashi Port, plus the islands of Nagi and Ouza to its east; south of Tea, the scattered islands of the Land of the Sea. Off Fire\'s east coast, in a bay, lies the Land of Whirlpools, a small island with the ruins of Uzushio; the small Land of Woods borders Fire\'s south-east coast just below it. Further east lie the Land of Water islands (Hidden Mist), reached by boat from Fire\'s east coast. From Hidden Leaf: the Rain border about 2 days, Hidden Rain about 3 days; the Grass border about 2 days, the Waterfall about 2 days; the Sound\'s lands 1-2 days; the Mountain Graveyard about 2.5 days; Hot Water about 1.5 days; the Land of Waves about 2 days south; the Land of Tea about 2.5 days; Uzushio about 2 days with the crossing; Hidden Sand about 3 days; the Land of Silence 4-5 days; Hidden Stone about 5 days; Hidden Mist 4-5 days with the crossing; the Land of Frost about 3 days; the Land of Iron about 3.5 days; Hidden Cloud 5-7 days. Rain to Grass about 1 day north; Grass to the Waterfall about 1.5 days; Rain to Sand about 3 days west; Rain to the Land of Birds about 1.5 days west; Uzushio to Hidden Mist about 2.5 days by boat. Civilians and wagons take two to three times as long. Never contradict these: once a distance or direction is said, it holds.';
-
-const ITACHI_ID = makeId('entity');
-const HANA_ID = makeId('entity');
-const IZUMI_ID = makeId('entity');
-const SUZUME_ID = makeId('entity');
-const PLAYER_ID = makeId('entity');
-const FOREST_ID = makeId('entity');
-
-export function seedDatabase(slotId: string, slotName: string): AppDatabase {
+export function seedDatabase(slotId: string, slotName: string, input: SeedInput = testSeedInput()): AppDatabase {
   const now = Date.now();
+  const world = normalizeWorld(input.world);
+  const character = input.character;
+  const opening = input.opening;
+  const date: CalendarDate = { ...opening.date, second: opening.date.second ?? 0 };
+  const playerId = makeId('entity');
 
-  const storyEntities: EntityRecord[] = [
-    {
-      id: PLAYER_ID,
-      name: 'Kan',
-      type: 'character',
-      aliases: ['Uchiha-Uzumaki Kan'],
-      birthday: { month: 6, day: 30 },
-      birthYear: 0,
-      role: 'Missing-nin (former ANBU)',
-      personality: 'Reserved, watchful, hard to read. Smart and versatile, hides his feelings. A trace of the timid, quiet child he was at the Academy still shows when he is caught off guard.',
-      speechStyle: 'Short, restrained, rarely volunteers more than necessary.',
-      status: 'Former ANBU, now missing-nin',
-      notes: 'Original character. Uchiha-Uzumaki lineage, usually goes only by Kan. Grew up with Itachi and Shisui; the three were inseparable. Outside Team 3 they were his only real friends. Lost a fight to Itachi days before the massacre, but held back because he would not truly hurt him; how strong Kan really is remains an open question.',
-      mood: 'Numb, guarded, torn',
-      appearance: 'Lean teenage shinobi with black hair, dark watchful eyes, wearing a plain black high-collared shinobi outfit with bandage-wrapped forearms. No ANBU gear.',
-      gender: 'male',
-      met: true,
-      tags: ['player', 'uchiha', 'uzumaki', 'anbu'],
-    },
-    {
-      id: ITACHI_ID,
-      name: 'Itachi Uchiha',
-      type: 'character',
-      aliases: ['Itachi'],
-      birthday: { month: 6, day: 9 },
-      birthYear: 0,
-      met: true,
-      lastSeen: { year: 13, month: 9, day: 28, hour: 21, minute: 0 },
-      lastSeenAt: 'Forest outside Hidden Leaf',
-      role: 'Missing-nin · Akatsuki',
-      personality: 'Calm, perceptive, self-sacrificing, gentle beneath a controlled surface.',
-      speechStyle: 'Quiet, precise, polite, often speaking in gentle observations.',
-      status: 'Missing-nin, Akatsuki',
-      notes: 'Kan’s closest friend, like an older brother; with Shisui, the three grew up together. Joined ANBU one year before Kan. A few days before the massacre he told Kan what he was going to do, beat him in the fight that followed, and sent him to hide in the forest and wait — promising to explain everything afterwards. He wants Kan beside him in the Akatsuki, the two of them spying on it together.',
-      mood: 'Burdened, controlled, grieving beneath the calm',
-      // His look at thirteen, the night he leaves; the Akatsuki cloak comes later.
-      appearance: 'Slim thirteen-year-old with long black hair tied low at the nape, sharp dark eyes and faint tear-trough lines; dark high-collared shirt, ANBU-issue arm guards, dark trousers, and a Hidden Leaf forehead protector.',
-      gender: 'male',
-      romanceAccessibility: 'not-applicable',
-      canonDevotion: 'His heart belongs to his brother and the village; love is a luxury he denied himself.',
-      orientation: 'Not interested; devoted to duty',
-      tags: ['uchiha', 'anbu', 'akatsuki', 'friend'],
-    },
-    {
-      id: HANA_ID,
-      name: 'Hana Inuzuka',
-      type: 'character',
-      aliases: ['Hana'],
-      birthday: { month: 4, day: 13 },
-      birthYear: 0,
-      met: true,
-      lastSeen: { year: 13, month: 9, day: 27, hour: 18, minute: 0 },
-      lastSeenAt: 'Hidden Leaf',
-      role: 'Hidden Leaf shinobi · Team 3',
-      personality: 'Loud, loyal, instinctive, protective, quick to act.',
-      speechStyle: 'Direct, blunt, teasing, with little patience for hesitation.',
-      status: 'Hidden Leaf shinobi',
-      notes: 'Kan’s former teammate from Team 3; he left the team when he joined ANBU, but they stayed close. He has a secret crush on her.',
-      mood: 'Worried, restless, fiercely loyal',
-      appearance: 'Athletic girl with tousled brown hair, fang-like markings on her cheeks, and a practical Inuzuka jacket.',
-      romanceAccessibility: 'winnable',
-      gender: 'female',
-      canonDevotion: 'Loyal to her pack and her village; blunt about everything but her own heart.',
-      orientation: 'Attracted to men',
-      tags: ['inuzuka', 'team-3', 'crush'],
-    },
-    {
-      id: IZUMI_ID,
-      name: 'Izumi Uchiha',
-      type: 'character',
-      aliases: ['Izumi'],
-      // Canon gives Izumi no birthday; this one is the app's.
-      birthday: { month: 8, day: 14 },
-      birthdayInvented: true,
-      birthYear: 0,
-      met: true,
-      lastSeen: { year: 13, month: 9, day: 27, hour: 18, minute: 0 },
-      lastSeenAt: 'Hidden Leaf',
-      role: 'Hidden Leaf shinobi · Team 3',
-      personality: 'Kind, observant, gentle, quietly stubborn.',
-      speechStyle: 'Soft and careful, with a warm teasing streak.',
-      status: 'Deceased',
-      // The player learns of it when someone tells them, or when news of her funeral reaches them.
-      deceased: { known: false, canonEventId: 'event_canon_izumi-funeral' },
-      notes: 'Kan’s former teammate from Team 3; he left the team when he joined ANBU, but they stayed close. Killed in the Uchiha massacre. She had loved Itachi since the Academy, and Kan knew it.',
-      mood: 'Unknown',
-      appearance: 'Young Uchiha girl with soft dark hair, gentle eyes, and the quiet posture of someone who always waited for others.',
-      romanceAccessibility: 'lore-locked',
-      gender: 'female',
-      canonDevotion: 'Her heart belonged to Itachi Uchiha from childhood until the night she died.',
-      orientation: 'Attracted to men (devoted to Itachi)',
-      tags: ['uchiha', 'team-3'],
-    },
-    {
-      id: SUZUME_ID,
-      name: 'Suzume',
-      type: 'character',
-      aliases: ['Suzume-sensei'],
-      birthday: { month: 10, day: 19 },
-      birthYear: -16,
-      met: true,
-      lastSeen: { year: 13, month: 9, day: 25, hour: 9, minute: 0 },
-      lastSeenAt: 'Hidden Leaf training grounds',
-      role: 'Hidden Leaf jonin · Team 3 sensei',
-      personality: 'Patient, sharp, protective, demanding in the field.',
-      speechStyle: 'Dry, measured, with occasional warmth.',
-      status: 'Hidden Leaf jonin',
-      notes: 'Team 3’s sensei, and Kan’s former sensei: he left her team when he joined ANBU, but they stayed close.',
-      mood: 'Concerned, patient, watchful',
-      appearance: 'Seasoned jonin woman with practical field clothes, tied-back hair, and the calm stance of a teacher who has buried students.',
-      romanceAccessibility: 'winnable',
-      gender: 'female',
-      canonDevotion: 'Dedicated to her students and the village; guarded about her private life.',
-      orientation: 'Attracted to men',
-      tags: ['team-3', 'sensei'],
-    },
-    {
-      id: FOREST_ID,
-      name: 'Forest outside Hidden Leaf',
-      type: 'place',
-      aliases: ['the woods', 'the forest'],
-      notes: 'Rain-soaked meeting place after the Uchiha massacre.',
-      tags: ['location', 'forest', 'rain'],
-    },
-    {
-      id: makeId('entity'),
-      name: 'Akatsuki',
-      type: 'faction',
-      aliases: ['the Akatsuki'],
-      status: 'Active',
-      notes: 'Itachi wants Kan to join with him so the two of them can spy on the organization together.',
-      tags: ['faction', 'akatsuki'],
-    },
-  ];
+  const player: EntityRecord = {
+    id: playerId,
+    name: character.name.trim() || 'You',
+    type: 'character',
+    aliases: character.aliases,
+    ...(character.birthday ? { birthday: character.birthday } : {}),
+    birthYear: date.year - character.age,
+    age: character.age,
+    role: character.role,
+    personality: character.personality,
+    speechStyle: character.speechStyle,
+    mood: 'Unknown',
+    appearance: [character.appearance, character.outfit].filter(Boolean).join(' '),
+    gender: genderOf(character.gender),
+    met: true,
+    tags: [PLAYER_TAG],
+  };
 
-  // The main canon cast is loaded up front, each person once, so the state
-  // tracker refers to them by ID instead of inventing duplicates.
-  const entities = ensureCanonCast(storyEntities, () => makeId('entity'));
+  const people = input.people.filter((person) => person.name.trim().length > 0);
+  const peopleIds = people.map(() => makeId('entity'));
+  const peopleEntities = people.map((person, index) => personEntity(person, peopleIds[index], date));
+
+  const place = opening.placeId ? world.places.find((item) => item.id === opening.placeId) : undefined;
+  const placeEntity: EntityRecord = {
+    id: makeId('entity'),
+    name: opening.location || place?.name || 'Somewhere',
+    type: 'place',
+    aliases: [],
+    ...(place?.description ? { notes: place.description } : {}),
+    tags: ['location'],
+  };
+
+  const factionEntities: EntityRecord[] = world.factions.map((faction) => ({
+    id: makeId('entity'),
+    name: faction.name,
+    type: 'faction',
+    aliases: [],
+    notes: faction.description,
+    tags: ['faction', faction.id],
+  }));
+
+  const entities = [player, ...peopleEntities, placeEntity, ...factionEntities];
 
   const openingEvent: EventRecord = {
     id: makeId('event'),
     chapter: 1,
-    scene: 'The rain after',
-    inStoryDate: DEFAULT_DATE,
-    summary:
-      'You wait alone in the rain-soaked forest outside Hidden Leaf, where Itachi sent you days ago. Tonight the massacre has happened, but you were already in the forest: you do not know whether Itachi went through with it, how it happened, or who died, Izumi included. Itachi is about to arrive and ask you to come with him and join the Akatsuki; he promised an explanation, but he will hold the truth back until you are far from the village.',
+    scene: opening.location || 'The beginning',
+    inStoryDate: date,
+    summary: opening.situation,
     importance: 5,
-    tags: ['opening', 'itachi', 'massacre', 'izumi', 'rain', 'forest', 'akatsuki'],
+    tags: ['opening'],
     pinned: true,
     sourceLogId: null,
     createdAt: now,
   };
 
-  const jutsuRecords: JutsuRecord[] = [
-    {
-      id: makeId('jutsu'),
-      name: 'Shinobi taijutsu',
-      user: 'Kan',
-      chakraNature: 'Physical',
-      effect:
-        'Close-quarters shinobi combat built for silent takedowns, precise strikes, and quick escapes.',
-      visual:
-        'Fast, economical movements with almost no sound; you close distance in a low stance and end exchanges in one or two blows.',
-      firstSeen: DEFAULT_DATE,
-      lastSeen: DEFAULT_DATE,
-      timesUsed: 1,
-      description: 'Close-quarters hand-to-hand combat focused on speed, silence, and precision.',
-      tags: ['taijutsu', 'kan'],
-    },
-    {
-      id: makeId('jutsu'),
-      name: 'Thousand Souls',
-      user: 'Kan',
-      chakraNature: 'Yin',
-      effect:
-        'Your own forbidden jutsu. Steals a target’s chakra, permanently expands your chakra capacity and gives you their chakra nature. It never steals jutsu. Still rough; it perfects with use.',
-      visual:
-        'Ragged threads of chakra bleed from the target into your palm, and whatever nature they carried flickers across your skin before it settles.',
-      firstSeen: DEFAULT_DATE,
-      lastSeen: DEFAULT_DATE,
-      timesUsed: 0,
-      description: 'A secret forbidden jutsu of your own design that steals chakra and chakra natures. No one else knows it exists.',
-      tags: ['forbidden', 'original', 'secret', 'signature', 'kan'],
-    },
+  const castIds = opening.castNames
+    .map((name) => peopleEntities.find((entity) => entity.name.toLowerCase() === name.trim().toLowerCase())?.id)
+    .filter((id): id is string => Boolean(id));
+
+  const eventEntities: EventEntityRecord[] = [
+    { eventId: openingEvent.id, entityId: playerId, role: 'participant' },
+    ...castIds.map((entityId) => ({ eventId: openingEvent.id, entityId, role: 'present' as const })),
+    { eventId: openingEvent.id, entityId: placeEntity.id, role: 'present' },
   ];
 
-  // Shisui comes from the canon cast (dead before the story starts); you grew up with him.
-  const shisui = entities.find((entity) => entity.name === 'Shisui Uchiha');
+  const bonds: BondRecord[] = people.map((person, index) => {
+    const theirs = { affinity: clampAffinity(person.theirFeelings.affinity), note: person.theirFeelings.note };
+    const yours = { affinity: clampAffinity(person.yourFeelings.affinity), note: person.yourFeelings.note };
 
-  if (shisui) {
-    Object.assign(shisui, {
-      met: true,
-      status: 'Deceased',
-      lastSeen: { year: 13, month: 9, day: 20, hour: 20, minute: 0 },
-      lastSeenAt: 'Hidden Leaf',
-    });
-  }
-
-  const bonds: BondRecord[] = [
-    {
-      id: makeId('bond'),
-      entityId: ITACHI_ID,
-      characterName: 'Itachi Uchiha',
-      affinity: 8,
-      status: 'Like an older brother, now strained',
-      lastKeyEventId: openingEvent.id,
-      note: 'He loves you like a brother and wants you safe beside him, even if it costs him your trust.',
-      theirFeelings: { affinity: 8, note: 'He loves you like a brother and wants you safe beside him, even if it costs him your trust.' },
-      yourFeelings: {
-        affinity: 7,
-        note: 'You grew up together with Shisui and joined ANBU a year apart. Days ago he told you he would kill the clan; you fought, and you lost while holding back. The love is still there, and so are dread, anger and unanswered questions.',
-      },
-      isMajor: true,
-      relationship: 'old friend',
-      attraction: 'none',
-      updatedInStoryDate: DEFAULT_DATE,
-    },
-    {
-      id: makeId('bond'),
-      entityId: HANA_ID,
-      characterName: 'Hana Inuzuka',
-      affinity: 5,
-      status: 'Former teammate, secret crush',
-      lastKeyEventId: null,
-      note: 'Your former Team 3 teammate. She trusted you in the field, still teases you off it, and you stayed close after you left for ANBU.',
-      theirFeelings: { affinity: 5, note: 'Your former Team 3 teammate. She trusted you in the field, still teases you off it, and you stayed close after you left for ANBU.' },
-      yourFeelings: { affinity: 7, note: 'You hide your feelings and have never told her.' },
-      isMajor: true,
-      relationship: 'teammate',
-      attraction: 'warm',
-      romanceNote: 'Your unspoken crush; she doesn’t know.',
-      updatedInStoryDate: DEFAULT_DATE,
-    },
-    {
-      id: makeId('bond'),
-      entityId: IZUMI_ID,
-      characterName: 'Izumi Uchiha',
-      affinity: 7,
-      status: 'Former teammate',
-      lastKeyEventId: null,
-      note: 'Former Team 3 teammate. She loved Itachi, and you knew it.',
-      theirFeelings: { affinity: 7, note: 'Former Team 3 teammate. She loved Itachi, and you knew it.' },
-      yourFeelings: { affinity: 7, note: 'A gentle friend you would have trusted with anything.' },
-      isMajor: true,
-      relationship: 'teammate',
-      attraction: 'none',
-      updatedInStoryDate: DEFAULT_DATE,
-    },
-    {
-      id: makeId('bond'),
-      entityId: SUZUME_ID,
-      characterName: 'Suzume',
-      affinity: 5,
-      status: 'Former sensei',
-      lastKeyEventId: null,
-      note: 'Your old sensei from Team 3; proud of you, worried about you.',
-      theirFeelings: { affinity: 5, note: 'Your old sensei from Team 3; proud of you, worried about you.' },
-      yourFeelings: { affinity: 6, note: 'She saw more in you than you showed.' },
-      isMajor: false,
-      relationship: 'mentor',
-      attraction: 'none',
-      updatedInStoryDate: DEFAULT_DATE,
-    },
-  ];
-
-  if (shisui) {
-    bonds.push({
-      id: makeId('bond'),
-      entityId: shisui.id,
-      characterName: shisui.name,
-      affinity: 9,
-      status: 'Deceased · Childhood friend',
-      lastKeyEventId: null,
-      note: 'He was the third of you, with Itachi: the one who made you laugh.',
-      theirFeelings: { affinity: 9, note: 'He was the third of you, with Itachi: the one who made you laugh.' },
-      yourFeelings: { affinity: 9, note: 'You never believed he would take his own life.' },
-      isMajor: true,
-      relationship: 'old friend',
-      attraction: 'none',
-      updatedInStoryDate: DEFAULT_DATE,
-    });
-  }
-
-  const facts: FactRecord[] = [
-    {
-      id: makeId('fact'),
-      subjectEntityId: PLAYER_ID,
-      type: 'death',
-      text: 'Your parents, Erisa and Banri, died in the Nine-Tails attack.',
-      whoKnows: ['Kan', 'village elders'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: PLAYER_ID,
-      type: 'event',
-      text: 'You were five years old when the Nine-Tails attacked.',
-      whoKnows: ['Kan'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: null,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: PLAYER_ID,
-      type: 'membership',
-      text: 'You joined ANBU at twelve, one year after Itachi.',
-      whoKnows: ['Kan', 'ANBU command'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: null,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: PLAYER_ID,
-      type: 'secret',
-      text: 'You have a crush on Hana Inuzuka and have never told her.',
-      whoKnows: ['Kan'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: null,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: ITACHI_ID,
-      type: 'event',
-      text: 'Itachi massacred the Uchiha clan.',
-      whoKnows: ['Itachi Uchiha', 'Hidden Leaf leadership'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: ITACHI_ID,
-      type: 'secret',
-      text: 'A few days before the massacre, Itachi told you he was going to kill the Uchiha. You fought him and lost, holding back because you would not truly hurt him. He then sent you to hide in the forest and wait, promising to explain everything once it was over.',
-      whoKnows: ['Kan', 'Itachi Uchiha'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: null,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: PLAYER_ID,
-      type: 'knowledge',
-      text: 'You left for the forest days before the massacre. You do not know whether Itachi went through with it, how it happened, who died, or why. Itachi promised to tell you.',
-      whoKnows: ['Kan', 'Itachi Uchiha'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: IZUMI_ID,
-      type: 'death',
-      text: 'Izumi Uchiha, your former teammate, was killed in the Uchiha massacre. You do not know this yet.',
-      whoKnows: ['Itachi Uchiha', 'Hidden Leaf'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('fact'),
-      subjectEntityId: null,
-      type: 'death',
-      text: 'Shisui Uchiha was found dead in the Naka River shortly before the massacre. The official story is suicide. You, Itachi and Shisui grew up together.',
-      whoKnows: ['Kan', 'Itachi Uchiha', 'Hidden Leaf'],
-      validFrom: DEFAULT_DATE,
-      validTo: null,
-      confidence: 'confirmed',
-      sourceEventId: null,
-    },
-  ];
-
-  const threads: ThreadRecord[] = [
-    {
-      id: makeId('thread'),
-      type: 'mystery',
-      title: 'What really happened to Shisui?',
-      description:
-        'Shisui was found in the Naka River, and the village calls it suicide. You grew up with him. You don’t believe it.',
-      status: 'open',
-      openedAt: DEFAULT_DATE,
-      resolvedAt: null,
-      importance: 4,
-      participants: ['Kan', 'Itachi'],
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('thread'),
-      type: 'quest',
-      title: 'Itachi’s offer: join Akatsuki',
-      description:
-        'Itachi wants you to join the Akatsuki with him, so the two of you can spy on it from the inside. The choice is yours.',
-      status: 'open',
-      openedAt: DEFAULT_DATE,
-      resolvedAt: null,
-      importance: 5,
-      participants: ['Kan', 'Itachi'],
-      sourceEventId: openingEvent.id,
-    },
-    {
-      id: makeId('thread'),
-      type: 'goal',
-      title: 'Make Itachi explain',
-      description:
-        'Itachi told you he would kill the clan, sent you into the woods, and promised to explain everything once it was over. You still don’t know if he did it.',
-      status: 'open',
-      openedAt: DEFAULT_DATE,
-      resolvedAt: null,
-      importance: 4,
-      participants: ['Kan'],
-      sourceEventId: openingEvent.id,
-    },
-  ];
-
-  // One voice throughout: "you" is the player. Entries that stop being true carry
-  // an activeUntil (see lore.ts), so they leave the prompt when the story
-  // moves past them.
-  const loreEntries: LoreRecord[] = [
-    {
-      id: makeId('lore'),
-      keywords: ['uchiha', 'uzumaki', 'clan', 'heritage', 'parents', 'mother', 'father'],
-      priority: 5,
-      text: 'You are of mixed Uchiha-Uzumaki heritage. Your Uchiha mother and Uzumaki father died in the Nine-Tails attack. You rarely mention your clan names.',
-      enabled: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['sharingan', 'eyes', 'dojutsu', 'dōjutsu', 'awaken'],
-      priority: 5,
-      text: 'You have not awakened the Sharingan.',
-      enabled: true,
-      activeUntil: { flag: 'hasSharingan' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['sharingan', 'awaken', 'truth', 'itachi', 'explain', 'coup'],
-      priority: 5,
-      text: 'Your Sharingan awakens in the moment Itachi finally tells you the truth about why he killed the clan: not in a fight, not from fear, and not before that moment. Until then you have no Sharingan.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { flag: 'hasSharingan' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['itachi', 'truth', 'explain', 'why', 'coup', 'tell', 'promise'],
-      priority: 5,
-      text: 'When Itachi reaches you in the forest he does NOT tell you the truth yet. You are too close to the Leaf: he asks you to come with him (and to join the Akatsuki) first, and promises to explain once you are far from the village. The full truth (the coup, the order, Shisui) comes later, on the road, well away from the Leaf.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { thread: 'Make Itachi explain', threadStatus: 'resolved' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['thousand souls', 'forbidden', 'steal', 'chakra', 'absorb', 'drain', 'nature'],
-      priority: 5,
-      text: 'Thousand Souls is a forbidden jutsu you created yourself, in secret; nobody else knows it exists. It steals a target’s chakra, which makes your reserves effectively limitless whenever you choose to use it and permanently expands your own chakra capacity, and it permanently gives you the chakra nature of whoever you steal from (drain a Wood Release user and you can use Wood Release). It is strictly chakra, chakra nature and capacity: it NEVER steals jutsu, techniques, memories or kekkei genkai abilities beyond the nature itself. It is not yet perfected: slower, harder to control, and it takes a toll on you. It becomes perfected after about 10 uses (see the use count under SIGNATURE JUTSU). You decide when to use it; never use it for you.',
-      enabled: true,
-      hidden: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['learn', 'copy', 'observe', 'jutsu', 'technique', 'train', 'study'],
-      priority: 4,
-      text: 'You are a versatile shinobi who learns jutsu fairly quickly after watching them, as long as you have the chakra nature they need. Learning still takes some practice and is never instant; this is talent, not the Sharingan and not Thousand Souls. Your own chakra nature is not known yet: the story finds it out.',
-      enabled: true,
-      hidden: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['orochimaru', 'thousand souls', 'curse mark', 'experiment'],
-      priority: 4,
-      text: 'Orochimaru is in the Akatsuki until he betrays it. If he ever sees or learns of Thousand Souls, he becomes intensely interested in you: a jutsu that takes chakra natures is exactly what he hunts. He studies you, probes you, and may try to tempt or take you, before and after his defection. He does not know about the jutsu unless he witnesses it or someone tells him.',
-      enabled: true,
-      hidden: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['akatsuki', 'partner', 'pair', 'juzo', 'kisame', 'kakuzu', 'hidan'],
-      priority: 4,
-      text: 'If you join the Akatsuki, you are NOT Itachi’s partner. Itachi’s partner follows canon: Jūzō Biwa first, then Kisame Hoshigaki. Pain pairs you with Kakuzu, who has killed every partner he has had; you are the first to survive him. When Hidan joins, Kakuzu is paired with Hidan as in canon and your partnership with Kakuzu ends. From then on you are a flexible member: you work alone or are sent with different members as Pain needs. You and Itachi meet and talk from time to time between missions.',
-      enabled: true,
-      hidden: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['nine-tails', 'kurma', 'kurama', 'attack'],
-      priority: 5,
-      text: 'The Nine-Tails attack killed your parents when you were five. It left you quiet, guarded, and slow to rely on anyone.',
-      enabled: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['team 3', 'team-3', 'hana', 'izumi', 'suzume', 'sensei', 'teammate', 'anbu'],
-      priority: 4,
-      text: 'You were on Team 3, with Hana Inuzuka and Izumi Uchiha under Suzume, from graduation at nine until you joined ANBU at twelve. Then you left the team: Hana and Izumi stayed on Team 3 without you. You stayed close to Hana, Izumi and Suzume and still saw them from time to time.',
-      enabled: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['anbu'],
-      priority: 4,
-      text: 'ANBU are Hidden Leaf’s masked special forces. You joined at twelve, one year after Itachi. You are no longer part of ANBU: you left the village and carry no ANBU equipment.',
-      enabled: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['itachi', 'fight', 'massacre', 'forest', 'promise'],
-      priority: 5,
-      text: 'Days before the massacre Itachi told you his plan. Shaken, you fought him and lost, but you held back, unwilling to really hurt him, so nobody knows what you can do when you go all out. He sent you to hide in the forest and wait, promising to explain everything afterwards.',
-      enabled: true,
-      hidden: true,
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['itachi', 'massacre', 'forest', 'wait', 'clan', 'happened'],
-      priority: 5,
-      text: 'You have been in the forest since that fight, so you do not know whether Itachi went through with it, how, or who died. Between you there is real tension: love and trust on one side, dread, anger and the need to know on the other.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { thread: 'Make Itachi explain', threadStatus: 'resolved' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['izumi', 'team 3', 'team-3'],
-      priority: 5,
-      text: 'Izumi Uchiha, your former Team 3 teammate, died in the massacre. She had loved Itachi since the Academy, and you knew it. You do NOT know she is dead until someone tells you (Itachi, news, or the funeral); never reveal it through narration.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { flag: 'knowsIzumiDead' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['izumi', 'team 3', 'team-3', 'grave'],
-      priority: 5,
-      text: 'Izumi Uchiha, your former Team 3 teammate, died in the massacre. She had loved Itachi since the Academy, and you knew it.',
-      enabled: true,
-      activeAfter: { flag: 'knowsIzumiDead' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['shisui'],
-      priority: 4,
-      text: 'Shisui Uchiha grew up with you and Itachi. He was found dead in the Naka River shortly before the massacre, officially a suicide. You do not know the truth.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { thread: 'What really happened to Shisui?', threadStatus: 'resolved' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: ['headband', 'forehead protector', 'protector', 'leaf', 'village', 'itachi', 'scratch'],
-      priority: 4,
-      text: 'Your Hidden Leaf forehead protector is still whole: you have not cut your tie to the village. Early on, once you are away from the Leaf, Itachi may show you the line through his own and quietly encourage you to do the same. You decide whether and when; never do it for you.',
-      enabled: true,
-      hidden: true,
-      activeUntil: { flag: 'headbandScratched' },
-    },
-    {
-      id: makeId('lore'),
-      keywords: [],
-      priority: 5,
-      always: true,
-      text: GEOGRAPHY_LORE,
-      enabled: true,
-      hidden: true,
-    },
-  ];
-
-  // who_knows holds entity ids; anyone not in the cast is a group tag.
-  const knownFacts: FactRecord[] = facts.map((fact) => {
-    const knowers = knowersOf({ entities } as AppDatabase, fact.whoKnows);
     return {
-      ...fact,
-      whoKnows: knowers.ids,
-      ...(knowers.groups.length > 0 ? { whoKnowsGroups: knowers.groups } : {}),
-      // Everything you know at the start comes with the opening memory.
-      sourceEventId: fact.sourceEventId ?? openingEvent.id,
-      subjectEntityId: fact.subjectEntityId ?? (fact.text.startsWith('Shisui') ? (entities.find((e) => e.name === 'Shisui Uchiha')?.id ?? PLAYER_ID) : PLAYER_ID),
+      id: makeId('bond'),
+      entityId: peopleIds[index],
+      characterName: person.name.trim(),
+      affinity: theirs.affinity,
+      status: person.alive ? person.relationship || 'Known' : `Deceased · ${person.relationship || 'Known'}`,
+      lastKeyEventId: castIds.includes(peopleIds[index]) ? openingEvent.id : null,
+      note: theirs.note,
+      theirFeelings: theirs,
+      yourFeelings: yours,
+      isMajor: true,
+      relationship: normalizeRelationship(person.relationship) ?? 'acquaintance',
+      attraction: attractionOf(person.attraction),
+      updatedInStoryDate: date,
     };
   });
 
-  const database: AppDatabase = {
+  const facts: FactRecord[] = [
+    ...character.secrets.map((text) => ({ text, about: playerId, knowers: [playerId], type: 'secret' as const })),
+    ...people.flatMap((person, index) =>
+      (person.secrets ?? []).map((text) => ({
+        text,
+        about: peopleIds[index],
+        knowers: [peopleIds[index]],
+        type: 'secret' as const,
+      }))
+    ),
+  ]
+    .filter((item) => item.text.trim().length > 0)
+    .map((item) => ({
+      id: makeId('fact'),
+      subjectEntityId: item.about,
+      type: item.type,
+      text: item.text.trim().slice(0, 200),
+      whoKnows: knowersOf({ entities } as AppDatabase, item.knowers).ids,
+      validFrom: date,
+      validTo: null,
+      confidence: 'confirmed' as const,
+      sourceEventId: openingEvent.id,
+    }));
+
+  const threads: ThreadRecord[] = [...(opening.threads ?? []), ...character.goals]
+    .map((title) => title.trim().replace(/[.!]+$/, ''))
+    .filter((title, index, all) => title.length > 0 && all.findIndex((other) => other.toLowerCase() === title.toLowerCase()) === index)
+    .map((title) => ({
+      id: makeId('thread'),
+      type: 'goal' as const,
+      title: title.slice(0, 80),
+      description: title,
+      status: 'open' as const,
+      openedAt: date,
+      resolvedAt: null,
+      importance: 4 as const,
+      participants: [player.name],
+      participantIds: [playerId],
+      sourceEventId: openingEvent.id,
+    }));
+
+  return {
     schemaVersion: 1,
-    meta: {
-      slotId,
-      slotName,
-      createdAt: now,
-      updatedAt: now,
-    },
+    meta: { slotId, slotName, createdAt: now, updatedAt: now },
     settings: DEFAULT_SETTINGS,
     rawLog: [],
-    world: emptyWorld('Legacy world'),
+    world,
     entities,
-    jutsuRecords,
     events: [openingEvent],
-    eventEntities: [
-      { eventId: openingEvent.id, entityId: PLAYER_ID, role: 'participant' },
-      { eventId: openingEvent.id, entityId: ITACHI_ID, role: 'present' },
-      { eventId: openingEvent.id, entityId: FOREST_ID, role: 'present' },
-    ],
+    eventEntities,
     bonds,
-    facts: knownFacts,
+    facts,
     threads,
-    loreEntries,
+    loreEntries: world.lore.map((entry) => ({ ...entry })),
     summaries: [],
     state: {
-      player: {
-        name: 'Kan',
-        aliases: ['Uchiha-Uzumaki Kan'],
-        age: 13,
-        birthday: { month: 6, day: 30 },
-        birthYear: 0,
-        gender: 'male',
-        appearance: 'Lean teenage shinobi with black hair and dark watchful eyes.',
-        outfit: 'A plain black high-collared shinobi outfit with bandage-wrapped forearms. No ANBU gear.',
-        personality:
-          'Smart, learns naturally, dislikes studying, reserved, watchful, hard to read, versatile, a little timid underneath, hides his feelings.',
-        speechStyle: 'Short, restrained, rarely volunteers more than necessary.',
-        backstory:
-          'Uchiha-Uzumaki lineage, usually goes only by Kan. Former member of Team 3 (Hana Inuzuka, Izumi Uchiha) under sensei Suzume, left on joining ANBU at 12. Now a missing-nin.',
-        role: 'Missing-nin (former ANBU)',
-        abilities: [],
-        inventory: [],
-        money: STARTING_RYO,
-        secrets: [
-          'Has a secret crush on Hana Inuzuka.',
-          'Rarely mentions his clan names.',
-          'Created a forbidden jutsu, Thousand Souls, in secret. No one knows it exists.',
-        ],
-        goals: [],
-      },
-      mood: 'Numb, guarded, torn',
-      worldDescription: 'The Hidden Leaf still carries the scars of the Nine-Tails attack. Tonight the rain is heavy, and the forest around the village is silent.',
-      jutsu: ['Shinobi taijutsu', 'Thousand Souls'],
-      inventory: [
-        'Hidden Leaf forehead protector',
-        'Kunai pouch (6 kunai)',
-        'Shuriken (10)',
-        'Ninja wire',
-        'Explosive tags (3)',
-        'Smoke bombs (2)',
-        'Basic ration pack',
-      ],
-      location: 'Forest outside Hidden Leaf',
-      inStoryDate: DEFAULT_DATE,
-      canonPoint: 'The night Itachi said he would act. He is coming to the forest to find you.',
+      player: { ...character, birthYear: date.year - character.age },
+      mood: 'Unknown',
+      worldDescription: world.premise,
+      inventory: [...character.inventory],
+      location: opening.location || place?.name || 'Somewhere',
+      ...(place ? { locationKind: place.kind } : {}),
+      inStoryDate: date,
+      worldPoint: '',
       chapter: 1,
-      chapterTitle: 'The flight from the Leaf',
-      chapterStart: { turn: 1, date: DEFAULT_DATE },
-      scene: 'The rain after',
-      purse: startingPurse(),
+      chapterStart: { turn: 1, date },
+      scene: opening.location || 'The beginning',
+      sceneCast: opening.castNames.filter((name) => name.trim().length > 0),
+      purse: startingPurse(character.money),
     },
     indices: emptyIndex(),
     snapshots: [],
   };
-
-  return database;
 }

@@ -7,12 +7,12 @@
 //
 // - heat (0-100) grows while it is left alone (stewing), grows when the player hurts
 //   them again, and cools only when the bond really improves.
-// - The stage follows the heat: resentful → vengeful → hunting. Original
-//   characters can reach hunting and come after the player wherever he is. Canon
-//   characters stop at vengeful, the way lore-locked hearts never turn: they
-//   stay on their canon path and act when paths cross or through others.
+// - The stage follows the heat: resentful → vengeful → hunting. Most people
+//   can reach hunting and come after the player wherever they are. People the
+//   world timeline follows stop at vengeful: they stay on their path and act
+//   when paths cross or through others.
 // - Now and then a vengeful or hunting grudge is offered to the narrator
-//   (SOMEONE WANTS YOU TO PAY) in one style: an ambush, a trap, hired blades,
+//   (SOMEONE WANTS YOU TO PAY) in one style: an ambush, a trap, hired help,
 //   a threat, a message. When the prose shows it, the tracker marks it struck
 //   and the clock for the next one starts again.
 // - It ends only when the story earns it: real amends (the bond climbs back to
@@ -24,14 +24,14 @@
 
 import { daysBetween } from './calendar';
 import { displayName, narratorName } from './names';
-import { isCombatPace } from './canon';
+import { isCombatPace } from './timeline';
 import { isCompanion } from './companions';
 import { isDeceased } from './deaths';
 import { locationKindOf } from './encounters';
 import { resolveEntity } from './entities';
 import { makeId } from './id';
 import { applyFactDiff, applyThreadDiff } from './facts';
-import { isOriginalCharacter } from './returning';
+import { isFreeCharacter } from './returning';
 import { clamp, hashText, playerTurnCount } from './util';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, Grudge, TurnDiff } from './types';
 import { isPlayerEntity, playerName } from './player';
@@ -64,8 +64,8 @@ export type GrudgeEvent = (typeof GRUDGE_EVENTS)[number];
 
 export const GRUDGE_RULES = `ENEMIES
 - Hatred is the dark mirror of love: slow, earned, and lasting. Someone the player truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, their revenge, or death.
-- People with a grudge act in character and within their canon power. Original characters can hunt the player down; canon characters stay on their canon path and act when paths cross, or through others (a message, a price, hired blades). They plan, wait, and pick their ground; they are rarely stupid.
-- Strangers react to the player through YOUR NAME OUT THERE: a bounty makes hunters bold and a cloak makes people afraid, but most people never look twice.`;
+- People with a grudge act in character and within what they can really do: their money, their friends, their job, their nerve. Most can come after the player; people on the world timeline stay on their path and act when paths cross, or through others (a message, a lawyer, a price, hired help). They plan, wait, and pick their ground; they are rarely stupid.
+- Strangers react to the player through YOUR NAME OUT THERE: a price on their head makes some people bold, but most people never look twice.`;
 
 export function stageFor(heat: number, canCapHunt: boolean): GrudgeStage {
   if (heat >= HUNTING_HEAT && !canCapHunt) return 'hunting';
@@ -80,9 +80,9 @@ export function grudgeHeat(grudge: Grudge, now: CalendarDate): number {
   return clamp(grudge.heat + Math.min(STEW_CAP, Math.floor(quiet / STEW_DAYS)), 0, 100);
 }
 
-/** Canon characters never leave their path to hunt the player. */
-function huntCapped(entity: EntityRecord | undefined) {
-  return !entity || !isOriginalCharacter(entity);
+/** People on the world timeline never leave their path to hunt the player. */
+function huntCapped(db: AppDatabase, entity: EntityRecord | undefined) {
+  return !entity || !isFreeCharacter(db, entity);
 }
 
 export function grudgeStage(db: AppDatabase, bond: BondRecord): GrudgeStage | null {
@@ -92,7 +92,7 @@ export function grudgeStage(db: AppDatabase, bond: BondRecord): GrudgeStage | nu
 
   const entity = db.entities.find((item) => item.id === bond.entityId);
 
-  return stageFor(grudgeHeat(bond.grudge, db.state.inStoryDate), huntCapped(entity));
+  return stageFor(grudgeHeat(bond.grudge, db.state.inStoryDate), huntCapped(db, entity));
 }
 
 export const STAGE_LABEL: Record<GrudgeStage, string> = {
@@ -421,9 +421,9 @@ function styleFor(db: AppDatabase, offer: Omit<GrudgeOffer, 'pressed' | 'style'>
           kind === 'settlement'
             ? `${name} waits for night and comes for you where you sleep`
             : `${name} has tracked you here and attacks or confronts you on ground they chose`,
-          `a trap ${name} laid on the way you are likely to go: wire, seals, poisoned water, a false trail`,
-          `blades ${name} hired: mercenaries or bounty hunters who know your face and your habits`,
-          `signs that ${name} is close: watchers, tracks around your camp, a message left where only you would find it`,
+          `a trap ${name} laid on the way you are likely to go: a tip to the police, a tampered lock, a false lead, a setup`,
+          `people ${name} hired: muscle or a private investigator who know your face and your habits`,
+          `signs that ${name} is close: watchers, a car parked too long outside, a message left where only you would find it`,
           ...(dear && offer.grudge.strikes > 0
             ? [`a threat aimed at ${dear.name} rather than you, so you know ${name} has found what you care about`]
             : []),
@@ -431,7 +431,7 @@ function styleFor(db: AppDatabase, offer: Omit<GrudgeOffer, 'pressed' | 'style'>
       : [
           `word that ${name} is selling your movements to anyone who pays`,
           `a message from ${name}: a warning, a demand, or a promise of what is coming`,
-          `blades ${name} paid to find you, without coming themselves`,
+          `someone ${name} paid to find you, without coming themselves`,
           `${name} turning up in person if this place is on their path, cold and ready`,
         ];
 
@@ -486,7 +486,7 @@ export function formatGrudgeOffer(db: AppDatabase, offer: GrudgeOffer | null): s
     `${narratorName(db, entity)}${role}, ${stage === 'hunting' ? 'is hunting you' : 'wants revenge'}. They have held this grudge for ${since}: ${grudge.reason} ${last}`,
     `This turn it could come as ${offer.style}.`,
     stage === 'hunting'
-      ? 'Show it on the page in their own way and at their canon power. It is this turn\'s encounter; it can be fought, escaped, talked down, or turned around. It does not end the grudge unless the story truly settles it.'
+      ? 'Show it on the page in their own way and within what they can really do. It is this turn\'s encounter; it can be fought, escaped, talked down, or turned around. It does not end the grudge unless the story truly settles it.'
       : 'They are not leaving their own path for this: use it only in a way that fits where they are and what they would do. It is this turn\'s encounter, and it does not end the grudge unless the story truly settles it.',
   ].join('\n');
 }
