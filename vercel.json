@@ -1,0 +1,7 @@
+{
+  "buildCommand": "bun run build:web",
+  "outputDirectory": "dist",
+  "installCommand": "bun install",
+  "cleanUrls": true,
+  "rewrites": [{ "source": "/((?!api/|_expo/|assets/).*)", "destination": "/index.html" }]
+}

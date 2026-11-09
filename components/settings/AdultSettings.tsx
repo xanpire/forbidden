@@ -1,6 +1,6 @@
 // Settings → Models test and Privacy (session A).
-import { useState } from 'react';
-import { Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { ListRow } from '@/components/List';
@@ -9,6 +9,10 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { completeChat } from '@/lib/openrouter';
 import { usePrivacy, validPin, withPin } from '@/lib/privacy';
 import type { Settings } from '@/lib/rpg/types';
+import { loadProviderKey, saveProviderKey } from '@/lib/explicitProviders';
+import { DEFAULT_EXPLICIT_MODELS, EXPLICIT_PROVIDERS, canPictureThis, defaultShot, type ExplicitProviderId } from '@/lib/rpg/explicitImages';
+import { useGame } from '@/lib/rpg/game';
+import { paintSideBySide } from '@/lib/rpg/paintExplicit';
 
 /** The story calls read the story, so each needs a model whose terms allow adult content. */
 export const STORY_CALLS: { key: 'narrationModel' | 'extractionModel' | 'summaryModel'; label: string }[] = [
@@ -150,4 +154,121 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   flex: { flex: 1 },
+  providerBlock: { gap: spacing.xs, marginTop: spacing.sm },
+  label: { color: colors.textSoft, fontFamily: fonts.semibold, fontSize: 13 },
+  compare: { width: '100%', aspectRatio: 1, borderRadius: radius.md, backgroundColor: colors.surface },
 });
+
+export function ExplicitSettings({
+  settings,
+  updateSettings,
+}: {
+  settings: Settings;
+  updateSettings: (patch: Partial<Settings>) => Promise<void>;
+}) {
+  const { showToast } = useToast();
+  const provider = settings.explicitProvider ?? 'runware';
+  const [keys, setKeys] = useState<Record<ExplicitProviderId, string>>({ runware: '', wiro: '' });
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    void Promise.all([loadProviderKey('runware'), loadProviderKey('wiro')]).then(([runware, wiro]) => {
+      setKeys({ runware, wiro });
+      setLoaded(true);
+    });
+  }, []);
+
+  return (
+    <View style={styles.block}>
+      <Text style={type.rowTitle}>Explicit pictures</Text>
+      <Text style={type.rowMeta}>"Picture this" in an intimate scene. Only adults with a stated age, never real people, and never your uploaded photos.</Text>
+      <View style={styles.pinRow}>
+        {EXPLICIT_PROVIDERS.map((item) => (
+          <AppButton
+            compact
+            key={item.id}
+            label={item.label}
+            onPress={() => void updateSettings({ explicitProvider: item.id })}
+            style={styles.flex}
+            variant={provider === item.id ? 'primary' : 'secondary'}
+          />
+        ))}
+      </View>
+      <Text style={type.rowMeta}>{EXPLICIT_PROVIDERS.find((item) => item.id === provider)?.note}</Text>
+      {EXPLICIT_PROVIDERS.map((item) => (
+        <View key={item.id} style={styles.providerBlock}>
+          <Text style={styles.label}>{item.label} model</Text>
+          <TextInput
+            accessibilityLabel={`${item.label} model`}
+            autoCapitalize="none"
+            onChangeText={(value) => void updateSettings(item.id === 'runware' ? { runwareModel: value } : { wiroModel: value })}
+            placeholder={DEFAULT_EXPLICIT_MODELS[item.id]}
+            placeholderTextColor={colors.textDim}
+            style={styles.input}
+            value={(item.id === 'runware' ? settings.runwareModel : settings.wiroModel) ?? ''}
+          />
+          <Text style={styles.label}>{item.label} API key</Text>
+          <View style={styles.pinRow}>
+            <TextInput
+              accessibilityLabel={`${item.label} API key`}
+              autoCapitalize="none"
+              editable={loaded}
+              onChangeText={(value) => setKeys((current) => ({ ...current, [item.id]: value }))}
+              placeholder="Stays on this device"
+              placeholderTextColor={colors.textDim}
+              secureTextEntry
+              style={styles.input}
+              value={keys[item.id]}
+            />
+            <AppButton
+              compact
+              label="Save"
+              onPress={() => void saveProviderKey(item.id, keys[item.id]).then(() => showToast(`${item.label} key saved.`, 'success'))}
+            />
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Debug: the same picture on both providers, to compare quality and cost. */
+export function SideBySide() {
+  const { db } = useGame();
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState<Awaited<ReturnType<typeof paintSideBySide>>[number][]>([]);
+  if (!db || !canPictureThis(db)) {
+    return <Text style={[type.rowMeta, styles.block]}>Provider comparison: open an intimate scene first.</Text>;
+  }
+  return (
+    <View style={styles.block}>
+      <AppButton
+        compact
+        label="Compare explicit providers on this scene"
+        loading={running}
+        onPress={() => {
+          setRunning(true);
+          void paintSideBySide(db, defaultShot(db))
+            .then(setResults)
+            .finally(() => setRunning(false));
+        }}
+        variant="secondary"
+      />
+      <View style={styles.pinRow}>
+        {results.map((result) => (
+          <View key={result.provider} style={styles.flex}>
+            <Text style={type.rowMeta}>
+              {result.provider}
+              {result.ok && typeof result.painted.cost === 'number' ? ` · $${result.painted.cost.toFixed(4)}` : ''}
+            </Text>
+            {result.ok ? (
+              <Image resizeMode="cover" source={{ uri: result.painted.dataUri }} style={styles.compare} />
+            ) : (
+              <Text style={styles.failed}>{result.error}</Text>
+            )}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}

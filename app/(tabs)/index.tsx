@@ -37,6 +37,8 @@ import {
 } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
+import { ExplicitSheet } from '@/components/ExplicitSheet';
+import { canPictureThis } from '@/lib/rpg/explicitImages';
 import { FilterPills, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -333,6 +335,7 @@ export default function StoryScreen() {
   const [steer, setSteer] = useState<SteerChip | null>(null);
   const [oocNote, setOocNote] = useState('');
   const [oocOpen, setOocOpen] = useState(false);
+  const [pictureOpen, setPictureOpen] = useState(false);
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
   const lastActionRef = useRef('');
 
@@ -819,6 +822,13 @@ export default function StoryScreen() {
                       onLongPress={() => setShotMenuOpen(true)}
                       onPress={() => void generateSceneImage()}
                     />
+                    {canPictureThis(db) ? (
+                      <InlineAction
+                        icon={<Paintbrush color={colors.accent} size={15} strokeWidth={2} />}
+                        label="Picture this"
+                        onPress={() => setPictureOpen(true)}
+                      />
+                    ) : null}
                     <InlineAction
                       icon={<RotateCcw color={colors.textMuted} size={15} strokeWidth={2} />}
                       label="Retry"
@@ -1093,6 +1103,8 @@ export default function StoryScreen() {
           </View>
         </View>
       </SafeAreaView>
+
+      <ExplicitSheet onClose={() => setPictureOpen(false)} visible={pictureOpen} />
 
       <Modal
         animationType="fade"

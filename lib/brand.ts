@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   ambience: `${STORAGE_PREFIX}.ambience.v1`,
   wizardDraft: `${STORAGE_PREFIX}.wizardDraft.v1`,
   privacy: `${STORAGE_PREFIX}.privacy.v1`,
+  runwareKey: `${STORAGE_PREFIX}.runwareKey.v1`,
+  wiroKey: `${STORAGE_PREFIX}.wiroKey.v1`,
 } as const;
 
 /** IndexedDB database names. */

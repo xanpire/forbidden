@@ -1,10 +1,10 @@
 # frbddn — Sandbox Roleplay
 
-A single-page **Progressive Web App** (Expo + React Native Web) that plays like an interactive novel. You choose who you are and which world you live in, and an LLM narrator streams the story while a deterministic engine keeps memory, time, bonds, abilities, images and saves consistent.
+A single-page **Progressive Web App** (Expo + React Native Web) that plays like an interactive novel. You choose who you are and which world you live in, and an LLM narrator streams the story while a deterministic engine keeps memory, time, bonds, money, intimacy, images and saves consistent.
 
-> Being converted from **Kan**, a Naruto-only RPG. Until sessions 2–3 of `docs/SANDBOX_CONVERSION_PLAN.md` land, a new story still starts in the old Naruto world.
+Adults only. Settings → New story opens the creation wizard (world, places, lore, you, backstory, intimacy, people, opening, timeline); "Try the sample story" starts the Harbourside test world.
 
-There is **no backend**. Everything runs in the browser and is stored in `localStorage` through `AsyncStorage`. The only external service is the **OpenRouter API** (chat completions + image generation) using a key the player enters in Settings.
+There is **no backend**. Everything runs in the browser and is stored on the device. External services: the **OpenRouter API** (story, memory, summaries, standard images) and, for explicit pictures, **Runware** or **Wiro**, each with a key the player enters in Settings. On Vercel, `api/explicit.js` forwards explicit-image calls when the browser can't reach those two providers directly.
 
 ---
 
@@ -28,7 +28,7 @@ Then open the app, go to **Settings → OpenRouter API key**, paste a key from h
 
 ### Deploy / PWA
 
-- `bun run build:web` writes a static site to `dist/` — deploy that folder anywhere (Vercel etc.).
+- `bun run build:web` writes a static site to `dist/`. On Vercel, `vercel.json` already sets the build command, the output folder and clean URLs; import the repo and deploy.
 - The service worker (`public/sw.js`) is generated from `package.json`'s version; bump the version to invalidate caches.
 - Icons and the manifest live in `public/`. The app icon is still Kan's red vulture mark (a new icon comes later).
 - On Android, installing from the browser and re-adding the shortcut is needed after an icon change.

@@ -977,6 +977,10 @@ export type Settings = {
   promptTokenBudget: number;
   /** Frames each scene image (the "director"); empty = the narrator model. */
   imageDirectorModel?: string;
+  /** Explicit pictures: which provider, and the model on each. */
+  explicitProvider?: 'runware' | 'wiro';
+  runwareModel?: string;
+  wiroModel?: string;
   /** Check each scene image for swapped roles and retry once (default on). */
   imageCheck?: boolean;
   /** Paint two takes and let you keep one (default off). */
@@ -1031,6 +1035,21 @@ export type AppDatabase = {
   /** Face references you chose for people, kept only on this device. */
   characterFaces?: CharacterFaceRecord[];
   memoryJobs?: MemoryJob[];
+  /** Explicit pictures of intimate scenes (explicitImages.ts). Behind the PIN lock; left out of exports by default. */
+  explicitImages?: ExplicitImageRecord[];
+  /** In-app reference sheets for explicit pictures, made from written appearance only. */
+  explicitRefs?: { entityId: string; image: string; createdAt: number }[];
+};
+
+export type ExplicitImageRecord = {
+  id: string;
+  image: string;
+  shot: import('./explicitImages').ExplicitShot;
+  provider: 'runware' | 'wiro';
+  model: string;
+  cost?: number;
+  inStoryDate: CalendarDate;
+  createdAt: number;
 };
 
 /** What the player wore, in words (their sheet's outfit). */

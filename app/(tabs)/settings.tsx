@@ -28,7 +28,7 @@ import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
-import { ModelTest, PrivacySettings } from '@/components/settings/AdultSettings';
+import { ExplicitSettings, ModelTest, PrivacySettings } from '@/components/settings/AdultSettings';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Slider } from '@/components/Slider';
 import { DebugPanel } from '@/components/settings/DebugPanel';
@@ -83,6 +83,7 @@ export default function SettingsScreen() {
   const [testingKey, setTestingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [exportExplicit, setExportExplicit] = useState(false);
   const [capsState, setCapsState] = useState<'idle' | 'loading' | 'failed'>('idle');
 
   const [creating, setCreating] = useState(false);
@@ -204,7 +205,7 @@ export default function SettingsScreen() {
   };
 
   const handleExport = async (withImages: boolean) => {
-    const json = await exportActiveSlot({ withImages });
+    const json = await exportActiveSlot({ withImages, withExplicit: exportExplicit });
 
     if (!json) {
       return;
@@ -519,6 +520,15 @@ export default function SettingsScreen() {
           <SectionLabel>Privacy</SectionLabel>
           <ListCard>
             <PrivacySettings />
+            <ExplicitSettings settings={db.settings} updateSettings={updateSettings} />
+            <ListRow
+              accessibilityRole="switch"
+              accessibilityState={{ checked: exportExplicit }}
+              meta="Off: exported save files leave your private pictures out."
+              onPress={() => setExportExplicit((on) => !on)}
+              title="Include private pictures in exports"
+              trailing={<Switch onValueChange={setExportExplicit} thumbColor={colors.text} trackColor={{ false: colors.surfaceSoft, true: colors.accent }} value={exportExplicit} {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})} />}
+            />
           </ListCard>
 
           <SectionLabel>Sound</SectionLabel>

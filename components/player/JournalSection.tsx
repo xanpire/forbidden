@@ -15,6 +15,7 @@ import { audienceName, knownEpithets } from '@/lib/rpg/renown';
 import { TIMELINE_TAG } from '@/lib/rpg/timeline';
 import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
+import { PrivateGallery } from '@/components/player/PrivateGallery';
 import { displayName } from '@/lib/rpg/names';
 import { isPlayer } from '@/lib/rpg/player';
 
@@ -383,6 +384,7 @@ export function JournalSection() {
       {view === 'memories' ? <MemoriesView db={db} /> : null}
       {view === 'letters' ? <LettersView db={db} /> : null}
       {view === 'scrapbook' ? <ScrapbookView db={db} /> : null}
+      {view === 'scrapbook' ? <PrivateGallery /> : null}
     </View>
   );
 }

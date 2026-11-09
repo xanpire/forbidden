@@ -1,5 +1,5 @@
-const CACHE_NAME = 'frbddn-shell-2-4-0';
-const APP_SHELL = ["/","/manifest.webmanifest?v=2.4.0","/icon-192.png?v=2.4.0","/icon-512.png?v=2.4.0","/icon-maskable-512.png?v=2.4.0","/apple-touch-icon.png?v=2.4.0"];
+const CACHE_NAME = 'frbddn-shell-2-5-0';
+const APP_SHELL = ["/","/manifest.webmanifest?v=2.5.0","/icon-192.png?v=2.5.0","/icon-512.png?v=2.5.0","/icon-maskable-512.png?v=2.5.0","/apple-touch-icon.png?v=2.5.0"];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

@@ -18,6 +18,7 @@ Read it top to bottom once. Then use the file map and invariants as a checklist 
 | `worldBlocks.ts` | The narrator's THE WORLD and WHO YOU ARE blocks (`formatWorldBlock`, `formatWhoYouAre`) |
 | `intimacy.ts` | The adult layer (§10): relationship labels, the intimacy ladder and pacing, `canBeIntimate` (adults only, no real people), the INTIMACY block, tracker appliers, the post-check |
 | `../privacy.ts` | PIN lock, quick-hide, neutral name, notification text |
+| `explicitImages.ts` / `paintExplicit.ts` / `../explicitProviders.ts` | Explicit pictures (§11b): fixed shot lists, adults-only check, structured prompts, in-app references, gallery records, Runware and Wiro adapters |
 | `wizard.ts` | The creation wizard's draft (`WizardDraft`, `emptyDraft`, `WORLD_PRESETS`, `missingFields`, `draftToSeedInput`, autosave, "Help me fill this": `helpFillMessages` / `parseHelpReply` / `applySuggestion`) |
 | `seed.ts` / `testWorld.ts` | `seedDatabase(slotId, name, input?)` turns a `SeedInput` into a save; the test world is the default input |
 | `game.tsx` | `GameProvider`: the turn loop, undo/regenerate, slot switching |
@@ -892,6 +893,18 @@ Goal: wide, cinematic frames in the world's own art style (`world.artStyle`, def
 
 ---
 
+
+### 11b. Explicit pictures (`lib/rpg/explicitImages.ts`, `paintExplicit.ts`, `../explicitProviders.ts`)
+
+On demand only: **Picture this** under the latest reply appears in an intimate scene (`canPictureThis`) and opens `components/ExplicitSheet.tsx`. The player picks who's in it (up to three, from the player and the scene's partners), what (fixed `POSITIONS`), clothes (`CLOTHING`), where (`SETTINGS_LIST`), framing and camera. There is no LLM director for these: the choices are the structure.
+
+- **Adults only:** `checkShot` runs `canBeIntimate` on everyone; `explicitImagePrompt` throws before anything is sent if anyone fails. Every person line says "an adult man/woman, N years old, with a fully adult body"; `ADULT_NEGATIVE` rules out anything childlike.
+- **Structured prompts, always** (both providers): built only from the fixed lists, adult ages, `cleanSheetField(appearance)` (drops quotes and every age-lowering word: young, petite, girl, school…), and a cleaned `world.artStyle`. Story text, the player's input, tracker-written outfits/positions, place names, premise, notes and interests never reach it.
+- **References:** `explicitReferences` uses only `db.explicitRefs` (non-explicit reference sheets painted on the standard image model from written appearance by `paintReferenceSheet`, no images sent) or character portraits with `usedFace: false`. Never `characterFaces`, the player's `faceImage` / `outfitImage`, player portraits, or a portrait painted from a face reference. The sheet offers "Make reference sheets first" for anyone missing one.
+- **Providers** (`ExplicitImageProvider`, Settings → Privacy → Explicit pictures): **Runware** (`imageInference` on `https://api.runware.ai/v1`, Bearer key, `outputType: dataURI`, `referenceImages` when the model takes them, retried without if not; `filtered: true`) and **Wiro** (`POST /v1/Run/{model}/sync`, `x-api-key`, multipart `prompt` / `maxImages` / `watermark` / `inputImage` files, polls `/Task/Detail` after a sync timeout; `filtered: false`). Models: `settings.runwareModel` / `wiroModel` (defaults in `DEFAULT_EXPLICIT_MODELS`). Keys are in `STORAGE_KEYS.runwareKey` / `wiroKey`, outside the save. Neither can edit, so there is no Retouch for explicit pictures. If the browser blocks a provider (CORS), `providerFetch` goes through `api/explicit.js` (a Vercel function that only forwards POSTs to those two hosts).
+- **Storage:** `db.explicitImages` (`img:` refs, provider, model, cost, shot) and `db.explicitRefs`. The **Private** section at the end of the Scrapbook shows them only when asked, and asks for the PIN again when one is set; each can be deleted. `withoutExplicit` strips both (and from snapshots) from every export unless "Include private pictures in exports" is on. Notifications never mention them.
+- **Debug:** Settings → Debug panel → "Compare explicit providers on this scene" paints the same default shot on both providers (`paintSideBySide`) with cost.
+- Tests: `scripts/explicit-images.test.ts`.
 ## 12. UI
 
 - `app/_layout.tsx` — fonts (Manrope), navigation, GameProvider, toasts, Android nav bar.

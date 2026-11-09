@@ -206,7 +206,9 @@ function hasInlineImages(db: AppDatabase) {
     db.rawLog.some((entry) => isDataUri(entry.image)) ||
     (db.portraits ?? []).some((portrait) => isDataUri(portrait.image)) ||
     (db.characterPortraits ?? []).some((portrait) => isDataUri(portrait.image)) ||
-    (db.characterFaces ?? []).some((face) => isDataUri(face.image))
+    (db.characterFaces ?? []).some((face) => isDataUri(face.image)) ||
+    (db.explicitImages ?? []).some((item) => isDataUri(item.image)) ||
+    (db.explicitRefs ?? []).some((item) => isDataUri(item.image))
   );
 }
 
@@ -258,10 +260,15 @@ export async function externalizeImages(db: AppDatabase): Promise<AppDatabase | 
       portraits: undefined,
       characterPortraits: undefined,
       characterFaces: undefined,
+      explicitImages: undefined,
+      explicitRefs: undefined,
     },
   }));
 
-  return { ...db, rawLog, portraits, characterPortraits, characterFaces, snapshots };
+  const explicitImages = db.explicitImages ? await Promise.all(db.explicitImages.map(externalizeOne)) : db.explicitImages;
+  const explicitRefs = db.explicitRefs ? await Promise.all(db.explicitRefs.map(externalizeOne)) : db.explicitRefs;
+
+  return { ...db, rawLog, portraits, characterPortraits, characterFaces, explicitImages, explicitRefs, snapshots };
 }
 
 /** Inlines referenced images back into data URIs, for export files. */
@@ -288,5 +295,8 @@ export async function inlineImages(db: AppDatabase): Promise<AppDatabase> {
     ? (await Promise.all(db.characterFaces.map(inlineOne))).filter((item) => item.image)
     : db.characterFaces;
 
-  return { ...db, rawLog, portraits, characterPortraits, characterFaces };
+  const explicitImages = db.explicitImages ? (await Promise.all(db.explicitImages.map(inlineOne))).filter((item) => item.image) : db.explicitImages;
+  const explicitRefs = db.explicitRefs ? (await Promise.all(db.explicitRefs.map(inlineOne))).filter((item) => item.image) : db.explicitRefs;
+
+  return { ...db, rawLog, portraits, characterPortraits, characterFaces, explicitImages, explicitRefs };
 }

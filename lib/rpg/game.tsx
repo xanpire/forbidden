@@ -1,3 +1,4 @@
+import { withoutExplicit } from './explicitImages';
 import { CORRECTIVE_NOTE, FADE_TO_BLACK_LINE, notificationText, postCheckDecision } from './intimacy';
 import { setTabTitle } from '../privacy';
 import {
@@ -161,7 +162,7 @@ type GameContextValue = {
   duplicateSlotById: (slotId: string, slotName: string) => Promise<void>;
   renameSlotById: (slotId: string, slotName: string) => Promise<void>;
   /** The save as JSON; without images it is a small file of story and memory only. */
-  exportActiveSlot: (options?: { withImages?: boolean }) => Promise<string | null>;
+  exportActiveSlot: (options?: { withImages?: boolean; withExplicit?: boolean }) => Promise<string | null>;
   importSlot: (json: string, slotName?: string) => Promise<void>;
   updateBond: (bondId: string, patch: Partial<BondRecord>) => Promise<void>;
   /** Folds dropId into keepId: one person, with both histories. */
@@ -184,6 +185,8 @@ type GameContextValue = {
   correctTurnTime: (logId: string, seconds: number) => Promise<void>;
   addPortrait: (image: string, signature: PortraitSignature) => Promise<void>;
   /** Saves a painted portrait of someone in your bonds. */
+  /** Applies a change to the latest copy of the save (explicit pictures, reference sheets, world edits). */
+  changeSave: (change: (db: AppDatabase) => AppDatabase) => Promise<void>;
   addCharacterPortrait: (
     entityId: string,
     image: string,
@@ -1006,8 +1009,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb, refreshSlots]
   );
 
-  const exportActiveSlot = useCallback(async (options: { withImages?: boolean } = {}) => {
-    const current = dbRef.current;
+  const exportActiveSlot = useCallback(async (options: { withImages?: boolean; withExplicit?: boolean } = {}) => {
+    // Explicit pictures stay out of exports unless the player asks for them.
+    const current = dbRef.current && !options.withExplicit ? withoutExplicit(dbRef.current) : dbRef.current;
 
     if (!current) {
       return null;
@@ -1292,6 +1296,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const changeSave = useCallback(
+    async (change: (db: AppDatabase) => AppDatabase) => {
+      const latest = dbRef.current;
+      if (!latest) return;
+      await commitDb(change(latest));
+    },
+    [commitDb]
+  );
+
   const addCharacterPortrait = useCallback(
     async (entityId: string, image: string, signature: CharacterPortraitSignature, usedFace: boolean) => {
       const stored = await storeImage(image);
@@ -1414,6 +1427,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       attachImage,
       correctTurnTime,
       addPortrait,
+      changeSave,
       addCharacterPortrait,
       setCharacterFace,
     }),
@@ -1424,6 +1438,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       deleteMemory,
       attachImage,
       addPortrait,
+      changeSave,
       addCharacterPortrait,
       setCharacterFace,
       correctTurnTime,
