@@ -28,6 +28,7 @@ import {
   Image as ImageIcon,
   Clock3,
   RotateCcw,
+  Smartphone,
   Sparkles,
   Wand2,
   Undo2,
@@ -53,6 +54,7 @@ import { companionsOf } from '@/lib/rpg/companions';
 import { useToast } from '@/components/Toast';
 import { downloadImage } from '@/lib/rpg/file';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
+import { unreadCount } from '@/lib/rpg/phone';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
 import { paintScene, retouchSceneImage, sexualMoment, type PaintedTake } from '@/lib/rpg/paintScene';
@@ -651,6 +653,7 @@ export default function StoryScreen() {
   const canSend = Boolean(input.trim()) && !isNarrating;
   const override = state.sceneMode?.override ?? null;
   const shownMode: SceneModeName = turnMode?.mode ?? 'normal';
+  const unreadTexts = db ? unreadCount(db) : 0;
   const latestSceneOptions = !isNarrating ? messages.find((message) => message.id === lastAssistantId)?.sceneOptions ?? [] : [];
   const modeHint =
     shownMode === 'normal' && turnMode?.lean && !override
@@ -958,6 +961,19 @@ export default function StoryScreen() {
                   {modeHint}
                 </Text>
               ) : null}
+              <View style={styles.modeSpacer} />
+              <Pressable
+                accessibilityLabel={`Phone${unreadTexts ? `: ${unreadTexts} unread` : ''}`}
+                accessibilityRole="button"
+                hitSlop={6}
+                onPress={() => router.push('/phone')}
+                style={({ pressed }) => [styles.modeChip, unreadTexts > 0 && styles.modeChipTalk, pressed && styles.pressed]}
+              >
+                <Smartphone color={unreadTexts ? colors.text : colors.textDim} size={13} strokeWidth={2.2} />
+                <Text style={[styles.modeChipLabel, unreadTexts > 0 && styles.modeChipLabelOn]}>
+                  Phone{unreadTexts ? ` · ${unreadTexts}` : ''}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
           {storyStarted ? (
@@ -1633,6 +1649,9 @@ const styles = StyleSheet.create({
   modeHint: {
     ...type.rowMeta,
     flexShrink: 1,
+  },
+  modeSpacer: {
+    flex: 1,
   },
   heldBack: {
     padding: spacing.sm,

@@ -7,6 +7,8 @@ import { reunionNotes } from './lives';
 import { latestPov, povCandidates, povInstruction } from './povMemories';
 import { consequenceTrackingLines, formatConsequenceOffer, turnConsequenceOffer } from './consequences';
 import { locationKindOf } from './places';
+import { whereNow } from './routines';
+import { formatPhoneBlock, formatPhoneTracking } from './phone';
 import { HOME_TRACKING, formatHomeLine } from './home';
 import { formatReturningCharacter } from './returning';
 import { formatYearlyBlock, yearlyOffer, yearlyTrackingLines } from './yearly';
@@ -109,7 +111,9 @@ DEATHS: deaths lists, by id, anyone the prose makes certain is dead this turn (o
 
 MEMORY: facts are what actually happened or is now true, never what someone merely said. Every fact has entity (who it is about; "player" for you), a type, and who_knows (ids, or group names like "her coworkers"). Types: death, injury (a sprained ankle, a cut), condition (a passing state: tired, drunk, soaked, a hangover), secret, knowledge (someone learned something), membership (joined or left a group, a job), possession, relationship, plan, figure (a number said in the story: a price, a debt, an address, a time, word for word), event (anything else). A boast, rumour or claim gets claimed_by (the speaker's id), or is left out. lasts: "until_rest" for a condition a night's sleep ends, "days" (with days) for an injury or plan with an expected length, "lasting" otherwise. When a fact replaces an ACTIVE FACT, list its ref in supersedes; refs that simply stopped being true go in facts_ended. threads are promises, debts, plans, mysteries or goals, with participants (ids besides you): "open" only for something no OPEN THREAD covers (otherwise "update" it under its exact title); "update" or "resolved" reuse the exact title. scene_ended is true only when the scene clearly concluded. scene_title (2-5 words, like "Rain at the bar") only when this turn starts a new scene or the Scene name no longer fits; otherwise null. chapter_title (3-6 words) only when this turn truly opens a new chapter: a big turn in the story or a long time skip; most turns are null.
 
-LIVES: life_events: {character_id, event} for something in a person's own life away from you that this turn reveals (a promotion, a move, a new job, a breakup; they tell you, or a message says it); event in a few words, third person without their name ("got promoted to manager"); otherwise []. birthdays_learned: ids of people whose birthday you learn this turn; otherwise [].
+LIVES: life_events: {character_id, event, routine} for something in a person's own life away from you that this turn reveals (a promotion, a move, a new job, a breakup; they tell you, or a message says it); event in a few words, third person without their name ("got promoted to manager"); routine only when it changes their days, in a few words ("weekdays 8-4 at the new clinic"), else null; otherwise []. birthdays_learned: ids of people whose birthday you learn this turn; otherwise [].
+
+PHONE: phone.numbers_exchanged: ids of people the player swaps numbers with this turn (they give theirs, take yours, put it in your phone). phone.texts_received: texts that arrive on the player's phone on the page and are not already under PHONE below: {from: id, or "unknown" for a number nobody knows; text word for word}. phone.texts_sent: texts the player sends on the page: {to: id, text}. Otherwise [].
 
 GRUDGES: grudges, consequences and consequences_returned follow the rules under CONSEQUENCES & GRUDGES; otherwise [].
 
@@ -247,6 +251,7 @@ export function buildNarrationPrompt(
       formatFacts(db, facts),
       formatFigures(db),
       formatElsewhere(db),
+      formatPhoneBlock(db),
       formatLore(lore),
       formatYearlyBlock(yearlyOffer(db)),
       formatMemories(db, freshMemories),
@@ -355,6 +360,7 @@ export function buildExtractionPrompt(
     formatIntimacyTracking(db),
     formatSexTracking(db, (entity) => refByEntityId(db).get(entity.id) ?? entity.name),
     `HOME\n${HOME_TRACKING}`,
+    formatPhoneTracking(db, (entity) => refByEntityId(db).get(entity.id) ?? entity.name),
     formatYearlyTracking(db),
     formatConsequenceTracking(db),
     previousBeat
@@ -1046,10 +1052,11 @@ function formatElsewhere(db: AppDatabase) {
         !entity.companion &&
         !cast.has(entity.name.toLowerCase()) &&
         entity.lastSeen &&
-        (entity.whereabouts || entity.lastSeenAt) &&
         Math.abs(daysBetween(entity.lastSeen, db.state.inStoryDate)) <= 30
     )
-    .sort((a, b) => dateSortValue(b.lastSeen!) - dateSortValue(a.lastSeen!))
+    .map((entity) => ({ entity, where: whereNow(entity, db.state.inStoryDate) ?? (entity.lastSeenAt ? `last seen at ${truncate(entity.lastSeenAt, 50)}` : null) }))
+    .filter((item): item is { entity: EntityRecord; where: string } => Boolean(item.where))
+    .sort((a, b) => dateSortValue(b.entity.lastSeen!) - dateSortValue(a.entity.lastSeen!))
     .slice(0, 6);
 
   if (people.length === 0) {
@@ -1058,10 +1065,7 @@ function formatElsewhere(db: AppDatabase) {
 
   return [
     'ELSEWHERE (not in this scene; each is where it says unless the story moves them, and never in two places)',
-    ...people.map(
-      (entity) =>
-        `- ${narratorName(db, entity)}: ${entity.whereabouts ? truncate(entity.whereabouts, 70) : `last seen at ${truncate(entity.lastSeenAt ?? '', 50)}`}`
-    ),
+    ...people.map(({ entity, where }) => `- ${narratorName(db, entity)}: ${truncate(where, 70)}`),
   ].join('\n');
 }
 

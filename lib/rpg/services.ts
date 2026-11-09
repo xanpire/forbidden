@@ -229,7 +229,8 @@ function applyStateDiff(db: AppDatabase, state: StateDiff): AppDatabase {
 
   // You are never in your own scene cast.
   if (Array.isArray(state.sceneCast)) {
-    next.state.sceneCast = state.sceneCast.filter((name) => name && !isPlayerName(db, name)).slice(0, 6);
+    const cast = state.sceneCast.filter((name) => name && !isPlayerName(db, name));
+    next.state.sceneCast = (cast.length > 0 ? cast : castWithCompanions(next, [])).slice(0, 6);
   }
 
   if (

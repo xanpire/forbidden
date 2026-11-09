@@ -927,7 +927,7 @@ describe('two-call turn: prose narrator + structured state call', () => {
     expect(diff?.entities?.[0]).toMatchObject({ name: 'Mara Vance', mood: 'withdrawn' });
   });
 
-  test('an all-unchanged structured reply is no diff', () => {
+  test('an all-unchanged structured reply only says who is present (nobody: the player is alone)', () => {
     const { diff } = convertStateBlock({
       time: { elapsed: null, unit: null, clock_time: null },
       scene_pace: null, location: null, location_kind: null, mood: null,
@@ -936,7 +936,8 @@ describe('two-call turn: prose narrator + structured state call', () => {
       characters_present: [], scene_ended: false,
     });
 
-    expect(diff).toBeNull();
+    expect(diff?.state).toEqual({ sceneCast: [] });
+    expect(diff?.scene).toBeUndefined();
   });
 
   test('state prompt carries the turn prose', () => {

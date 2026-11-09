@@ -251,9 +251,16 @@ export const TURN_STATE_SCHEMA = object({
   life_events: list({
     character_id: { type: 'string' },
     event: { type: 'string' },
+    routine: nullableString,
   }),
   // People whose birthday the player learned on the page this turn.
   birthdays_learned: stringList,
+  // The phone on the page (phone.ts).
+  phone: object({
+    numbers_exchanged: stringList,
+    texts_received: list({ from: { type: 'string' }, text: { type: 'string' } }),
+    texts_sent: list({ to: { type: 'string' }, text: { type: 'string' } }),
+  }),
   // Names the player heard or read this turn, within their hearing or reading.
   names_learned: list({
     character_id: { type: 'string' },

@@ -82,7 +82,11 @@ export function convertStateBlock(
   if (Array.isArray(block.life_events)) {
     const events = block.life_events
       .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
-      .map((item) => ({ name: cleanString(item.character_id) ?? '', text: cleanString(item.event)?.slice(0, 160) ?? '' }))
+      .map((item) => ({
+        name: cleanString(item.character_id) ?? '',
+        text: cleanString(item.event)?.slice(0, 160) ?? '',
+        ...(cleanString(item.routine) ? { routine: cleanString(item.routine)!.slice(0, 200) } : {}),
+      }))
       .filter((item) => item.name && item.text && notPlayer(item.name))
       .slice(0, 3);
 
@@ -93,6 +97,28 @@ export function convertStateBlock(
 
   const records = (value: unknown) =>
     Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : [];
+
+  // The phone on the page.
+  if (block.phone && typeof block.phone === 'object' && !Array.isArray(block.phone)) {
+    const raw = block.phone as Record<string, unknown>;
+    const numbers = stringItems(raw.numbers_exchanged).filter(notPlayer).slice(0, 4).map((name) => ({ name }));
+    const received = records(raw.texts_received)
+      .map((item) => ({ from: cleanString(item.from) ?? '', text: cleanString(item.text)?.slice(0, 800) ?? '' }))
+      .filter((item) => item.from && item.text && notPlayer(item.from))
+      .slice(0, 6);
+    const sent = records(raw.texts_sent)
+      .map((item) => ({ to: cleanString(item.to) ?? '', text: cleanString(item.text)?.slice(0, 800) ?? '' }))
+      .filter((item) => item.to && item.text && notPlayer(item.to))
+      .slice(0, 4);
+
+    if (numbers.length || received.length || sent.length) {
+      diff.phone = {
+        ...(numbers.length ? { numbersExchanged: numbers } : {}),
+        ...(received.length ? { received } : {}),
+        ...(sent.length ? { sent } : {}),
+      };
+    }
+  }
 
   // Sex mode.
   if (block.sex && typeof block.sex === 'object' && !Array.isArray(block.sex)) {
@@ -319,7 +345,8 @@ export function convertStateBlock(
         .slice(0, 8)
     : [];
 
-  if (charactersPresent.length > 0) {
+  // An empty list is the tracker saying the player is alone (companions stay; services.ts).
+  if (charactersPresent.length > 0 || Array.isArray(block.characters_present)) {
     diff.state = { ...diff.state, sceneCast: charactersPresent };
   }
 

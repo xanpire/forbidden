@@ -24,7 +24,8 @@ export type DebugCallKind =
   | 'image'
   | 'imageAction'
   | 'imageCheck'
-  | 'portrait';
+  | 'portrait'
+  | 'text';
 
 export type DebugCall = {
   id: string;

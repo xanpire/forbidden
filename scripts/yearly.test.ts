@@ -39,7 +39,7 @@ function play(db: AppDatabase, input: string, narration: string, block: Record<s
   return applyStateStep(next, diff, { turnLogId, userMessage: input, narration }, new Set()).db;
 }
 
-describe('birthdays, remembrance days and festivals', () => {
+describe('birthdays, remembrance days and holidays', () => {
   test('ages follow the birthday the player wrote', () => {
     const db = seed();
     expect(entityAge(db.state.inStoryDate, person(db, 'Mara Vance'))).toBe(31);
@@ -78,10 +78,10 @@ describe('birthdays, remembrance days and festivals', () => {
     expect(yearlyOffer({ ...db, state: { ...db.state, scenePace: 'action' } })).toBeNull();
   });
 
-  test('festivals only where they happen', () => {
-    const date = { year: 2026, month: 11, day: 20, hour: 19, minute: 0 };
-    expect(yearlyOffer(at(date, { location: 'Harbour Market, Old Town' }))?.key).toBe('festival:harbour-lights');
-    expect(yearlyOffer(at(date, { location: 'Coast Road, Northgate' }))?.key).not.toBe('festival:harbour-lights');
+  test('real holidays, nothing the world wrote', () => {
+    expect(yearlyOffer(at({ year: 2026, month: 12, day: 24, hour: 19, minute: 0 }, { location: 'Harbour Market' }))?.key).toBe('christmas-eve');
+    expect(yearlyOffer(at({ year: 2026, month: 10, day: 31, hour: 19, minute: 0 }, { location: 'Coast Road' }))?.key).toBe('halloween');
+    expect(yearlyOffer(at({ year: 2026, month: 11, day: 20, hour: 19, minute: 0 }, { location: 'Harbour Market' }))).toBeNull();
   });
 
   test('upcoming birthdays for the bonds screen, and the leap-day birthday', () => {

@@ -136,7 +136,7 @@ export type GameState = {
   sceneSeq?: number;
   /** The last applied turn ended its scene: the next turn opens a new one. */
   sceneClosed?: boolean;
-  /** Birthdays, anniversaries and festivals (see yearly.ts). */
+  /** Birthdays, anniversaries and holidays (see yearly.ts). */
   yearly?: YearlyState;
   /** Choices that could come back later (see consequences.ts). */
   consequences?: ConsequenceSeed[];
@@ -343,6 +343,10 @@ export type EntityRecord = {
   currentLookSeq?: number;
   /** Where the story last said they are or are going, when not with the player. */
   whereabouts?: string;
+  /** When the story said it (their routine takes over a few hours later; see routines.ts). */
+  whereaboutsAt?: CalendarDate;
+  /** Their daily and weekly routine in plain words (routines.ts); read from their job when empty. */
+  routine?: string;
   lastSeen?: CalendarDate;
   /** Where the player last saw this person (state.location at the time). */
   lastSeenAt?: string;
@@ -661,7 +665,10 @@ export type SummaryRecord = {
  * Jobs live in the save so a failed or interrupted step survives a reload
  * and can be retried from the story screen.
  */
-export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year';
+export type MemoryJobKind = 'state' | 'timeSkip' | 'scene' | 'arc' | 'year' | 'text';
+
+/** Why someone texts: answering the player, or a text of their own. */
+export type TextReason = 'reply' | 'unprompted' | 'birthday' | 'holiday';
 
 export type MemoryJob = {
   id: string;
@@ -676,6 +683,11 @@ export type MemoryJob = {
   logIds?: string[];
   /** arc / year: the chapter summaries to roll up. */
   summaryIds?: string[];
+  /** text: the thread someone is writing in, and why (a reply, or a text of their own). */
+  threadId?: string;
+  textReason?: TextReason;
+  /** text: who writes, when it is someone's own text (unprompted, birthday, holiday). */
+  textFrom?: string;
   /** timeSkip: the jump being summarized. */
   fromDate?: CalendarDate;
   toDate?: CalendarDate;
@@ -759,6 +771,76 @@ export type AppDatabase = {
   memoryJobs?: MemoryJob[];
   /** In-app reference sheets for explicit pictures, made from written appearance only. */
   explicitRefs?: { entityId: string; image: string; createdAt: number }[];
+  /** The player's phone: contacts, threads and texts on their way (phone.ts). */
+  phone?: PhoneState;
+};
+
+/** Someone whose number the player has, since when. */
+export type PhoneContact = { entityId: string; since: CalendarDate };
+
+export type PhoneThread = {
+  id: string;
+  /** Everyone in it besides the player (entity ids). Empty for an unknown number nobody could place. */
+  members: string[];
+  /** A group chat's name. */
+  name?: string;
+  group?: boolean;
+  /** Set when the other side read your last text and said nothing (left on read). */
+  readAt?: CalendarDate;
+  /** When the latest message landed. */
+  lastAt: CalendarDate;
+};
+
+/** A picture sent by text: the words it was sent as, painted only when the player opens it. */
+export type PhonePhoto = { description: string; image?: string };
+
+export type PhoneMessage = {
+  id: string;
+  threadId: string;
+  /** "player", an entity id, or "unknown" for a number nobody could place. */
+  from: string;
+  text: string;
+  at: CalendarDate;
+  read: boolean;
+  photo?: PhonePhoto;
+};
+
+/** What a text changes when it lands: how they feel, a plan, news from their life, coming over. */
+export type TextEffects = {
+  feeling?: { delta: number; note?: string };
+  plan?: string;
+  lifeEvent?: string;
+  /** They shared what has been going on in their life (their unknown life events become known). */
+  sharedNews?: boolean;
+  /** Minutes from this text until they arrive where the player is. */
+  comingOverMinutes?: number;
+  /** They read your text and left you on read. */
+  leftOnRead?: boolean;
+};
+
+/** A text written but not yet arrived: it lands when the story clock reaches dueAt. */
+export type PendingText = {
+  id: string;
+  threadId: string;
+  from: string;
+  /** Empty for a left-on-read marker. */
+  text: string;
+  dueAt: CalendarDate;
+  photo?: string;
+  effects?: TextEffects;
+};
+
+/** Someone on their way to the player because of a text. */
+export type PhoneArrival = { entityId: string; dueAt: CalendarDate };
+
+export type PhoneState = {
+  contacts: PhoneContact[];
+  threads: PhoneThread[];
+  messages: PhoneMessage[];
+  pending: PendingText[];
+  arrivals: PhoneArrival[];
+  /** Unprompted, birthday and holiday texts already sent ("u:<id>:<day>", "b:<id>:<year>", "h:<key>:<id>:<year>"). */
+  sent: string[];
 };
 
 /** What the player wore, in words (their sheet's outfit). */
@@ -931,7 +1013,7 @@ export type TurnDiff = {
   /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];
   /** Things in someone's own life away from the player that this turn revealed. */
-  lifeEvents?: { entityId?: string; name: string; text: string }[];
+  lifeEvents?: { entityId?: string; name: string; text: string; routine?: string }[];
   /** Intimacy (intimacy.ts): what the page showed between the player and someone. */
   intimacyStages?: { entityId?: string; name: string; stage: string }[];
   firsts?: { entityId?: string; name: string; what: string }[];
@@ -977,6 +1059,12 @@ export type TurnDiff = {
   moneyCounted?: number;
   /** People whose birthday the player learned this turn (they said it, someone told them). */
   birthdaysLearned?: { entityId?: string; name: string }[];
+  /** The phone on the page (phone.ts): numbers swapped, texts read or sent in the prose. */
+  phone?: {
+    numbersExchanged?: { entityId?: string; name: string }[];
+    received?: { entityId?: string; from: string; text: string }[];
+    sent?: { entityId?: string; to: string; text: string }[];
+  };
   /** Names the player heard, read or recognised this turn (names.ts). */
   namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
   /** Grudges started, acted on, settled or forgiven this turn. */
@@ -1037,18 +1125,6 @@ export type PlaceDef = {
   who?: string;
 };
 
-export type FestivalDef = {
-  id: string;
-  name: string;
-  /** Words matched against the player's location; empty = everywhere. */
-  where: string[];
-  month: number;
-  day: number;
-  /** How many days it runs (default 1). */
-  days?: number;
-  note: string;
-};
-
 /** The world the player wrote. */
 export type WorldDefinition = {
   id: string;
@@ -1071,7 +1147,6 @@ export type WorldDefinition = {
   places: PlaceDef[];
   /** The player's own lore entries. */
   lore: LoreRecord[];
-  festivals: FestivalDef[];
   /** Image style opener, e.g. "cinematic photo, 35mm film". */
   artStyle: string;
   /** The player's own extra rules for the narrator. */
@@ -1137,6 +1212,8 @@ export type StartingPerson = {
   met?: boolean;
   secrets?: string[];
   whereabouts?: string;
+  /** Their routine in plain words ("weekdays 9-5 at the office; sleeps 23-7"). */
+  routine?: string;
   /** Lives with the player (a partner, a roommate). */
   livesWithYou?: boolean;
 };

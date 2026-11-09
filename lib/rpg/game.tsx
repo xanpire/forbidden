@@ -52,6 +52,7 @@ import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortr
 import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
 import { narratorHeldBack } from './refusal';
+import { applyTextPlan, sendText as sendPhoneText, waitForNext, writeTexts } from './phone';
 import {
   applyStateStep,
   applySummaryJob,
@@ -183,6 +184,10 @@ type GameContextValue = {
   /** Saves a painted portrait of someone in your bonds. */
   /** Applies a change to the latest copy of the save (explicit pictures, reference sheets, world edits). */
   changeSave: (change: (db: AppDatabase) => AppDatabase) => Promise<void>;
+  /** Sends a text from the phone; what comes back lands in story time. */
+  sendText: (threadId: string, text: string) => Promise<void>;
+  /** Waits for the next text or arrival: the story clock moves to it. False when nothing is on its way. */
+  waitForText: () => Promise<boolean>;
   addCharacterPortrait: (
     entityId: string,
     image: string,
@@ -436,6 +441,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
               followUps.push(...result.followUpIds);
               return result.db;
             });
+          } else if (job.kind === 'text') {
+            // Someone writes back (or texts first); the texts land later, in story time.
+            const plan = await writeTexts(activeKey, base, job);
+
+            await updateLatest(slotId, (latest) =>
+              latest.memoryJobs?.some((entry) => entry.id === jobId) ? applyTextPlan(latest, job, plan) : null
+            );
           } else {
             const output = await runSummaryJob(activeKey, base, job);
 
@@ -1276,6 +1288,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb]
   );
 
+  const sendText = useCallback(
+    async (threadId: string, text: string) => {
+      const latest = dbRef.current;
+      if (!latest) return;
+
+      const activeKey = apiKey.trim() || (await loadApiKey()).trim();
+      const sent = sendPhoneText(latest, threadId, text);
+      await commitDb(sent.db);
+
+      if (!activeKey) {
+        setError('Add your OpenRouter API key in Settings so people can text back.');
+        return;
+      }
+
+      if (sent.jobId) void scheduleJobs(activeKey, latest.meta.slotId, [sent.jobId]);
+    },
+    [apiKey, commitDb, scheduleJobs]
+  );
+
+  const waitForText = useCallback(async () => {
+    const latest = dbRef.current;
+    const waited = latest ? waitForNext(latest) : null;
+
+    if (!waited) return false;
+
+    await commitDb(waited);
+    return true;
+  }, [commitDb]);
+
   const addCharacterPortrait = useCallback(
     async (entityId: string, image: string, signature: CharacterPortraitSignature, usedFace: boolean) => {
       const stored = await storeImage(image);
@@ -1394,6 +1435,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       correctTurnTime,
       addPortrait,
       changeSave,
+      sendText,
+      waitForText,
       addCharacterPortrait,
       setCharacterFace,
     }),
@@ -1405,6 +1448,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       attachImage,
       addPortrait,
       changeSave,
+      sendText,
+      waitForText,
       addCharacterPortrait,
       setCharacterFace,
       correctTurnTime,

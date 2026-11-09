@@ -425,6 +425,14 @@ export function PersonFields({ person, set }: { person: StartingPerson; set: (pa
       <Toggle label="You've met before" onChange={(met) => set({ met })} value={person.met !== false} />
       <Toggle hint="A partner, a roommate: they share your home." label="Lives with you" onChange={(livesWithYou) => set({ livesWithYou })} value={Boolean(person.livesWithYou)} />
       <Field label="Where they are now" onChange={(whereabouts) => set({ whereabouts })} value={person.whereabouts ?? ''} />
+      <Field
+        hint="Optional. Where they usually are, in plain words: “weekdays 9-17:30 at the office; sleeps 23:30-7; Fridays 21-1 at the bar”. Left empty, it comes from their job."
+        label="Their week"
+        multiline
+        lines={2}
+        onChange={(routine) => set({ routine })}
+        value={person.routine ?? ''}
+      />
       <ListField label="Their secrets" onChange={(secrets) => set({ secrets })} values={person.secrets} />
     </>
   );

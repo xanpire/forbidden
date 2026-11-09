@@ -34,7 +34,6 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     factions: [],
     places: [],
     lore: [],
-    festivals: [],
     artStyle: 'cinematic photo, natural light',
   };
 }
@@ -90,9 +89,6 @@ export function normalizeWorld(value: unknown): WorldDefinition {
       })),
     lore: list<WorldDefinition['lore'][number]>(world.lore).filter(
       (entry) => entry && typeof entry.id === 'string' && typeof entry.text === 'string'
-    ),
-    festivals: list<WorldDefinition['festivals'][number]>(world.festivals).filter(
-      (festival) => festival && typeof festival.id === 'string' && typeof festival.month === 'number'
     ),
     artStyle: text(world.artStyle) || base.artStyle,
     ...(text(world.narratorNotes) ? { narratorNotes: text(world.narratorNotes) } : {}),

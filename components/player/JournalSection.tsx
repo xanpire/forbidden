@@ -12,6 +12,8 @@ import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
 import { displayName } from '@/lib/rpg/names';
 import { isPlayer } from '@/lib/rpg/player';
+import { threadTitle, threadsByRecent, unreadCount } from '@/lib/rpg/phone';
+import { router } from 'expo-router';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'scrapbook';
 
@@ -67,7 +69,7 @@ function NowView({ db }: { db: AppDatabase }) {
   const plans = open.filter((thread) => thread.type === 'plan');
   const goals = open.filter((thread) => thread.type === 'goal');
   const other = open.filter((thread) => thread.type !== 'plan' && thread.type !== 'goal');
-  // Birthdays, anniversaries and festivals on today's date, as far as you know.
+  // Birthdays, anniversaries and holidays on today's date, as far as you know.
   const today = todayNotes(db);
 
   return (
@@ -236,6 +238,17 @@ function MemoriesView({ db }: { db: AppDatabase }) {
   );
 }
 
+/** Unread texts and the latest thread, for the Journal's phone row. */
+function phoneLine(db: AppDatabase) {
+  const unread = unreadCount(db);
+  const latest = threadsByRecent(db)[0];
+
+  if (unread) return `${unread} unread`;
+  if (latest) return `Latest: ${threadTitle(db, latest)}`;
+
+  return 'Texts and contacts';
+}
+
 export function JournalSection() {
   const { db } = useGame();
   const [view, setView] = useState<JournalView>('now');
@@ -246,6 +259,14 @@ export function JournalSection() {
 
   return (
     <View style={styles.section}>
+      <ListCard>
+        <ListRow
+          body={phoneLine(db)}
+          chevron
+          onPress={() => router.push('/phone')}
+          title="Phone"
+        />
+      </ListCard>
       <FilterPills onChange={setView} options={VIEWS} value={view} />
       {view === 'now' ? <NowView db={db} /> : null}
       {view === 'recap' ? <RecapView db={db} /> : null}

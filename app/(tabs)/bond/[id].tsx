@@ -14,6 +14,7 @@ import { howTheySeem, shownProfile } from '@/lib/rpg/disclosure';
 import { whereaboutsOf } from '@/lib/rpg/places';
 import { resolveEntity } from '@/lib/rpg/entities';
 import { MergeSheet } from '@/components/player/MergeSheet';
+import { RoutineCard } from '@/components/player/RoutineCard';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
@@ -213,6 +214,8 @@ export default function BondScreen() {
             ))}
           </ListCard>
         ) : null}
+
+        {!dead ? <RoutineCard entity={entity} /> : null}
 
         {life.length > 0 ? (
           <>

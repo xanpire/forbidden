@@ -5,12 +5,14 @@
 //
 // This module knows what kind of place
 // the player is at (a building, the street, a road or station, outdoors), and
-// where the people the player knows are, as far as the player knows.
+// where the people the player knows are, as far as the player knows: what the
+// story said, else where their routine has them (routines.ts).
 
 import { daysBetween } from './calendar';
 import { companionsOf } from './companions';
 import { isDeceased } from './deaths';
 import { isPlayer } from './player';
+import { storyWhereaboutsHold, whereNow } from './routines';
 import type { AppDatabase, EntityRecord, LocationKind } from './types';
 
 function escape(text: string) {
@@ -82,8 +84,8 @@ export function locationKindOf(db: AppDatabase): LocationKind {
 
 export type KnownWhereabouts = {
   entity: EntityRecord;
-  /** told: the story said where they went; seen: where you last saw them; with-you: with you now. */
-  basis: 'told' | 'seen' | 'with-you';
+  /** told: the story said where they went; routine: where their day usually has them; seen: where you last saw them; with-you: with you now. */
+  basis: 'told' | 'routine' | 'seen' | 'with-you';
   /** In your words, for the bond page ("At work", "Last seen at the bar"). */
   detail: string;
   /** How old that knowledge is, in days. */
@@ -104,8 +106,13 @@ export function whereaboutsOf(db: AppDatabase, entity: EntityRecord): KnownWhere
   const daysOld = entity.lastSeen ? Math.max(0, daysBetween(entity.lastSeen, db.state.inStoryDate)) : undefined;
   const ago = daysOld === undefined ? '' : daysOld < 1 ? 'today' : daysOld < 2 ? 'yesterday' : `${Math.round(daysOld)} days ago`;
 
-  if (entity.whereabouts) {
-    return { entity, basis: 'told', detail: entity.whereabouts.charAt(0).toUpperCase() + entity.whereabouts.slice(1), daysOld };
+  const now = whereNow(entity, db.state.inStoryDate);
+
+  if (now) {
+    const told = storyWhereaboutsHold(entity, db.state.inStoryDate);
+    const detail = now.charAt(0).toUpperCase() + now.slice(1);
+
+    return told ? { entity, basis: 'told', detail, daysOld } : { entity, basis: 'routine', detail: `Usually ${now} around now`, daysOld };
   }
 
   if (entity.lastSeenAt) {

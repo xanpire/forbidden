@@ -14,7 +14,7 @@ import { EXPLICIT_PROVIDERS, checkPictureCast, explicitScenePrompt, missingRefer
 import { mentionsEntity } from './characterRefs';
 import { loadImages } from './imageStore';
 import { paintReferenceSheet } from './paintExplicit';
-import { sexPartners } from './sexMode';
+import { sexPartners, sexualMove } from './sexMode';
 import { packPeopleReferences } from './castSheet';
 import { recordDebugImage, recordDebugSideCall } from './debug';
 import {
@@ -29,7 +29,7 @@ import {
   SCENE_CAST_LIMIT,
 } from './image';
 import { checkSceneImage, expectedScene, imageCheckEnabled, sharperActorRule, type ImageCheck } from './imageCheck';
-import { wantsEnsemble, type ShotChip } from './imageDirection';
+import { wantsEnsemble, type ShotChip, type ShotType } from './imageDirection';
 import { loadImage } from './imageStore';
 import { faceDroppedWarning, loadPlayerReferenceImages, planReferences, type PlannedReference } from './referenceImages';
 import type { AppDatabase, EntityRecord, SceneImageMeta } from './types';
@@ -204,6 +204,77 @@ export async function paintScene({
 
   const takesOut = await drawWithCheck({ apiKey, db, turnId, action, prompt, takes, makeOne: (text) => makeOne(text), metaFor });
   return { turnId, takes: takesOut, refSheets: [] };
+}
+
+const SEXUAL_PHOTO = /\b(nude|naked|topless|bottomless|lingerie|underwear|bra|panties|explicit|nsfw|undress\w*|bare (?:breasts?|chest|ass)|breasts?|nipples?|cock|dick|pussy|ass|spread|touching (?:herself|himself|themselves))\b/i;
+
+/**
+ * A picture someone sent by text, painted when the player opens it. The
+ * texting model's description is the director's line; the sender is the only
+ * person in it. A sexual photo goes to the explicit provider (with the same
+ * adult checks); any other follows the Settings route.
+ */
+export async function paintTextPhoto({
+  apiKey,
+  db,
+  caps,
+  senderId,
+  description,
+  updateSettings,
+  onWarning,
+}: {
+  apiKey: string;
+  db: AppDatabase;
+  caps: ImageModelCaps;
+  senderId: string;
+  description: string;
+  updateSettings?: (patch: Partial<AppDatabase['settings']>) => Promise<void>;
+  onWarning?: (message: string) => void;
+}): Promise<{ take: PaintedTake; refSheets: { entityId: string; image: string }[] }> {
+  const sender = db.entities.find((entity) => entity.id === senderId);
+
+  if (!sender) throw new Error('No picture: nobody to paint.');
+
+  const turnId = [...db.rawLog].reverse().find((entry) => entry.role === 'assistant')?.id ?? '';
+  const action = `${sender.name}'s photo, sent by text: ${description}`;
+  const written = { action, shot: 'a phone photo as sent by text: phone camera, casual framing, natural light', shotType: 'close-up' as ShotType, caption: `${sender.name} sent you this.` };
+  const provider = db.settings.explicitProvider ?? 'wiro';
+  const sexual = SEXUAL_PHOTO.test(description) || sexualMove(description);
+  const route: PictureRoute = sexual ? { kind: 'explicit', provider, sexual: true } : db.settings.picturesOn === 'explicit' ? { kind: 'explicit', provider, sexual: false } : { kind: 'standard' };
+
+  if (route.kind === 'explicit') {
+    const cast = checkPictureCast(db, [sender]);
+
+    if (cast.ok) {
+      const result = await paintExplicitScene({ apiKey, db, turnId, route, written, people: [sender], takes: 1, updateSettings, onWarning });
+      return { take: result.takes[0], refSheets: result.refSheets };
+    }
+    if (route.sexual) throw new Error(`No picture: ${cast.reason}.`);
+  }
+
+  const refs = sceneCharacterReferences(db, action, 1);
+  const loaded = await Promise.all(refs.map(async (person) => ({ kind: 'character' as const, uri: (await loadImage(person.image)) ?? '', name: person.name, source: person.source })));
+  const plan = planReferences(loaded.filter((item) => item.uri), caps.maxReferences);
+  const prompt = buildSceneImagePrompt(db, plan.references, action, { shot: written.shot, shotType: written.shotType });
+  const makeOne = async (text: string) => {
+    const startedAt = Date.now();
+    const result = await generateImage({ apiKey, caps, prompt: text, inputReferences: plan.references.map((reference) => reference.uri) });
+    recordDebugImage(turnId, 'image', caps.modelId, result.cost, Date.now() - startedAt);
+    return result.dataUri;
+  };
+  const metaFor = (text: string, mightBeOff: boolean): SceneImageMeta => ({
+    prompt: text,
+    action,
+    caption: written.caption,
+    shot: written.shot,
+    ...(mightBeOff ? { mightBeOff: true } : {}),
+    references: plan.references.map((reference) => ({ kind: reference.kind, ...(reference.name ? { name: String(reference.name) } : {}) })),
+    model: caps.modelId,
+    createdAt: Date.now(),
+  });
+  const takes = await drawWithCheck({ apiKey, db, turnId, action, prompt, takes: 1, makeOne, metaFor });
+
+  return { take: takes[0], refSheets: [] };
 }
 
 /**

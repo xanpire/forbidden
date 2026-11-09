@@ -70,6 +70,7 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="new-story" />
               <Stack.Screen name="setup" />
+              <Stack.Screen name="phone" />
               <Stack.Screen name="world-editor" />
               <Stack.Screen name="+not-found" />
             </Stack>

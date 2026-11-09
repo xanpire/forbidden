@@ -74,9 +74,6 @@ export function testWorld(): WorldDefinition {
         always: true,
       },
     ],
-    festivals: [
-      { id: 'harbour-lights', name: 'the Harbour Lights festival', where: ['Old Town', 'Harbour', 'Docks'], month: 11, day: 20, days: 2, note: 'lanterns on the water and food stalls on every quay' },
-    ],
     artStyle: 'cinematic photo, 35mm film, natural light',
   };
 }

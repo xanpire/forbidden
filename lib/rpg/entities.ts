@@ -201,6 +201,26 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
   if (diff.outfits) next.outfits = known(diff.outfits);
   if (diff.sex?.with) next.sex = { ...diff.sex, with: known(diff.sex.with) };
 
+  // The phone: numbers and texts belong to people the save knows; a text can
+  // also come from an unknown number.
+  if (diff.phone) {
+    const numbersExchanged = known(diff.phone.numbersExchanged);
+    const received = diff.phone.received?.flatMap((item) => {
+      if (item.from.toLowerCase() === 'unknown') return [item];
+      const ref = resolve(item.entityId ?? item.from);
+      return ref?.entityId ? [{ ...item, from: ref.name, entityId: ref.entityId }] : [{ ...item, from: 'unknown' }];
+    });
+    const sent = diff.phone.sent?.flatMap((item) => {
+      const ref = resolve(item.entityId ?? item.to);
+      return ref?.entityId ? [{ ...item, to: ref.name, entityId: ref.entityId }] : [];
+    });
+    next.phone = {
+      ...(numbersExchanged?.length ? { numbersExchanged } : {}),
+      ...(received?.length ? { received } : {}),
+      ...(sent?.length ? { sent } : {}),
+    };
+  }
+
   // A consequence can belong to someone unnamed; a named one is resolved, and
   // witnesses become names.
   if (diff.consequences) {
@@ -423,7 +443,7 @@ export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
     ...db,
     entities: db.entities.map((entity) =>
       entity.type === 'character' && matched.has(entity.id) && !entity.deceased && entity.status !== 'Deceased'
-        ? { ...entity, lastSeen: db.state.inStoryDate, lastSeenAt: db.state.location || entity.lastSeenAt, met: true, whereabouts: undefined }
+        ? { ...entity, lastSeen: db.state.inStoryDate, lastSeenAt: db.state.location || entity.lastSeenAt, met: true, whereabouts: undefined, whereaboutsAt: undefined }
         : entity
     ),
   };
@@ -664,7 +684,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     ...(entity.appearance?.trim()
       ? { currentLook: entity.appearance.trim().slice(0, 200), currentLookSeq: undefined }
       : {}),
-    ...(entity.whereabouts?.trim() ? { whereabouts: entity.whereabouts.trim().slice(0, 120) } : {}),
+    ...(entity.whereabouts?.trim() ? { whereabouts: entity.whereabouts.trim().slice(0, 120), whereaboutsAt: db.state.inStoryDate } : {}),
   };
 
   const nextState =

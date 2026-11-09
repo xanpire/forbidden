@@ -32,6 +32,7 @@ const KIND_LABEL: Record<DebugCallKind, string> = {
   imageAction: 'Image director',
   imageCheck: 'Image check',
   portrait: 'Portrait',
+  text: 'Texts',
 };
 
 const STATE_LABEL = {

@@ -21,9 +21,14 @@ import { isPlayerEntity } from './player';
 /** Apart this long, meeting again is a reunion with a "since you last saw them" note. */
 export const REUNION_DAYS = 30;
 
-/** A side character's life moves on about this often while the player is away. */
-export const LIFE_EVENT_MIN_DAYS = 60;
-export const LIFE_EVENT_SPREAD_DAYS = 90;
+/**
+ * A side character's life moves on by itself about this often while the
+ * player is away. Most life events grow from the story instead (the
+ * tracker's life_events, and news people share by text), so the random roll
+ * is rare.
+ */
+export const LIFE_EVENT_MIN_DAYS = 90;
+export const LIFE_EVENT_SPREAD_DAYS = 120;
 
 /** Each person keeps at most this many life events. */
 const LIFE_EVENTS_KEPT = 8;
@@ -54,6 +59,8 @@ export function isSideCharacter(_db: AppDatabase, entity: EntityRecord): boolean
 type Template = {
   kind: LifeEventKind;
   text: string;
+  /** Their routine from then on (routines.ts). */
+  routine?: string;
   /** Only from this age. */
   minAge?: number;
 };
@@ -64,7 +71,7 @@ const TEMPLATES: Record<Walk, Template[]> = {
   service: [
     { kind: 'work', text: 'spent weeks on a hard assignment far from home and came back thinner and quieter' },
     { kind: 'injury', text: 'was hurt on the job; it has healed, but they favour that side now' },
-    { kind: 'posting', text: 'was moved to night shifts for a season' },
+    { kind: 'posting', text: 'was moved to night shifts for a season', routine: 'Mon-Thu 21:00-7:00 at work; sleeps 8:00-15:00' },
     { kind: 'team', text: 'worked with a new partner for a stretch' },
     { kind: 'loss', text: 'lost a colleague and does not talk about it' },
     { kind: 'skill', text: 'passed a hard qualification and is quietly proud of it' },
@@ -103,7 +110,7 @@ const TEMPLATES: Record<Walk, Template[]> = {
   civilian: [
     { kind: 'move', text: 'moved to another part of town' },
     { kind: 'loss', text: 'lost someone in the family over the winter' },
-    { kind: 'work', text: 'found new work and seems steadier for it' },
+    { kind: 'work', text: 'found new work and seems steadier for it', routine: 'weekdays 9:00-17:00 at work; sleeps 23:30-7:00' },
     { kind: 'family', text: 'got married', minAge: 18 },
     { kind: 'romance', text: 'has started seeing someone', minAge: 18 },
     { kind: 'move', text: 'moved away to another town' },
@@ -220,6 +227,7 @@ export function advanceLives(db: AppDatabase): AppDatabase {
       }
 
       events = [...events, { date, text, kind: template.kind, source: 'world' }];
+      if (template.routine) next = { ...next, routine: template.routine };
       anchor = date;
     }
 
@@ -257,8 +265,13 @@ export function applyLifeEvents(db: AppDatabase, items: TurnDiff['lifeEvents']):
     if (lifeOf(entity).some((event) => event.text.toLowerCase() === text.toLowerCase())) continue;
 
     const events = trimLife([...lifeOf(entity), { date: now, text, kind: 'other', source: 'story', known: true }]);
+    // A new job, a move, night shifts: their routine changes with it.
+    const routine = item.routine?.trim();
 
-    next = { ...next, entities: next.entities.map((person) => (person.id === entity.id ? { ...person, lifeEvents: events } : person)) };
+    next = {
+      ...next,
+      entities: next.entities.map((person) => (person.id === entity.id ? { ...person, lifeEvents: events, ...(routine ? { routine } : {}) } : person)),
+    };
   }
 
   return next;

@@ -308,7 +308,7 @@ const HELP_SHAPES: Record<HelpSection, string> = {
   backstory: '{"backstory": string, "truths": string[], "secrets": string[]}',
   intimacy: '{"interests": string[], "narratorVoice": string}',
   people:
-    '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string, "drawnTo": string, "turnOns": string[], "wontDo": string[], "inBed": string}]}',
+    '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string, "drawnTo": string, "turnOns": string[], "wontDo": string[], "inBed": string, "routine": string (their week in plain words, like "weekdays 9-17:30 at the office; sleeps 23:30-7; Fridays 21-1 at the bar")}]}',
   opening: '{"location": string, "situation": string, "threads": string[]}',
 };
 
@@ -452,7 +452,9 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
           style: fill(current.style, record.inBed) || undefined,
         };
         const any = next.orientation || next.desires.length || next.boundaries.length || next.style;
-        return any ? { ...person, intimacy: next } : person;
+        const routine = fill(person.routine ?? '', record.routine);
+        const withRoutine = routine ? { ...person, routine } : person;
+        return any ? { ...withRoutine, intimacy: next } : withRoutine;
       };
       for (const item of Array.isArray(s.people) ? s.people : []) {
         const record = item as Record<string, unknown>;

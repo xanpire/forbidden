@@ -60,6 +60,7 @@ import type {
   TurnDiff,
 } from './types';
 import { isPlayer } from './player';
+import { applyPhoneDiff, deliverDueTexts, isTextJobValid, queueOwnTexts, settleArrivals } from './phone';
 
 const TIME_SKIP_DAYS = 180;
 /** Most story messages one chapter summary covers; the rest wait for the next. */
@@ -159,6 +160,8 @@ export function isJobValid(db: AppDatabase, job: MemoryJob): boolean {
       const needed = job.kind === 'arc' ? ARC_SIZE : YEAR_SIZE;
       return ids.length >= needed && ids.every((id) => db.summaries.some((s) => s.id === id));
     }
+    case 'text':
+      return isTextJobValid(db, job);
     default:
       return false;
   }
@@ -275,6 +278,8 @@ export function applyStateStep(
   const effectiveDiff: TurnDiff = merged;
 
   let next = applyTurnDiff(latest, effectiveDiff);
+  // Texts whose time came during this turn land now (the next beat hears the buzz).
+  next = deliverDueTexts(next);
   // Someone the player had not seen in a long time is here again.
   next = markReunions(latest, next);
   const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
@@ -354,6 +359,9 @@ export function applyStateStep(
     next = markIntimateMemory(next, turn.turnLogId);
   }
   next = applyLifeEvents(next, extraction?.lifeEvents);
+  // The phone on the page: numbers swapped, texts read or sent in the prose.
+  const phoneStep = applyPhoneDiff(next, extraction?.phone);
+  next = settleArrivals(latest, phoneStep.db);
   next = advanceLives(next);
   next = advanceConsequences(next);
 
@@ -377,7 +385,10 @@ export function applyStateStep(
     jobsOf(next).filter((job) => !(job.kind === 'state' && job.turnLogId === turn.turnLogId))
   );
 
-  const followUpIds: string[] = [];
+  // Close people text on their own (now and then, birthdays, holidays).
+  const ownTexts = queueOwnTexts(next);
+  next = ownTexts.db;
+  const followUpIds: string[] = [...phoneStep.jobIds, ...ownTexts.jobIds];
 
   if (Math.abs(daysBetween(beforeDate, next.state.inStoryDate)) >= TIME_SKIP_DAYS) {
     const job = newJob('timeSkip', turn.turnLogId, {

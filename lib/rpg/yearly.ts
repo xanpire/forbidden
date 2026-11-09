@@ -1,4 +1,4 @@
-// The yearly calendar: birthdays, anniversaries, New Year and festivals.
+// The yearly calendar: birthdays, anniversaries and real present-day holidays.
 //
 // Rules (living-world Stage 2):
 // - At most one yearly offer per turn, never in a fight, each one once a year.
@@ -8,8 +8,8 @@
 //   thinks of a close person who is far away (rarer). The dead get
 //   remembrance days.
 // - The player's own hard days come first: the day someone close to them died.
-// - Festivals (the world's own, `db.world.festivals`) only when the player is
-//   in or near where they are held.
+// - Real holidays (HOLIDAYS: New Year, Valentine's Day, Halloween, Christmas,
+//   New Year's Eve), the calendar's own, never anything the world wrote.
 // - Offered, never forced: the narrator gets one line.
 
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
@@ -18,7 +18,7 @@ import { displayName, narratorName } from './names';
 import { castWithCompanions } from './companions';
 import { isDeceased } from './deaths';
 import { resolveEntity } from './entities';
-import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, FestivalDef, TurnDiff, YearlyState } from './types';
+import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, TurnDiff, YearlyState } from './types';
 import { isPlayerEntity } from './player';
 
 export type BirthdayHabitKind = 'announces' | 'hides' | 'hates' | 'ritual' | 'quiet';
@@ -32,7 +32,7 @@ const CLOSE_AFFINITY = 6;
 export type YearlyOffer = {
   /** Unique per kind and person; offered at most once a year. */
   key: string;
-  kind: 'anniversary' | 'player-birthday' | 'birthday' | 'birthday-unknown' | 'birthday-absent' | 'remembrance' | 'festival' | 'new-year';
+  kind: 'anniversary' | 'player-birthday' | 'birthday' | 'birthday-unknown' | 'birthday-absent' | 'remembrance' | 'holiday';
   /** The one line the narrator gets. */
   line: string;
   /** Who it is about, for the state tracker. */
@@ -82,10 +82,6 @@ export function birthdayHabit(entity: Pick<EntityRecord, 'name'>): BirthdayHabit
   return { kind: 'quiet', note: HABITS[1].note };
 }
 
-/** The world's festivals. */
-export function festivalsOf(db: Pick<AppDatabase, 'world'>): FestivalDef[] {
-  return Array.isArray(db.world?.festivals) ? db.world.festivals : [];
-}
 
 /** The day someone's birthday falls on this year: a leap-day birthday is kept on Feb 28 otherwise. */
 export function birthdayThisYear(birthday: { month: number; day: number }, year: number) {
@@ -146,17 +142,7 @@ function turns(age: number | undefined) {
   return age !== undefined ? ` (${age} today)` : '';
 }
 
-/** The player is in or near a place: its words appear in the location. */
-function nearPlace(db: AppDatabase, words: string[]) {
-  const location = db.state.location.toLowerCase();
-  return words.length === 0 || words.some((word) => word.trim().length > 0 && location.includes(word.trim().toLowerCase()));
-}
 
-function festivalToday(festival: FestivalDef, now: CalendarDate) {
-  const start = daysFromCivil(now.year, festival.month, festival.day);
-  const today = daysFromCivil(now.year, now.month, now.day);
-  return today >= start && today < start + (festival.days ?? 1);
-}
 
 // ---------------------------------------------------------------------------
 // What could come up today, most important first.
@@ -276,44 +262,36 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
   return [...present, ...remembrance, ...absent];
 }
 
-function festivals(db: AppDatabase): YearlyOffer[] {
-  const now = db.state.inStoryDate;
-  const offers: YearlyOffer[] = [];
+/** Real present-day holidays (month, day). Nothing the world wrote: these are the calendar's own. */
+export const HOLIDAYS: { key: string; name: string; month: number; day: number; line: string }[] = [
+  { key: 'new-year', name: "New Year's Day", month: 1, day: 1, line: "It is New Year's Day: quiet streets, people sleeping off the night before." },
+  { key: 'valentines', name: "Valentine's Day", month: 2, day: 14, line: "It is Valentine's Day: couples out, restaurants full, flowers everywhere." },
+  { key: 'halloween', name: 'Halloween', month: 10, day: 31, line: 'It is Halloween: costumes, parties, kids at doors early in the evening.' },
+  { key: 'christmas-eve', name: 'Christmas Eve', month: 12, day: 24, line: 'It is Christmas Eve: last-minute shopping, people heading home to family.' },
+  { key: 'christmas', name: 'Christmas Day', month: 12, day: 25, line: 'It is Christmas Day: shops shut, families together, quiet streets.' },
+  { key: 'new-years-eve', name: "New Year's Eve", month: 12, day: 31, line: "It is New Year's Eve: parties, crowds and fireworks at midnight." },
+];
 
-  for (const festival of festivalsOf(db)) {
-    if (!festivalToday(festival, now) || !nearPlace(db, festival.where)) continue;
+/** Today's holiday, if any. */
+export function holidayToday(now: CalendarDate) {
+  return HOLIDAYS.find((holiday) => holiday.month === now.month && holiday.day === now.day) ?? null;
+}
 
-    offers.push({
-      key: `festival:${festival.id}`,
-      kind: 'festival',
-      line: `${festival.name.charAt(0).toUpperCase()}${festival.name.slice(1)} is on here${festival.note ? ` (${festival.note})` : ''}. It can colour the scene: crowds, food, lights, people off work.`,
-    });
-  }
-
-  if (now.month === 1 && now.day === 1) {
-    offers.push({
-      key: 'new-year',
-      kind: 'new-year',
-      line:
-        db.state.locationKind === 'settlement'
-          ? "It is New Year's Day: quiet streets, people sleeping off the night before or keeping the day the way people here do."
-          : "It is New Year's Day, even out here.",
-    });
-  }
-
-  return offers;
+function holidays(db: AppDatabase): YearlyOffer[] {
+  const holiday = holidayToday(db.state.inStoryDate);
+  return holiday ? [{ key: holiday.key, kind: 'holiday', line: holiday.line }] : [];
 }
 
 /** Everything the calendar holds for today, most important first (offered or not). */
 export function yearlyCandidates(db: AppDatabase): YearlyOffer[] {
   const birthdayOffers = birthdays(db);
-  const festivalOffers = festivals(db);
+  const holidayOffers = holidays(db);
 
   return [
     ...playerAnniversaries(db),
     ...birthdayOffers.filter((offer) => offer.kind === 'birthday' || offer.kind === 'birthday-unknown'),
     ...birthdayOffers.filter((offer) => offer.kind === 'remembrance'),
-    ...festivalOffers,
+    ...holidayOffers,
     ...birthdayOffers.filter((offer) => offer.kind === 'birthday-absent'),
   ];
 }
@@ -433,16 +411,11 @@ export function todayNotes(db: AppDatabase): string[] {
   const notes: string[] = [];
 
   if (db.state.player.birthday && isToday(now, db.state.player.birthday)) notes.push('Your birthday');
-  if (now.month === 1 && now.day === 1) notes.push("New Year's Day");
+  const holiday = holidayToday(now);
+  if (holiday) notes.push(holiday.name);
 
   for (const birthday of upcomingBirthdays(db, 0)) {
     notes.push(birthday.dead ? `${displayName(db, birthday.entity)}'s birthday (remembered)` : `${displayName(db, birthday.entity)}'s birthday`);
-  }
-
-  for (const festival of festivalsOf(db)) {
-    if (festivalToday(festival, now) && nearPlace(db, festival.where)) {
-      notes.push(festival.name.charAt(0).toUpperCase() + festival.name.slice(1));
-    }
   }
 
   return notes;
