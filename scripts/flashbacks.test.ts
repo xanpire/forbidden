@@ -270,9 +270,9 @@ describe('playing a flashback', () => {
   test('the narrator gets the memory instead of the present', () => {
     const db = start();
     const text = narratorText(db, REMEMBER_INPUT);
-    expect(text).toContain('FLASHBACK — A MEMORY KAN IS LIVING THROUGH');
+    expect(text).toContain('FLASHBACK — A MEMORY YOU ARE LIVING THROUGH');
     expect(text).toContain('You are nine.');
-    expect(text).toContain('KAN THEN: a genin of nine');
+    expect(text).toContain('YOU THEN: a genin of nine');
     expect(text).toContain('No Sharingan');
     expect(text).toContain('THIS TURN THE MEMORY BEGINS');
     expect(text).toContain('how Shisui really died');

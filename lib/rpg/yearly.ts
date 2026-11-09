@@ -40,7 +40,7 @@ const CLOSE_AFFINITY = 6;
 export type YearlyOffer = {
   /** Unique per kind and person; offered at most once a year. */
   key: string;
-  kind: 'anniversary' | 'kan-birthday' | 'birthday' | 'birthday-unknown' | 'birthday-absent' | 'remembrance' | 'festival' | 'new-year';
+  kind: 'anniversary' | 'player-birthday' | 'birthday' | 'birthday-unknown' | 'birthday-absent' | 'remembrance' | 'festival' | 'new-year';
   /** The one line the narrator gets. */
   line: string;
   /** Who it is about, for the state tracker. */
@@ -224,8 +224,8 @@ function playerAnniversaries(db: AppDatabase): YearlyOffer[] {
       .map((entity) => `${narratorName(db, entity)} ${birthdayHabit(entity).note}`);
 
     offers.push({
-      key: 'kan-birthday',
-      kind: 'kan-birthday',
+      key: 'player-birthday',
+      kind: 'player-birthday',
       line: `Today is your birthday${age !== undefined ? `: you are ${age}` : ''}. ${who ? `${who}.` : 'Nobody close enough to remember is near.'}${views.length ? ` If it came out: ${views.join('; ')}.` : ''} Most people do not know the date; you never announce it.`,
     });
   }

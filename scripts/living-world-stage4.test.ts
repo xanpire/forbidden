@@ -360,20 +360,10 @@ describe('the canon world map layout', () => {
     expect(travelDaysBetween('fire', 'tea')).toBe(2.5);
   });
 
-  test('the narrator\'s geography matches, and older saves get the new text', () => {
+  test('the narrator\'s geography matches', () => {
     expect(GEOGRAPHY_LORE).toContain('southern coast, south of Hidden Leaf');
     expect(GEOGRAPHY_LORE).toContain('Land of Whirlpools');
     expect(GEOGRAPHY_LORE).toContain('Land of Frost');
-    const db = seed();
-    const old = {
-      ...db,
-      loreEntries: db.loreEntries.map((lore) =>
-        lore.text === GEOGRAPHY_LORE ? { ...lore, text: 'GEOGRAPHY (fixed; old directions)' } : lore
-      ),
-    } as AppDatabase;
-    const loaded = normalizeDatabase(old);
-    expect(loaded.loreEntries.some((lore) => lore.text === GEOGRAPHY_LORE)).toBe(true);
-    expect(loaded.loreEntries.some((lore) => lore.text.includes('old directions'))).toBe(false);
   });
 });
 

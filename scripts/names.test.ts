@@ -281,33 +281,6 @@ describe('names Kan knows', () => {
     expect(searchableNames(db, karin)).toContain('the red-haired girl');
     expect(searchableNames(db, tobi).some((name) => /obito|madara/i.test(name))).toBe(false);
   });
-
-  test('an old save keeps everyone he met by name', () => {
-    const seeded = save();
-    // Built the way a save from before names looked.
-    const legacy = {
-      ...seeded,
-      state: { ...seeded.state, namesVersion: undefined },
-      entities: seeded.entities.map((entity) => {
-        const { known: _known, identities: _identities, ...rest } = entity;
-        if (entity.name === 'Kakuzu' || entity.name === 'Tobi') return { ...rest, met: true };
-        if (entity.name === 'Pain') return { ...rest, hiddenAliases: [{ name: 'Nagato', revealedBy: 'pain-assault' }] };
-        return rest;
-      }),
-    } as AppDatabase;
-    const db = normalizeDatabase(legacy);
-
-    expect(displayName(db, person(db, 'Kakuzu'))).toBe('Kakuzu');
-    expect(displayName(db, person(db, 'Tobi'))).toBe('Tobi');
-    expect(displayName(db, person(db, 'Karin'))).toBe('the red-haired girl');
-    expect(displayName(db, person(db, 'Itachi Uchiha'))).toBe('Itachi Uchiha');
-    expect(person(db, 'Pain').hiddenAliases).toBeUndefined();
-    expect(person(db, 'Pain').identities?.map((identity) => identity.name)).toEqual(['Pain', 'Nagato Uzumaki']);
-    expect(db.state.namesVersion).toBe(1);
-
-    // Loading twice changes nothing.
-    expect(ensureNames(db).entities).toEqual(db.entities);
-  });
 });
 
 describe('the prompts', () => {

@@ -11,10 +11,10 @@ import { knowersOf } from './facts';
 import { DEFAULT_SETTINGS, emptyIndex, normalizePromptBudget } from './defaults';
 import { makeId } from './id';
 import { stripNarrationJson } from './prompt';
-import { CANON_MILESTONES, CANON_VERSION, LEGACY_CANON_POINTS } from './canonData';
+import { CANON_VERSION } from './canonData';
 import { dropBareNatureJutsu, normalizeJutsuNature } from './jutsu';
 import { normalizeDate } from './calendar';
-import { GEOGRAPHY_LORE, seedDatabase } from './seed';
+import { seedDatabase } from './seed';
 import { CANON_CAST, FEMALE_CAST, ensureCanonCast } from './canonCast';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
@@ -355,68 +355,7 @@ export async function importDatabase(
   return imported;
 }
 
-function migrateCanonV2(db: AppDatabase): AppDatabase {
-  const progress = db.state?.canonProgress;
-
-  if (!progress || (typeof progress.version === 'number' && progress.version >= CANON_VERSION)) {
-    return db;
-  }
-
-  const canonFactIds = new Set(
-    (db.facts ?? [])
-      .filter((fact) => /^fact_(canon|attended|missed)_/.test(fact.id))
-      .map((fact) => fact.id)
-  );
-  const canonThreadIds = new Set(
-    (db.threads ?? []).filter((thread) => thread.id.startsWith('thread_canon_')).map((thread) => thread.id)
-  );
-  const canonPoints = new Set([
-    ...(CANON_MILESTONES.map((milestone) => milestone.canonPoint).filter(Boolean) as string[]),
-    ...LEGACY_CANON_POINTS,
-  ]);
-  const canonEventIds = new Set(
-    (db.events ?? [])
-      .filter(
-        (event) => event.tags?.includes('canon') || event.id.startsWith('event_canon_')
-      )
-      .map((event) => event.id)
-  );
-
-  const next: AppDatabase = {
-    ...db,
-    events: (db.events ?? []).filter((event) => !canonEventIds.has(event.id)),
-    facts: (db.facts ?? []).filter((fact) => !canonFactIds.has(fact.id)),
-    threads: (db.threads ?? []).filter((thread) => !canonThreadIds.has(thread.id)),
-    eventEntities: (db.eventEntities ?? []).filter(
-      (link) => !canonEventIds.has(link.eventId)
-    ),
-    state: {
-      ...db.state,
-      canonPoint:
-        db.state?.canonPoint && canonPoints.has(db.state.canonPoint)
-          ? (db.state.scene || 'The story is still unfolding.')
-          : db.state?.canonPoint,
-      canonProgress: {
-        version: CANON_VERSION,
-        baselineDate: db.state?.inStoryDate,
-        baselineTurn: (db.rawLog ?? []).filter(
-          (entry) => entry.kind === 'story' && entry.role === 'assistant'
-        ).length,
-        completed: [],
-        active: [],
-        engaged: [],
-        expired: [],
-        heard: {},
-      },
-    },
-  };
-
-  return next;
-}
-
 export function normalizeDatabase(db: AppDatabase): AppDatabase {
-  const migrated = migrateCanonV2(db);
-  db = migrated;
   const normalized: AppDatabase = {
     schemaVersion: 1,
     meta: db.meta ?? {
@@ -497,14 +436,7 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
       : [],
     facts: Array.isArray(db.facts) ? db.facts : [],
     threads: Array.isArray(db.threads) ? db.threads : [],
-    // The geography paragraph is the app's, not the story's: older saves get the current one.
-    loreEntries: Array.isArray(db.loreEntries)
-      ? db.loreEntries.map((lore) =>
-          typeof lore.text === 'string' && lore.text.startsWith('GEOGRAPHY (fixed') && lore.text !== GEOGRAPHY_LORE
-            ? { ...lore, text: GEOGRAPHY_LORE }
-            : lore
-        )
-      : [],
+    loreEntries: Array.isArray(db.loreEntries) ? db.loreEntries : [],
     // The same summary saved twice (a job that ran twice) is kept once.
     summaries: Array.isArray(db.summaries)
       ? db.summaries.filter(
@@ -700,7 +632,6 @@ function normalizeState(state: AppDatabase['state'] | undefined): AppDatabase['s
     flashbacks: normalizeFlashbacks(state.flashbacks),
     safehouses: normalizeSafehouses(state.safehouses),
     purse: normalizePurse(state.purse),
-    namesVersion: typeof state.namesVersion === 'number' ? state.namesVersion : undefined,
   };
 }
 

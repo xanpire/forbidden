@@ -289,7 +289,7 @@ export function buildNarrationPrompt(
       'CONTINUITY: continue directly from the last narrated beat of the memory. Never repeat a beat you already wrote and never contradict it.',
       // Present wounds don't exist in the memory.
       formatSceneModeLine({ ...db, facts: [] }, sceneMode),
-      `YOU (KAN) DO OR SAY:\n${userMessage}`,
+      `YOU DO OR SAY:\n${userMessage}`,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -323,7 +323,7 @@ export function buildNarrationPrompt(
       formatFlashbackReturn(db),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       formatSceneModeLine(db, sceneMode),
-      `YOU (KAN) DO OR SAY:\n${userMessage}`,
+      `YOU DO OR SAY:\n${userMessage}`,
     ]
       .filter(Boolean)
       .join('\n\n');

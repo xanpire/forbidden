@@ -352,12 +352,12 @@ export function applyThreadDiff(
     };
   }
 
-  const kan = playerEntity(db);
+  const you = playerEntity(db);
   const named = (thread.participants ?? []).map((name) => resolveEntity(db, name)).filter((entity): entity is EntityRecord => Boolean(entity));
   const present = [...(options.presentIds ?? [])]
     .map((id) => db.entities.find((entity) => entity.id === id))
     .filter((entity): entity is EntityRecord => Boolean(entity));
-  const people = uniqueList([...(kan ? [kan.id] : []), ...(named.length > 0 ? named : present).map((entity) => entity.id)]);
+  const people = uniqueList([...(you ? [you.id] : []), ...(named.length > 0 ? named : present).map((entity) => entity.id)]);
   const names = people.map((id) => db.entities.find((entity) => entity.id === id)?.name ?? id);
 
   if (existingIndex === -1) {

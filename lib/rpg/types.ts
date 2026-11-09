@@ -140,8 +140,6 @@ export type GameState = {
   safehouses?: SafehouseState;
   /** The money the player carries, and what moved it (see money.ts). */
   purse?: PurseState;
-  /** Set once the save tracks which names the player knows (names.ts); older saves get it on load. */
-  namesVersion?: number;
 };
 
 /** One change to the player's money (see money.ts). */
@@ -583,11 +581,6 @@ export type EntityRecord = {
    * Missing means met (older saves, and everyone the story introduced).
    */
   met?: boolean;
-  /**
-   * Older saves only: spoiler names from before identities (names.ts).
-   * Dropped on load by `ensureNames`.
-   */
-  hiddenAliases?: HiddenAlias[];
   /** How their name splits (see names.ts); worked out from the name when missing. */
   nameParts?: NameParts;
   /**
@@ -711,12 +704,6 @@ export type NameKnowledge = {
   /** Names of the identities he has learned. */
   identities?: string[];
   history?: { name: string; part: NamePart; how: NameHow; date: CalendarDate }[];
-};
-
-export type HiddenAlias = {
-  name: string;
-  /** Canon milestone whose news (or engagement) reveals this name to the player. */
-  revealedBy?: string;
 };
 
 export type Companion = {

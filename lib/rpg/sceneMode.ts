@@ -139,7 +139,7 @@ function castNames(db: AppDatabase) {
  */
 export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   const state = sceneModeOf(db);
-  const kan = readPlayerInput(input);
+  const said = readPlayerInput(input);
   const fightOn = fightGoingOn(db);
   const talking = state.exchangeStreak > 0 && !db.state.sceneClosed;
   const talkers = partnerNames(db, state.partners);
@@ -147,7 +147,7 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   const wasConversation = state.current === 'conversation';
 
   // An attack is hard to mistake: it starts a fight whatever else is going on.
-  const startsFight = kan.attacks;
+  const startsFight = said.attacks;
 
   if (state.override === 'fight') {
     return { mode: 'fight', lean: false, manual: true, with: castNames(db).slice(0, 4) };
@@ -166,7 +166,7 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   }
 
   // Quick to stop: a move that changes the scene ends the talk now.
-  if (kan.changesScene) {
+  if (said.changesScene) {
     return {
       mode: 'normal',
       lean: false,
@@ -180,14 +180,14 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
   const settled =
     talking &&
     (state.exchangeStreak >= CONVERSATION_STREAK ||
-      (state.exchangeStreak >= CONVERSATION_STREAK - 1 && kan.speaks));
+      (state.exchangeStreak >= CONVERSATION_STREAK - 1 && said.speaks));
 
   if (settled) {
     return { mode: 'conversation', lean: false, manual: false, with: people };
   }
 
   // The dial: talk is building, so the reply leans spoken.
-  const lean = talking || (kan.speaks && castNames(db).length > 0);
+  const lean = talking || (said.speaks && castNames(db).length > 0);
   return { mode: 'normal', lean, manual: false, with: lean ? people : [] };
 }
 
@@ -209,12 +209,12 @@ function resolvePartners(db: AppDatabase, raw: string[]): string[] {
 
 /** When the tracker gave no beat: read it from the pace and the player's input. */
 export function fallbackBeat(pace: ScenePace | undefined, input: string, narration: string): SceneBeat {
-  const kan = readPlayerInput(input);
+  const said = readPlayerInput(input);
 
   if (pace === 'combat') return 'combat';
   if (pace === 'travel' || pace === 'chase') return 'travel';
-  if (kan.changesScene) return 'action';
-  if (kan.speaks && QUOTED.test(narration)) return 'exchange';
+  if (said.changesScene) return 'action';
+  if (said.speaks && QUOTED.test(narration)) return 'exchange';
   return QUOTED.test(narration) ? 'remark' : 'action';
 }
 
@@ -235,7 +235,7 @@ export function applySceneBeat(
 ): AppDatabase {
   const before = sceneModeOf(db);
   const kind = options.beat?.kind ?? fallbackBeat(options.pace, options.input, options.narration);
-  const kan = readPlayerInput(options.input);
+  const said = readPlayerInput(options.input);
   let partners = resolvePartners(db, options.beat?.with ?? []);
 
   if (partners.length === 0 && kind === 'exchange') {
@@ -268,7 +268,7 @@ export function applySceneBeat(
   }
 
   // The player's own scene-changing move ends the talk, whatever the tag said.
-  if (kan.changesScene && kind !== 'exchange') {
+  if (said.changesScene && kind !== 'exchange') {
     streak = 0;
     kept = [];
   }

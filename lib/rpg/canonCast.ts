@@ -1228,31 +1228,8 @@ export const FEMALE_CAST = new Set([
   'Mabui', 'Kin Tsuchi', 'Katsuyu', 'Shima',
 ]);
 
-/**
- * Birthdays older saves carry that were wrong: a person still on the old
- * date is moved to the right one (see section 6 of the living-world notes).
- */
-const BIRTHDAY_FIXES: Record<string, { from: { month: number; day: number }; to: { month: number; day: number } }> = {
-  'Hana Inuzuka': { from: { month: 4, day: 12 }, to: { month: 4, day: 13 } },
-  Suzume: { from: { month: 11, day: 3 }, to: { month: 10, day: 19 } },
-  'Danzo Shimura': { from: { month: 1, day: 3 }, to: { month: 1, day: 6 } },
-  'Anko Mitarashi': { from: { month: 10, day: 27 }, to: { month: 10, day: 24 } },
-  Kimimaro: { from: { month: 6, day: 2 }, to: { month: 6, day: 15 } },
-  'Killer Bee': { from: { month: 6, day: 23 }, to: { month: 5, day: 15 } },
-};
-
 /** Birthdays the app chose because canon gives none (the seed's people included). */
 const INVENTED_BIRTHDAYS = new Set(['Izumi Uchiha']);
-
-function fixBirthday(entity: EntityRecord): EntityRecord {
-  const fix = BIRTHDAY_FIXES[entity.name];
-
-  if (fix && entity.birthday && entity.birthday.month === fix.from.month && entity.birthday.day === fix.from.day) {
-    return { ...entity, birthday: { ...fix.to } };
-  }
-
-  return entity;
-}
 
 /** The cast members a milestone brings into the story (births, revivals, returns). */
 export function castAppearingWith(milestoneId: string): CastEntry[] {
@@ -1319,13 +1296,11 @@ export function ensureCanonCast(
   completed: Iterable<string> = []
 ): EntityRecord[] {
   const done = new Set(completed);
-  const next = entities.map((entity) => {
-    const fixed = entity.type === 'character' ? fixBirthday(entity) : entity;
-
-    return INVENTED_BIRTHDAYS.has(fixed.name) && fixed.birthday && !fixed.birthdayInvented
-      ? { ...fixed, birthdayInvented: true }
-      : fixed;
-  });
+  const next = entities.map((entity) =>
+    INVENTED_BIRTHDAYS.has(entity.name) && entity.birthday && !entity.birthdayInvented
+      ? { ...entity, birthdayInvented: true }
+      : entity
+  );
 
   for (const entry of CANON_CAST) {
     const entryNames = namesOf(entry);

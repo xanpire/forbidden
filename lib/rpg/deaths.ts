@@ -106,7 +106,6 @@ function identityNames(entity: EntityRecord): string[] {
     ...entity.aliases,
     ...identities.map((identity) => identity.name),
     ...identities.map((identity) => identity.name.split(/\s+/)[0]),
-    ...(entity.hiddenAliases ?? []).map((alias) => alias.name),
   ];
 }
 

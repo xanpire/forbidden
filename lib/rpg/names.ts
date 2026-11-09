@@ -25,7 +25,6 @@ import type {
 } from './types';
 import { isPlayerEntity } from './player';
 
-export const NAMES_VERSION = 1;
 
 const PRIORITY: Record<IdentityKind, number> = { true: 3, claimed: 2, persona: 1 };
 const HISTORY_CAP = 12;
@@ -848,47 +847,19 @@ export function castKnowledge(name: string): NameKnowledge | undefined {
   return startKnowledge(name);
 }
 
-/**
- * Load-time setup. Every save gets identities and name parts for the people
- * who need them, and the old spoiler-name lists become identities. A save
- * from before names were tracked keeps every name for everyone the player already
- * met; the people he has not met start from what he knew at the beginning.
- */
+/** Load-time setup: every save gets identities and name parts for the people who need them. */
 export function ensureNames(db: AppDatabase): AppDatabase {
-  const legacy = (db.state.namesVersion ?? 0) < NAMES_VERSION;
-
   const entities = db.entities.map((entity) => {
     if (entity.type !== 'character') return entity;
 
-    let next = entity;
     const data = IDENTITIES[entity.name];
 
-    if (!next.identities && data) {
-      next = { ...next, identities: data.map((identity) => ({ ...identity, knownBy: identity.knownBy?.map((knower) => ({ ...knower, who: [...knower.who] })) })) };
-    }
-
-    if (next.hiddenAliases) {
-      // The spoiler names now live as identities: a revealed one was moved
-      // into aliases already, which knowsIdentity reads.
-      const { hiddenAliases: _dropped, ...rest } = next;
-      next = rest;
-    }
-
-    if (legacy && next.known === undefined && !isPlayerEntity(next)) {
-      if (next.met === false) {
-        next = { ...next, known: startKnowledge(next.name) };
-        if (next.known === undefined) delete next.known;
-      } else if (hasIdentities(next)) {
-        next = { ...next, known: explicitKnowledge(next) };
-      }
-    }
-
-    return next;
+    return !entity.identities && data
+      ? { ...entity, identities: data.map((identity) => ({ ...identity, knownBy: identity.knownBy?.map((knower) => ({ ...knower, who: [...knower.who] })) })) }
+      : entity;
   });
 
-  const next = { ...db, entities, state: { ...db.state, namesVersion: NAMES_VERSION } };
-
-  return legacy ? learnFromCanon(next) : next;
+  return { ...db, entities };
 }
 
 /** Everyone the player learned about in the scene and through the world this turn. */

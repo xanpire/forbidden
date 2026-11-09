@@ -1,6 +1,5 @@
 import { DEFAULT_DATE } from './calendar';
 import { ensureCanonCast } from './canonCast';
-import { NAMES_VERSION } from './names';
 import { DEFAULT_SETTINGS, emptyIndex } from './defaults';
 import { knowersOf } from './facts';
 import { makeId } from './id';
@@ -697,8 +696,6 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       chapterStart: { turn: 1, date: DEFAULT_DATE },
       scene: 'The rain after',
       purse: startingPurse(),
-      // A new story tracks which names the player knows from the start (names.ts).
-      namesVersion: NAMES_VERSION,
     },
     indices: emptyIndex(),
     snapshots: [],

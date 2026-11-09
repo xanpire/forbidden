@@ -93,14 +93,12 @@ describe('the new cast', () => {
     expect(person(db, 'Kakashi Hatake')?.birthdayInvented).toBeUndefined();
   });
 
-  test('an older save is moved off the old dates and gains the birthdays it lacked', () => {
+  test('a save missing cast birthdays gains them on load', () => {
     const base = seed();
     const old = {
       ...base,
       entities: base.entities.map((entity) =>
-        entity.name === 'Hana Inuzuka'
-          ? { ...entity, birthday: { month: 4, day: 12 } }
-          : entity.name === 'Inoichi Yamanaka'
+        entity.name === 'Inoichi Yamanaka'
             ? { ...entity, birthday: undefined }
             : entity.name === 'Izumi Uchiha'
               ? { ...entity, birthdayInvented: undefined }
@@ -108,7 +106,6 @@ describe('the new cast', () => {
       ),
     } as AppDatabase;
     const db = normalizeDatabase(old);
-    expect(person(db, 'Hana Inuzuka')?.birthday).toEqual({ month: 4, day: 13 });
     expect(person(db, 'Inoichi Yamanaka')?.birthday).toEqual({ month: 1, day: 24 });
     expect(person(db, 'Izumi Uchiha')?.birthdayInvented).toBe(true);
   });

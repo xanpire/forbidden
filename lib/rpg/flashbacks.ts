@@ -354,7 +354,7 @@ export function ensureFlashbackPeople(db: AppDatabase, record: FlashbackRecord):
     met: true,
     lastSeen: died,
     lastSeenAt: 'Hidden Leaf',
-    tags: ['original', 'family', 'kan-parent', parent.name.includes('Uzumaki') ? 'uzumaki' : 'uchiha'],
+    tags: ['original', 'family', 'player-parent', parent.name.includes('Uzumaki') ? 'uzumaki' : 'uchiha'],
   }));
 
   const next = { ...db, entities: [...db.entities, ...added] };
@@ -475,12 +475,12 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
   const hidden = hiddenLines(db, record);
 
   return [
-    'FLASHBACK — A MEMORY KAN IS LIVING THROUGH (the present stands still while it plays)',
+    'FLASHBACK — A MEMORY YOU ARE LIVING THROUGH (the present stands still while it plays)',
     `${record.title}: ${record.scene}`,
     `WHEN: ${formatDate(active.date)}. You are ${ageWord(age)}. It is ${timeOfDayOf(active.date)}.`,
     `WHERE: ${active.place}.`,
     weatherLine,
-    `KAN THEN: ${playerThen(age)}. No Sharingan: it awakens only in Year 13, when Itachi tells him the truth. His real strength stays hidden; never show its limit. The jutsu, abilities, inventory and wounds listed above belong to the present and do not exist here; Thousand Souls is never used or seen.`,
+    `YOU THEN: ${playerThen(age)}. No Sharingan: it awakens only in Year 13, when Itachi tells you the truth. Your real strength stays hidden; never show its limit. The jutsu, abilities, inventory and wounds listed above belong to the present and do not exist here; Thousand Souls is never used or seen.`,
     'WHO IS THERE THEN (everyone at their age on this date, with the personality they had then; the dead are alive in this memory, so THE DEAD list does not apply inside it):',
     ...castLines(db, record, active.date),
     ...(record.castNotes ?? []).map((note) => `- ${note}`),
