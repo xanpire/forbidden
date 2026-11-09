@@ -75,6 +75,7 @@ export function personEntity(person: StartingPerson, id: string, date: CalendarD
     gender: genderOf(person.gender),
     ...(person.intimacy ? { intimacy: normalizeIntimacy(person.intimacy) } : {}),
     ...(person.realPerson ? { realPerson: true } : {}),
+    ...(person.fame ? { fame: person.fame } : {}),
     ...(person.whereabouts ? { whereabouts: person.whereabouts } : {}),
     ...(person.alive ? {} : { deceased: { known: true }, status: 'Deceased' }),
     ...(person.knownName ? {} : { known: { label: person.role || 'someone you know' } }),

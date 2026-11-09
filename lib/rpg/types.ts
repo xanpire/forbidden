@@ -1599,6 +1599,8 @@ export type StartingPerson = {
   intimacy?: IntimacyProfile;
   /** A real, identifiable person: never in an intimate scene. */
   realPerson?: boolean;
+  /** Famous enough that the player knows them on sight, or by name only. */
+  fame?: 'sight' | 'heard';
   alive: boolean;
   knownName: boolean;
   /** Has the player met them before the story? Default true. */

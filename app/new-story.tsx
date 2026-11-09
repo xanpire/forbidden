@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { X } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
+import { CanonDraftPanel } from '@/components/wizard/CanonDraft';
 import { draftFromTemplate, loadTemplates, type WorldTemplate } from '@/lib/rpg/worldEdit';
 import { AddButton, Choice, Field, FieldRow, Hint, ItemCard, ListField, MultiChoice, NumberField, Toggle } from '@/components/Form';
 import { useToast } from '@/components/Toast';
@@ -192,6 +193,7 @@ export default function NewStoryScreen() {
             />
           ) : null}
           {draft.step === 'world' ? <WorldStep draft={draft} update={update} /> : null}
+          {draft.step === 'world' ? <CanonDraftPanel draft={draft} update={update} /> : null}
           {draft.step === 'places' ? <PlacesStep draft={draft} update={update} /> : null}
           {draft.step === 'lore' ? <LoreStep draft={draft} update={update} /> : null}
           {draft.step === 'you' ? <YouStep draft={draft} update={update} /> : null}

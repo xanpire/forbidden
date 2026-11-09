@@ -160,6 +160,24 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
         value={undefined}
       />
       <Field label="World name" onChange={(name) => setWorld({ name })} placeholder="Harbourside" required value={world.name} />
+      <Field
+        hint="Optional: a real period or a realistic show or novel this world follows (Victorian London, Tokyo 1990s…)."
+        label="Known setting"
+        onChange={(name) => setWorld({ knownUniverse: name.trim() ? { name, canonStrictness: world.knownUniverse?.canonStrictness ?? 'faithful' } : undefined })}
+        value={world.knownUniverse?.name ?? ''}
+      />
+      {world.knownUniverse ? (
+        <Choice
+          label="How closely to follow it"
+          onChange={(canonStrictness) => setWorld({ knownUniverse: { ...world.knownUniverse!, canonStrictness } })}
+          options={[
+            { value: 'loose' as const, label: 'Loosely' },
+            { value: 'faithful' as const, label: 'Faithfully' },
+            { value: 'strict' as const, label: 'Strictly' },
+          ]}
+          value={world.knownUniverse.canonStrictness}
+        />
+      ) : null}
       <Field label="Premise" lines={4} multiline onChange={(premise) => setWorld({ premise })} placeholder="A paragraph about this world and what makes it interesting." required value={world.premise} />
       <FieldRow>
         <Field label="Genre" onChange={(genre) => setWorld({ genre })} placeholder="noir crime drama" value={world.genre} />
