@@ -124,7 +124,7 @@ export type GameState = {
   scene: string;
   scenePace?: ScenePace;
   sceneCast?: string[];
-  /** Conversation and fight mode (see sceneMode.ts). */
+  /** Conversation and sex mode, and the mode chip (see sceneMode.ts, sexMode.ts). */
   sceneMode?: SceneModeState;
   /** The scene as a picture would show it now: what's around, what's on screens, the mood, what each person is doing. Reset with each new scene. */
   sceneNow?: SceneNow;
@@ -1101,7 +1101,7 @@ export type OpenRouterMessage = {
 // build step (seed.ts) only turns them into save records.
 // ---------------------------------------------------------------------------
 
-/** A region's weather pattern. `none` = indoors, underground, a station: no weather. */
+/** Where the story is set: its weather pattern. `none` = no weather. */
 export type ClimateType =
   | 'temperate'
   | 'continental'

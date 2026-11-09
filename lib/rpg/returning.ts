@@ -248,6 +248,6 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
   return [
     'A FAMILIAR FACE (optional)',
     `${who}. Last seen ${formatAway(daysAway)} ago${where}; ${why}. ${bondLine}${traits ? ` ${traits}` : ''}`,
-    'If it fits the scene naturally, they can resurface: a face in the crowd, a voice at the next table, word that they are nearby, or them seeking you out. They remember you and have lived their own life since. If you use them, they are this turn\'s encounter; if it does not fit, ignore this.',
+    'If it fits the scene naturally, they can resurface: a face in the crowd, a voice at the next table, word that they are nearby, or them seeking you out. They remember you and have lived their own life since. If you use them, they are the only new face this turn; if it does not fit, ignore this.',
   ].join('\n');
 }
