@@ -2,7 +2,7 @@
 
 import { resolveEntity } from './entities';
 import { makeId } from './id';
-import { normalizeAttraction, normalizeRelationship } from './romance';
+import { normalizeAttraction, normalizeRelationship } from './intimacy';
 import { clamp } from './util';
 import type { AppDatabase, TurnDiff } from './types';
 

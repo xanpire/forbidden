@@ -1,7 +1,7 @@
 import { advanceSeconds, calculateAge, dateSortValue, daysBetween, entityAge, formatClock, formatDate } from './calendar';
 import { isPlayer, playerName } from './player';
 import { paceMinimumSeconds } from './pacing';
-import { ROMANCE_RULES } from './romance';
+import { CHECK_REASONS, ROMANCE_RULES, entityCanBeIntimate, formatIntimacyBlock, playerCanBeIntimate, formatOocNote, heartLine, stageLabel, STEER_LINES } from './intimacy';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
 import {
   activeTimelineEvents,
@@ -53,6 +53,7 @@ import {
 } from './flashbacks';
 import type {
   AppDatabase,
+  SteerChip,
   BondRecord,
   EntityRecord,
   EventRecord,
@@ -113,6 +114,7 @@ SCENE MODES (the turn's SCENE MODE line says which applies; with none, write as 
 - Talk is building: shorter and more spoken than usual.
 - The conversation ends: a short transition in normal prose, then carry on normally.
 - Fight: short exchanges. Show honestly what the player's move does, by their real strength, skill and wounds (a bad call hurts), then give the opponent's one specific next move ("He swings the bottle at your head") and stop there, before it lands. One or two short paragraphs, a few seconds of fight time; wounds, exhaustion and positions carry over; short taunts are fine. If this exchange ends the fight, close with a short paragraph of aftermath in normal prose instead.
+- Intimate: an intimate scene between adults. Slower: stay in the moment with sensory detail, touch, breath and plenty of dialogue; shorter replies that end on the other person's move or a pause that leaves room for the player. Keep track of what everyone is wearing and where they are. Never write the player's actions, words or feelings.
 
 ${ROMANCE_RULES}
 
@@ -150,6 +152,8 @@ NAME & ENEMIES: reputation, bounty_seen, epithet, grudges, consequences, and con
 BEAT: beat tags how this turn played, from the player's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to while still talking: a look, a touch, a gesture, sitting or standing, stepping closer, turning away, pouring a drink), instruction (someone tells the player to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, someone new taking over), travel, or combat (any fight, even a short one). beat_with: ids of the people the player is talking with (exchange, instruction, remark); otherwise []. fight_options: only when the fight goes on and the reply ends on an opponent's move: 3-4 short moves the player could make next (under 10 words, starting with a verb, no "I" or "you": "Duck under the swing and shove him back"), fitting the moment and what you can really do (dodge, block, counter, run, use something at hand); otherwise [].
 
 IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
+
+INTIMACY: intimate_scene true when this turn is (or turns into) a sexual or intimate scene between the player and someone, false when such a scene ends or the scene moves on, null otherwise. intimacy_stage_changed: {character_id, stage} only when the page shows the relationship with the player reach a new step on the ladder (none, interest, flirting, first kiss, lovers, established) or fall back; otherwise []. milestone: {character_id, what} for a first or a big moment between them shown this turn (a first kiss, a first night, saying "I love you"); otherwise []. preference_learned: {character_id, preference, about_player} when someone clearly learns what the player likes (about_player true) or the player learns what they like (false), in a few plain words; otherwise []. outfit_changed: {character_id, outfit, position} when someone's clothes or position in the scene change on the page ("player" for you); otherwise []. limit_crossed: true only if the reply writes something listed under the player's hard limits. age_rule_crossed: true only if the reply makes anyone under 18, anyone without a stated adult age, or anyone described as a child part of anything sexual. Both false otherwise.
 
 FLASHBACK: flashback is null unless a FLASHBACK, MEMORY or THIS TURN IS A MEMORY line below says how to set it.`;
 
@@ -194,7 +198,8 @@ SUMMARY: the 100-150 word summary`;
 
 export function buildNarrationPrompt(
   db: AppDatabase,
-  userMessage: string
+  userMessage: string,
+  options: { steer?: SteerChip; oocNote?: string } = {}
 ) {
   const withCurrent = getRecentMessages(db, db.settings.contextMessages + 1);
   const currentIsLast =
@@ -265,7 +270,7 @@ export function buildNarrationPrompt(
   const rules = NARRATION_SYSTEM;
   // 2. The world and the player's character, as the player wrote them:
   //    change only when the player edits them.
-  const written = [formatWorldBlock(db), formatWhoYouAre(db)].join('\n\n');
+  const written = [formatWorldBlock(db), formatWhoYouAre(db), formatIntimacyBlock(db)].join('\n\n');
   // 3. The long view: changes only when a summary lands, a thread opens or
   //    closes, or a bond moves.
   const slow = [
@@ -320,6 +325,8 @@ export function buildNarrationPrompt(
       formatFlashbackReturn(db),
       `CONTINUITY: continue directly from the last narrated beat. Never repeat a beat you already wrote and never contradict it. Location type: ${locationKindOf(db)}.`,
       formatSceneModeLine(db, sceneMode),
+      options.steer ? STEER_LINES[options.steer] : '',
+      formatOocNote(options.oocNote),
       `YOU DO OR SAY:\n${userMessage}`,
     ]
       .filter(Boolean)
@@ -425,6 +432,7 @@ export function buildExtractionPrompt(
     formatTimeLine(memoryView ?? db, 'state'),
     formatWeatherTracking(memoryView ?? db),
     formatSceneModeTracking(null, reply?.sceneMode),
+    formatIntimacyTracking(db),
     ...flashbackTrackingLines(db, reply?.flashbackOffer),
     memoryView ? '' : formatTimelineTracking(db),
     memoryView ? '' : formatLetterTracking(db),
@@ -478,7 +486,12 @@ export function buildSceneSummaryPrompt(
   // The people it mattered to most also get their own side of it.
   const pov = povInstruction(povCandidates(db, messages));
   const memory = options.memoryNote ? `${options.memoryNote}\n\n` : '';
-  const user = `${memory}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
+  const intimate = messages.some((message) => message.intimate)
+    ? db.content?.vagueRecaps === false
+      ? 'Part of this is an intimate scene: summarise it in your own words like any other moment (who, what it meant, how it changed things); never copy its lines.\n\n'
+      : 'Part of this is an intimate scene: give it one plain, non-explicit sentence (who, that it happened, how it changed things between them), never its details.\n\n'
+    : '';
+  const user = `${memory}${intimate}SCENE TRANSCRIPT:\n${transcript}\n\n${pov ? `${pov}\n\n` : ''}Write the summary now.`;
   const promptMessages: OpenRouterMessage[] = [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -707,7 +720,7 @@ function formatMatchedEntities(db: AppDatabase, entityIds: Set<string>) {
     'CHARACTERS IN SCENE',
     ...characters.map(
       (entity) =>
-        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${playerKnowsDeath(db, entity) ? '' : ', you do not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatHeart(entity)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
+        `- ${known(entity)}${entity.role ? ` (${truncate(entity.role, 40)})` : ''}${isDeceased(entity) ? ` [DECEASED${playerKnowsDeath(db, entity) ? '' : ', you do not know yet'}]` : ''}: personality ${truncate(entity.personality ?? 'unknown', 60)}; speech ${truncate(entity.speechStyle ?? 'unknown', 50)}; mood ${truncate(entity.mood ?? 'unknown', 60)}; appearance ${truncate(entity.appearance ?? 'unknown', 80)}${entity.currentLook ? `; right now: ${truncate(entity.currentLook, 90)}` : ''}${formatHeart(db, entity)}${remembers(entity)}${truth(entity)}${reunions.has(entity.id) ? `\n  ${reunions.get(entity.id)}` : ''}`
     ),
   ].join('\n');
 }
@@ -1144,21 +1157,35 @@ function formatYearlyTracking(db: AppDatabase) {
   return lines.length ? ['THE DAY', ...lines.map((line) => `- ${line}`)].join('\n') : '';
 }
 
-/** Whose heart is where: written for the person, or learned in play. */
-function formatHeart(entity: EntityRecord) {
-  const devotion = entity.canonDevotion?.trim();
-  const open =
-    entity.romanceAccessibility === 'winnable'
-      ? 'could be open to you'
-      : entity.romanceAccessibility === 'lore-locked'
-        ? 'belongs elsewhere'
-        : entity.romanceAccessibility === 'not-applicable'
-          ? 'not open to you'
-          : '';
+/** What the tracker needs for limit_crossed and age_rule_crossed. */
+function formatIntimacyTracking(db: AppDatabase) {
+  const refByEntity = refByEntityId(db);
+  const hard = (db.content?.limits ?? []).filter((tag) => tag.kind !== 'soft').map((tag) => tag.label);
+  const notAdults = db.entities
+    .filter((entity) => entity.type === 'character' && !entity.tags.includes('player') && !isDeceased(entity))
+    .filter((entity) => !entityCanBeIntimate(db, entity).ok)
+    .filter((entity) => (db.state.sceneCast ?? []).some((name) => name === entity.name) || (db.state.sceneMode?.intimateWith ?? []).includes(entity.id))
+    .map((entity) => `${refByEntity.get(entity.id) ?? entity.name} (${(() => { const check = entityCanBeIntimate(db, entity); return check.ok ? '' : CHECK_REASONS[check.reason]; })()})`);
+  const lines = [
+    hard.length ? `- The player's hard limits (limit_crossed if the reply writes any): ${hard.join(', ')}` : '',
+    notAdults.length ? `- Never part of anything sexual (age_rule_crossed if the reply makes them so): ${notAdults.join(', ')}` : '',
+    playerCanBeIntimate(db).ok ? '' : '- The player is not a stated adult: anything sexual involving them is age_rule_crossed.',
+  ].filter(Boolean);
+  return lines.length ? ['INTIMACY CHECKS', ...lines].join('\n') : '';
+}
 
-  if (!devotion && !open) return '';
-
-  return `; heart: ${[devotion ? truncate(devotion, 90) : '', open].filter(Boolean).join(', ')}`;
+/** Whose heart is where, their desires when it matters, and what they've learned about the player. */
+function formatHeart(db: AppDatabase, entity: EntityRecord) {
+  const bond = db.bonds.find((item) => item.entityId === entity.id);
+  const stage = bond?.intimacyStage ? stageLabel(db, bond.intimacyStage) : '';
+  const close = (bond?.intimacyStage ?? 0) >= 2 || db.state.sceneMode?.intimateWith?.includes(entity.id);
+  const parts = [
+    heartLine(entity, Boolean(close)),
+    stage ? `between you: ${stage}` : '',
+    close && bond?.learnedPreferences?.length ? `they remember: ${bond.learnedPreferences.join('; ')}` : '',
+    entity.scenePosition ? `where they are now: ${truncate(entity.scenePosition, 90)}` : '',
+  ].filter(Boolean);
+  return parts.length ? `; ${parts.join('; ')}` : '';
 }
 
 function truncate(value: string, maxLength: number) {

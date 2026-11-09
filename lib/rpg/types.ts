@@ -5,7 +5,7 @@ export type ScenePace = 'combat' | 'chase' | 'conversation' | 'travel' | 'downti
 export type SceneBeat = 'exchange' | 'instruction' | 'remark' | 'action' | 'travel' | 'combat';
 
 /** How the narrator writes a turn: normal prose, conversation, or fight exchanges. */
-export type SceneModeName = 'normal' | 'conversation' | 'fight';
+export type SceneModeName = 'normal' | 'conversation' | 'fight' | 'intimate';
 
 export type SceneModeState = {
   /** The mode the last turn was narrated in. */
@@ -17,7 +17,14 @@ export type SceneModeState = {
   lastBeat?: SceneBeat;
   /** The player's choice from the mode chip; cleared once it no longer applies. */
   override?: SceneModeName;
+  /** An intimate scene is under way, with these people (entity ids). */
+  intimateWith?: string[];
+  /** The player chose "fade to black" for this scene. */
+  fadeToBlack?: boolean;
 };
+
+/** The player's one-turn steer from the chips by the input. */
+export type SteerChip = 'slower' | 'more' | 'skip-ahead' | 'fade-to-black';
 
 export type CalendarDate = {
   year: number;
@@ -475,6 +482,8 @@ export type RawLogEntry = {
   imageWorthy?: boolean;
   /** Quick moves offered under a fight reply (written by the state tracker). */
   fightOptions?: string[];
+  /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
+  intimate?: boolean;
   /** A turn played inside a flashback: which one, and the memory's clock when it began. */
   flashback?: { id: string; date: CalendarDate };
   /** A flashback offered to the narrator on this reply (see flashbacks.ts). */
@@ -548,12 +557,14 @@ export type EntityRecord = {
   /** male, female, or unknown when the story hasn't said. */
   gender?: Gender;
   /**
-   * Whether the player could ever win their heart: winnable, lore-locked
-   * (their heart belongs elsewhere), or not-applicable. The player has none.
+   * Their own desires and boundaries, and whether their heart could open to
+   * the player (intimacy.ts). Written by the player, or learned in play.
    */
-  romanceAccessibility?: 'winnable' | 'lore-locked' | 'not-applicable';
-  canonDevotion?: string;
-  orientation?: string;
+  intimacy?: IntimacyProfile;
+  /** A real, identifiable person (a celebrity, a historical figure): never in an intimate scene. */
+  realPerson?: boolean;
+  /** Where they are and how they're placed in the scene right now (kept by the tracker). */
+  scenePosition?: string;
   /**
    * false for people written into the world whom you have not met
    * yet: they are known to the state tracker but stay off the bonds list.
@@ -757,7 +768,55 @@ export type BondRecord = {
   romanceNote?: string;
   /** Set while this person holds a grudge against the player (grudges.ts). */
   grudge?: Grudge;
+  /** Index into the story's intimacy ladder (intimacy.ts); 0 = none. */
+  intimacyStage?: number;
+  /** Scene beats shown on the page toward the next stage. */
+  stageBeats?: number;
+  /** Firsts and big moments, in the player's story. */
+  milestones?: IntimacyMilestone[];
+  /** What they have learned the player likes (and the player about them), in plain words. */
+  learnedPreferences?: string[];
   updatedInStoryDate: CalendarDate;
+};
+
+export type IntimacyMilestone = { what: string; when: CalendarDate; where: string };
+
+/** A person's own desires and boundaries (see intimacy.ts). */
+export type IntimacyProfile = {
+  /** Free text. */
+  orientation: string;
+  interestedInPlayer: 'yes' | 'could-grow' | 'no' | 'taken';
+  /** What they like, in the player's words. */
+  desires: string[];
+  /** What they won't do; the narrator respects these. Empty = none written. */
+  boundaries: string[];
+  /** shy, bold, teasing, dominant, tender… */
+  style?: string;
+  experience?: string;
+  /** Who or what their heart belongs to, when it is taken. */
+  devotion?: string;
+};
+
+/** A tag the player writes in their content profile. */
+export type ContentTag = {
+  label: string;
+  note?: string;
+  /** Interests only. */
+  weight?: 'love' | 'like' | 'okay';
+  /** Limits only: hard = never happens and is never mentioned; soft = only off-page. */
+  kind?: 'hard' | 'soft';
+};
+
+/** How this story plays intimacy (per save; see intimacy.ts). Scenes are always fully explicit. */
+export type ContentProfile = {
+  pacing: 'slow-burn' | 'natural' | 'fast';
+  interests: ContentTag[];
+  limits: ContentTag[];
+  narratorVoice?: string;
+  /** Keep intimate details vague in recaps and summaries (default on). */
+  vagueRecaps: boolean;
+  /** The intimacy ladder's labels for this story. */
+  stageLabels?: string[];
 };
 
 export type FactRecord = {
@@ -936,8 +995,8 @@ export type TimelineProgress = {
   heldForCombat?: boolean;
 };
 
-export type { RelationshipStage } from './romance';
-import type { RelationshipStage } from './romance';
+export type { RelationshipStage } from './intimacy';
+import type { RelationshipStage } from './intimacy';
 
 export type Attraction = 'none' | 'warm' | 'strong';
 
@@ -961,6 +1020,8 @@ export type AppDatabase = {
   summaries: SummaryRecord[];
   /** The world the player wrote (see world.ts). */
   world: WorldDefinition;
+  /** How this story plays intimacy (see intimacy.ts). */
+  content: ContentProfile;
   state: GameState;
   indices: MemoryIndex;
   snapshots: TurnSnapshot[];
@@ -1165,6 +1226,17 @@ export type TurnDiff = {
   lettersReceived?: { entityId?: string; name: string; text?: string }[];
   /** Things in someone's own life away from the player that this turn revealed. */
   lifeEvents?: { entityId?: string; name: string; text: string }[];
+  /** Intimacy (intimacy.ts): what the page showed between the player and someone. */
+  intimacyStages?: { entityId?: string; name: string; stage: string }[];
+  milestones?: { entityId?: string; name: string; what: string }[];
+  preferencesLearned?: { entityId?: string; name: string; preference: string; aboutPlayer: boolean }[];
+  outfits?: { entityId?: string; name: string; outfit?: string; position?: string }[];
+  /** true: an intimate scene starts or goes on; false: it ends; undefined: no change. */
+  intimateScene?: boolean;
+  /** The player's hard limit was written. The reply is thrown away. */
+  limitCrossed?: boolean;
+  /** Someone under 18, of no stated age, or described as a child was sexualised. The reply is thrown away. */
+  ageRuleCrossed?: boolean;
   /** A name the story called the player by this turn, and whose name it is. */
   epithet?: { audience: Audience; name: string };
   /** Choices this turn that could plausibly come back later. */
@@ -1504,7 +1576,10 @@ export type StartingPerson = {
   yourFeelings: { affinity: number; note: string };
   theirFeelings: { affinity: number; note: string };
   attraction?: number;
-  romanceAccessibility?: 'winnable' | 'taken' | 'not-interested' | 'not-applicable';
+  /** Optional: their own desires and boundaries. An age of 18+ is required when set. */
+  intimacy?: IntimacyProfile;
+  /** A real, identifiable person: never in an intimate scene. */
+  realPerson?: boolean;
   alive: boolean;
   knownName: boolean;
   /** Has the player met them before the story? Default true. */
@@ -1530,6 +1605,7 @@ export type SeedInput = {
   people: StartingPerson[];
   opening: OpeningScene;
   truths?: StartingTruth[];
+  content?: ContentProfile;
 };
 
 export type OpeningScene = {

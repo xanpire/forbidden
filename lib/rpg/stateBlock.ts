@@ -210,6 +210,41 @@ export function convertStateBlock(
     }
   }
 
+  // Intimacy.
+  if (typeof block.intimate_scene === 'boolean') {
+    diff.intimateScene = block.intimate_scene;
+  }
+
+  const records = (value: unknown) =>
+    Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object') : [];
+
+  const stages = records(block.intimacy_stage_changed)
+    .map((item) => ({ name: cleanString(item.character_id) ?? '', stage: cleanString(item.stage) ?? '' }))
+    .filter((item) => item.name && item.stage && notPlayer(item.name))
+    .slice(0, 4);
+  if (stages.length > 0) diff.intimacyStages = stages;
+
+  const milestones = records(block.milestone)
+    .map((item) => ({ name: cleanString(item.character_id) ?? '', what: cleanString(item.what)?.slice(0, 120) ?? '' }))
+    .filter((item) => item.name && item.what && notPlayer(item.name))
+    .slice(0, 3);
+  if (milestones.length > 0) diff.milestones = milestones;
+
+  const preferences = records(block.preference_learned)
+    .map((item) => ({ name: cleanString(item.character_id) ?? '', preference: cleanString(item.preference)?.slice(0, 140) ?? '', aboutPlayer: item.about_player !== false }))
+    .filter((item) => item.name && item.preference && notPlayer(item.name))
+    .slice(0, 4);
+  if (preferences.length > 0) diff.preferencesLearned = preferences;
+
+  const outfits = records(block.outfit_changed)
+    .map((item) => ({ name: cleanString(item.character_id) ?? '', outfit: cleanString(item.outfit) ?? undefined, position: cleanString(item.position) ?? undefined }))
+    .filter((item) => item.name && (item.outfit || item.position))
+    .slice(0, 6);
+  if (outfits.length > 0) diff.outfits = outfits;
+
+  if (block.limit_crossed === true) diff.limitCrossed = true;
+  if (block.age_rule_crossed === true) diff.ageRuleCrossed = true;
+
   const epithet = block.epithet;
 
   if (epithet && typeof epithet === 'object' && !Array.isArray(epithet)) {
@@ -719,9 +754,11 @@ export function convertStateBlock(
 
   const hasChanges =
     Object.keys(diff).length > 0 &&
-    Object.values(diff).some(
+    (Object.values(diff).some(
       (value) => Array.isArray(value) ? value.length > 0 : Boolean(value)
-    );
+    ) ||
+      // An intimate scene ending is a change on its own.
+      diff.intimateScene === false);
 
   return { diff: hasChanges ? diff : null, imageWorthy };
 }

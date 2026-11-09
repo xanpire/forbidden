@@ -27,7 +27,7 @@ import { buildSceneImagePrompt, collectRecentSceneImages } from '../lib/rpg/imag
 import { planReferences } from '../lib/rpg/referencePlan';
 import { buildImageRequestBody, type ImageModelCaps } from '../lib/openrouter';
 import { activeTimelineEvents, advanceTimeline, applyTimelineMarks, markNewsHeard, unheardNews } from '../lib/rpg/timeline';
-import { RELATIONSHIP_STAGES, normalizeRelationship } from '../lib/rpg/romance';
+import { RELATIONSHIP_STAGES, normalizeRelationship } from '../lib/rpg/intimacy';
 import { slug } from '../lib/rpg/id';
 import { applyParsedTime, detectNarrationTime } from '../lib/rpg/timeparse';
 import { inferScenePace, resolveElapsedSeconds, resolveTurnClock } from '../lib/rpg/pacing';

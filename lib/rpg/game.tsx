@@ -1,3 +1,5 @@
+import { CORRECTIVE_NOTE, FADE_TO_BLACK_LINE, notificationText, postCheckDecision } from './intimacy';
+import { setTabTitle } from '../privacy';
 import {
   createContext,
   useCallback,
@@ -68,6 +70,7 @@ import {
 } from './memoryJobs';
 import type {
   SeedInput,
+  SteerChip,
   AppDatabase,
   BondRecord,
   EventRecord,
@@ -118,6 +121,16 @@ function endsMidSentence(text: string) {
   return !/[.!?…](?:["'”’)]+)?$/.test(trimmed);
 }
 
+
+/** One-turn extras the player picks by the input. */
+export type TurnOptions = {
+  remember?: string;
+  steer?: SteerChip;
+  oocNote?: string;
+  /** Internal: this turn is a rewrite after a reply crossed a hard limit. */
+  retry?: number;
+};
+
 type GameContextValue = {
   db: AppDatabase | null;
   slots: AppDatabase[];
@@ -138,7 +151,7 @@ type GameContextValue = {
   dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
   /** Sends the player's input. `remember` follows the offered flashback into the memory (the "Remember" chip). */
-  sendTurn: (input: string, options?: { remember?: string }) => Promise<void>;
+  sendTurn: (input: string, options?: TurnOptions) => Promise<void>;
   regenerate: () => Promise<void>;
   undoLastTurn: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
@@ -510,7 +523,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
    * summaries it calls for are queued and run afterwards on their own.
    */
   const runStateStep = useCallback(
-    async (activeKey: string, slotId: string, turn: TurnInfo) => {
+    async (activeKey: string, slotId: string, turnIn: TurnInfo) => {
+      let turn = turnIn;
       setStateStepRunning(true);
 
       try {
@@ -545,6 +559,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // The post-check: a reply that wrote one of the player's hard limits,
+        // or made someone who isn't a stated adult part of anything sexual, is
+        // thrown away and written again once with a corrective note. If it
+        // happens again, a fade-to-black line stands in for it.
+        const decision = postCheckDecision(extraction, turn.options?.retry ?? 0);
+        if (extraction && decision !== 'keep') {
+          const retry = turn.options?.retry ?? 0;
+          recordDebugState(turn.turnLogId, {
+            status: 'failed',
+            error: `Reply crossed ${extraction.ageRuleCrossed ? 'the adults-only rule' : "a hard limit"}; ${retry < 1 ? 'writing it again' : 'faded to black'}.`,
+          });
+
+          if (decision === 'rewrite') {
+            await updateLatest(slotId, (latest) => {
+              if (!latest.rawLog.some((entry) => entry.id === turn.turnLogId)) return null;
+              const snapshot = restoreLastSnapshot(latest);
+              return snapshot ? carryOverMemory(latest, snapshot) : null;
+            });
+            const options = {
+              ...turn.options,
+              retry: retry + 1,
+              oocNote: [CORRECTIVE_NOTE, turn.options?.oocNote].filter(Boolean).join(' '),
+            };
+            setTimeout(() => void rewriteRef.current?.(turn.userMessage, options), 0);
+            return;
+          }
+
+          await updateLatest(slotId, (latest) => ({
+            ...latest,
+            rawLog: latest.rawLog.map((entry) => (entry.id === turn.turnLogId ? { ...entry, content: FADE_TO_BLACK_LINE } : entry)),
+          }));
+          turn = { ...turn, narration: FADE_TO_BLACK_LINE };
+          extraction = { intimateScene: false };
+        }
+
         let followUps: string[] = [];
         let notice: string | null = null;
 
@@ -575,6 +624,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [readLatest, scheduleJobs, showNotice, updateLatest]
   );
 
+  /** Set below once sendTurn exists: the post-check uses it to write a reply again. */
+  const rewriteRef = useRef<((input: string, options: TurnOptions) => Promise<void>) | null>(null);
+
   const trackBackground = useCallback((task: Promise<void>) => {
     backgroundPromiseRef.current = task;
     void task.catch(() => undefined).finally(() => {
@@ -585,12 +637,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sendTurnInner = useCallback(
-    async (action: string, activeKey: string, remember?: string) => {
+    async (action: string, activeKey: string, turnOptions: TurnOptions = {}) => {
       if (backgroundPromiseRef.current) {
         await backgroundPromiseRef.current;
       }
 
       const current = dbRef.current;
+      const remember = turnOptions.remember;
 
       if (!current) {
         setError('Your story is still loading. Try again in a moment.');
@@ -606,7 +659,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
       try {
         // Following an offered memory: the flashback plays from this turn.
-        const start = (db: AppDatabase) => (remember ? beginFlashback(db, remember) : db);
+        // "Fade to black" holds for the rest of the scene.
+        const fade = (db: AppDatabase) =>
+          turnOptions.steer === 'fade-to-black' && db.state.sceneMode
+            ? { ...db, state: { ...db.state, sceneMode: { ...db.state.sceneMode, fadeToBlack: true } } }
+            : db;
+        const start = (db: AppDatabase) => fade(remember ? beginFlashback(db, remember) : db);
         const snapshotDb = start(pushSnapshot(current));
         const withUser = appendStoryMessage(
           snapshotDb,
@@ -617,7 +675,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
           0
         );
 
-        const prompt = buildNarrationPrompt(withUser, action);
+        const prompt = buildNarrationPrompt(withUser, action, { steer: turnOptions.steer, oocNote: turnOptions.oocNote });
         setLastPromptTokens(prompt.estimatedTokens);
         debugTurnId = beginDebugTurn({
           slotId: current.meta.slotId,
@@ -734,6 +792,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // A reply that lands while the tab is hidden only says that something happened.
+        if (typeof document !== 'undefined' && document.hidden) {
+          setTabTitle(notificationText('reply'));
+        }
+
         if (debugTurnId) {
           linkDebugTurn(debugTurnId, turnLogId);
         }
@@ -744,6 +807,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             turnLogId,
             userMessage: action,
             narration,
+            options: turnOptions,
           })
         );
       } catch (caught) {
@@ -775,9 +839,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
 
   const sendTurn = useCallback(
-    async (input: string, options?: { remember?: string }) => {
+    async (input: string, options?: TurnOptions) => {
       const action = input.trim();
-      const remember = options?.remember;
+      const remember = options;
 
       if (!action) {
         return;
@@ -801,6 +865,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [apiKey, sendTurnInner]
   );
 
+
+  rewriteRef.current = sendTurn;
 
   const undoLastTurn = useCallback(async () => {
     if (backgroundPromiseRef.current) {

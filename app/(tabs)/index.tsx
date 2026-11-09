@@ -67,7 +67,7 @@ import {
   flashbackView,
   rememberChip,
 } from '@/lib/rpg/flashbacks';
-import type { SceneModeName } from '@/lib/rpg/types';
+import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
 import { APP_NAME } from '@/lib/brand';
@@ -87,10 +87,18 @@ type StoryMessage = {
   memoryHeading?: { title: string; dateLine: string };
 };
 
+const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
+  { value: 'slower', label: 'Slower', intimateOnly: true },
+  { value: 'more', label: 'More', intimateOnly: true },
+  { value: 'skip-ahead', label: 'Skip ahead', intimateOnly: false },
+  { value: 'fade-to-black', label: 'Fade to black', intimateOnly: true },
+];
+
 const MODE_LABEL: Record<SceneModeName, string> = {
   normal: 'Narration',
   conversation: 'Conversation',
   fight: 'Fight',
+  intimate: 'Intimate',
 };
 
 const MODE_CHOICES: { value: SceneModeName | null; title: string; body: string }[] = [
@@ -322,6 +330,9 @@ export default function StoryScreen() {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView | null>(null);
   const inputRef = useRef<TextInput | null>(null);
+  const [steer, setSteer] = useState<SteerChip | null>(null);
+  const [oocNote, setOocNote] = useState('');
+  const [oocOpen, setOocOpen] = useState(false);
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
   const lastActionRef = useRef('');
 
@@ -410,14 +421,19 @@ export default function StoryScreen() {
       setInput('');
       selectionRef.current = null;
       setEnteringMemory(Boolean(remember));
+      // The steer chip and the OOC note count for this one turn.
+      const extras = { ...(remember ? { remember } : {}), ...(steer ? { steer } : {}), ...(oocNote.trim() ? { oocNote: oocNote.trim() } : {}) };
+      setSteer(null);
+      setOocNote('');
+      setOocOpen(false);
 
       try {
-        await sendTurn(action, remember ? { remember } : undefined);
+        await sendTurn(action, Object.keys(extras).length > 0 ? extras : undefined);
       } finally {
         setEnteringMemory(false);
       }
     },
-    [isNarrating, sendTurn]
+    [isNarrating, sendTurn, steer, oocNote]
   );
 
   const resetImageZoom = useCallback(() => {
@@ -974,6 +990,48 @@ export default function StoryScreen() {
                 </Text>
               ) : null}
             </View>
+          ) : null}
+          {storyStarted ? (
+            <ScrollView
+              contentContainerStyle={styles.steerRow}
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+            >
+              {STEER_CHIPS.filter((chip) => !chip.intimateOnly || shownMode === 'intimate').map((chip) => {
+                const on = steer === chip.value;
+                return (
+                  <Pressable
+                    accessibilityLabel={`Steer: ${chip.label}${on ? ', on for your next turn' : ''}`}
+                    accessibilityRole="button"
+                    key={chip.value}
+                    onPress={() => setSteer(on ? null : chip.value)}
+                    style={({ pressed }) => [styles.steerChip, on && styles.steerChipOn, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.steerLabel, on && styles.steerLabelOn]}>{chip.label}</Text>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                accessibilityLabel="Out-of-character note to the narrator"
+                accessibilityRole="button"
+                onPress={() => setOocOpen((open) => !open)}
+                style={({ pressed }) => [styles.steerChip, (oocOpen || oocNote.trim()) && styles.steerChipOn, pressed && styles.pressed]}
+              >
+                <Text style={[styles.steerLabel, (oocOpen || oocNote.trim()) && styles.steerLabelOn]}>OOC note</Text>
+              </Pressable>
+            </ScrollView>
+          ) : null}
+          {oocOpen ? (
+            <TextInput
+              accessibilityLabel="Out-of-character note"
+              maxLength={400}
+              onChangeText={setOocNote}
+              placeholder="A note to the narrator for your next turn only (never in the story)"
+              placeholderTextColor={colors.textDim}
+              style={styles.oocInput}
+              value={oocNote}
+            />
           ) : null}
           <View style={styles.composer}>
             <Pressable
@@ -1756,6 +1814,40 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  steerRow: {
+    gap: 6,
+    paddingHorizontal: spacing.xs,
+  },
+  steerChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  steerChipOn: {
+    borderColor: colors.accentBorder,
+    backgroundColor: colors.accentSoft,
+  },
+  steerLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  steerLabelOn: {
+    color: colors.accentText,
+  },
+  oocInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   composer: {
     flexDirection: 'row',

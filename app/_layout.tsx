@@ -15,6 +15,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { PrivacyGate } from '@/components/PrivacyGate';
 import { ToastProvider } from '@/components/Toast';
 import { colors } from '@/constants/theme';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
@@ -57,6 +58,7 @@ export default function RootLayout() {
         <GameProvider>
           <AmbiencePlayer />
           <ToastProvider>
+            <PrivacyGate>
             <View style={styles.root}>
             <Stack
               screenOptions={{
@@ -71,6 +73,7 @@ export default function RootLayout() {
             </Stack>
             <StatusBar backgroundColor={colors.background} style="light" />
             </View>
+            </PrivacyGate>
           </ToastProvider>
         </GameProvider>
       </SafeAreaProvider>

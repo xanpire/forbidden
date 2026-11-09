@@ -7,7 +7,7 @@ import { knowersOf } from './facts';
 import { makeId } from './id';
 import { startingPurse } from './money';
 import { PLAYER_TAG } from './player';
-import { normalizeRelationship } from './romance';
+import { normalizeContentProfile, normalizeIntimacy, normalizeRelationship } from './intimacy';
 import { testSeedInput, type SeedInput } from './testWorld';
 import { normalizeWorld } from './world';
 import type {
@@ -73,13 +73,8 @@ function personEntity(person: StartingPerson, id: string, date: CalendarDate): E
     mood: 'Unknown',
     appearance: person.appearance || 'Unknown',
     gender: genderOf(person.gender),
-    ...(person.romanceAccessibility === 'winnable'
-      ? { romanceAccessibility: 'winnable' as const }
-      : person.romanceAccessibility === 'taken'
-        ? { romanceAccessibility: 'lore-locked' as const }
-        : person.romanceAccessibility
-          ? { romanceAccessibility: 'not-applicable' as const }
-          : {}),
+    ...(person.intimacy ? { intimacy: normalizeIntimacy(person.intimacy) } : {}),
+    ...(person.realPerson ? { realPerson: true } : {}),
     ...(person.whereabouts ? { whereabouts: person.whereabouts } : {}),
     ...(person.alive ? {} : { deceased: { known: true }, status: 'Deceased' }),
     ...(person.knownName ? {} : { known: { label: person.role || 'someone you know' } }),
@@ -250,6 +245,7 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     settings: DEFAULT_SETTINGS,
     rawLog: [],
     world,
+    content: normalizeContentProfile(input.content),
     entities,
     events: [openingEvent],
     eventEntities,

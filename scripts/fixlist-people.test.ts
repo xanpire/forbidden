@@ -85,8 +85,8 @@ describe('12. threads are not opened twice', () => {
 describe('13. romance follows who someone is', () => {
   test('no gender is ruled out by the app; new people by who they are drawn to', () => {
     let db = seed();
-    expect(person(db, 'Mara Vance').romanceAccessibility).toBe('winnable');
-    expect(person(db, 'Alex Reyes').romanceAccessibility).toBeUndefined();
+    expect(person(db, 'Mara Vance').intimacy?.interestedInPlayer).toBe('could-grow');
+    expect(person(db, 'Alex Reyes').intimacy).toBeUndefined();
 
     db = play(db, 'Three strangers share the table.', {
       new_characters: [
@@ -96,9 +96,9 @@ describe('13. romance follows who someone is', () => {
       ],
     });
     // The player (Alex) is a man.
-    expect(person(db, 'Leo Brandt').romanceAccessibility).toBe('winnable');
-    expect(person(db, 'Ines Duarte').romanceAccessibility).toBe('not-applicable');
-    expect(person(db, 'Rei Kudo').romanceAccessibility).toBeUndefined();
+    expect(person(db, 'Leo Brandt').intimacy?.interestedInPlayer).toBe('could-grow');
+    expect(person(db, 'Ines Duarte').intimacy?.interestedInPlayer).toBe('no');
+    expect(person(db, 'Rei Kudo').intimacy).toBeUndefined();
   });
 });
 

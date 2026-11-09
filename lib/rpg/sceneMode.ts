@@ -29,6 +29,7 @@ import type {
   ScenePace,
 } from './types';
 import { isPlayer, isPlayerName } from './player';
+import { intimacyAllowed } from './intimacy';
 
 /** Exchange beats in a row before conversation mode starts by itself. */
 export const CONVERSATION_STREAK = 2;
@@ -109,6 +110,8 @@ export type TurnMode = {
   manual: boolean;
   /** Who the player is talking with or fighting (names, for the prompt and the chip). */
   with: string[];
+  /** Intimate mode only: the player chose fade to black for this scene. */
+  fade?: boolean;
 };
 
 function fightGoingOn(db: AppDatabase) {
@@ -159,6 +162,14 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
 
   if (fightOn || startsFight) {
     return { mode: 'fight', lean: false, manual: false, with: castNames(db).slice(0, 4) };
+  }
+
+  // An intimate scene goes on until the tracker says it ended or the player
+  // moves on, and only while everyone in it passes the adults-only check.
+  const intimateWith = (state.intimateWith ?? []).filter((id) => db.entities.some((entity) => entity.id === id && !isDeceased(entity)));
+  if (intimateWith.length > 0 && !said.changesScene && intimacyAllowed(db, intimateWith)) {
+    const names = intimateWith.map((id) => db.entities.find((entity) => entity.id === id)!).map((entity) => displayName(db, entity));
+    return { mode: 'intimate', lean: false, manual: false, with: names, fade: state.fadeToBlack === true };
   }
 
   if (state.override === 'conversation') {
@@ -291,6 +302,8 @@ export function applySceneBeat(
     partners: kept,
     lastBeat: kind,
     ...(override ? { override } : {}),
+    ...(before.intimateWith ? { intimateWith: before.intimateWith } : {}),
+    ...(before.fadeToBlack ? { fadeToBlack: true } : {}),
   };
 
   return { ...db, state: { ...db.state, sceneMode: next } };
@@ -322,7 +335,7 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
   }
 
   const raw = value as Partial<SceneModeState>;
-  const modes: SceneModeName[] = ['normal', 'conversation', 'fight'];
+  const modes: SceneModeName[] = ['normal', 'conversation', 'fight', 'intimate'];
   const beats: SceneBeat[] = ['exchange', 'instruction', 'remark', 'action', 'travel', 'combat'];
 
   return {
@@ -333,7 +346,11 @@ export function normalizeSceneMode(value: unknown): SceneModeState | undefined {
         : 0,
     partners: Array.isArray(raw.partners) ? raw.partners.filter((item) => typeof item === 'string').slice(0, 6) : [],
     ...(beats.includes(raw.lastBeat as SceneBeat) ? { lastBeat: raw.lastBeat } : {}),
-    ...(modes.includes(raw.override as SceneModeName) ? { override: raw.override } : {}),
+    ...(modes.includes(raw.override as SceneModeName) && raw.override !== 'intimate' ? { override: raw.override } : {}),
+    ...(Array.isArray(raw.intimateWith) && raw.intimateWith.length > 0
+      ? { intimateWith: raw.intimateWith.filter((item) => typeof item === 'string').slice(0, 4) }
+      : {}),
+    ...(raw.fadeToBlack === true ? { fadeToBlack: true } : {}),
   };
 }
 
@@ -365,6 +382,12 @@ export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
     ]
       .filter(Boolean)
       .join('\n');
+  }
+
+  if (turn.mode === 'intimate') {
+    return turn.fade
+      ? `SCENE MODE: an intimate scene${who}, but the player chose to fade to black: cut away from anything intimate and pick up afterwards.`
+      : `SCENE MODE: intimate${who}. Slow, close and sensory, plenty of dialogue; a shorter reply that leaves room for the player.`;
   }
 
   if (turn.mode === 'conversation') {

@@ -17,6 +17,7 @@
  * as "pending" until it is retried, and is dropped once the turn it belongs
  * to no longer exists (undo, regenerate).
  */
+import { applyIntimacyStages, applyIntimateScene, applyMilestones, applyOutfits, applyPreferences } from './intimacy';
 import { WANTED_LABEL, wantedListings } from './reputation';
 import { timelineEventById } from './timeline';
 import { syncBondSides } from './bonds';
@@ -64,6 +65,7 @@ import { storyMessagesSinceLastSummary } from './log';
 import { firstSentences, shortTitle } from './util';
 import { detectNarrationTime } from './timeparse';
 import type {
+  SteerChip,
   AppDatabase,
   CalendarDate,
   EventRecord,
@@ -238,6 +240,8 @@ export type TurnInfo = {
   turnLogId: string;
   userMessage: string;
   narration: string;
+  /** The one-turn extras the turn was sent with (steer, OOC note, rewrite count). */
+  options?: { remember?: string; steer?: SteerChip; oocNote?: string; retry?: number };
 };
 
 export type StateStepResult = {
@@ -378,6 +382,17 @@ export function applyStateStep(
   });
 
   // Side characters' lives move on; consequences fade or (witnesses) talk.
+  // Intimacy: the ladder (at the story's pacing), firsts, what people learned
+  // about each other, clothes and positions, and the intimate scene itself.
+  const wasIntimate = (latest.state.sceneMode?.intimateWith?.length ?? 0) > 0 || modeUsed === 'intimate';
+  next = applyIntimacyStages(next, extraction?.intimacyStages);
+  next = applyMilestones(next, extraction?.milestones);
+  next = applyPreferences(next, extraction?.preferencesLearned);
+  next = applyOutfits(next, extraction?.outfits);
+  next = applyIntimateScene(next, extraction?.intimateScene, presentIds, sceneEnded);
+  if (wasIntimate || extraction?.intimateScene) {
+    next = markIntimateMemory(next, turn.turnLogId);
+  }
   next = applyLifeEvents(next, extraction?.lifeEvents);
   next = advanceLives(next);
   next = advanceConsequences(next);
@@ -1314,4 +1329,17 @@ export function carryOverMemory(current: AppDatabase, restored: AppDatabase): Ap
   };
 
   return pruneJobs(extraEvents.length > 0 ? { ...merged, indices: buildIndices(merged) } : merged);
+}
+
+
+/**
+ * Marks the turn's reply as part of an intimate scene: its memory is tagged
+ * `intimate` (summarised, never stored verbatim) and summaries keep it vague
+ * when the player's content profile says so.
+ */
+export function markIntimateMemory(db: AppDatabase, turnLogId: string): AppDatabase {
+  return {
+    ...db,
+    rawLog: db.rawLog.map((entry) => (entry.id === turnLogId ? { ...entry, intimate: true } : entry)),
+  };
 }

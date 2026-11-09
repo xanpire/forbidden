@@ -14,11 +14,12 @@ import { stripNarrationJson } from './prompt';
 import { TIMELINE_VERSION } from './timeline';
 import { normalizeDate } from './calendar';
 import { seedDatabase } from './seed';
+import { intimacyFromLegacy, normalizeContentProfile, normalizeIntimacy } from './intimacy';
 import type { SeedInput } from './types';
 import { repairUnmetLabels } from './met';
 import { readSlotJson, removeSlotJson, writeSlotJson } from './slotStore';
 import { normalizeSceneMode } from './sceneMode';
-import type { AppDatabase, MemoryIndex, WeatherLock } from './types';
+import type { AppDatabase, EntityRecord, MemoryIndex, WeatherLock } from './types';
 import { normalizeTravelLog } from './mapData';
 import { WEATHER_CONDITIONS } from './weather';
 import { normalizeFlashbacks } from './flashbacks';
@@ -356,9 +357,20 @@ export async function importDatabase(
   return imported;
 }
 
+/** The intimacy profile, folding in the old romanceAccessibility / canonDevotion / orientation. */
+function normalizeEntityIntimacy(entity: EntityRecord): Partial<EntityRecord> {
+  const raw = entity as EntityRecord & Record<string, unknown>;
+  const { romanceAccessibility: _a, canonDevotion: _d, orientation: _o, ...rest } = raw;
+  void rest;
+  const intimacy =
+    entity.type !== 'character' || isPlayerEntity(entity) ? undefined : normalizeIntimacy(entity.intimacy) ?? intimacyFromLegacy(raw);
+  return { intimacy, romanceAccessibility: undefined, canonDevotion: undefined, orientation: undefined } as Partial<EntityRecord>;
+}
+
 export function normalizeDatabase(db: AppDatabase): AppDatabase {
   const normalized: AppDatabase = {
     schemaVersion: 1,
+    content: normalizeContentProfile((db as Partial<AppDatabase>).content),
     meta: db.meta ?? {
       slotId: makeId('slot'),
       slotName: DEFAULT_SLOT_NAME,
@@ -389,10 +401,9 @@ export function normalizeDatabase(db: AppDatabase): AppDatabase {
           mood: entity.mood ?? (entity.type === 'character' ? 'Unknown' : undefined),
           appearance: entity.appearance ?? (entity.type === 'character' ? 'Unknown' : undefined),
           gender: entity.type === 'character' ? (entity.gender ?? 'unknown') : undefined,
-          // The player has no romance accessibility of their own. Nobody else's is
-          // decided by gender: it comes from the entity (written or tracked).
-          romanceAccessibility:
-            entity.type !== 'character' || isPlayerEntity(entity) ? undefined : entity.romanceAccessibility,
+          // Nobody's heart is decided by gender: it comes from the entity
+          // (written or tracked). Older saves' romance fields fold in here.
+          ...normalizeEntityIntimacy(entity),
         }))
       : [],
     events: Array.isArray(db.events) ? db.events : [],

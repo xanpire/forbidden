@@ -17,8 +17,9 @@ import { pickImageFile } from '@/lib/rpg/file';
 import { useGame } from '@/lib/rpg/game';
 import { FACE_IMAGE } from '@/lib/rpg/imageCompress';
 import { storeImage } from '@/lib/rpg/imageStore';
-import { RELATIONSHIP_STAGES } from '@/lib/rpg/romance';
-import type { CalendarDate, ClimateType, PlaceDef, StartingPerson, TimelineKnowledge } from '@/lib/rpg/types';
+import { RELATIONSHIP_STAGES } from '@/lib/rpg/intimacy';
+import type { CalendarDate, ClimateType, ContentProfile, ContentTag, IntimacyProfile, PlaceDef, StartingPerson, TimelineKnowledge } from '@/lib/rpg/types';
+import { CHECK_REASONS, canBeIntimate } from '@/lib/rpg/intimacy';
 import {
   CLIMATE_LABELS,
   STEP_LABELS,
@@ -63,11 +64,25 @@ const KNOWLEDGE_OPTIONS: { value: TimelineKnowledge; label: string }[] = [
   { value: 'witnesses', label: 'Only those there' },
   { value: 'secret', label: 'Secret' },
 ];
-const ACCESS_OPTIONS: { value: NonNullable<StartingPerson['romanceAccessibility']>; label: string }[] = [
-  { value: 'winnable', label: 'Could fall for you' },
+const INTEREST_OPTIONS: { value: IntimacyProfile['interestedInPlayer']; label: string }[] = [
+  { value: 'yes', label: 'Drawn to you' },
+  { value: 'could-grow', label: 'Could grow' },
+  { value: 'no', label: 'Not interested' },
   { value: 'taken', label: 'Heart is taken' },
-  { value: 'not-interested', label: 'Not interested' },
-  { value: 'not-applicable', label: 'Not relevant' },
+];
+const PACING_OPTIONS: { value: ContentProfile['pacing']; label: string }[] = [
+  { value: 'slow-burn', label: 'Slow burn' },
+  { value: 'natural', label: 'Natural' },
+  { value: 'fast', label: 'Fast' },
+];
+const WEIGHT_OPTIONS: { value: NonNullable<ContentTag['weight']>; label: string }[] = [
+  { value: 'love', label: 'Love' },
+  { value: 'like', label: 'Like' },
+  { value: 'okay', label: 'Okay' },
+];
+const LIMIT_OPTIONS: { value: NonNullable<ContentTag['kind']>; label: string }[] = [
+  { value: 'hard', label: 'Hard: never, not even mentioned' },
+  { value: 'soft', label: 'Soft: only off-page' },
 ];
 
 type Updater = (update: (draft: WizardDraft) => WizardDraft) => void;
@@ -187,6 +202,7 @@ export default function NewStoryScreen() {
           {draft.step === 'lore' ? <LoreStep draft={draft} update={update} /> : null}
           {draft.step === 'you' ? <YouStep draft={draft} update={update} /> : null}
           {draft.step === 'backstory' ? <BackstoryStep draft={draft} update={update} /> : null}
+          {draft.step === 'intimacy' ? <IntimacyStep draft={draft} update={update} /> : null}
           {draft.step === 'people' ? <PeopleStep draft={draft} update={update} /> : null}
           {draft.step === 'opening' ? <OpeningStep draft={draft} update={update} /> : null}
           {draft.step === 'timeline' ? <TimelineStep draft={draft} update={update} /> : null}
@@ -523,6 +539,99 @@ function BackstoryStep({ draft, update }: { draft: WizardDraft; update: Updater 
   );
 }
 
+function IntimacyFields({ person, set }: { person: StartingPerson; set: (patch: Partial<StartingPerson>) => void }) {
+  const profile = person.intimacy;
+  const setProfile = (patch: Partial<IntimacyProfile>) => set({ intimacy: { ...(profile ?? { orientation: '', interestedInPlayer: 'could-grow', desires: [], boundaries: [] }), ...patch } });
+  const check = canBeIntimate({ age: person.age, appearance: person.appearance, role: person.role, personality: person.personality, realPerson: person.realPerson });
+  return (
+    <>
+      <Toggle hint="A real, identifiable person (a celebrity, someone you know). They can appear, but never in an intimate scene." label="Real person" onChange={(realPerson) => set({ realPerson })} value={Boolean(person.realPerson)} />
+      <Toggle
+        hint="Their own desires and boundaries. Needs a stated age of 18 or older."
+        label="Can be part of intimate scenes"
+        onChange={(on) => set({ intimacy: on ? { orientation: '', interestedInPlayer: 'could-grow', desires: [], boundaries: [] } : undefined })}
+        value={Boolean(profile)}
+      />
+      {profile ? (
+        <View style={styles.nested}>
+          {!check.ok ? <Text style={styles.missing}>{person.name || 'This person'} {CHECK_REASONS[check.reason]}: they can't be part of intimate scenes until that changes.</Text> : null}
+          <Field label="Drawn to" onChange={(orientation) => setProfile({ orientation })} placeholder="men, women, anyone…" value={profile.orientation} />
+          <Choice label="Toward you" onChange={(interestedInPlayer) => setProfile({ interestedInPlayer })} options={INTEREST_OPTIONS} value={profile.interestedInPlayer} />
+          {profile.interestedInPlayer === 'taken' ? <Field label="Whose heart is it" onChange={(devotion) => setProfile({ devotion })} value={profile.devotion ?? ''} /> : null}
+          <ListField label="What they like" onChange={(desires) => setProfile({ desires })} values={profile.desires} />
+          <ListField hint="One per line. Empty means none written: the narrator plays them from their personality." label="What they won't do" onChange={(boundaries) => setProfile({ boundaries })} values={profile.boundaries} />
+          <FieldRow>
+            <Field label="Style" onChange={(style) => setProfile({ style })} placeholder="shy, bold, teasing, tender…" value={profile.style ?? ''} />
+            <Field label="Experience" onChange={(experience) => setProfile({ experience })} value={profile.experience ?? ''} />
+          </FieldRow>
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+function TagList({
+  title,
+  tags,
+  onChange,
+  kind,
+}: {
+  title: string;
+  tags: ContentTag[];
+  onChange: (tags: ContentTag[]) => void;
+  kind: 'interest' | 'limit';
+}) {
+  return (
+    <>
+      <Text style={type.sectionLabel}>{title}</Text>
+      {tags.map((tag, i) => {
+        const set = (patch: Partial<ContentTag>) => onChange(tags.map((item, j) => (j === i ? { ...item, ...patch } : item)));
+        return (
+          <ItemCard key={i} onRemove={() => onChange(tags.filter((_, j) => j !== i))} title={tag.label || (kind === 'interest' ? 'New interest' : 'New limit')}>
+            <Field label={kind === 'interest' ? 'What you want more of' : 'What it is'} onChange={(label) => set({ label })} value={tag.label} />
+            <Field label="Note (optional)" onChange={(note) => set({ note })} value={tag.note ?? ''} />
+            {kind === 'interest' ? (
+              <Choice label="How much" onChange={(weight) => set({ weight })} options={WEIGHT_OPTIONS} value={tag.weight ?? 'like'} />
+            ) : (
+              <Choice label="Kind" onChange={(value) => set({ kind: value })} options={LIMIT_OPTIONS} value={tag.kind ?? 'hard'} />
+            )}
+          </ItemCard>
+        );
+      })}
+      <AddButton label={kind === 'interest' ? 'Add an interest' : 'Add a limit'} onPress={() => onChange([...tags, kind === 'interest' ? { label: '', weight: 'like' } : { label: '', kind: 'hard' }])} />
+    </>
+  );
+}
+
+function IntimacyStep({ draft, update }: { draft: WizardDraft; update: Updater }) {
+  const c = draft.content;
+  const set = (patch: Partial<ContentProfile>) => update((d) => ({ ...d, content: { ...d.content, ...patch } }));
+  const player = draft.character;
+  const check = canBeIntimate({ age: player.age, appearance: player.appearance, role: player.role, personality: player.personality });
+  if (!check.ok) {
+    return (
+      <>
+        <StepIntro body="Romance and sex in your story." title="Intimacy" />
+        <Text style={styles.missing}>Your character {CHECK_REASONS[check.reason]}. Give them an age of 18 or older on the You step to set this up.</Text>
+      </>
+    );
+  }
+  return (
+    <>
+      <StepIntro
+        body="Romance and sex are part of this story, built up over time like anything else. Scenes are written fully explicit. Everything here is optional and yours: an empty list means nothing is off the table. You can change it later."
+        title="Intimacy"
+      />
+      <Choice hint="How fast relationships move. The story only moves a step when a scene shows it." label="Pacing" onChange={(pacing) => set({ pacing })} options={PACING_OPTIONS} value={c.pacing} />
+      <TagList kind="interest" onChange={(interests) => set({ interests })} tags={c.interests} title="What you want more of" />
+      <TagList kind="limit" onChange={(limits) => set({ limits })} tags={c.limits} title="Your limits" />
+      <Field hint="Free text: lush and slow, blunt and short…" label="Narrator voice for these scenes" onChange={(narratorVoice) => set({ narratorVoice })} value={c.narratorVoice ?? ''} />
+      <Toggle hint={'Keeps intimate details out of "previously…" recaps and summaries.'} label="Keep recaps vague" onChange={(vagueRecaps) => set({ vagueRecaps })} value={c.vagueRecaps} />
+      <Hint>Two rules always hold and can't be changed: everyone in an intimate scene is an adult (18+), and never a real person.</Hint>
+    </>
+  );
+}
+
 export function PersonFields({ person, set }: { person: StartingPerson; set: (patch: Partial<StartingPerson>) => void }) {
   return (
     <>
@@ -544,7 +653,7 @@ export function PersonFields({ person, set }: { person: StartingPerson; set: (pa
       <Field label="Their side, in words" onChange={(note) => set({ theirFeelings: { ...person.theirFeelings, note } })} value={person.theirFeelings.note} />
       <Field label="Your side, in words" onChange={(note) => set({ yourFeelings: { ...person.yourFeelings, note } })} value={person.yourFeelings.note} />
       <NumberField allowEmpty label="Attraction to you (0..10)" onChange={(attraction) => set({ attraction: attraction === undefined ? undefined : clamp(attraction, 0, 10) })} value={person.attraction} />
-      <Choice label="Romance" onChange={(romanceAccessibility) => set({ romanceAccessibility })} options={ACCESS_OPTIONS} value={person.romanceAccessibility} />
+      <IntimacyFields person={person} set={set} />
       <Toggle label="Alive" hint="Off: they died before the story starts." onChange={(alive) => set({ alive })} value={person.alive} />
       <Toggle label="You know their name" onChange={(knownName) => set({ knownName })} value={person.knownName} />
       <Toggle label="You've met before" onChange={(met) => set({ met })} value={person.met !== false} />
@@ -628,6 +737,7 @@ function ReviewStep({ draft, update, goTo }: { draft: WizardDraft; update: Updat
     ['places', 'Places & groups', `${w.regions.length} areas · ${w.places.length} places · ${w.factions.length} groups`],
     ['lore', 'Lore', `${w.lore.length} entries`],
     ['you', 'You', c.name ? `${c.name}, ${c.age}${c.role ? ` · ${c.role}` : ''}` : '—'],
+    ['intimacy', 'Intimacy', `${draft.content.pacing} · ${draft.content.interests.length} interests · ${draft.content.limits.length} limits`],
     ['backstory', 'Backstory', `${c.backstory.trim() ? `${c.backstory.trim().split(/\s+/).length} words` : 'none'} · ${draft.truths.length} facts · ${c.secrets.length} secrets`],
     ['people', 'People', draft.people.map((p) => p.name).filter(Boolean).join(', ') || 'none yet'],
     ['opening', 'Opening', draft.opening.situation ? `${draft.opening.location || 'somewhere'} · ${draft.opening.situation.slice(0, 80)}` : '—'],
@@ -672,5 +782,6 @@ const styles = StyleSheet.create({
   images: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.sm },
   label: { fontFamily: fonts.semibold, fontSize: 13, color: colors.textSoft, marginBottom: spacing.xs },
   missing: { fontFamily: fonts.medium, fontSize: 14, color: colors.warning, marginBottom: spacing.sm },
+  nested: { borderLeftColor: colors.accentBorder, borderLeftWidth: 2, paddingLeft: spacing.md, marginBottom: spacing.md },
   reviewRow: { borderBottomColor: colors.divider, borderBottomWidth: 1, paddingVertical: spacing.md, gap: 2 },
 });

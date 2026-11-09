@@ -6,7 +6,7 @@ import { moveCharacterImages } from './characterPortrait';
 import { characterRefs } from './characterRefs';
 import { makeId } from './id';
 import { isPlaceholderStatus, NEWLY_MET_STATUS, UNMET_STATUS } from './met';
-import { romanceFor } from './romance';
+import { interestFor } from './intimacy';
 import { uniqueList } from './util';
 import type { AppDatabase, EntityRecord, TurnDiff } from './types';
 import { isPlayer } from './player';
@@ -212,6 +212,17 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
       return ref?.entityId ? [{ ...item, name: ref.name, entityId: ref.entityId }] : [];
     });
   }
+
+  // Intimacy items belong to people the save knows; outfits may be the player's.
+  const known = <T extends { entityId?: string; name: string }>(items: T[] | undefined) =>
+    items?.flatMap((item) => {
+      const ref = resolve(item.entityId ?? item.name);
+      return ref?.entityId ? [{ ...item, name: ref.name, entityId: ref.entityId }] : [];
+    });
+  if (diff.intimacyStages) next.intimacyStages = known(diff.intimacyStages);
+  if (diff.milestones) next.milestones = known(diff.milestones);
+  if (diff.preferencesLearned) next.preferencesLearned = known(diff.preferencesLearned);
+  if (diff.outfits) next.outfits = known(diff.outfits);
 
   // A consequence can belong to someone unnamed; a named one is resolved, and
   // witnesses become names.
@@ -630,9 +641,17 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
       appearance: entity.appearance?.trim() || 'Unknown',
       gender: entity.gender ?? 'unknown',
       ...(entity.minor ? { tier: 'minor' as const } : {}),
-      // From who they are, never a default of "winnable".
-      romanceAccessibility: romanceFor(entity.attractedTo, db.state.player?.gender),
-      ...(entity.attractedTo && entity.attractedTo !== 'unknown' ? { orientation: `Attracted to ${entity.attractedTo}` } : {}),
+      // From who they are, never a default of "drawn to you".
+      ...(interestFor(entity.attractedTo, db.state.player?.gender)
+        ? {
+            intimacy: {
+              orientation: entity.attractedTo && entity.attractedTo !== 'unknown' ? entity.attractedTo : '',
+              interestedInPlayer: interestFor(entity.attractedTo, db.state.player?.gender)!,
+              desires: [],
+              boundaries: [],
+            },
+          }
+        : {}),
       tags: [],
     } as EntityRecord;
 

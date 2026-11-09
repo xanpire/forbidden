@@ -2,7 +2,7 @@
 // fields, number fields, toggles, pill choices and removable item cards. Built
 // on the theme tokens so it matches the list kit.
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { Trash2 } from 'lucide-react-native';
 
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -202,6 +202,7 @@ export function Toggle({ label, value, onChange, hint }: { label: string; value:
         thumbColor={colors.white}
         trackColor={{ false: colors.surfaceSoft, true: colors.accent }}
         value={value}
+        {...(Platform.OS === 'web' ? { activeThumbColor: colors.white } : {})}
       />
     </View>
   );

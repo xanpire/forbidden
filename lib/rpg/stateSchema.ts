@@ -247,6 +247,29 @@ export const TURN_STATE_SCHEMA = object({
     from: { type: 'string' },
     text: nullableString,
   }),
+  // Intimacy (intimacy.ts): scene on/off, ladder steps, firsts, learned
+  // preferences, clothes and positions, and the two hard-limit flags.
+  intimate_scene: { type: ['boolean', 'null'] },
+  intimacy_stage_changed: list({
+    character_id: { type: 'string' },
+    stage: { type: 'string' },
+  }),
+  milestone: list({
+    character_id: { type: 'string' },
+    what: { type: 'string' },
+  }),
+  preference_learned: list({
+    character_id: { type: 'string' },
+    preference: { type: 'string' },
+    about_player: { type: 'boolean' },
+  }),
+  outfit_changed: list({
+    character_id: { type: 'string' },
+    outfit: nullableString,
+    position: nullableString,
+  }),
+  limit_crossed: { type: 'boolean' },
+  age_rule_crossed: { type: 'boolean' },
   // Something in a person's own life away from the player that this turn revealed.
   life_events: list({
     character_id: { type: 'string' },

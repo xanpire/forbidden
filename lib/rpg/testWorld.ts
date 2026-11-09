@@ -195,7 +195,7 @@ export function testPeople(): StartingPerson[] {
       yourFeelings: { affinity: 5, note: 'You like her more than you let on.' },
       theirFeelings: { affinity: 4, note: 'She thinks you are trouble, the good kind.' },
       attraction: 4,
-      romanceAccessibility: 'winnable',
+      intimacy: { orientation: 'men and women', interestedInPlayer: 'could-grow', desires: [], boundaries: [] },
       alive: true,
       knownName: true,
       whereabouts: 'The Anchor',

@@ -407,8 +407,16 @@ export function recordSceneEvent(
   options: { sceneName?: string } = {}
 ): AppDatabase {
   const scene = diff.scene;
+  // An intimate scene is never kept verbatim: a plain line until its summary lands.
+  const intimate = diff.intimateScene === true || (db.state.sceneMode?.intimateWith?.length ?? 0) > 0;
+  const partnerNames = [
+    ...(db.state.sceneMode?.intimateWith ?? []).map((id) => db.entities.find((entity) => entity.id === id)?.name),
+    ...(scene?.entities ?? []).map((name) => resolveEntity(db, name)).filter((entity) => entity && !entity.tags.includes('player')).map((entity) => entity!.name),
+  ].filter((name): name is string => Boolean(name));
+  const partners = [...new Set(partnerNames)].join(' and ');
   const summary =
     scene?.summary?.trim() ||
+    (intimate ? `An intimate moment${partners ? ` with ${partners}` : ''}.` : '') ||
     trimToSentence(
       db.rawLog
         .filter((message) => message.kind === 'story')
@@ -431,7 +439,7 @@ export function recordSceneEvent(
     title: options.sceneName ?? db.state.scene,
     summary: trimToSentence(summary.slice(0, 220)),
     importance: scene?.importance ?? 3,
-    tags: Array.isArray(scene?.tags) ? scene.tags.filter(Boolean).slice(0, 6) : [],
+    tags: [...(Array.isArray(scene?.tags) ? scene.tags.filter(Boolean).slice(0, 6) : []), ...(intimate ? ['intimate'] : [])],
     pinned: false,
     sourceLogId: null,
     createdAt: Date.now(),

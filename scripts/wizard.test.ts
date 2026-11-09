@@ -189,6 +189,30 @@ describe('creation wizard', () => {
     expect(parseHelpReply('no json here')).toBeNull();
   });
 
+  test('anyone with an intimacy section needs a stated adult age, and the profile reaches the save', () => {
+    const draft = handMadeDraft();
+    const withIntimacy: WizardDraft = {
+      ...draft,
+      content: { ...draft.content, pacing: 'slow-burn', interests: [{ label: 'slow dancing', weight: 'love' }], limits: [] },
+      people: draft.people.map((person) =>
+        person.name === 'Rose'
+          ? { ...person, age: undefined, intimacy: { orientation: 'women', interestedInPlayer: 'yes' as const, desires: [], boundaries: [] } }
+          : person.name === 'Vincent Duval'
+            ? { ...person, intimacy: { orientation: 'women', interestedInPlayer: 'could-grow' as const, desires: [], boundaries: ['being rushed'] } }
+            : person
+      ),
+    };
+    expect(missingFields(withIntimacy).map((item) => item.message)).toEqual([
+      'Rose has no stated age: give an age of 18 or older, or remove their intimacy section.',
+    ]);
+    const input = draftToSeedInput(withIntimacy);
+    expect(input.people.find((person) => person.name === 'Rose')?.intimacy).toBeUndefined();
+    expect(input.content?.pacing).toBe('slow-burn');
+    const db = seedDatabase('slot_wizard_intimacy', 'x', input);
+    expect(db.content.interests[0].label).toBe('slow dancing');
+    expect(db.entities.find((entity) => entity.name === 'Vincent Duval')?.intimacy?.boundaries).toEqual(['being rushed']);
+  });
+
   test('a saved draft survives a reload, even half-broken', () => {
     const round = normalizeDraft(JSON.parse(JSON.stringify(handMadeDraft())))!;
     expect(round.character.name).toBe('Celeste Moreau');

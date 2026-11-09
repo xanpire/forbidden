@@ -10,10 +10,12 @@ import { STORAGE_KEYS } from '../brand';
 import { DEFAULT_DATE } from './calendar';
 import { makeId, slug } from './id';
 import { emptyWorld, normalizeWorld } from './world';
+import { CHECK_REASONS, canBeIntimate, defaultContentProfile, normalizeContentProfile } from './intimacy';
 import type {
   CalendarDate,
   CharacterDefinition,
   ClimateType,
+  ContentProfile,
   FactionDef,
   LoreRecord,
   OpenRouterMessage,
@@ -27,7 +29,7 @@ import type {
   WorldDefinition,
 } from './types';
 
-export const WIZARD_STEPS = ['world', 'places', 'lore', 'you', 'backstory', 'people', 'opening', 'timeline', 'review'] as const;
+export const WIZARD_STEPS = ['world', 'places', 'lore', 'you', 'backstory', 'intimacy', 'people', 'opening', 'timeline', 'review'] as const;
 export type WizardStep = (typeof WIZARD_STEPS)[number];
 
 export const STEP_LABELS: Record<WizardStep, string> = {
@@ -36,6 +38,7 @@ export const STEP_LABELS: Record<WizardStep, string> = {
   lore: 'Lore',
   you: 'You',
   backstory: 'Backstory',
+  intimacy: 'Intimacy',
   people: 'People',
   opening: 'Opening',
   timeline: 'Timeline',
@@ -50,6 +53,7 @@ export type WizardDraft = {
   truths: StartingTruth[];
   people: StartingPerson[];
   opening: OpeningScene;
+  content: ContentProfile;
   /** The story's name in the Stories list. */
   slotName: string;
   updatedAt: number;
@@ -103,6 +107,7 @@ export function emptyDraft(): WizardDraft {
     truths: [],
     people: [],
     opening: { location: '', date: { ...world.calendar.start }, situation: '', castNames: [], threads: [] },
+    content: defaultContentProfile(),
     slotName: '',
     updatedAt: Date.now(),
   };
@@ -261,6 +266,18 @@ export function missingFields(draft: WizardDraft): MissingField[] {
   if (!draft.world.premise.trim()) missing.push({ step: 'world', field: 'premise', message: 'Write a short premise for your world.' });
   if (!draft.character.name.trim()) missing.push({ step: 'you', field: 'name', message: 'Give your character a name.' });
   if (!draft.opening.situation.trim()) missing.push({ step: 'opening', field: 'situation', message: 'Say what is happening when the story opens.' });
+  // Adults only: anyone with an intimacy section needs a stated age of 18+.
+  draft.people.forEach((person, index) => {
+    if (!person.intimacy || !person.name.trim()) return;
+    const check = canBeIntimate({ age: person.age, appearance: person.appearance, role: person.role, personality: person.personality, realPerson: person.realPerson });
+    if (!check.ok) {
+      missing.push({
+        step: 'people',
+        field: `people.${index}.age`,
+        message: `${person.name.trim()} ${CHECK_REASONS[check.reason]}: give an age of 18 or older, or remove their intimacy section.`,
+      });
+    }
+  });
   return missing;
 }
 
@@ -373,7 +390,14 @@ export function draftToSeedInput(draft: WizardDraft): SeedInput {
     .filter((truth) => clean(truth.text))
     .map((truth) => ({ ...truth, text: clean(truth.text), knownBy: cleanList(truth.knownBy).length ? cleanList(truth.knownBy) : ['you'] }));
 
-  return { world, character, people, opening, truths };
+  // People who fail the adults-only check never carry an intimacy profile.
+  const checkedPeople = people.map((person) =>
+    person.intimacy && !canBeIntimate({ age: person.age, appearance: person.appearance, role: person.role, personality: person.personality, realPerson: person.realPerson }).ok
+      ? { ...person, intimacy: undefined }
+      : person
+  );
+
+  return { world, character, people: checkedPeople, opening, truths, content: normalizeContentProfile(draft.content) };
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +435,7 @@ export function normalizeDraft(value: unknown): WizardDraft | null {
     truths: Array.isArray(input.truths) ? input.truths : [],
     people: Array.isArray(input.people) ? input.people.map((person) => ({ ...emptyPerson(), ...person })) : [],
     opening: { ...base.opening, ...(input.opening ?? {}) },
+    content: normalizeContentProfile(input.content),
     slotName: typeof input.slotName === 'string' ? input.slotName : '',
   };
 }
@@ -418,7 +443,7 @@ export function normalizeDraft(value: unknown): WizardDraft | null {
 // ---------------------------------------------------------------------------
 // "Help me fill this": one optional call per section.
 
-export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'people' | 'opening' | 'timeline';
+export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'intimacy' | 'people' | 'opening' | 'timeline';
 
 const HELP_SHAPES: Record<HelpSection, string> = {
   world:
@@ -428,6 +453,7 @@ const HELP_SHAPES: Record<HelpSection, string> = {
   lore: '{"lore": [{"keywords": string[], "text": string}]}',
   you: '{"appearance": string, "outfit": string, "personality": string, "speechStyle": string, "role": string, "skills": string, "inventory": string[], "goals": string[]}',
   backstory: '{"backstory": string, "truths": string[], "secrets": string[]}',
+  intimacy: '{"interests": string[], "narratorVoice": string}',
   people:
     '{"people": [{"name": string, "age": number, "gender": string, "role": string, "appearance": string, "personality": string, "speechStyle": string, "relationship": string}]}',
   opening: '{"location": string, "situation": string, "threads": string[]}',
@@ -563,6 +589,12 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
       const c = draft.character;
       const truths = draft.truths.length ? draft.truths : strs(s.truths).map((text) => ({ text, knownBy: ['you'] }));
       return { ...draft, character: { ...c, backstory: fill(c.backstory, s.backstory), secrets: fillList(c.secrets, s.secrets) }, truths };
+    }
+    case 'intimacy': {
+      const c = draft.content;
+      const known = new Set(c.interests.map((tag) => tag.label.toLowerCase()));
+      const interests = [...c.interests, ...strs(s.interests).filter((label) => !known.has(label.toLowerCase())).map((label) => ({ label, weight: 'like' as const }))];
+      return { ...draft, content: { ...c, interests, narratorVoice: fill(c.narratorVoice, s.narratorVoice) } };
     }
     case 'people': {
       const people = [...draft.people];

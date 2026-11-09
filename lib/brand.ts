@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   apiKey: `${STORAGE_PREFIX}.apiKey.v1`,
   ambience: `${STORAGE_PREFIX}.ambience.v1`,
   wizardDraft: `${STORAGE_PREFIX}.wizardDraft.v1`,
+  privacy: `${STORAGE_PREFIX}.privacy.v1`,
 } as const;
 
 /** IndexedDB database names. */

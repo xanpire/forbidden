@@ -28,6 +28,7 @@ import { AppButton } from '@/components/AppButton';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
+import { ModelTest, PrivacySettings } from '@/components/settings/AdultSettings';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Slider } from '@/components/Slider';
 import { DebugPanel } from '@/components/settings/DebugPanel';
@@ -512,6 +513,12 @@ export default function SettingsScreen() {
                 </View>
               </View>
             ) : null}
+            <ModelTest apiKey={apiKey} settings={db.settings} />
+          </ListCard>
+
+          <SectionLabel>Privacy</SectionLabel>
+          <ListCard>
+            <PrivacySettings />
           </ListCard>
 
           <SectionLabel>Sound</SectionLabel>

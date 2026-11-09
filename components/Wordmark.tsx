@@ -1,13 +1,27 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { Pressable, StyleSheet, Text } from 'react-native';
 
 import { colors, fonts } from '@/constants/theme';
-import { APP_NAME } from '@/lib/brand';
+import { shownAppName, usePrivacy } from '@/lib/privacy';
 
+/** The app's name. A double tap is the quick-hide. */
 export function Wordmark({ compact = false }: { compact?: boolean }) {
+  const { settings, hide } = usePrivacy();
+  const lastTap = useRef(0);
+  const name = shownAppName(settings);
   return (
-    <View style={styles.row} accessibilityLabel={APP_NAME}>
-      <Text style={[styles.word, compact && styles.wordCompact]}>{APP_NAME}</Text>
-    </View>
+    <Pressable
+      accessibilityHint="Double tap to hide the screen"
+      accessibilityLabel={name}
+      onPress={() => {
+        const now = Date.now();
+        if (now - lastTap.current < 400) hide();
+        lastTap.current = now;
+      }}
+      style={styles.row}
+    >
+      <Text style={[styles.word, compact && styles.wordCompact]}>{name}</Text>
+    </Pressable>
   );
 }
 
