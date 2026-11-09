@@ -582,7 +582,7 @@ export default function SettingsScreen() {
                 <ListRow
                   accessibilityLabel={active ? `${slot.meta.slotName}, playing` : `Switch to ${slot.meta.slotName}`}
                   key={slot.meta.slotId}
-                  meta={`Chapter ${story.state.chapter} · ${formatDayMonth(story.state.inStoryDate)}, year ${story.state.inStoryDate.year}`}
+                  meta={`Chapter ${story.state.chapter} · ${formatDayMonth(story.state.inStoryDate)} ${story.state.inStoryDate.year}`}
                   onPress={active ? undefined : () => void switchSlotById(slot.meta.slotId)}
                   trailing={
                     <Pressable

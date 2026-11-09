@@ -13,6 +13,7 @@ mock.module('@react-native-async-storage/async-storage', () => ({
 }));
 
 import {
+  AMBIENCE_BEDS,
   INDOOR_BEDS,
   ambienceInputOf,
   ambienceMix,
@@ -27,102 +28,80 @@ import type { AppDatabase } from '../lib/rpg/types';
 
 const base: AmbienceInput = {
   condition: 'clear',
-  period: 'morning',
-  hour: 10,
-  season: 'spring',
-  climate: 'temperate',
-  kind: 'wilderness',
-  place: 'Forest north of the city',
+  period: 'evening',
+  hour: 19,
+  season: 'autumn',
+  kind: 'structure',
+  place: 'Your apartment',
+  recent: '',
   hushed: false,
 };
 const mix = (change: Partial<AmbienceInput>) => ambienceMix({ ...base, ...change });
 const seed = () => normalizeDatabase(seedDatabase('slot_ambience', 'Ambience'));
 const at = (db: AppDatabase, change: Partial<AppDatabase['state']>): AppDatabase => ({ ...db, state: { ...db.state, ...change } });
 
-describe('ambience: what you hear where you are', () => {
-  test('a forest by day has birds and a little wind; at night, insects', () => {
-    const day = mix({});
-    expect(day.beds['forest-day']).toBeGreaterThan(0.5);
-    expect(day.beds['wind-light']).toBeGreaterThan(0);
-    expect(day.beds['forest-night']).toBeUndefined();
-
-    const night = mix({ period: 'night', hour: 23 });
-    expect(night.beds['forest-day']).toBeUndefined();
-    expect(night.beds['forest-night']).toBeGreaterThan(0.5);
+describe('ambience: present-day sounds', () => {
+  test('a quiet apartment hums, with the city faint through the glass', () => {
+    const home = mix({});
+    expect(home.indoors).toBe(true);
+    expect(home.beds.apartment).toBeGreaterThan(0);
+    expect(home.beds.traffic).toBeLessThan(0.3);
+    expect(home.beds.birds).toBeUndefined();
   });
 
-  test('dawn birds are louder; winter birds are fewer and winter nights have no insects', () => {
-    expect(mix({ hour: 6 }).beds['forest-day']!).toBeGreaterThan(mix({ hour: 10 }).beds['forest-day']!);
-    expect(mix({ season: 'winter' }).beds['forest-day']!).toBeLessThan(mix({}).beds['forest-day']!);
-    expect(mix({ season: 'winter', period: 'night', hour: 2 }).beds['forest-night']!).toBeLessThan(0.3);
-  });
-
-  test('summer afternoons in a warm climate bring cicadas; a cold one does not', () => {
-    expect(mix({ season: 'summer', period: 'afternoon', hour: 14 }).beds.cicadas).toBeGreaterThan(0);
-    expect(mix({ season: 'summer', period: 'afternoon', hour: 14, climate: 'continental' }).beds.cicadas).toBeUndefined();
-  });
-
-  test('rain outside is rain; inside it is rain on the roof, and outside sounds are muffled', () => {
-    const out = mix({ condition: 'rain' });
-    expect(out.beds['rain-light']).toBeGreaterThan(0);
-    expect(out.beds['rain-heavy']).toBeGreaterThan(0);
-    expect(out.indoors).toBe(false);
-
-    const inside = mix({ condition: 'rain', kind: 'structure', place: 'A rented room at a roadside inn' });
-    expect(inside.indoors).toBe(true);
-    expect(inside.beds['rain-roof']).toBeGreaterThan(0.5);
+  test('rain is heard on the windows from inside, and as rain outside', () => {
+    const inside = mix({ condition: 'rain' });
+    expect(inside.beds['rain-window']).toBeGreaterThan(0.5);
     expect(inside.beds['rain-light']).toBeUndefined();
-    expect(inside.beds.room).toBeGreaterThan(0);
-    expect(inside.beds.murmur).toBeGreaterThan(0);
+    const outside = mix({ condition: 'downpour', kind: 'settlement', place: 'Elm Street' });
+    expect(outside.beds['rain-heavy']).toBeGreaterThan(0);
+    expect(outside.beds['rain-window']).toBeUndefined();
   });
 
-  test('heavy rain silences the birds; a storm adds thunder and wind', () => {
-    expect(mix({ condition: 'downpour' }).beds['forest-day']).toBeUndefined();
-    const storm = mix({ condition: 'storm' });
-    expect(storm.beds.storm).toBe(1);
-    expect(storm.beds['wind-strong']).toBeGreaterThan(0);
+  test('a street has people and traffic, busier by day, quiet late at night', () => {
+    const street = mix({ kind: 'settlement', place: 'Elm Street', period: 'afternoon', hour: 15 });
+    const late = mix({ kind: 'settlement', place: 'Elm Street', period: 'night', hour: 3 });
+    expect(street.beds.street).toBeGreaterThan(0.4);
+    expect(street.beds.traffic).toBeGreaterThan(0.4);
+    expect(late.beds.traffic!).toBeLessThan(street.beds.traffic!);
+    expect(late.beds.street!).toBeLessThan(street.beds.street!);
   });
 
-  test('snow is hushed; a blizzard howls; sand storms roar', () => {
-    expect(mix({ condition: 'snow', climate: 'tundra' }).beds['snow-quiet']).toBe(1);
-    const blizzard = mix({ condition: 'blizzard', climate: 'tundra' });
-    expect(blizzard.beds['wind-strong']).toBe(1);
-    expect(blizzard.beds['wind-high']).toBeGreaterThan(0);
-    expect(mix({ condition: 'sandstorm', climate: 'desert', place: 'Open desert' }).beds['wind-strong']).toBe(1);
+  test('a busy bar, a café crowd, an office and a taxi', () => {
+    expect(mix({ place: 'The Anchor bar' }).beds.bar).toBeGreaterThan(0.5);
+    expect(mix({ place: 'A corner cafe' }).beds.crowd).toBeGreaterThan(0);
+    expect(mix({ place: 'The offices downtown', period: 'morning', hour: 10 }).beds.office).toBeGreaterThan(0.5);
+    const taxi = mix({ kind: 'road', place: 'In the back seat of a taxi', condition: 'rain' });
+    expect(taxi.beds.engine).toBeGreaterThan(0);
+    expect(taxi.beds['rain-window']).toBeGreaterThan(0);
+    expect(taxi.beds.apartment).toBeUndefined();
   });
 
-  test('high places get the wind over the heights', () => {
-    expect(mix({ place: 'Mountain pass into the north' }).beds['wind-high']).toBeGreaterThan(0);
+  test('a TV on and the shower running come from the scene', () => {
+    expect(mix({ recent: 'The TV mutters a late-night film while she curls up beside you.' }).beds.tv).toBeGreaterThan(0);
+    expect(mix({ place: 'Your bathroom', recent: 'The shower runs hot and the mirror fogs.' }).beds.shower).toBeGreaterThan(0);
+    expect(mix({}).beds.tv).toBeUndefined();
+    expect(mix({}).beds.shower).toBeUndefined();
   });
 
-  test('water comes from the words of the place', () => {
-    expect(mix({ place: 'The river path', kind: 'road' }).beds.river).toBeGreaterThan(0.5);
-    expect(mix({ place: 'Below the waterfall' }).beds.waterfall).toBeGreaterThan(0.7);
-    expect(mix({ place: 'A stream in the woods' }).beds.stream).toBeGreaterThan(0);
-    expect(mix({ place: 'Rocky coast', kind: 'road' }).beds.sea).toBeGreaterThan(0.5);
-    // A coastal region: the sea is never far outside.
-    expect(mix({ place: 'Market square', kind: 'settlement', climate: 'coastal' }).beds.sea).toBeGreaterThan(0);
-    // A plain forest has no water.
-    const dry = mix({});
-    expect(dry.beds.river ?? dry.beds.stream ?? dry.beds.sea ?? dry.beds.waterfall).toBeUndefined();
+  test('a park has birds by day, fewer in winter, none in a storm', () => {
+    const park = mix({ kind: 'wilderness', place: 'A bench in the park', period: 'morning', hour: 10 });
+    expect(park.indoors).toBe(false);
+    expect(park.beds.birds).toBeGreaterThan(0.4);
+    expect(mix({ kind: 'wilderness', place: 'A bench in the park', period: 'morning', hour: 10, season: 'winter' }).beds.birds!).toBeLessThan(park.beds.birds!);
+    expect(mix({ kind: 'wilderness', place: 'A bench in the park', period: 'morning', hour: 10, condition: 'storm' }).beds.birds).toBeUndefined();
   });
 
-  test('villages bustle by day, markets more, and go quiet at night', () => {
-    const street = mix({ kind: 'settlement', place: 'Old Town, a side street' });
-    const market = mix({ kind: 'settlement', place: 'Market street, Old Town' });
-    const night = mix({ kind: 'settlement', place: 'Old Town, a side street', period: 'night', hour: 1 });
-    expect(street.beds.village).toBeGreaterThan(0.4);
-    expect(market.beds.village!).toBeGreaterThan(street.beds.village!);
-    expect(night.beds.village!).toBeLessThan(0.2);
+  test('the beach has the sea; a fireplace crackles; snow is hushed', () => {
+    expect(mix({ kind: 'wilderness', place: 'The beach at dusk' }).beds.sea).toBeGreaterThan(0.5);
+    expect(mix({ place: 'The cabin living room, by the fireplace' }).beds.fire).toBeGreaterThan(0);
+    expect(mix({ kind: 'settlement', place: 'Elm Street', condition: 'snow' }).beds['snow-quiet']).toBe(1);
   });
 
-  test('a hearth or a campfire crackles; a cave drips', () => {
-    expect(mix({ place: 'By the campfire', period: 'evening', hour: 19 }).beds.fire).toBeGreaterThan(0);
-    expect(mix({ kind: 'structure', place: 'Farmhouse kitchen by the hearth' }).beds.fire).toBeGreaterThan(0);
-    const cave = mix({ kind: 'structure', place: 'A cave behind the falls' });
-    expect(cave.indoors).toBe(true);
-    expect(cave.beds.cave).toBeGreaterThan(0);
-    expect(cave.beds['forest-day']).toBeUndefined();
+  test('no wilderness sounds are left', () => {
+    for (const bed of ['forest-day', 'forest-night', 'cicadas', 'stream', 'river', 'waterfall', 'cave', 'wind-high', 'village']) {
+      expect((AMBIENCE_BEDS as readonly string[]).includes(bed)).toBe(false);
+    }
   });
 
   test('an intimate scene is marked so the player can lower the ambience; nothing is added', () => {
@@ -134,16 +113,16 @@ describe('ambience: what you hear where you are', () => {
   });
 
   test('indoor beds are the only ones that skip the outdoor muffle', () => {
-    expect([...INDOOR_BEDS].sort()).toEqual(['bar', 'cave', 'engine', 'fire', 'hum', 'murmur', 'office', 'rain-roof', 'rain-window', 'room']);
-    expect(isIndoors({ kind: 'structure', place: 'Shrine courtyard' })).toBe(false);
+    expect([...INDOOR_BEDS].sort()).toEqual(['apartment', 'bar', 'crowd', 'engine', 'fire', 'office', 'rain-window', 'shower', 'tv']);
+    expect(isIndoors({ kind: 'structure', place: 'The rooftop' })).toBe(false);
     expect(isIndoors({ kind: 'settlement', place: 'The noodle bar, inside' })).toBe(true);
   });
 
   test('every level stays between 0 and 1, and the key only changes with the mix', () => {
-    const conditions = ['clear', 'cloudy', 'drizzle', 'rain', 'downpour', 'storm', 'fog', 'snow', 'blizzard', 'sleet', 'wind', 'sandstorm', 'heat', 'humid'] as const;
+    const conditions = ['clear', 'cloudy', 'drizzle', 'rain', 'downpour', 'storm', 'fog', 'snow', 'blizzard', 'sleet', 'wind', 'heat', 'humid'] as const;
     for (const condition of conditions) {
       for (const kind of ['settlement', 'road', 'wilderness', 'structure'] as const) {
-        const result = mix({ condition, kind, place: 'Forest river by the coast, near a mountain camp' });
+        const result = mix({ condition, kind, place: 'The bar by the beach, near the park', recent: 'The TV is on. The shower runs.' });
         for (const level of Object.values(result.beds)) {
           expect(level).toBeGreaterThan(0);
           expect(level).toBeLessThanOrEqual(1);
@@ -154,27 +133,27 @@ describe('ambience: what you hear where you are', () => {
   });
 
   test('describes what is playing in a few words', () => {
-    expect(describeAmbience(mix({ condition: 'rain', kind: 'structure', place: 'Inn room' }))).toMatch(/^Rain on the roof/);
-    expect(describeAmbience(mix({ condition: 'downpour', place: 'Open road', kind: 'road' }))).not.toMatch(/^Rain, /);
+    expect(describeAmbience(mix({ condition: 'rain' }))).toMatch(/^Rain on the windows/);
+    expect(describeAmbience(mix({ condition: 'downpour', place: 'Elm Street', kind: 'settlement' }))).not.toMatch(/^Rain, /);
     expect(describeAmbience({ beds: {}, indoors: false, hushed: false, key: '' })).toBe('Silence');
   });
 });
 
 describe('ambience: read from the save', () => {
-  test('uses the scene weather, the place, the clock and the scene mode', () => {
+  test('uses the scene weather, the place, the clock, the last reply and the scene mode', () => {
     let db = at(seed(), {
-      location: 'The river path, Old Town',
-      locationKind: 'road',
-      inStoryDate: { ...seed().state.inStoryDate, hour: 9, minute: 0 },
+      location: 'Your flat on Kell Street',
+      locationKind: 'structure',
+      inStoryDate: { ...seed().state.inStoryDate, hour: 21, minute: 0 },
     });
-    db = at(db, { weather: { region: 'old-town', condition: 'storm', since: db.state.inStoryDate, source: 'story', text: 'thunder' } });
+    db = at(db, { weather: { condition: 'storm', since: db.state.inStoryDate, source: 'story', text: 'thunder' } });
+    db = { ...db, rawLog: [...db.rawLog, { ...db.rawLog[0], id: 'reply', role: 'assistant', kind: 'story', content: 'The TV flickers with the late news.' }] };
     const input = ambienceInputOf(db);
     expect(input.condition).toBe('storm');
-    expect(input.climate).toBe('coastal');
-    expect(input.period).toBe('morning');
+    expect(input.period).toBe('night');
     const result = currentAmbience(db);
     expect(result.beds.storm).toBe(1);
-    expect(result.beds.river).toBeGreaterThan(0);
+    expect(result.beds.tv).toBeGreaterThan(0);
 
     const intimate = at(db, { sceneMode: { current: 'intimate', exchangeStreak: 0, partners: [] } });
     expect(currentAmbience(intimate).hushed).toBe(true);
@@ -182,19 +161,5 @@ describe('ambience: read from the save', () => {
 
   test('a new save has something to hear', () => {
     expect(Object.keys(currentAmbience(seed()).beds).length).toBeGreaterThan(0);
-  });
-});
-
-
-describe('modern places (session 7)', () => {
-  test('a city street, a bar, a flat, a car, an office and rain on the windows', () => {
-    expect(mix({ kind: 'settlement', place: 'Kell Street', era: 'present' }).beds.traffic).toBeGreaterThan(0);
-    expect(mix({ kind: 'settlement', place: 'Kell Street', era: 'past' }).beds.traffic).toBeUndefined();
-    expect(mix({ kind: 'structure', place: 'The Anchor bar', era: 'present' }).beds.bar).toBeGreaterThan(0);
-    expect(mix({ kind: 'structure', place: 'Your flat on Kell Street', era: 'present' }).beds.hum).toBeGreaterThan(0);
-    expect(mix({ kind: 'road', place: 'In the back seat of a taxi', era: 'present' }).beds.engine).toBeGreaterThan(0);
-    expect(mix({ kind: 'structure', place: 'Marlow & Finch offices', era: 'future' }).beds.office).toBeGreaterThan(0);
-    const wet = mix({ kind: 'structure', place: 'Your flat on Kell Street', era: 'present', condition: 'rain' });
-    expect(wet.beds['rain-window']).toBeGreaterThan(0);
   });
 });

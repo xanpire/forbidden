@@ -1,9 +1,9 @@
 // The world the player wrote (`db.world`). Empty by default; the creation
 // wizard fills it, and normalizeWorld repairs whatever a save holds.
 
-import { DEFAULT_DATE } from './calendar';
+import { todayAt } from './calendar';
 import { makeId } from './id';
-import type { ClimateType, LocationKind, WorldDefinition, WorldEra } from './types';
+import type { ClimateType, LocationKind, WorldDefinition } from './types';
 
 export const CLIMATE_TYPE_LIST: ClimateType[] = [
   'temperate',
@@ -27,9 +27,9 @@ export function emptyWorld(name = 'Untitled world'): WorldDefinition {
     premise: '',
     genre: '',
     tone: '',
-    era: { when: 'present', period: 'today' },
+    where: '',
     currency: { name: 'dollars', priceGuide: '' },
-    calendar: { yearLabel: 'Year', start: { ...DEFAULT_DATE } },
+    calendar: { start: todayAt() },
     climate: 'temperate',
     factions: [],
     places: [],
@@ -47,8 +47,6 @@ function list<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-const ERA_WHEN: WorldEra['when'][] = ['past', 'present', 'future'];
-
 /** Fills missing fields and drops broken entries; never adds story. */
 export function normalizeWorld(value: unknown): WorldDefinition {
   const base = emptyWorld();
@@ -58,7 +56,6 @@ export function normalizeWorld(value: unknown): WorldDefinition {
   }
 
   const world = value as Partial<WorldDefinition>;
-  const era = (world.era ?? {}) as Partial<WorldEra>;
   const currency = (world.currency ?? {}) as Partial<WorldDefinition['currency']>;
   const calendar = (world.calendar ?? {}) as Partial<WorldDefinition['calendar']>;
 
@@ -68,19 +65,13 @@ export function normalizeWorld(value: unknown): WorldDefinition {
     premise: text(world.premise),
     genre: text(world.genre),
     tone: text(world.tone),
-    era: {
-      when: ERA_WHEN.includes(era.when as WorldEra['when']) ? (era.when as WorldEra['when']) : base.era.when,
-      period: text(era.period) || base.era.period,
-      ...(text(era.techNotes) ? { techNotes: text(era.techNotes) } : {}),
-    },
+    where: text(world.where),
     currency: {
       ...currency,
       name: text(currency.name) || base.currency.name,
       priceGuide: text(currency.priceGuide),
     },
     calendar: {
-      ...calendar,
-      yearLabel: text(calendar.yearLabel) || base.calendar.yearLabel,
       start: calendar.start && typeof calendar.start === 'object' ? calendar.start : base.calendar.start,
     },
     factions: list<WorldDefinition['factions'][number]>(world.factions).filter(

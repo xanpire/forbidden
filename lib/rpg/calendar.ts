@@ -1,13 +1,9 @@
 import type { CalendarDate, ScenePace } from './types';
 
-export const DEFAULT_DATE: CalendarDate = {
-  year: 13,
-  month: 10,
-  day: 1,
-  hour: 22,
-  minute: 0,
-  second: 0,
-};
+/** Today's real date at a given time: every story is set in the present day and starts now by default. */
+export function todayAt(hour = 20, minute = 0, now = new Date()): CalendarDate {
+  return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate(), hour, minute, second: 0 };
+}
 
 const MONTH_DAYS_COMMON = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const SECONDS_PER_MINUTE = 60;
@@ -53,8 +49,17 @@ export function formatClock(date: CalendarDate) {
   return `${displayHour}:${String(minute).padStart(2, '0')} ${suffix}`;
 }
 
+const WEEKDAYS = ['Thursday', 'Friday', 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday'];
+
+/** The day of the week (1 January 1970 was a Thursday). */
+export function weekdayOf(date: CalendarDate) {
+  const days = daysFromCivil(date.year, date.month, date.day);
+  return WEEKDAYS[((days % 7) + 7) % 7];
+}
+
+/** "Thursday 1 October 2026 · 10:00 PM" */
 export function formatDate(date: CalendarDate) {
-  return `Year ${date.year} · Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
+  return `${weekdayOf(date)} ${date.day} ${monthName(date.month)} ${date.year} · ${formatClock(date)}`;
 }
 
 /** "1 Oct" — for headers and list meta lines. */
@@ -99,7 +104,7 @@ export function entityAge(
 }
 
 export function formatStoryDate(date: CalendarDate, age: number) {
-  return `Age ${age} · Day ${date.day}, ${monthName(date.month)} · ${formatClock(date)}`;
+  return `Age ${age} · ${weekdayOf(date).slice(0, 3)} ${date.day} ${monthName(date.month)} · ${formatClock(date)}`;
 }
 
 export function daysBetween(from: CalendarDate, to: CalendarDate) {

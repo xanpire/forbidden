@@ -174,5 +174,5 @@ export async function importTemplate(json: string): Promise<WorldTemplate> {
 export function draftFromTemplate(template: WorldTemplate): WizardDraft {
   const draft = emptyDraft();
   const world = normalizeWorld({ ...JSON.parse(JSON.stringify(template.world)), id: makeId('world') });
-  return { ...draft, step: 'you', world, opening: { ...draft.opening, date: { ...world.calendar.start } } };
+  return { ...draft, step: 'you', world };
 }

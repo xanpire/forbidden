@@ -63,7 +63,7 @@ export const SETTINGS_LIST = {
   bathroom: 'a bathroom',
   car: 'the back seat of a car',
   outdoors: 'a secluded spot outdoors',
-  period: 'a room fitting the period',
+  kitchen: 'a kitchen counter',
 } as const;
 
 export const FRAMINGS = {

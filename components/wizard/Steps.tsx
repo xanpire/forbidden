@@ -10,6 +10,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { pickImageFile } from '@/lib/rpg/file';
 import { FACE_IMAGE } from '@/lib/rpg/imageCompress';
 import { storeImage } from '@/lib/rpg/imageStore';
+import { daysBetween, formatDate, shiftDate, todayAt } from '@/lib/rpg/calendar';
 import { RELATIONSHIP_STAGES } from '@/lib/rpg/intimacy';
 import type { CalendarDate, ClimateType, ContentProfile, ContentTag, IntimacyProfile, PlaceDef, StartingPerson } from '@/lib/rpg/types';
 import { CHECK_REASONS, canBeIntimate } from '@/lib/rpg/intimacy';
@@ -25,10 +26,19 @@ import {
   type WizardStep,
 } from '@/lib/rpg/wizard';
 
-const WHEN_OPTIONS = [
-  { value: 'past' as const, label: 'Past' },
-  { value: 'present' as const, label: 'Present' },
-  { value: 'future' as const, label: 'Future' },
+const DAY_OPTIONS = [
+  { value: '0', label: 'Today' },
+  { value: '1', label: 'Tomorrow' },
+  { value: '2', label: 'In 2 days' },
+  { value: '3', label: 'In 3 days' },
+  { value: '7', label: 'In a week' },
+];
+const TIME_OPTIONS = [
+  { value: '8:30', label: 'Morning' },
+  { value: '13:00', label: 'Midday' },
+  { value: '17:30', label: 'Late afternoon' },
+  { value: '20:00', label: 'Evening' },
+  { value: '23:00', label: 'Late night' },
 ];
 const KIND_OPTIONS: { value: PlaceDef['kind']; label: string }[] = [
   { value: 'structure', label: 'Building' },
@@ -92,15 +102,29 @@ export function StepIntro({ title, body }: { title: string; body: string }) {
   );
 }
 
-export function DateFields({ value, onChange, withTime = true }: { value: CalendarDate; onChange: (value: CalendarDate) => void; withTime?: boolean }) {
+/** The story's first moment: a day close to today and a time of day. */
+function OpeningTime({ value, onChange }: { value: CalendarDate; onChange: (value: CalendarDate) => void }) {
+  const today = todayAt(0, 0);
+  const offset = Math.round(daysBetween(today, { ...value, hour: 0, minute: 0, second: 0 }));
+  const day = DAY_OPTIONS.some((option) => option.value === String(offset)) ? String(offset) : undefined;
+  const time = `${value.hour}:${String(value.minute).padStart(2, '0')}`;
+  const setDay = (days: string) => {
+    const date = shiftDate(today, Number(days));
+    onChange({ ...date, hour: value.hour, minute: value.minute, second: 0 });
+  };
+  const setTime = (clock: string) => {
+    const [hour, minute] = clock.split(':').map(Number);
+    onChange({ ...value, hour, minute, second: 0 });
+  };
   return (
-    <FieldRow>
-      <NumberField label="Year" onChange={(year) => onChange({ ...value, year: year ?? value.year })} value={value.year} />
-      <NumberField label="Month" onChange={(month) => onChange({ ...value, month: clamp(month ?? 1, 1, 12) })} value={value.month} />
-      <NumberField label="Day" onChange={(day) => onChange({ ...value, day: clamp(day ?? 1, 1, 31) })} value={value.day} />
-      {withTime ? <NumberField label="Hour" onChange={(hour) => onChange({ ...value, hour: clamp(hour ?? 0, 0, 23) })} value={value.hour} /> : null}
-      {withTime ? <NumberField label="Min" onChange={(minute) => onChange({ ...value, minute: clamp(minute ?? 0, 0, 59) })} value={value.minute} /> : null}
-    </FieldRow>
+    <>
+      <Choice hint={formatDate(value)} label="When it starts" onChange={setDay} options={DAY_OPTIONS} value={day} />
+      <Choice label="Time of day" onChange={setTime} options={TIME_OPTIONS} value={TIME_OPTIONS.some((option) => option.value === time) ? time : undefined} />
+      <FieldRow>
+        <NumberField label="Hour" onChange={(hour) => onChange({ ...value, hour: clamp(hour ?? 0, 0, 23) })} value={value.hour} />
+        <NumberField label="Min" onChange={(minute) => onChange({ ...value, minute: clamp(minute ?? 0, 0, 59) })} value={value.minute} />
+      </FieldRow>
+    </>
   );
 }
 
@@ -113,18 +137,12 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
   const setWorld = (patch: Partial<typeof world>) => update((d) => ({ ...d, world: { ...d.world, ...patch } }));
   return (
     <>
-      <StepIntro body="Where and when your story happens. Everything is grounded in the real world: no magic or powers." title="Your world" />
-      <Choice
-        label="When is it set?"
-        onChange={(when) => setWorld({ era: { ...world.era, when } })}
-        options={WHEN_OPTIONS}
-        value={world.era.when}
-      />
+      <StepIntro body="Where your story happens. It's always today, in the real world: phones, the internet, no magic." title="Your world" />
       <Field
-        hint="Free text: Rome, 50 BC · London, 1960s · today · 2090"
-        label="Period and place"
-        onChange={(period) => setWorld({ era: { ...world.era, period } })}
-        value={world.era.period}
+        hint="A real place or one you make up: Lisbon · a small town in Ohio · a seaside city"
+        label="Where it's set"
+        onChange={(where) => setWorld({ where })}
+        value={world.where}
       />
       <Field label="World name" onChange={(name) => setWorld({ name })} required value={world.name} />
       <Field label="Premise" lines={4} multiline onChange={(premise) => setWorld({ premise })} placeholder="A paragraph about this world and what makes it interesting." required value={world.premise} />
@@ -132,14 +150,6 @@ export function WorldStep({ draft, update }: { draft: WizardDraft; update: Updat
         <Field label="Genre" onChange={(genre) => setWorld({ genre })} placeholder="noir crime drama" value={world.genre} />
         <Field label="Tone" onChange={(tone) => setWorld({ tone })} placeholder="warm, slow-burn" value={world.tone} />
       </FieldRow>
-      <Field
-        hint="What exists and what doesn't, in plain words."
-        label="Technology"
-        multiline
-        lines={2}
-        onChange={(techNotes) => setWorld({ era: { ...world.era, techNotes } })}
-        value={world.era.techNotes ?? ''}
-      />
       <FieldRow>
         <Field label="Money" onChange={(name) => setWorld({ currency: { ...world.currency, name } })} placeholder="dollars" value={world.currency.name} />
         <Field label="Symbol" onChange={(symbol) => setWorld({ currency: { ...world.currency, symbol } })} placeholder="$" value={world.currency.symbol ?? ''} />
@@ -453,8 +463,7 @@ export function OpeningStep({ draft, update }: { draft: WizardDraft; update: Upd
       <StepIntro body="Where you are and what's happening on the first page." title="Opening" />
       {placeOptions.length > 0 ? <Choice label="Pick a place" onChange={(location) => set({ location })} options={placeOptions} value={o.location} /> : null}
       <Field label="Where you are" onChange={(location) => set({ location })} value={o.location} />
-      <Text style={styles.label}>Date and time</Text>
-      <DateFields onChange={(date) => set({ date })} value={o.date} />
+      <OpeningTime onChange={(date) => set({ date })} value={o.date} />
       <Field label="What's happening" lines={5} multiline onChange={(situation) => set({ situation })} required value={o.situation} />
       <MultiChoice label="Who's there" onChange={(castNames) => set({ castNames })} options={castOptions} values={o.castNames} />
       <ListField hint="One per line. Each becomes an open thread the story follows." label="Starting goals" onChange={(threads) => set({ threads })} values={o.threads} />
@@ -467,7 +476,7 @@ export function ReviewStep({ draft, update, goTo }: { draft: WizardDraft; update
   const w = draft.world;
   const c = draft.character;
   const rows: [WizardStep, string, string][] = [
-    ['world', 'World', `${w.name || '—'} · ${w.era.when}, ${w.era.period}`],
+    ['world', 'World', `${w.name || '—'}${w.where ? ` · ${w.where}` : ''}`],
     ['places', 'Places & groups', `${w.places.length} places · ${w.factions.length} groups`],
     ['lore', 'Lore', `${w.lore.length} entries`],
     ['you', 'You', c.name ? `${c.name}, ${c.age}${c.role ? ` · ${c.role}` : ''}` : '—'],

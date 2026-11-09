@@ -1,74 +1,63 @@
-// Ambient sound (living-world Stage 5, section 17).
+// Ambient sound.
 //
 // Ambience only: no music, no stingers. The point is to make you feel where
-// the player is: water running by a river, birds in a forest by day, a little wind
-// on the road, rain on a roof.
+// the player is, today: rain on the window, traffic outside, a busy bar, a
+// quiet apartment, a TV on, the shower running.
 //
 // This module is pure. It reads state the app already tracks (the scene's
-// weather, the location and its kind, the clock, the season, the region's
-// climate and the scene mode) and returns a mix: how loud each sound bed should be. The
-// player (lib/audio/) synthesises the beds and crossfades between mixes. The
-// narrator's prompt is untouched.
+// weather, the location and its kind, the clock, the season, the last reply
+// and the scene mode) and returns a mix: how loud each sound bed should be.
+// The player (lib/audio/) synthesises the beds and crossfades between mixes.
+// The narrator's prompt is untouched.
 
 import { timeOfDayOf, type DayPeriod } from './calendar';
 import { locationKindOf } from './places';
 import { sceneModeOf } from './sceneMode';
-import type { AppDatabase, ClimateType, LocationKind, WeatherCondition } from './types';
+import type { AppDatabase, LocationKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
 
 export const AMBIENCE_BEDS = [
   // Weather
   'rain-light',
   'rain-heavy',
-  'rain-roof',
+  'rain-window',
   'storm',
   'wind-light',
   'wind-strong',
-  'wind-high',
   'snow-quiet',
-  // Life
-  'forest-day',
-  'forest-night',
-  'cicadas',
-  // Water
-  'stream',
-  'river',
-  'waterfall',
+  // Outside
+  'birds',
   'sea',
-  // People and places
-  'village',
-  'murmur',
-  'room',
-  'fire',
-  'cave',
-  // Modern places
+  'street',
   'traffic',
+  // Inside
+  'crowd',
   'bar',
-  'hum',
-  'engine',
+  'apartment',
   'office',
-  'rain-window',
+  'engine',
+  'tv',
+  'shower',
+  'fire',
 ] as const;
 
 export type AmbienceBed = (typeof AMBIENCE_BEDS)[number];
 
 /** Beds that sit inside with the player; everything else is outside and gets muffled indoors. */
-export const INDOOR_BEDS: ReadonlySet<AmbienceBed> = new Set<AmbienceBed>(['rain-roof', 'murmur', 'room', 'fire', 'cave', 'bar', 'hum', 'engine', 'office', 'rain-window']);
+export const INDOOR_BEDS: ReadonlySet<AmbienceBed> = new Set<AmbienceBed>(['rain-window', 'crowd', 'bar', 'apartment', 'office', 'engine', 'tv', 'shower', 'fire']);
 
 export type AmbienceInput = {
   condition: WeatherCondition;
   period: DayPeriod;
   hour: number;
   season: Season;
-  /** The climate of the region the player is in. */
-  climate: ClimateType;
   kind: LocationKind;
   /** The location, in words. */
   place: string;
+  /** The last narrator reply: a TV on, the shower running. */
+  recent: string;
   /** An intimate scene: everything around goes quiet. */
   hushed: boolean;
-  /** The world's era (traffic, engines and office hums only outside the past). */
-  era?: 'past' | 'present' | 'future';
 };
 
 export type AmbienceMix = {
@@ -83,49 +72,42 @@ export type AmbienceMix = {
 };
 
 const INDOOR_WORDS =
-  /\b(inside|indoors|room|rooms|inn|teahouse|tea house|tavern|bar|restaurant|house|home|hut|cabin|shack|attic|cellar|basement|hall|chamber|office|library|kitchen|barracks|hospital|tent|hideout|lair|bunker|tower|palace|mansion|temple hall|shrine hall|dojo|bathhouse|bedroom|corridor|hallway|interior|flat|apartment|loft|studio|pub|club|nightclub|lounge|offices|cubicle|boardroom|back seat|front seat|taxi|cab)\b/i;
+  /\b(inside|indoors|room|rooms|bar|pub|club|nightclub|lounge|restaurant|cafe|café|coffee shop|diner|house|home|flat|apartment|loft|studio|attic|basement|hall|office|offices|cubicle|boardroom|library|kitchen|bedroom|bathroom|living room|hallway|corridor|lobby|elevator|lift|hotel|motel|gym|shop|store|hospital|car|cab|taxi|back seat|front seat|bus|train|subway|metro)\b/i;
 const OUTSIDE_WORDS =
-  /\b(outside|rooftop|roof of|courtyard|garden|street|streets|square|plaza|market|bridge|road|path|trail|field|forest|woods|treetops?|canopy|clearing|riverbank|shore|beach|dock|docks|cliff|ridge|summit|peak)\b/i;
-const CAVE_WORDS = /\b(cave|cavern|grotto|tunnel|catacomb|underground|mine shaft)\b/i;
-const FIRE_WORDS = /\b(hearth|fireplace|campfire|camp fire|fire pit|brazier|stove|bonfire|cooking fire|embers)\b/i;
-const CROWD_WORDS = /\b(inn|teahouse|tea house|tavern|bar|restaurant|bathhouse|dining|common room)\b/i;
-const MARKET_WORDS = /\b(market|bazaar|festival|fair|stalls?|shopping street|crowd|crowded|busy street|main street|port|harbou?r|docks)\b/i;
-const FOREST_WORDS = /\b(forest|woods|woodland|grove|jungle|trees|treetops?|canopy|thicket|clearing|bamboo)\b/i;
-const HIGH_WORDS = /\b(mountain|mountainside|peak|summit|cliff|cliffs|ridge|pass|heights|crag|plateau|tower top|rooftop)\b/i;
-const DESERT_WORDS = /\b(desert|dunes?|sands|wasteland|badlands)\b/i;
-const WATERFALL_WORDS = /\b(waterfall|waterfalls|falls|cascade)\b/i;
-const RIVER_WORDS = /\b(river|riverbank|riverside|rapids)\b/i;
-const STREAM_WORDS = /\b(stream|creek|brook|spring|hot springs?|onsen|pond|lake|lakeshore|lakeside)\b/i;
-const BAR_WORDS = /\b(bar|pub|club|nightclub|lounge|saloon|speakeasy|tavern)\b/i;
-const HOME_WORDS = /\b(flat|apartment|home|house|bedroom|living room|kitchen|studio|loft)\b/i;
-const CAR_WORDS = /\b(car|cab|taxi|van|truck|back seat|front seat|driver'?s seat|passenger seat)\b/i;
-const OFFICE_WORDS = /\b(office|offices|workplace|cubicle|meeting room|boardroom|newsroom|precinct|station house)\b/i;
-const SEA_WORDS = /\b(sea|seaside|ocean|coast|coastal|shore|shoreline|beach|cove|bay|harbou?r|port|docks?|pier|island|cliffs? over the sea|whirlpools?|boat|ship|ferry)\b/i;
-
+  /\b(outside|out front|rooftop|balcony|terrace|patio|courtyard|garden|yard|street|streets|sidewalk|pavement|square|plaza|market|bridge|park|beach|pier|dock|docks|parking lot|car park|bus stop|platform)\b/i;
+const CROWD_WORDS = /\b(restaurant|cafe|café|coffee shop|diner|canteen|food court|party|wedding|gala|lobby|waiting room)\b/i;
+const MARKET_WORDS = /\b(market|festival|fair|stalls?|shopping street|mall|crowd|crowded|busy street|main street|high street)\b/i;
+const GREEN_WORDS = /\b(park|garden|gardens|yard|backyard|woods|trees|lawn|cemetery|campus green)\b/i;
+const BAR_WORDS = /\b(bar|pub|club|nightclub|lounge|speakeasy)\b/i;
+const HOME_WORDS = /\b(flat|apartment|home|house|bedroom|living room|kitchen|studio|loft|hotel room|motel room|dorm)\b/i;
+const CAR_WORDS = /\b(car|cab|taxi|uber|van|truck|back seat|front seat|driver'?s seat|passenger seat)\b/i;
+const OFFICE_WORDS = /\b(office|offices|workplace|cubicle|meeting room|boardroom|newsroom|precinct|co-?working)\b/i;
+const SEA_WORDS = /\b(sea|seaside|ocean|beach|shore|shoreline|bay|harbou?r|pier|boardwalk|ferry)\b/i;
+const FIRE_WORDS = /\b(fireplace|log fire|fire pit|bonfire|campfire|wood stove|wood-burner)\b/i;
+const TV_WORDS = /\b(tv|television|telly|the screen flickers|a film plays|the film plays|the movie plays|the news is on|netflix|a show on|the show on)\b/i;
+const SHOWER_WORDS = /\b(in the shower|the shower runs|shower running|shower is running|under the spray|under the water|turns on the shower|steam fills the bathroom)\b/i;
 
 /** Where the player is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
-  const place = db.state.location ?? '';
+  const lastReply = [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.kind === 'story');
 
   return {
     condition: weather.condition,
     period: timeOfDayOf(db.state.inStoryDate),
     hour: db.state.inStoryDate.hour,
     season: weather.season,
-    climate: weather.climate,
     kind: locationKindOf(db),
-    place,
+    place: db.state.location ?? '',
+    recent: lastReply?.content ?? '',
     hushed: sceneModeOf(db).current === 'intimate',
-    era: db.world?.era?.when,
   };
 }
 
-/** Is the player inside? The location's own words decide; a structure counts unless it says outside. */
+/** Is the player inside? The location's own words decide; a building counts unless it says outside. */
 export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place'>): boolean {
   const location = input.place;
 
-  if (CAVE_WORDS.test(location)) return true;
   if (OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location)) return false;
   if (INDOOR_WORDS.test(location)) return true;
 
@@ -167,17 +149,18 @@ function rainOf(condition: WeatherCondition) {
 export function ambienceMix(input: AmbienceInput): AmbienceMix {
   const beds: Partial<Record<AmbienceBed, number>> = {};
   const indoors = isIndoors(input);
-  const { condition, period, season, kind, place, climate } = input;
+  const { condition, period, season, kind, place, recent } = input;
   const day = period === 'morning' || period === 'afternoon';
   const night = period === 'night';
-  const dawn = input.hour >= 5 && input.hour <= 8;
+  const lateNight = night && input.hour >= 1 && input.hour < 6;
   const rain = rainOf(condition);
-  const cave = CAVE_WORDS.test(place);
+  const car = CAR_WORDS.test(place);
 
   // ---- Weather ------------------------------------------------------------
   if (rain > 0) {
-    if (indoors && !cave) {
-      add(beds, 'rain-roof', 0.35 + rain * 0.6);
+    if (indoors) {
+      // From inside, rain is heard on the windows.
+      add(beds, 'rain-window', 0.35 + rain * 0.55);
     } else {
       add(beds, 'rain-light', rain >= 0.9 ? 0.35 : 0.3 + rain * 0.5);
       if (rain >= 0.5) add(beds, 'rain-heavy', (rain - 0.3) * 1.2);
@@ -194,110 +177,53 @@ export function ambienceMix(input: AmbienceInput): AmbienceMix {
   }
   if (condition === 'blizzard') {
     add(beds, 'wind-strong', 1);
-    add(beds, 'wind-high', 0.45);
     add(beds, 'snow-quiet', 0.4);
   }
   if (condition === 'wind') add(beds, 'wind-strong', 0.7);
-  if (condition === 'sandstorm') {
-    add(beds, 'wind-strong', 1);
-    add(beds, 'wind-high', 0.6);
-  }
-
-  // A little wind on the road and in the open, on calm days too.
-  const calm = condition === 'clear' || condition === 'cloudy' || condition === 'heat' || condition === 'humid';
-  if (calm && (kind === 'road' || kind === 'wilderness')) add(beds, 'wind-light', condition === 'humid' ? 0.15 : 0.28);
   if (condition === 'fog') add(beds, 'wind-light', 0.1);
-  if (HIGH_WORDS.test(place)) {
-    add(beds, 'wind-high', condition === 'fog' ? 0.3 : 0.55);
-    add(beds, 'wind-light', 0.4);
+  // A little wind in the open, on calm days too.
+  const calm = condition === 'clear' || condition === 'cloudy' || condition === 'heat' || condition === 'humid';
+  if (calm && !indoors && (kind === 'wilderness' || SEA_WORDS.test(place))) add(beds, 'wind-light', 0.25);
+
+  // ---- Outside --------------------------------------------------------------
+  const harsh = rain >= 0.6 || condition === 'blizzard' || condition === 'storm';
+  if (!harsh && (day || input.hour === 5 || input.hour === 6) && (GREEN_WORDS.test(place) || kind === 'wilderness')) {
+    let level = GREEN_WORDS.test(place) ? 0.6 : 0.4;
+    if (input.hour >= 5 && input.hour <= 8) level += 0.2;
+    if (season === 'winter') level *= 0.4;
+    if (rain > 0) level *= 0.5;
+    add(beds, 'birds', level);
   }
-  if (DESERT_WORDS.test(place) || (climate === 'desert' && kind === 'wilderness')) add(beds, 'wind-light', 0.45);
+  if (SEA_WORDS.test(place)) add(beds, 'sea', indoors ? 0.3 : 0.75);
 
-  // ---- Life ---------------------------------------------------------------
-  const desert = DESERT_WORDS.test(place) || (climate === 'desert' && kind !== 'settlement');
-  const wild = kind === 'wilderness' || kind === 'road' || FOREST_WORDS.test(place);
-  const forest = FOREST_WORDS.test(place) || (kind === 'wilderness' && !desert && !SEA_WORDS.test(place));
-  const harsh = rain >= 0.6 || condition === 'blizzard' || condition === 'sandstorm' || condition === 'storm';
-
-  if (wild && !desert && !harsh) {
-    // Birds by day, louder at dawn, fewer in winter, rain, fog and on roads.
-    if (day || dawn) {
-      let birds = forest ? 0.75 : 0.4;
-      if (dawn) birds += 0.2;
-      if (season === 'winter') birds *= 0.4;
-      if (rain > 0) birds *= 0.5;
-      if (condition === 'fog') birds *= 0.55;
-      if (condition === 'snow') birds *= 0.5;
-      add(beds, 'forest-day', birds);
-      // Summer heat brings the cicadas.
-      if (season === 'summer' && period === 'afternoon' && (climate === 'temperate' || climate === 'monsoon' || climate === 'tropical' || climate === 'coastal')) {
-        add(beds, 'cicadas', forest ? 0.55 : 0.35);
-      }
-    }
-    if (period === 'evening') {
-      if (season !== 'winter') add(beds, 'forest-night', forest ? 0.4 : 0.25);
-      add(beds, 'forest-day', season === 'winter' ? 0.1 : 0.22);
-    }
-    if (night) {
-      // Insects stop in the cold; the owl doesn't.
-      add(beds, 'forest-night', season === 'winter' || condition === 'snow' ? 0.25 : forest ? 0.75 : 0.5);
-    }
-  }
-
-  // ---- Water --------------------------------------------------------------
-  if (WATERFALL_WORDS.test(place)) add(beds, 'waterfall', 0.8);
-  if (RIVER_WORDS.test(place)) add(beds, 'river', kind === 'settlement' ? 0.4 : 0.7);
-  if (STREAM_WORDS.test(place)) add(beds, 'stream', 0.6);
-  if (SEA_WORDS.test(place)) add(beds, 'sea', kind === 'settlement' ? 0.55 : 0.8);
-  // A coastal region: the sea is never far.
-  if (climate === 'coastal' && kind !== 'structure') add(beds, 'sea', 0.3);
-
-  // ---- People and places --------------------------------------------------
-  if (kind === 'settlement' && !indoors) {
+  if (!indoors && !car && (kind === 'settlement' || kind === 'road')) {
     const busy = MARKET_WORDS.test(place);
-    const level = night ? 0.12 : period === 'evening' ? (busy ? 0.6 : 0.4) : busy ? 0.95 : 0.55;
-    add(beds, 'village', rain >= 0.6 || condition === 'blizzard' ? level * 0.35 : level);
-    if (day && !harsh) add(beds, 'forest-day', 0.12);
-    if (night && season !== 'winter') add(beds, 'forest-night', 0.18);
+    const people = night ? 0.12 : period === 'evening' ? (busy ? 0.6 : 0.4) : busy ? 0.9 : 0.5;
+    add(beds, 'street', rain >= 0.6 || condition === 'blizzard' ? people * 0.35 : people);
+    add(beds, 'traffic', lateNight ? 0.15 : night ? 0.3 : busy ? 0.35 : 0.55);
   }
 
-  if (indoors) {
-    if (cave) add(beds, 'cave', 0.75);
-    else add(beds, 'room', 0.55);
-    if (CROWD_WORDS.test(place)) add(beds, 'murmur', night && input.hour >= 1 && input.hour < 5 ? 0.1 : 0.55);
-  }
-
-  if (FIRE_WORDS.test(place)) {
-    add(beds, 'fire', 0.7);
-  }
-
-  // ---- Modern places --------------------------------------------------------
-  // Only where the era has engines and streets full of them.
-  const modern = input.era !== 'past';
-  if (modern && kind === 'settlement' && !indoors && !MARKET_WORDS.test(place)) add(beds, 'traffic', night ? 0.25 : 0.55);
-  if (modern && CAR_WORDS.test(place)) {
+  // ---- Inside ---------------------------------------------------------------
+  if (car) {
     add(beds, 'engine', 0.7);
-    delete beds.room;
     if (rain > 0) add(beds, 'rain-window', 0.3 + rain * 0.4);
   }
-  if (indoors && BAR_WORDS.test(place)) {
-    add(beds, 'bar', night && input.hour >= 2 && input.hour < 6 ? 0.2 : 0.7);
-    scale(beds, 'murmur', 0.5);
+  if (indoors && BAR_WORDS.test(place)) add(beds, 'bar', night && input.hour >= 2 && input.hour < 6 ? 0.2 : 0.7);
+  if (indoors && CROWD_WORDS.test(place) && !BAR_WORDS.test(place)) add(beds, 'crowd', lateNight ? 0.1 : 0.55);
+  if (indoors && OFFICE_WORDS.test(place)) add(beds, 'office', day ? 0.6 : 0.25);
+  if (indoors && !car && (HOME_WORDS.test(place) || !(BAR_WORDS.test(place) || CROWD_WORDS.test(place) || OFFICE_WORDS.test(place)))) {
+    // A quiet apartment, or any quiet room.
+    add(beds, 'apartment', 0.5);
   }
-  if (indoors && modern && HOME_WORDS.test(place) && !BAR_WORDS.test(place)) add(beds, 'hum', 0.5);
-  if (indoors && modern && OFFICE_WORDS.test(place)) add(beds, 'office', day ? 0.6 : 0.25);
-  // Rain on a home or an office is heard on the windows more than the roof.
-  if (indoors && !cave && rain > 0 && (HOME_WORDS.test(place) || OFFICE_WORDS.test(place) || BAR_WORDS.test(place))) {
-    add(beds, 'rain-window', 0.3 + rain * 0.5);
-    scale(beds, 'rain-roof', 0.6);
-  }
+  if (indoors && (TV_WORDS.test(place) || TV_WORDS.test(recent))) add(beds, 'tv', 0.45);
+  if (SHOWER_WORDS.test(recent) || /\bshower\b/i.test(place)) add(beds, 'shower', 0.75);
+  if (FIRE_WORDS.test(place) || FIRE_WORDS.test(recent)) add(beds, 'fire', 0.6);
+  // The city is still out there, through the glass.
+  if (indoors && !car && kind !== 'wilderness') add(beds, 'traffic', lateNight ? 0.1 : 0.2);
 
-  // ---- Inside -------------------------------------------------------------
   if (indoors) {
     // Outside sounds come through the walls, quieter.
-    for (const bed of ['wind-light', 'wind-strong', 'wind-high'] as const) scale(beds, bed, 0.35);
-    for (const bed of ['forest-day', 'forest-night', 'cicadas', 'village'] as const) scale(beds, bed, cave ? 0 : 0.3);
-    for (const bed of ['stream', 'river', 'waterfall', 'sea'] as const) scale(beds, bed, 0.45);
+    for (const bed of ['wind-light', 'wind-strong', 'birds', 'street'] as const) scale(beds, bed, 0.3);
     scale(beds, 'snow-quiet', 0.5);
   }
 
@@ -318,33 +244,26 @@ export function currentAmbience(db: AppDatabase): AmbienceMix {
 const BED_LABEL: Record<AmbienceBed, string> = {
   'rain-light': 'rain',
   'rain-heavy': 'heavy rain',
-  'rain-roof': 'rain on the roof',
+  'rain-window': 'rain on the windows',
   storm: 'thunder',
   'wind-light': 'a little wind',
   'wind-strong': 'strong wind',
-  'wind-high': 'wind over the heights',
   'snow-quiet': 'the hush of snow',
-  'forest-day': 'birds',
-  'forest-night': 'night insects',
-  cicadas: 'cicadas',
-  stream: 'a stream',
-  river: 'the river',
-  waterfall: 'falling water',
+  birds: 'birds',
   sea: 'the sea',
-  village: 'the street',
-  murmur: 'voices',
-  room: 'a quiet room',
-  fire: 'a fire',
-  cave: 'dripping stone',
+  street: 'the street',
   traffic: 'traffic',
+  crowd: 'voices',
   bar: 'the bar',
-  hum: 'the hum of the flat',
-  engine: 'the engine',
+  apartment: 'a quiet apartment',
   office: 'the office',
-  'rain-window': 'rain on the windows',
+  engine: 'the engine',
+  tv: 'the TV',
+  shower: 'the shower',
+  fire: 'a fire',
 };
 
-/** What's playing, loudest first, in a few words ("Rain on the roof, a fire"). */
+/** What's playing, loudest first, in a few words ("Rain on the windows, the TV"). */
 export function describeAmbience(mix: AmbienceMix, limit = 3): string {
   const beds = (Object.entries(mix.beds) as Array<[AmbienceBed, number]>)
     .filter(([, level]) => level >= 0.1)

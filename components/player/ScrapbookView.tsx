@@ -23,7 +23,7 @@ const COLUMNS = 3;
 const GAP = 6;
 
 function photoMeta(photo: ScrapbookPhoto) {
-  return [`${formatDayMonth(photo.date)}, year ${photo.date.year}`, `you were ${photo.age}`, photo.place].filter(Boolean).join(' · ');
+  return [`${formatDayMonth(photo.date)} ${photo.date.year}`, `you were ${photo.age}`, photo.place].filter(Boolean).join(' · ');
 }
 
 function Thumb({ photo, size, onOpen }: { photo: ScrapbookPhoto; size: number; onOpen: () => void }) {

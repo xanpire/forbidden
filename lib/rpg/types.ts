@@ -1028,18 +1028,15 @@ export type WorldDefinition = {
   premise: string;
   genre: string;
   tone: string;
-  /**
-   * When the story is set. Grounded in reality: no magic or powers; a past
-   * setting uses that period's real technology and customs, a future one
-   * plausible technology only.
-   */
-  era: WorldEra;
+  /** Where the story is set, in the player's words ("Lisbon", "a small town in Ohio"). Always the present day. */
+  where: string;
   /** The climate where the story is set; its seasons and weather follow it. */
   climate: ClimateType;
   /** South of the equator: the seasons run six months on. */
   southern?: boolean;
   currency: { name: string; symbol?: string; priceGuide: string };
-  calendar: { yearLabel: string; start: CalendarDate; monthNames?: string[] };
+  /** The story's first moment: today's real date by default. */
+  calendar: { start: CalendarDate };
   /** Groups in the world, as plain notes: a workplace, a friend group, a family. */
   factions: FactionDef[];
   places: PlaceDef[];
@@ -1050,14 +1047,6 @@ export type WorldDefinition = {
   artStyle: string;
   /** The player's own extra rules for the narrator. */
   narratorNotes?: string;
-};
-
-export type WorldEra = {
-  when: 'past' | 'present' | 'future';
-  /** Free text: "Paris, 1920s", "today", "2140, a crowded Earth". */
-  period: string;
-  /** What exists and what doesn't, in plain words. */
-  techNotes?: string;
 };
 
 /**

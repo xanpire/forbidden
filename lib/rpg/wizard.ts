@@ -201,7 +201,7 @@ export function draftToSeedInput(draft: WizardDraft): SeedInput {
     lore: raw.lore
       .filter((entry) => clean(entry.text))
       .map((entry) => ({ ...entry, text: clean(entry.text), keywords: cleanList(entry.keywords).map((word) => word.toLowerCase()) })),
-    calendar: { ...raw.calendar, start: { ...draft.opening.date } },
+    calendar: { start: { ...draft.opening.date } },
   });
 
   const character: CharacterDefinition = {
@@ -300,7 +300,7 @@ export type HelpSection = 'world' | 'places' | 'lore' | 'you' | 'backstory' | 'i
 
 const HELP_SHAPES: Record<HelpSection, string> = {
   world:
-    '{"genre": string, "tone": string, "period": string, "techNotes": string, "currencyName": string, "priceGuide": string, "artStyle": string}',
+    '{"genre": string, "tone": string, "where": string, "currencyName": string, "priceGuide": string, "artStyle": string}',
   places:
     '{"places": [{"name": string, "kind": one of structure|settlement|road|wilderness, "description": string, "who": string}], "factions": [{"name": string, "description": string}]}',
   lore: '{"lore": [{"keywords": string[], "text": string}]}',
@@ -318,7 +318,7 @@ function draftSummary(draft: WizardDraft) {
   const lines = [
     `World: ${world.name || '(unnamed)'}. ${world.premise}`,
     world.genre ? `Genre: ${world.genre}. Tone: ${world.tone}.` : '',
-    `When: ${world.era.when}, ${world.era.period}. ${world.era.techNotes ?? ''}`,
+    world.where ? `Set in: ${world.where}, today.` : 'Set today.',
     world.places.length ? `Places: ${world.places.map((place) => place.name).filter(Boolean).join(', ')}.` : '',
     world.factions.length ? `Groups: ${world.factions.map((faction) => faction.name).filter(Boolean).join(', ')}.` : '',
     character.name ? `The player's character: ${character.name}, ${character.age}, ${character.role}. ${character.personality}` : '',
@@ -331,8 +331,8 @@ function draftSummary(draft: WizardDraft) {
 
 export function helpFillMessages(section: HelpSection, draft: WizardDraft): OpenRouterMessage[] {
   const system = [
-    'You help a player set up their own roleplay story. Suggest values only for what is still empty in the section asked for; never change what the player already wrote, and keep to their world, period and tone.',
-    'The world is grounded in reality: no magic, powers or supernatural beings, and technology fits the period.',
+    'You help a player set up their own roleplay story. Suggest values only for what is still empty in the section asked for; never change what the player already wrote, and keep to their world, where it is set and its tone.',
+    'The story is set in the real world today: phones, the internet, cars; no magic, powers or supernatural beings.',
     'Every person you suggest is an adult with a stated age of 18 or older, and is fictional (never a real, identifiable person).',
     `Reply with one JSON object only, in this shape: ${HELP_SHAPES[section]}. Leave out any key the player already filled. Short, concrete values in plain English.`,
   ].join('\n');
@@ -377,7 +377,7 @@ export function applySuggestion(draft: WizardDraft, section: HelpSection, sugges
           ...world,
           genre: fill(world.genre, s.genre),
           tone: fill(world.tone, s.tone),
-          era: { ...world.era, period: fill(world.era.period, s.period), techNotes: fill(world.era.techNotes, s.techNotes) },
+          where: fill(world.where, s.where),
           currency: { ...world.currency, name: fill(world.currency.name, s.currencyName), priceGuide: fill(world.currency.priceGuide, s.priceGuide) },
           artStyle: fill(world.artStyle, s.artStyle),
         },

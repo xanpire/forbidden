@@ -23,7 +23,7 @@ export function testWorld(): WorldDefinition {
       'A rainy port city where old shipping money and new tech money live on the same streets. Everyone knows someone, and nothing stays secret for long.',
     genre: 'contemporary drama',
     tone: 'grounded, warm, slow-burn',
-    era: { when: 'present', period: 'today, a mid-sized coastal city', techNotes: 'Phones, cars, the internet: the real world as it is now.' },
+    where: 'a mid-sized coastal city',
     currency: {
       name: 'dollars',
       symbol: '$',
@@ -31,7 +31,7 @@ export function testWorld(): WorldDefinition {
         'PRICES (dollars): coffee 4-6; a cheap meal 12-20, a good dinner 60-120; a drink at a bar 7-14; a taxi across town 15-30; a month of rent for a small flat 1,400-2,000; a night in a decent hotel 150-250.',
     },
     climate: 'coastal',
-    calendar: { yearLabel: 'Year', start: { ...TEST_START } },
+    calendar: { start: { ...TEST_START } },
     factions: [
       {
         id: 'marlow-finch',

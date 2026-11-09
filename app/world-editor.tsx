@@ -158,7 +158,7 @@ export default function WorldEditorScreen() {
               <View style={{ height: 16 }} />
               {templates.map((template) => (
                 <ItemCard key={template.id} onRemove={() => void deleteTemplate(template.id).then(refreshTemplates)} title={template.name}>
-                  <Text style={type.rowBody}>{template.world.premise || template.world.era.period}</Text>
+                  <Text style={type.rowBody}>{template.world.premise || template.world.where}</Text>
                   <View style={{ flexDirection: 'row', gap: 12, marginVertical: 12 }}>
                     <AppButton
                       compact

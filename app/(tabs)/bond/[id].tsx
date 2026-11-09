@@ -71,7 +71,7 @@ export default function BondScreen() {
   const death = entity.deceased;
   const deathLabel = dead
     ? death?.date
-      ? `Died ${formatDayMonth(death.date)} · Year ${death.date.year}`
+      ? `Died ${formatDayMonth(death.date)} ${death.date.year}`
       : 'Deceased'
     : null;
   // Your own feelings you know exactly; theirs only as they seem to you.

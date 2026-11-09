@@ -8,7 +8,7 @@ import { makeId } from './id';
 import { startingPurse } from './money';
 import { PLAYER_TAG } from './player';
 import { normalizeContentProfile, normalizeIntimacy, normalizeRelationship } from './intimacy';
-import { DEFAULT_DATE } from './calendar';
+import { todayAt } from './calendar';
 import { emptyWorld, normalizeWorld } from './world';
 import type {
   AppDatabase,
@@ -41,7 +41,7 @@ export function blankSeedInput(): SeedInput {
     world: emptyWorld(),
     character: { name: '', aliases: [], age: 25, gender: '', appearance: '', outfit: '', personality: '', speechStyle: '', backstory: '', role: '', skills: '', inventory: [], money: 0, secrets: [], goals: [] },
     people: [],
-    opening: { location: '', date: { ...DEFAULT_DATE }, situation: '', castNames: [] },
+    opening: { location: '', date: todayAt(), situation: '', castNames: [] },
   };
 }
 

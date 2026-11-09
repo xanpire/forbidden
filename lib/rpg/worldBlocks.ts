@@ -6,13 +6,7 @@
 
 import { playerAge } from './player';
 import { priceGuideOf } from './money';
-import type { AppDatabase, WorldDefinition } from './types';
-
-const WHEN_LABEL: Record<WorldDefinition['era']['when'], string> = {
-  past: 'the past',
-  present: 'the present day',
-  future: 'the future',
-};
+import type { AppDatabase } from './types';
 
 function clean(value: string | undefined) {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -36,7 +30,6 @@ function prices(db: AppDatabase) {
 /** THE WORLD: the setting as the player wrote it. */
 export function formatWorldBlock(db: AppDatabase): string {
   const world = db.world;
-  const era = world.era;
   const currency = world.currency;
 
   const factions = world.factions
@@ -53,8 +46,8 @@ export function formatWorldBlock(db: AppDatabase): string {
     line('Premise', world.premise),
     line('Genre', world.genre),
     line('Tone', world.tone),
-    `When: ${WHEN_LABEL[era?.when] ?? 'the present day'}${clean(era?.period) ? `, ${clean(era.period)}` : ''}`,
-    line('What exists', era?.techNotes),
+    line('Where', world.where),
+    'When: the present day. Phones, the internet, cars, apps: the real world as it is now.',
     clean(currency?.name) ? `Money: ${clean(currency.name)}${clean(currency.symbol) ? ` (${clean(currency.symbol)})` : ''}` : '',
     prices(db),
     factions.length > 0 ? `Groups:\n${factions.join('\n')}` : '',
