@@ -23,12 +23,12 @@ import { TURN_STATE_SCHEMA } from '../lib/rpg/stateSchema';
 import {
   COOL_AFTER_DAYS,
   LIST_HEAT,
-  bingoListings,
+  wantedListings,
+  levelFor,
   bountyFor,
   currentHeat,
   formatReputationBlock,
   hunterOffer,
-  rankFor,
   territoryOf,
 } from '../lib/rpg/reputation';
 import {
@@ -74,7 +74,7 @@ function withTurns(db: AppDatabase, count: number): AppDatabase {
 function addRonin(db: AppDatabase): AppDatabase {
   return turn(db, {
     new_characters: [
-      { is_new: true, name: 'Goro Tsuda', age: 30, role: 'Ronin swordsman', personality: 'proud', speech_style: 'clipped', appearance: 'scarred' },
+      { is_new: true, name: 'Goro Tsuda', age: 30, role: 'Debt collector', personality: 'proud', speech_style: 'clipped', appearance: 'scarred' },
     ],
     bonds: [{ character_id: 'Goro Tsuda', affinity_change: -2, status: 'Wary', note: 'You beat him in front of his men', relationship: null, attraction: null, romance_note: null }],
     // He is there: only the scene cast makes someone met and gives them a bond.
@@ -85,88 +85,86 @@ function addRonin(db: AppDatabase): AppDatabase {
 const goro = (db: AppDatabase) => db.entities.find((entity) => entity.name === 'Goro Tsuda')!;
 const goroBond = (db: AppDatabase) => db.bonds.find((bond) => bond.entityId === goro(db).id)!;
 
-describe('reputation: bingo books and Akatsuki standing', () => {
-  test('the Leaf writes you into its book the morning after the massacre night, unseen by you', () => {
-    let db = fresh();
-    db = turn(db, { mood: 'cold' });
-    expect(bingoListings(db)).toHaveLength(0);
-
-    db = turn(later(db, 1), { mood: 'cold' });
-    const [leaf] = bingoListings(db);
-    expect(leaf).toMatchObject({ village: 'leaf', rank: 'B', known: false });
-    expect(leaf.bounty).toBe(bountyFor(leaf.heat));
+describe('reputation: wanted lists and faction standing', () => {
+  test('nobody has anything on you at the start', () => {
+    const db = turn(fresh(), { mood: 'cold' });
+    expect(wantedListings(db)).toHaveLength(0);
   });
 
-  test('deeds raise a village’s heat into a rank and a bounty; seeing it makes it known', () => {
+  test('deeds raise a faction’s heat into a level and a price; seeing it makes it known', () => {
     let db = turn(later(fresh(), 3), {
-      reputation: [{ faction: 'sand', change: 20, reason: 'Killed two Sand chunin at the border' }],
-      bounty_seen: ['sand'],
+      reputation: [{ faction: 'harbour-police', change: 20, reason: 'Assaulted an officer outside The Anchor' }],
+      bounty_seen: ['harbour-police'],
     });
-    const sand = bingoListings(db).find((item) => item.village === 'sand')!;
-    expect(sand).toMatchObject({ rank: 'C', known: true, lastReason: 'Killed two Sand chunin at the border' });
+    const police = wantedListings(db).find((item) => item.factionId === 'harbour-police')!;
+    expect(police).toMatchObject({ level: 'noted', known: true, lastReason: 'Assaulted an officer outside The Anchor' });
+    expect(police.bounty).toBe(bountyFor(db, police.heat));
 
-    db = turn(db, { reputation: [{ faction: 'sand', change: 99, reason: 'Massacre at the oasis' }] });
+    db = turn(db, { reputation: [{ faction: 'harbour-police', change: 99, reason: 'Torched a squad car' }] });
     // A single turn moves heat at most 25.
-    expect(bingoListings(db).find((item) => item.village === 'sand')!.heat).toBe(45);
-    expect(rankFor(45)).toBe('B');
+    expect(wantedListings(db)[0].heat).toBe(45);
+    expect(levelFor(45)).toBe('wanted');
+  });
+
+  test('a faction without a wanted list never lists you; its standing moves instead', () => {
+    const db = turn(later(fresh(), 3), { reputation: [{ faction: 'marlow-finch', change: 20, reason: 'Leaked a memo' }] });
+    expect(wantedListings(db)).toHaveLength(0);
+    expect(db.state.reputation!.factions['marlow-finch']!.standing).toBe(-20);
   });
 
   test('heat cools slowly without new deeds, but a listing is never torn out', () => {
-    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'mist', change: 25, reason: 'x' }] });
-    db = turn(db, { reputation: [{ faction: 'mist', change: 25, reason: 'x' }] });
-    const entry = db.state.reputation!.villages.mist!;
+    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    db = turn(db, { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    const entry = db.state.reputation!.factions['harbour-police']!;
     expect(currentHeat(entry, shiftDate(db.state.inStoryDate, COOL_AFTER_DAYS))).toBe(50);
     expect(currentHeat(entry, shiftDate(db.state.inStoryDate, COOL_AFTER_DAYS + 200))).toBe(40);
     expect(currentHeat(entry, shiftDate(db.state.inStoryDate, 20000))).toBe(LIST_HEAT);
   });
 
   test('strangers react by the land you stand in; nobody is around in empty wilderness at night', () => {
-    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'sand', change: 25, reason: 'x' }] });
-    expect(territoryOf('A market street in Suna')).toBe('sand');
-    expect(territoryOf('Tea house in the Land of Waves')).toBeNull();
+    const db = turn(later(fresh(), 3), { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    expect(territoryOf(db, 'A bar in Old Town')?.id).toBe('harbour-police');
+    expect(territoryOf(db, 'A tea house far up the coast')).toBeNull();
 
-    const town = { ...db, state: { ...db.state, location: 'Market street, Hidden Sand', locationKind: 'settlement' as const, inStoryDate: { ...db.state.inStoryDate, hour: 12 } } };
+    const town = { ...db, state: { ...db.state, location: 'Market street, Old Town', locationKind: 'settlement' as const, inStoryDate: { ...db.state.inStoryDate, hour: 12 } } };
     const block = formatReputationBlock(town);
     expect(block).toContain('YOUR NAME OUT THERE');
-    expect(block).toContain("Hidden Sand's bingo book lists you C-rank");
-    expect(block).toContain('Also wanted by: Hidden Leaf (B-rank)');
+    expect(block).toContain('Harbourside Police has you on file');
     expect(block).toContain('You have not seen what');
 
     const wilds = { ...db, state: { ...db.state, location: 'Deep forest', locationKind: 'wilderness' as const, inStoryDate: { ...db.state.inStoryDate, hour: 23 } } };
-    expect(formatReputationBlock(wilds)).toBe('');
+    // Only how groups regard you; no strangers to recognise you.
+    expect(formatReputationBlock(wilds)).not.toContain('on file');
 
-    const prompt = buildNarrationPrompt(town, '*Kan buys water.*').messages.map((m) => m.content).join('\n');
+    const prompt = buildNarrationPrompt(town, '*You buy water.*').messages.map((m) => m.content).join('\n');
     expect(prompt).toContain('YOUR NAME OUT THERE');
     expect(NARRATION_SYSTEM).toContain('ENEMIES');
   });
 
-  test('Akatsuki standing only matters once you are a member', () => {
-    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'akatsuki', change: 20, reason: 'Clean mission' }] });
-    db = { ...db, state: { ...db.state, location: 'Rain village street', locationKind: 'settlement', inStoryDate: { ...db.state.inStoryDate, hour: 12 } } };
-    expect(formatReputationBlock(db)).not.toContain('Within the Akatsuki');
-
-    db = { ...db, state: { ...db.state, canonProgress: { ...db.state.canonProgress!, completed: ['kan-joins-akatsuki'] } } };
-    expect(formatReputationBlock(db)).toContain('Within the Akatsuki (trusted)');
+  test('standing with a group shows how it treats you', () => {
+    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'marlow-finch', change: -15, reason: 'Clean audit' }] });
+    db = turn(db, { reputation: [{ faction: 'marlow-finch', change: -15, reason: 'Saved a shipment' }] });
+    db = { ...db, state: { ...db.state, location: 'Market street, Old Town', locationKind: 'settlement', inStoryDate: { ...db.state.inStoryDate, hour: 12 } } };
+    expect(formatReputationBlock(db)).toContain('Marlow & Finch (trusted)');
   });
 
-  test('bounty hunters turn up now and then on roads and in towns, never for the unwanted', () => {
-    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'cloud', change: 25, reason: 'x' }] });
-    db = turn(db, { reputation: [{ faction: 'cloud', change: 25, reason: 'x' }] });
-    db = turn(db, { reputation: [{ faction: 'cloud', change: 25, reason: 'x' }] });
-    db = { ...db, state: { ...db.state, location: 'Road through the Land of Lightning', locationKind: 'road', inStoryDate: { ...db.state.inStoryDate, hour: 10 } } };
+  test('hunters turn up now and then on roads and in towns, never for the unwanted', () => {
+    let db = turn(later(fresh(), 3), { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    db = turn(db, { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    db = turn(db, { reputation: [{ faction: 'harbour-police', change: 25, reason: 'x' }] });
+    db = { ...db, state: { ...db.state, location: 'Coast Road', locationKind: 'road', inStoryDate: { ...db.state.inStoryDate, hour: 10 } } };
 
     const offers = Array.from({ length: 60 }, (_, index) => hunterOffer(withTurns(db, index + 1)));
     const hits = offers.filter(Boolean);
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.length).toBeLessThanOrEqual(6);
-    expect(hits[0]!.listing.village).toBe('cloud');
-    // Deterministic: the same turn gets the same offer.
+    expect(hits[0]!.listing.factionId).toBe('harbour-police');
     const first = offers.findIndex(Boolean);
     expect(hunterOffer(withTurns(db, first + 1))).toEqual(offers[first]);
 
-    // Fights and empty places get none.
     expect(hunterOffer({ ...withTurns(db, first + 1), state: { ...db.state, scenePace: 'combat' } })).toBeNull();
     expect(hunterOffer({ ...withTurns(db, first + 1), state: { ...db.state, locationKind: 'wilderness' } })).toBeNull();
+    expect(hunterOffer(withTurns(fresh(), first + 1))).toBeNull();
   });
 });
 
@@ -175,15 +173,15 @@ describe('grudges: the dark mirror of romance', () => {
     let db = addRonin(later(fresh(), 3));
     expect(goroBond(db).grudge).toBeUndefined();
 
-    db = turn(db, { bonds: [{ character_id: 'Goro Tsuda', affinity_change: -5, status: 'Humiliated', note: 'You cut his topknot in the square', relationship: null, attraction: null, romance_note: null }] });
+    db = turn(db, { bonds: [{ character_id: 'Goro Tsuda', affinity_change: -5, status: 'Humiliated', note: 'You knocked him down in front of the whole bar', relationship: null, attraction: null, romance_note: null }] });
     const bond = goroBond(db);
     expect(bond.affinity).toBeLessThanOrEqual(GRUDGE_AFFINITY);
-    expect(bond.grudge?.reason).toBe('You cut his topknot in the square');
+    expect(bond.grudge?.reason).toBe('You knocked him down in front of the whole bar');
     expect(grudgeStage(db, bond)).toBe('resentful');
     expect(db.threads.some((thread) => thread.type === 'grudge' && thread.status === 'open')).toBe(true);
   });
 
-  test('left alone it stews; an original can end up hunting you, canon characters cannot', () => {
+  test('left alone it stews into a hunt; someone the player wrote holds a grudge too', () => {
     let db = addRonin(later(fresh(), 3));
     db = turn(db, { grudges: [{ character_id: 'Goro Tsuda', event: 'wronged', reason: 'You killed his brother' }] });
     expect(grudgeStage(db, goroBond(db))).toBe('vengeful');
@@ -191,14 +189,14 @@ describe('grudges: the dark mirror of romance', () => {
     db = turn(db, { grudges: [{ character_id: 'Goro Tsuda', event: 'wronged', reason: 'again' }] });
     expect(grudgeStage(db, goroBond(db))).toBe('hunting');
 
-    let canon = turn(later(fresh(), 3), {
-      grudges: [{ character_id: 'kisame-hoshigaki', event: 'wronged', reason: 'You humiliated him before Itachi' }],
-      characters_present: ['kisame-hoshigaki'],
+    let written = turn(later(fresh(), 3), {
+      grudges: [{ character_id: 'daniel-okafor', event: 'wronged', reason: 'You went over his head to the board' }],
+      characters_present: ['daniel-okafor'],
     });
-    canon = turn(canon, { grudges: [{ character_id: 'kisame-hoshigaki', event: 'wronged', reason: 'again' }] });
-    const hana = canon.bonds.find((bond) => bond.characterName === 'Kisame Hoshigaki')!;
-    expect(hana.grudge).toBeDefined();
-    expect(grudgeStage(later(canon, 400), hana)).toBe('vengeful');
+    written = turn(written, { grudges: [{ character_id: 'daniel-okafor', event: 'wronged', reason: 'again' }] });
+    const daniel = written.bonds.find((bond) => bond.characterName === 'Daniel Okafor')!;
+    expect(daniel.grudge).toBeDefined();
+    expect(grudgeStage(later(written, 400), daniel)).not.toBeNull();
 
     const stewing = later(db, 300);
     expect(grudgeHeat(goroBond(stewing).grudge!, stewing.state.inStoryDate)).toBeGreaterThan(goroBond(db).grudge!.heat);
@@ -221,11 +219,11 @@ describe('grudges: the dark mirror of romance', () => {
     expect(grudgeOffer({ ...overdue, state: { ...overdue.state, scenePace: 'combat' } })).toBeNull();
     expect(grudgeOffer({ ...overdue, state: { ...overdue.state, sceneCast: ['Goro Tsuda'] } })).toBeNull();
 
-    const prompt = buildNarrationPrompt(overdue, '*Kan makes camp.*').messages.map((m) => m.content).join('\n');
+    const prompt = buildNarrationPrompt(overdue, '*You lock the door.*').messages.map((m) => m.content).join('\n');
     expect(prompt).toContain('SOMEONE WANTS YOU TO PAY');
     expect(prompt).toContain('[grudge: hunting');
     expect(prompt).not.toContain('A FAMILIAR FACE');
-    const statePrompt = buildExtractionPrompt(overdue, '*Kan makes camp.*', 'Goro steps out of the dark.').messages[1].content;
+    const statePrompt = buildExtractionPrompt(overdue, '*You lock the door.*', 'Goro steps out of the dark.').messages[1].content;
     expect(statePrompt).toContain('REPUTATION & GRUDGES');
     expect(statePrompt).toContain("This turn's offered grudge is");
 
@@ -257,10 +255,10 @@ describe('grudges: the dark mirror of romance', () => {
 
     let db = turn(addRonin(later(fresh(), 3)), {
       grudges: [{ character_id: 'Goro Tsuda', event: 'wronged', reason: 'You killed his brother' }],
-      reputation: [{ faction: 'stone', change: 30, reason: 'x' }],
+      reputation: [{ faction: 'harbour-police', change: 30, reason: 'x' }],
     });
     db = normalizeDatabase(JSON.parse(JSON.stringify(db)));
     expect(goroBond(db).grudge?.reason).toBe('You killed his brother');
-    expect(bingoListings(db).map((item) => item.village)).toEqual(expect.arrayContaining(['leaf', 'stone']));
+    expect(wantedListings(db).map((item) => item.factionId)).toEqual(['harbour-police']);
   });
 });

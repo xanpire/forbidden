@@ -49,7 +49,7 @@ export function refByEntityId(db: AppDatabase): Map<string, string> {
 
 // Names that are also everyday words only count when capitalized ("Hope",
 // not "the hope in your voice").
-const COMMON_WORD_NAMES = new Set(['hope', 'grace', 'faith', 'kin', 'will', 'rose', 'mark', 'jack']);
+const COMMON_WORD_NAMES = new Set(['pain', 'dawn', 'summer', 'river', 'sky', 'joy', 'may', 'june', 'april', 'august', 'hunter', 'king', 'rich', 'sunny', 'ivy', 'amber', 'storm', 'hope', 'grace', 'faith', 'kin', 'will', 'rose', 'mark', 'jack']);
 
 function escapeRegExp(text: string) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -24,10 +24,9 @@ import {
   usePreviousForStyle,
 } from '../lib/rpg/image';
 import {
-  canonArtDirection,
+  timelineArtDirection,
   colourAccent,
   impactFrameAllowed,
-  jutsuOnScreen,
   lightLine,
   recentShots,
   shotTypeOf,
@@ -36,7 +35,7 @@ import { packPeopleReferences } from '../lib/rpg/castSheet';
 import { parseImageCheck, sharperActorRule } from '../lib/rpg/imageCheck';
 import { planReferences } from '../lib/rpg/referencePlan';
 import { currentRegion } from '../lib/rpg/geography';
-import type { AppDatabase, JutsuRecord, RawLogEntry } from '../lib/rpg/types';
+import type { AppDatabase, RawLogEntry } from '../lib/rpg/types';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_director', 'Director'));
 
@@ -66,7 +65,9 @@ const at = (db: AppDatabase, hour: number, condition: 'clear' | 'snow' | 'storm'
     state: {
       ...db.state,
       inStoryDate: date,
-      weather: { region: currentRegion(db), condition, since: date, source: 'story', sceneSeq: db.state.sceneSeq },
+      location: 'Coast Road',
+      locationKind: 'road',
+      weather: { region: currentRegion({ ...db, state: { ...db.state, location: 'Coast Road' } }), condition, since: date, source: 'story', sceneSeq: db.state.sceneSeq },
     },
   };
 };
@@ -74,17 +75,17 @@ const at = (db: AppDatabase, hour: number, condition: 'clear' | 'snow' | 'storm'
 describe('the director', () => {
   test('reads ACTION, SHOT and CAPTION, in any order, and survives a missing SHOT', () => {
     const full = parseImageAction(
-      'ACTION: Kan drives a Chidori into the Stone ninja.\nSHOT: low angle, wide-angle distortion, Kan lower third, focus: Kan\nCAPTION: You drive lightning through him.'
+      'ACTION: Alex Reyes slams the thug into the wall.\nSHOT: low angle, wide-angle distortion, Alex lower third, focus: Alex\nCAPTION: You slam him into the wall.'
     );
-    expect(full.action).toBe('Kan drives a Chidori into the Stone ninja.');
+    expect(full.action).toBe('Alex Reyes slams the thug into the wall.');
     expect(full.shot).toContain('low angle');
-    expect(full.caption).toBe('You drive lightning through him.');
+    expect(full.caption).toBe('You slam him into the wall.');
 
-    const old = parseImageAction('ACTION: Kan waits.\nCAPTION: You wait.');
+    const old = parseImageAction('ACTION: Alex waits.\nCAPTION: You wait.');
     expect(old.shot).toBeUndefined();
-    expect(old.action).toBe('Kan waits.');
+    expect(old.action).toBe('Alex waits.');
 
-    expect(parseImageAction('Kan waits in the rain.').action).toBe('Kan waits in the rain.');
+    expect(parseImageAction('Alex waits in the rain.').action).toBe('Alex waits in the rain.');
   });
 
   test('shot types come from the opening words', () => {
@@ -96,30 +97,15 @@ describe('the director', () => {
     expect(shotTypeOf('dutch tilt')).toBeNull();
   });
 
-  test('the director reads mood, weather, jutsu, recent shots and a key moment', () => {
+  test('the director reads mood, weather, recent shots and a key moment', () => {
     let db = at(seed(), 18, 'storm');
     db = { ...db, state: { ...db.state, mood: 'furious' } };
-    const jutsu: JutsuRecord = {
-      id: 'j1',
-      name: 'Fire Style: Great Fireball Technique',
-      user: 'Kan',
-      chakraNature: 'fire',
-      effect: 'a huge fireball',
-      visual: 'a roaring orange sphere of flame bigger than a house',
-      firstSeen: db.state.inStoryDate,
-      lastSeen: db.state.inStoryDate,
-      timesUsed: 3,
-      description: '',
-      tags: [],
-    };
-    db = { ...db, jutsuRecords: [jutsu] };
     db = reply(db, 'Earlier.', { image: 'img:a', imageMeta: { prompt: '', action: '', shot: 'close-up, eye level', shotType: 'close-up', references: [], model: 'x', createdAt: 0 } });
-    db = reply(db, 'You exhale a Great Fireball into the trees.', { imageWorthy: true });
+    db = reply(db, 'You hurl the bottle through the bar window.', { imageWorthy: true });
 
     const context = directorContext(db)!;
-    expect(context).toContain("Kan's mood: furious");
+    expect(context).toContain("Alex Reyes's mood: furious");
     expect(context).toContain('thunder');
-    expect(context).toContain('roaring orange sphere');
     expect(context).toContain('This is a key moment: go big.');
     expect(context).toContain('"close-up, eye level"');
 
@@ -144,11 +130,11 @@ describe('the director', () => {
 describe('the scene prompt', () => {
   test('vision first: style opener, SHOT, ACTION before the references and rules', () => {
     const db = reply(at(seed(), 12), 'You wait.');
-    const prompt = buildSceneImagePrompt(db, [{ kind: 'face', uri: 'data:f' }], 'Kan waits on a cliff.', {
+    const prompt = buildSceneImagePrompt(db, [{ kind: 'face', uri: 'data:f' }], 'Alex waits on a cliff.', {
       shot: 'extreme wide, tiny in frame',
     });
     const lines = prompt.split('\n');
-    expect(lines[0]).toContain('widescreen anime key frame');
+    expect(lines[0]).toContain('cinematic photo, 35mm film');
     expect(prompt.indexOf('SHOT:')).toBeLessThan(prompt.indexOf('ACTION'));
     expect(prompt.indexOf('ACTION')).toBeLessThan(prompt.indexOf('Reference image 1'));
     expect(prompt.indexOf('Reference image 1')).toBeLessThan(prompt.indexOf('ACTOR RULE'));
@@ -160,39 +146,21 @@ describe('the scene prompt', () => {
   });
 
   test('light comes from the real weather and clock, never hard-coded rain', () => {
-    const noon = buildSceneImagePrompt(reply(at(seed(), 12), 'x'), [], 'Kan waits.');
+    const noon = buildSceneImagePrompt(reply(at(seed(), 12), 'x'), [], 'Alex waits.');
     expect(noon).toContain('harsh noon sun');
     expect(noon).not.toMatch(/\brain\b/);
 
-    expect(lightLine(at(seed(), 5, 'snow'), 'Kan waits.')).toContain('dawn');
-    expect(lightLine(at(seed(), 5, 'snow'), 'Kan waits.')).toContain('snow');
-    expect(lightLine(at(seed(), 18), 'Kan waits.')).toContain('golden hour');
-    expect(colourAccent('Kan lights the black flames of Amaterasu')).toContain('violet');
-    expect(colourAccent('A Chidori screams in his hand')).toContain('white-blue');
+    expect(lightLine(at(seed(), 5, 'snow'), 'Alex waits.')).toContain('dawn');
+    expect(lightLine(at(seed(), 5, 'snow'), 'Alex waits.')).toContain('snow');
+    expect(lightLine(at(seed(), 18), 'Alex waits.')).toContain('golden hour');
+    expect(colourAccent('Police sirens wail down the street')).toContain('red and blue');
+    expect(colourAccent('Lightning splits the sky over the harbour')).toContain('white-blue');
   });
 
-  test('impact frames swap the style opener', () => {
+  test('the style opener is the world\'s art style', () => {
     const db = reply(at(seed(), 12), 'x');
-    const prompt = buildSceneImagePrompt(db, [], 'Kan punches Kisame.', { shot: 'impact frame, radial lines' });
-    expect(prompt.split('\n')[0]).toContain('An anime impact frame');
-    expect(prompt).not.toContain('Light and atmosphere');
-  });
-
-  test('jutsu visuals reach the prompt as the centrepiece', () => {
-    let db = reply(at(seed(), 12), 'Kan breathes out a Great Fireball.');
-    db = {
-      ...db,
-      jutsuRecords: [
-        {
-          id: 'j1', name: 'Fire Style: Great Fireball Technique', user: 'Kan', chakraNature: 'fire', effect: '',
-          visual: 'a roaring orange sphere of flame', firstSeen: db.state.inStoryDate, lastSeen: db.state.inStoryDate,
-          timesUsed: 1, description: '', tags: [],
-        },
-      ],
-    };
-    expect(jutsuOnScreen(db, 'Kan breathes out a Great Fireball.').length).toBe(1);
-    const prompt = buildSceneImagePrompt(db, [], 'Kan breathes out a Great Fireball.');
-    expect(prompt).toContain('Jutsu on screen: Fire Style: Great Fireball Technique — a roaring orange sphere of flame');
+    const painted = { ...db, world: { ...db.world, artStyle: 'loose watercolour illustration' } };
+    expect(buildSceneImagePrompt(painted, [], 'Alex waits.').split('\n')[0]).toContain('loose watercolour illustration');
   });
 
   test('references are identity-only and the previous image is style-only', () => {
@@ -201,14 +169,14 @@ describe('the scene prompt', () => {
       db,
       [
         { kind: 'face', uri: 'data:f' },
-        { kind: 'cast', uri: 'data:c', names: ['Kisame Hoshigaki', 'Deidara'] },
+        { kind: 'cast', uri: 'data:c', names: ['Mara Vance', 'Daniel Okafor'] },
         { kind: 'previous', uri: 'data:p' },
       ],
-      'Kan stands between Kisame and Deidara.',
+      'Alex stands between Mara and Daniel.',
       { shot: 'ensemble, line-up' }
     );
     expect(prompt).toContain('Identity only');
-    expect(prompt).toContain('Reference image 2 is a cast sheet: left to right Kisame Hoshigaki, Deidara.');
+    expect(prompt).toContain('Reference image 2 is a cast sheet: left to right Mara Vance, Daniel Okafor.');
     expect(prompt).toContain('rendering style and line quality only, not composition');
     expect(prompt).toContain('Ensemble:');
   });
@@ -221,22 +189,21 @@ describe('the scene prompt', () => {
     expect(usePreviousForStyle(db, 'aerial')).toBe(true);
   });
 
-  test('canon characters get look tags from their appearance', () => {
+  test('people without a reference get look tags from their appearance', () => {
     const db = reply(seed(), 'x');
-    const kisame = db.entities.find((entity) => entity.name.startsWith('Kisame'));
-    if (!kisame?.appearance) return;
-    const prompt = buildSceneImagePrompt(db, [], `Kan faces ${kisame.name} across the river.`);
+    const prompt = buildSceneImagePrompt(db, [], 'Alex faces Mara Vance across the bar.');
     expect(prompt).toContain('How the others look:');
-    expect(prompt).toContain(kisame.name);
+    expect(prompt).toContain('Mara Vance');
+    expect(prompt).toContain('dark-red hair');
   });
 
-  test('the retouch prompt edits the same image and keeps Kan’s face', () => {
+  test('the retouch prompt edits the same image and keeps the player’s face', () => {
     const plan = planReferences([{ kind: 'face', uri: 'data:f' }, { kind: 'edit', uri: 'data:e' }], 4);
     expect(plan.references.map((ref) => ref.kind)).toEqual(['edit', 'face']);
-    const prompt = buildRetouchPrompt('make him angrier', plan.references, 'Kan');
+    const prompt = buildRetouchPrompt('make him angrier', plan.references, 'Alex Reyes');
     expect(prompt).toContain('Edit this image: make him angrier.');
     expect(prompt).toContain('Keep everything else the same');
-    expect(prompt).toContain('Reference image 2: Kan');
+    expect(prompt).toContain('Reference image 2: Alex Reyes');
   });
 });
 
@@ -269,43 +236,43 @@ describe('ensembles', () => {
     expect(await packPeopleReferences(people, 0, draw)).toEqual([]);
   });
 
-  test('original characters get reference slots before the canon cast', async () => {
-    const db = seed();
-    const canon = db.entities.find((entity) => entity.name.startsWith('Itachi'))!;
-    const original = { ...canon, id: 'oc1', name: 'Renji Kaito', aliases: [] };
-    let next: AppDatabase = { ...db, entities: [...db.entities, original] };
+  test('in a known setting, original characters get reference slots before famous ones the model knows', async () => {
+    const base = seed();
+    const db: AppDatabase = { ...base, world: { ...base.world, knownUniverse: { name: 'A famous city drama', canonStrictness: 'faithful' } } };
+    const mara = db.entities.find((entity) => entity.name === 'Mara Vance')!;
+    const famous = { ...mara, id: 'famous1', name: 'Celeste Moreau', aliases: [], fame: 'sight' as const };
+    const original = { ...mara, id: 'oc1', name: 'Renji Kaito', aliases: [] };
+    let next: AppDatabase = { ...db, entities: [...db.entities, famous, original] };
     const mod = await import('../lib/rpg/characterPortrait');
-    next = mod.setCharacterFaceInDb(next, canon.id, 'img:itachi');
+    next = mod.setCharacterFaceInDb(next, famous.id, 'img:celeste');
     next = mod.setCharacterFaceInDb(next, original.id, 'img:renji');
-    const action = 'Itachi watches as Renji Kaito circles Kan.';
+    const action = 'Celeste Moreau watches as Renji Kaito circles Alex.';
     expect(sceneCharacterReferences(next, action, 1, true).map((ref) => ref.name)).toEqual(['Renji Kaito']);
-    expect(sceneCharacterReferences(next, action, 1).map((ref) => ref.name)).toEqual([canon.name]);
+    expect(sceneCharacterReferences(next, action, 1).map((ref) => ref.name)).toEqual(['Celeste Moreau']);
   });
 });
 
 describe('the swapped-roles check', () => {
   test('reads its JSON and sharpens the actor rule', () => {
-    expect(parseImageCheck('```json\n{"roles_ok": false, "extra_people": true, "note": "Kan is the one choked."}\n```')).toEqual({
+    expect(parseImageCheck('```json\n{"roles_ok": false, "extra_people": true, "note": "Alex is the one choked."}\n```')).toEqual({
       rolesOk: false,
       extraPeople: true,
-      note: 'Kan is the one choked.',
+      note: 'Alex is the one choked.',
     });
     expect(parseImageCheck('no idea')).toBeNull();
-    const rule = sharperActorRule('Kan chokes a Stone ninja.', { rolesOk: false, extraPeople: true, note: 'Kan is the one choked.' });
-    expect(rule).toContain('Kan is the one DOING the action');
+    const rule = sharperActorRule('Alex chokes the thug.', { rolesOk: false, extraPeople: true, note: 'Alex is the one choked.' });
+    expect(rule).toContain('Alex is the one DOING the action');
     expect(rule).toContain('only the people the ACTION names');
   });
 });
 
-describe('canon art direction', () => {
-  test('a big canon beat Kan took on gives its art direction', () => {
+describe('timeline art direction', () => {
+  test('a timeline beat the player took on gives its art direction', () => {
     const db = seed();
-    const progress = db.state.canonProgress ?? { completed: [], active: [], engaged: [] };
-    const engaged: AppDatabase = {
-      ...db,
-      state: { ...db.state, canonProgress: { ...progress, engaged: [...progress.engaged, 'pain-assault'] } },
-    };
-    expect(canonArtDirection(engaged)).toContain('Pain floating high above');
-    expect(canonArtDirection({ ...db, state: { ...db.state, location: 'a cave', canonProgress: progress } })).toBeNull();
+    const world = { ...db.world, timeline: db.world.timeline.map((event) => (event.id === 'audit-offer' ? { ...event, artDirection: 'a dark office lit by one desk lamp' } : event)) };
+    const progress = db.state.timelineProgress ?? { completed: [], active: [], engaged: [] };
+    const engaged: AppDatabase = { ...db, world, state: { ...db.state, timelineProgress: { ...progress, engaged: [...progress.engaged, 'audit-offer'] } } };
+    expect(timelineArtDirection(engaged)).toContain('one desk lamp');
+    expect(timelineArtDirection({ ...db, world })).toBeNull();
   });
 });

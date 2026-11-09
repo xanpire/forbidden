@@ -1,5 +1,5 @@
 import { advanceSeconds, calculateAge, dateSortValue, daysBetween, entityAge, formatClock, formatDate } from './calendar';
-import { isPlayer, playerAge, playerName } from './player';
+import { isPlayer, playerName } from './player';
 import { paceMinimumSeconds } from './pacing';
 import { ROMANCE_RULES } from './romance';
 import { characterRefs, mentionsEntity, refByEntityId } from './characterRefs';
@@ -29,6 +29,7 @@ import { formatYearlyBlock, yearlyOffer, yearlyTrackingLines } from './yearly';
 import { GRUDGE_RULES, formatGrudgeOffer, grudgeOffer, grudgeStage, grudgeTrackingLines } from './grudges';
 import { formatHunterOffer, formatReputationBlock, hunterOffer, reputationTrackingLines } from './reputation';
 import { estimateTokens } from '../openrouter';
+import { formatWhoYouAre, formatWorldBlock } from './worldBlocks';
 import { DEFAULT_SETTINGS } from './defaults';
 import { isDeceased, playerKnowsDeath } from './deaths';
 import { resolveEntity } from './entities';
@@ -262,18 +263,19 @@ export function buildNarrationPrompt(
   // fraction of fresh input).
   // 1. The rules: identical on every turn of every story.
   const rules = NARRATION_SYSTEM;
-  // 2. Who the player is and the long view: changes only when a summary lands, a
-  //    thread opens or closes, or a bond moves.
+  // 2. The world and the player's character, as the player wrote them:
+  //    change only when the player edits them.
+  const written = [formatWorldBlock(db), formatWhoYouAre(db)].join('\n\n');
+  // 3. The long view: changes only when a summary lands, a thread opens or
+  //    closes, or a bond moves.
   const slow = [
-    formatCharacterSheet(db),
     formatStorySoFar(storySoFar),
-    formatPrices(db),
     formatThreads(db),
     formatBonds(db),
     formatTheDead(db),
   ].filter(Boolean).join('\n\n');
 
-  // 3. Everything that moves turn to turn. Inside a flashback the present
+  // 4. Everything that moves turn to turn. Inside a flashback the present
   //    stands still: no news, letters, timeline, pressure or present state.
   const buildMemoryDynamic = (messagesForScene: RawLogEntry[]) =>
     [
@@ -330,9 +332,10 @@ export function buildNarrationPrompt(
     return [
       {
         role: 'system',
-        content: `${ruleText}\n\n${slowText}`,
+        content: `${ruleText}\n\n${written}\n\n${slowText}`,
         parts: [
           { text: `${ruleText}\n\n`, cache: true },
+          { text: `${written}\n\n`, cache: true },
           { text: slowText, cache: true },
         ],
       },
@@ -399,6 +402,7 @@ export function buildExtractionPrompt(
     .find((message) => message.role === 'assistant' && message.content !== assistantMessage);
 
   const stable = [
+    formatWorldIds(db),
     formatCharacterRoster(db),
     formatPrices(db),
     formatBonds(db),
@@ -582,30 +586,6 @@ function formatStorySoFar(story: StorySoFar) {
     ...story.chapters.map((text, index) =>
       `${index === story.chapters.length - 1 ? 'Latest chapter' : 'Chapter'}: ${truncate(text, 1000)}`
     ),
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-function formatCharacterSheet(db: AppDatabase) {
-  const player = db.state.player;
-  const line = (label: string, value: string | undefined) => (value && value.trim() ? `${label}: ${value.trim()}` : '');
-
-  return [
-    'PLAYER CHARACTER',
-    `Name: ${player.name}`,
-    player.aliases.length > 0 ? `Also called: ${player.aliases.join(', ')}` : '',
-    line('Gender', player.gender),
-    player.birthday ? `Birthday: month ${player.birthday.month}, day ${player.birthday.day}` : '',
-    player.birthYear !== undefined ? `Birth year: ${player.birthYear}` : '',
-    `Age: ${playerAge(db)}`,
-    line('Role', player.role),
-    line('Personality', player.personality),
-    line('Speech', player.speechStyle),
-    line('Backstory', player.backstory),
-    line('Skills', player.skills),
-    player.goals.length > 0 ? `Goals: ${player.goals.join(' | ')}` : '',
-    player.secrets.length > 0 ? `Secret notes: ${player.secrets.join(' | ')}` : '',
   ]
     .filter(Boolean)
     .join('\n');
@@ -813,7 +793,19 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
   ].join('\n');
 }
 
-/** The world's price scale, for the narrator and the tracker (stable per save). */
+/** Faction and region ids the tracker may reference (stable per world). */
+function formatWorldIds(db: AppDatabase) {
+  const factions = db.world.factions.map((faction) => `${faction.id} (${faction.name})`);
+  const regions = db.world.regions.map((region) => `${region.id} (${region.name})`);
+
+  return [
+    'WORLD IDS — use these exact ids wherever a field asks for a faction or a region',
+    `Factions: ${factions.length > 0 ? factions.join(', ') : 'none'}`,
+    `Regions: ${regions.length > 0 ? regions.join(', ') : 'none'}`,
+  ].join('\n');
+}
+
+/** The world's price scale, for the tracker (stable per save). */
 function formatPrices(db: AppDatabase) {
   const guide = priceGuideOf(db);
 

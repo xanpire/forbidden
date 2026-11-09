@@ -21,61 +21,32 @@ import type { AppDatabase, EntityRecord } from '../lib/rpg/types';
 
 const seed = () => normalizeDatabase(seedDatabase('slot_immersion', 'Immersion'));
 const person = (db: AppDatabase, name: string) => db.entities.find((entity) => entity.name === name)!;
-const hear = (db: AppDatabase, milestoneId: string): AppDatabase => ({
-  ...db,
-  state: {
-    ...db.state,
-    canonProgress: {
-      ...db.state.canonProgress!,
-      heard: { ...(db.state.canonProgress?.heard ?? {}), [`event_canon_${milestoneId}`]: db.state.inStoryDate },
-    },
-  } as AppDatabase['state'],
-});
-
-describe('profiles show only what Kan could know', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip("Sasori's real body stays hidden until he falls; the narrator still knows", () => {
+describe('profiles show what the save holds', () => {
+  test('profile fields are what the player wrote or the story kept; secrets live in facts', () => {
     const db = seed();
-    const sasori = person(db, 'Sasori');
+    const mara = person(db, 'Mara Vance');
+    const profile = shownProfile(db, mara);
 
-    expect(sasori.appearance).toContain('red-haired');
-    expect(shownField(db, sasori, 'appearance')).not.toContain('red-haired');
-    expect(shownField(hear(db, 'sasori-falls'), sasori, 'appearance')).toContain('red-haired');
-  });
-
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip("the masked man's profile gives nothing away", () => {
-    const db = seed();
-    const profile = shownProfile(db, person(db, 'Tobi'));
-
-    expect(profile.role).not.toContain('hidden hand');
-    expect(profile.personality).not.toContain('true self');
-    expect(profile.speechStyle).not.toContain('Tobi');
-  });
-
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('Kabuto is a Leaf medic until his spying is known; Minato is only the Fourth Hokage', () => {
-    const db = seed();
-
-    expect(shownField(db, person(db, 'Kabuto Yakushi'), 'role')).toBe('Leaf medical ninja');
-    expect(shownField(hear(db, 'kabuto-embedded'), person(db, 'Kabuto Yakushi'), 'role')).toContain('Spy');
-    expect(shownField(db, person(db, 'Minato Namikaze'), 'role')).toBe('Fourth Hokage');
+    expect(profile.role).toBe(mara.role);
+    expect(profile.appearance).toContain('dark-red hair');
+    expect(shownField(db, mara, 'personality')).toBe(mara.personality);
+    // The player's secret is never on a profile field.
+    expect(Object.values(profile).join(' ')).not.toContain('shipments');
   });
 
   test('what the story itself wrote shows as it is', () => {
     const db = seed();
-    const sasori: EntityRecord = { ...person(db, 'Sasori'), appearance: 'A red-haired youth stepping out of a broken puppet.' };
+    const mara: EntityRecord = { ...person(db, 'Mara Vance'), appearance: 'Soaked through, laughing, hair plastered to her face.' };
 
-    expect(shownField(db, sasori, 'appearance')).toBe('A red-haired youth stepping out of a broken puppet.');
+    expect(shownField(db, mara, 'appearance')).toBe('Soaked through, laughing, hair plastered to her face.');
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip("portraits are painted from Kan's view", () => {
+  test('portraits are painted from the written look', () => {
     const db = seed();
-    const sasori = person(db, 'Sasori');
-    const prompt = buildCharacterPortraitPrompt(db, sasori, characterPortraitSignature(db, sasori), []);
+    const mara = person(db, 'Mara Vance');
+    const prompt = buildCharacterPortraitPrompt(db, mara, characterPortraitSignature(db, mara), []);
 
-    expect(prompt).not.toContain('red-haired');
+    expect(prompt).toContain('dark-red hair');
   });
 });
 
@@ -95,9 +66,9 @@ describe('feelings and grudges', () => {
   });
 
   test('the narrator still gets the full truth', () => {
-    const db = { ...seed(), state: { ...seed().state, sceneCast: ['Sasori'] } };
-    const text = buildNarrationPrompt(db, '*You look at Sasori.*').messages.map((message) => message.content).join('\n');
+    const db = { ...seed(), state: { ...seed().state, sceneCast: ['Mara Vance'] } };
+    const text = buildNarrationPrompt(db, '*You look at Mara.*').messages.map((message) => message.content).join('\n');
 
-    expect(text).toContain('red-haired');
+    expect(text).toContain('dark-red hair');
   });
 });

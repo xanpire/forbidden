@@ -58,131 +58,126 @@ function linked(db: AppDatabase, eventId: string) {
 }
 
 describe('only the scene cast meets people', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('mentioned only: unmet, no bond — even with a bond change, a grudge and an update', () => {
+  test('mentioned only: unmet, no bond — even with a bond change, a grudge and an update', () => {
     let db = seed();
-    db = play(db, 'Kakuzu unrolls a bounty flyer. "Sōta Mibu. A deserter, worth twenty thousand ryō."', {
-      characters_present: ['kakuzu'],
-      new_characters: [{ is_new: true, name: 'Sōta Mibu', age: 24, role: 'Deserter with a bounty', personality: 'reckless', speech_style: 'loud', appearance: 'scarred jaw' }],
-      bonds: [{ character_id: 'Sōta Mibu', affinity_change: -2, status: 'Target', note: 'Your bounty', relationship: null, attraction: null, romance_note: null }],
-      grudges: [{ character_id: 'Sōta Mibu', event: 'wronged', reason: 'You are hunting him' }],
-      character_updates: [{ character_id: 'Sōta Mibu', mood: 'hunted', appearance: null }],
+    db = play(db, 'Jonah slides a flyer across the bar. "Ricky Sloane. Skipped bail, and someone is paying twenty thousand dollars for him."', {
+      characters_present: ['jonah-pike'],
+      new_characters: [{ is_new: true, name: 'Ricky Sloane', age: 24, role: 'Bail jumper with a price on him', personality: 'reckless', speech_style: 'loud', appearance: 'scarred jaw' }],
+      bonds: [{ character_id: 'Ricky Sloane', affinity_change: -2, status: 'Target', note: 'Your bounty', relationship: null, attraction: null, romance_note: null }],
+      grudges: [{ character_id: 'Ricky Sloane', event: 'wronged', reason: 'You are hunting him' }],
+      character_updates: [{ character_id: 'Ricky Sloane', mood: 'hunted', appearance: null }],
     });
 
-    const sota = person(db, 'Sōta Mibu');
-    expect(sota.met).toBe(false);
-    expect(sota.status).toBe('Not yet met');
-    expect(sota.lastSeen).toBeUndefined();
-    expect(bondOf(db, sota)).toBeUndefined();
+    const ricky = person(db, 'Ricky Sloane');
+    expect(ricky.met).toBe(false);
+    expect(ricky.status).toBe('Not yet met');
+    expect(ricky.lastSeen).toBeUndefined();
+    expect(bondOf(db, ricky)).toBeUndefined();
 
-    // Kakuzu was there: met, "Newly met", and a bond.
-    const kakuzu = person(db, 'Kakuzu');
-    expect(kakuzu.met).toBe(true);
-    expect(kakuzu.status).toBe('Newly met');
-    expect(bondOf(db, kakuzu)).toBeDefined();
+    // Jonah was there: met, "Newly met", and a bond.
+    const jonah = person(db, 'Jonah Pike');
+    expect(jonah.met).toBe(true);
+    expect(jonah.status).toBe('Newly met');
+    expect(bondOf(db, jonah)).toBeDefined();
   });
 
   test('mentioned and present: "Newly met" with a bond', () => {
     let db = seed();
-    db = play(db, 'A man with a scarred jaw steps out of the reeds. "You must be the one hunting me."', {
-      characters_present: ['Sōta Mibu'],
-      new_characters: [{ is_new: true, name: 'Sōta Mibu', age: 24, role: 'Deserter', personality: 'reckless', speech_style: 'loud', appearance: 'scarred jaw' }],
+    db = play(db, 'A man with a scarred jaw steps out of the alley. "You must be the one hunting me."', {
+      characters_present: ['Ricky Sloane'],
+      new_characters: [{ is_new: true, name: 'Ricky Sloane', age: 24, role: 'Bail jumper', personality: 'reckless', speech_style: 'loud', appearance: 'scarred jaw' }],
     });
 
-    const sota = person(db, 'Sōta Mibu');
-    expect(sota.met).toBe(true);
-    expect(sota.status).toBe('Newly met');
-    expect(sota.lastSeen).toEqual(db.state.inStoryDate);
-    expect(bondOf(db, sota)?.status).toBe('Newly met');
+    const ricky = person(db, 'Ricky Sloane');
+    expect(ricky.met).toBe(true);
+    expect(ricky.status).toBe('Newly met');
+    expect(ricky.lastSeen).toEqual(db.state.inStoryDate);
+    expect(bondOf(db, ricky)?.status).toBe('Newly met');
   });
 
   test('someone met before is met later by stepping into a scene', () => {
     let db = seed();
-    db = play(db, 'Kakuzu talks about the deserter Sōta.', {
-      characters_present: ['kakuzu'],
-      new_characters: [{ is_new: true, name: 'Sōta Mibu', age: 24, role: 'Deserter', personality: null, speech_style: null, appearance: null }],
+    db = play(db, 'Mara talks about the bail jumper Ricky.', {
+      characters_present: ['mara-vance'],
+      new_characters: [{ is_new: true, name: 'Ricky Sloane', age: 24, role: 'Bail jumper', personality: null, speech_style: null, appearance: null }],
     });
-    expect(person(db, 'Sōta Mibu').met).toBe(false);
+    expect(person(db, 'Ricky Sloane').met).toBe(false);
 
-    db = play(db, 'Sōta Mibu drops from the bridge in front of you.', { characters_present: ['kakuzu', 'sota-mibu'] });
-    expect(person(db, 'Sōta Mibu').status).toBe('Newly met');
-    expect(bondOf(db, person(db, 'Sōta Mibu'))).toBeDefined();
+    db = play(db, 'Ricky Sloane steps out from behind the van.', { characters_present: ['mara-vance', 'ricky-sloane'] });
+    expect(person(db, 'Ricky Sloane').status).toBe('Newly met');
+    expect(bondOf(db, person(db, 'Ricky Sloane'))).toBeDefined();
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('"the masked man" said about Kakuzu never touches Tobi', () => {
+  test('a description never touches an unmet person or becomes one', () => {
     let db = seed();
-    const narration = 'The masked man counts his coins. The masked man does not look up. Kakuzu grunts.';
+    const narration = 'The masked man counts his money. The masked man does not look up. Mara grunts.';
     db = play(db, narration, {
-      characters_present: ['kakuzu', 'the masked man'],
+      characters_present: ['mara-vance', 'the masked man'],
       bonds: [{ character_id: 'the masked man', affinity_change: -1, status: 'Wary', note: 'Cold', relationship: null, attraction: null, romance_note: null }],
       character_updates: [{ character_id: 'Masked man', mood: 'bored', appearance: null }],
-      facts: [{ entity: 'the masked man', fact: 'Kakuzu collects bounties.', type: 'knowledge', who_knows: ['kan', 'the masked man'] }],
-      new_characters: [{ is_new: true, name: 'The masked man', age: null, role: 'Bounty hunter', personality: null, speech_style: null, appearance: null }],
+      facts: [{ entity: 'the masked man', fact: 'Mara owes money to someone.', type: 'knowledge', who_knows: ['player', 'the masked man'] }],
+      new_characters: [{ is_new: true, name: 'The masked man', age: null, role: 'Loan shark', personality: null, speech_style: null, appearance: null }],
     });
 
-    const tobi = person(db, 'Tobi');
-    expect(tobi.met).toBe(false);
-    expect(tobi.lastSeen).toBeUndefined();
-    expect(tobi.mood).not.toBe('bored');
-    expect(bondOf(db, tobi)).toBeUndefined();
-    expect(db.facts.some((fact) => fact.whoKnows.includes('Tobi'))).toBe(false);
+    const jonah = person(db, 'Jonah Pike');
+    expect(jonah.met).toBe(false);
+    expect(jonah.lastSeen).toBeUndefined();
+    expect(jonah.mood).not.toBe('bored');
+    expect(bondOf(db, jonah)).toBeUndefined();
+    expect(db.facts.some((fact) => fact.whoKnows.includes(jonah.id))).toBe(false);
     expect(db.entities.some((entity) => /masked man/i.test(entity.name))).toBe(false);
-    expect(presentFromProse(db, narration)).not.toContain('Tobi');
-    expect(person(db, 'Kakuzu').met).toBe(true);
+    expect(presentFromProse(db, narration)).not.toContain('Jonah Pike');
+    expect(person(db, 'Mara Vance').met).toBe(true);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('a failed state reply meets no one and keeps the scene cast', () => {
+  test('a failed state reply meets no one and keeps the scene cast', () => {
     let db = seed();
-    db = play(db, 'Kakuzu waits.', { characters_present: ['kakuzu'] });
-    db = play(db, 'Kisame Hoshigaki grins at you. Kisame Hoshigaki hefts his sword.', null);
+    db = play(db, 'Mara waits.', { characters_present: ['mara-vance'] });
+    db = play(db, 'Jonah Pike grins at you. Jonah Pike cracks his knuckles.', null);
 
-    expect(person(db, 'Kisame Hoshigaki').met).toBe(false);
-    expect(db.state.sceneCast).toEqual(['Kakuzu']);
+    expect(person(db, 'Jonah Pike').met).toBe(false);
+    expect(db.state.sceneCast).toEqual(['Mara Vance']);
   });
 });
 
 describe('shared memories', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('three people in a room all get the memory, named in its text or not', () => {
+  test('three people in a room all get the memory, named in its text or not', () => {
     let db = seed();
-    db = play(db, 'Itachi, Kisame and Kakuzu stand with you in the tower.', {
-      location: 'Rain tower, upper hall',
-      characters_present: ['itachi-uchiha', 'kisame-hoshigaki', 'kakuzu'],
+    db = play(db, 'Daniel, Jonah and Mara stand with you in the yard office.', {
+      location: 'Yard office, upper floor',
+      characters_present: ['daniel-okafor', 'jonah-pike', 'mara-vance'],
     });
     db = play(db, 'No one speaks. The rain hammers the glass.', { scene_ended: true });
 
-    db = summarizeNext(db, 'You wait in the tower hall while Itachi watches the rain.');
-    const memory = memoryTitled(db, 'You wait in the tower hall while Itachi watches the rain');
+    db = summarizeNext(db, 'You wait in the yard office while Daniel watches the rain.');
+    const memory = memoryTitled(db, 'You wait in the yard office while Daniel watches the rain');
 
     expect(linked(db, memory.id)).toEqual([
-      { name: 'Itachi Uchiha', role: 'present' },
-      { name: 'Kakuzu', role: 'present' },
-      { name: 'Kisame Hoshigaki', role: 'present' },
+      { name: 'Daniel Okafor', role: 'present' },
+      { name: 'Jonah Pike', role: 'present' },
+      { name: 'Mara Vance', role: 'present' },
     ]);
 
-    for (const name of ['Itachi Uchiha', 'Kisame Hoshigaki', 'Kakuzu']) {
+    for (const name of ['Daniel Okafor', 'Jonah Pike', 'Mara Vance']) {
       expect(sharedMemories(db, person(db, name).id).map((event) => event.id)).toContain(memory.id);
     }
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('a memory never takes in a neighbouring scene or its cast', () => {
+  test('a memory never takes in a neighbouring scene or its cast', () => {
     let db = seed();
-    // The platform: Kakuzu is there.
-    db = play(db, 'Pain hands you a cloak on the platform. Kakuzu watches.', {
-      location: 'Rain tower platform',
-      characters_present: ['itachi-uchiha', 'kakuzu'],
+    // The platform: Mara is there.
+    db = play(db, 'Daniel hands you a key card on the loading platform. Mara watches.', {
+      location: 'Loading platform',
+      characters_present: ['daniel-okafor', 'mara-vance'],
     });
-    db = play(db, 'Kakuzu turns away into the rain.', { characters_present: ['itachi-uchiha', 'kakuzu'], scene_ended: true });
-    // The cell: only Itachi.
-    db = play(db, 'The cell door closes behind you and Itachi.', {
-      location: 'Rain tower, holding cell',
-      characters_present: ['itachi-uchiha'],
+    db = play(db, 'Mara turns away into the rain.', { characters_present: ['daniel-okafor', 'mara-vance'], scene_ended: true });
+    // The office: only Daniel.
+    db = play(db, 'The office door closes behind you and Daniel.', {
+      location: 'Daniel\'s office',
+      characters_present: ['daniel-okafor'],
     });
-    db = play(db, 'Itachi finally tells you the truth. Kakuzu’s name never comes up again tonight.', {
-      characters_present: ['itachi-uchiha'],
+    db = play(db, 'Daniel finally tells you the truth. Mara’s name never comes up again tonight.', {
+      characters_present: ['daniel-okafor'],
       scene_ended: true,
     });
 
@@ -192,21 +187,21 @@ describe('shared memories', () => {
     const platformTurns = new Set(db.rawLog.filter((entry) => entry.sceneSeq === db.rawLog.find((e) => e.kind === 'story' && e.sceneSeq !== undefined)?.sceneSeq).map((e) => e.id));
     expect(pending[0].logIds?.every((id) => platformTurns.has(id))).toBe(true);
 
-    db = summarizeNext(db, 'Pain gives you the cloak while Kakuzu watches.');
-    db = summarizeNext(db, 'A bitter night in the cell with Itachi, though Kakuzu is on your mind.');
+    db = summarizeNext(db, 'Daniel gives you the key card while Mara watches.');
+    db = summarizeNext(db, 'A long night in the office with Daniel, though Mara is on your mind.');
 
-    const platform = memoryTitled(db, 'Pain gives you the cloak while Kakuzu watches');
-    const cell = memoryTitled(db, 'A bitter night in the cell with Itachi, though Kakuzu is on your mind');
+    const platform = memoryTitled(db, 'Daniel gives you the key card while Mara watches');
+    const cell = memoryTitled(db, 'A long night in the office with Daniel, though Mara is on your mind');
 
     expect(linked(db, platform.id)).toEqual([
-      { name: 'Itachi Uchiha', role: 'present' },
-      { name: 'Kakuzu', role: 'present' },
+      { name: 'Daniel Okafor', role: 'present' },
+      { name: 'Mara Vance', role: 'present' },
     ]);
     // Named in the cell memory's text, but not there: not linked.
-    expect(linked(db, cell.id)).toEqual([{ name: 'Itachi Uchiha', role: 'present' }]);
+    expect(linked(db, cell.id)).toEqual([{ name: 'Daniel Okafor', role: 'present' }]);
 
-    const kakuzu = person(db, 'Kakuzu');
-    const shared = sharedMemories(db, kakuzu.id).map((event) => event.id);
+    const mara = person(db, 'Mara Vance');
+    const shared = sharedMemories(db, mara.id).map((event) => event.id);
     expect(shared).toContain(platform.id);
     expect(shared).not.toContain(cell.id);
 
@@ -214,17 +209,16 @@ describe('shared memories', () => {
     expect(db.events.filter((event) => event.sourceLogId === null && event.turnLogId)).toHaveLength(0);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('the bond page leaves out memories someone is only mentioned in', () => {
+  test('the bond page leaves out memories someone is only mentioned in', () => {
     let db = seed();
-    db = play(db, 'Kakuzu waits outside.', { characters_present: ['kakuzu'] });
-    const kakuzu = person(db, 'Kakuzu');
+    db = play(db, 'Mara waits outside.', { characters_present: ['mara-vance'] });
+    const jonah = person(db, 'Jonah Pike');
     const event = db.events[db.events.length - 1];
     db = {
       ...db,
-      eventEntities: [...db.eventEntities, { eventId: event.id, entityId: kakuzu.id, role: 'mentioned' }],
+      eventEntities: [...db.eventEntities, { eventId: event.id, entityId: jonah.id, role: 'mentioned' }],
     };
 
-    expect(sharedMemories(db, kakuzu.id).map((item) => item.id)).not.toContain(event.id);
+    expect(sharedMemories(db, jonah.id).map((item) => item.id)).not.toContain(event.id);
   });
 });

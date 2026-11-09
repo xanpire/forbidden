@@ -24,6 +24,14 @@ import type {
   ThreadRecord,
 } from './types';
 
+/** The written aliases plus the given name ("Daniel" for "Daniel Okafor"), so the prose can use either. */
+export function withGivenName(name: string, aliases: string[]): string[] {
+  const clean = aliases.map((alias) => alias.trim()).filter(Boolean);
+  const given = name.trim().split(/\s+/)[0] ?? '';
+  const out = given.length >= 2 && given !== name.trim() && !clean.some((alias) => alias.toLowerCase() === given.toLowerCase()) ? [given, ...clean] : clean;
+  return [...new Set(out)];
+}
+
 export type { SeedInput } from './testWorld';
 
 function genderOf(value: string | undefined): Gender {
@@ -45,13 +53,20 @@ function clampAffinity(value: number) {
   return Math.max(-10, Math.min(10, Math.round(value)));
 }
 
+/** The year someone was born, from their age at the start and their birthday (still to come this year: born a year earlier). */
+export function birthYearOf(age: number, start: CalendarDate, birthday?: { month: number; day: number }) {
+  const notYet = birthday && (birthday.month > start.month || (birthday.month === start.month && birthday.day > start.day));
+  return start.year - age - (notYet ? 1 : 0);
+}
+
 function personEntity(person: StartingPerson, id: string, date: CalendarDate): EntityRecord {
   return {
     id,
     name: person.name.trim(),
     type: 'character',
-    aliases: (person.aliases ?? []).filter((alias) => alias.trim().length > 0),
-    ...(typeof person.age === 'number' ? { age: person.age, birthYear: date.year - person.age } : {}),
+    aliases: withGivenName(person.name, person.aliases ?? []),
+    ...(typeof person.age === 'number' ? { age: person.age, birthYear: birthYearOf(person.age, date, person.birthday) } : {}),
+    ...(person.birthday ? { birthday: person.birthday } : {}),
     role: person.role,
     personality: person.personality,
     speechStyle: person.speechStyle,
@@ -68,7 +83,10 @@ function personEntity(person: StartingPerson, id: string, date: CalendarDate): E
     ...(person.whereabouts ? { whereabouts: person.whereabouts } : {}),
     ...(person.alive ? {} : { deceased: { known: true }, status: 'Deceased' }),
     ...(person.knownName ? {} : { known: { label: person.role || 'someone you know' } }),
-    met: true,
+    met: person.met !== false,
+    // Someone the player already knows was last seen around the start of the story.
+    ...(person.met !== false && person.alive ? { lastSeen: date } : {}),
+    ...(person.met === false ? { status: person.alive ? 'Not yet met' : 'Deceased' } : {}),
     tags: [],
   };
 }
@@ -89,9 +107,9 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     id: playerId,
     name: character.name.trim() || 'You',
     type: 'character',
-    aliases: character.aliases,
+    aliases: withGivenName(character.name, character.aliases ?? []),
     ...(character.birthday ? { birthday: character.birthday } : {}),
-    birthYear: date.year - character.age,
+    birthYear: birthYearOf(character.age, date, character.birthday),
     age: character.age,
     role: character.role,
     personality: character.personality,
@@ -151,7 +169,8 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     { eventId: openingEvent.id, entityId: placeEntity.id, role: 'present' },
   ];
 
-  const bonds: BondRecord[] = people.map((person, index) => {
+  // Someone the player has not met yet has no bond until they meet.
+  const bonds: BondRecord[] = people.flatMap((person, index) => person.met === false ? [] : [{ person, index }]).map(({ person, index }) => {
     const theirs = { affinity: clampAffinity(person.theirFeelings.affinity), note: person.theirFeelings.note };
     const yours = { affinity: clampAffinity(person.yourFeelings.affinity), note: person.yourFeelings.note };
 
@@ -172,8 +191,20 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     };
   });
 
+  const byName = (name: string | undefined) => {
+    const wanted = (name ?? '').trim().toLowerCase();
+    if (!wanted || wanted === 'you' || wanted === 'player' || wanted === player.name.toLowerCase()) return playerId;
+    return peopleEntities.find((entity) => entity.name.toLowerCase() === wanted || entity.aliases.some((alias) => alias.toLowerCase() === wanted))?.id ?? null;
+  };
+
   const facts: FactRecord[] = [
     ...character.secrets.map((text) => ({ text, about: playerId, knowers: [playerId], type: 'secret' as const })),
+    ...(input.truths ?? []).map((truth) => ({
+      text: truth.text,
+      about: byName(truth.about) ?? playerId,
+      knowers: (truth.knownBy && truth.knownBy.length > 0 ? truth.knownBy : ['you']).map((name) => byName(name) ?? name),
+      type: truth.type ?? ('event' as const),
+    })),
     ...people.flatMap((person, index) =>
       (person.secrets ?? []).map((text) => ({
         text,
@@ -228,7 +259,7 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
     loreEntries: world.lore.map((entry) => ({ ...entry })),
     summaries: [],
     state: {
-      player: { ...character, birthYear: date.year - character.age },
+      player: { ...character, birthYear: birthYearOf(character.age, date, character.birthday) },
       mood: 'Unknown',
       worldDescription: world.premise,
       inventory: [...character.inventory],
@@ -241,6 +272,8 @@ export function seedDatabase(slotId: string, slotName: string, input: SeedInput 
       scene: opening.location || 'The beginning',
       sceneCast: opening.castNames.filter((name) => name.trim().length > 0),
       purse: startingPurse(character.money),
+      // The player wrote these birthdays down: they know them.
+      yearly: { knownBirthdays: peopleEntities.filter((entity) => entity.birthday && entity.met !== false).map((entity) => entity.id), offered: {} },
     },
     indices: emptyIndex(),
     snapshots: [],

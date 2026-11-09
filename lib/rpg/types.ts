@@ -1494,6 +1494,7 @@ export type StartingPerson = {
   name: string;
   aliases?: string[];
   age?: number;
+  birthday?: { month: number; day: number };
   gender: string;
   role: string;
   appearance: string;
@@ -1506,6 +1507,8 @@ export type StartingPerson = {
   romanceAccessibility?: 'winnable' | 'taken' | 'not-interested' | 'not-applicable';
   alive: boolean;
   knownName: boolean;
+  /** Has the player met them before the story? Default true. */
+  met?: boolean;
   secrets?: string[];
   whereabouts?: string;
 };

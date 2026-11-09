@@ -18,7 +18,6 @@ import { normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
-import { buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from '../lib/rpg/seed';
 import { convertStateBlock } from '../lib/rpg/stateBlock';
 import { secondPerson } from '../lib/rpg/util';
@@ -40,27 +39,22 @@ const person = (db: AppDatabase, name: string) => db.entities.find((entity) => e
 const bondOf = (db: AppDatabase, name: string) => db.bonds.find((bond) => bond.entityId === person(db, name).id);
 
 describe('15. the starting cast', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('Team 3 and Itachi are met, seen days ago, with birthdays and no stored age; Shisui has a bond', () => {
+  test('starting people are met, aged from what the player wrote, and the dead have a bond marked so', () => {
     const db = seed();
-    for (const name of ['Hana Inuzuka', 'Izumi Uchiha', 'Suzume', 'Itachi Uchiha']) {
+    for (const name of ['Mara Vance', 'Daniel Okafor']) {
       const entity = person(db, name);
       expect(entity.met).toBe(true);
-      expect(entity.lastSeen).toBeDefined();
-      expect(entity.birthday).toBeDefined();
-      expect(entity.age).toBeUndefined();
     }
-    expect(person(db, 'Itachi Uchiha').birthday).toEqual({ month: 6, day: 9 });
-    expect(entityAge(db.state.inStoryDate, person(db, 'Itachi Uchiha'))).toBe(13);
-    expect(bondOf(db, 'Shisui Uchiha')).toMatchObject({ relationship: 'old friend', status: 'Deceased · Childhood friend' });
+    expect(entityAge(db.state.inStoryDate, person(db, 'Mara Vance'))).toBe(31);
+    expect(bondOf(db, 'Theo Marsh')).toMatchObject({ relationship: 'old friend', status: 'Deceased · old friend' });
+    expect(person(db, 'Theo Marsh').deceased?.known).toBe(true);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('a bond shows a death once you know of it, not before', () => {
+  test('a bond shows a death once you know of it, not before', () => {
     let db = seed();
-    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Former teammate');
-    db = play(db, 'Itachi tells you Izumi died.', { characters_present: ['itachi-uchiha'], deaths: [{ character_id: 'izumi-uchiha', cause: 'the massacre' }] });
-    expect(bondOf(db, 'Izumi Uchiha')?.status).toBe('Deceased · Former teammate');
+    expect(bondOf(db, 'Daniel Okafor')?.status).toBe('acquaintance');
+    db = play(db, 'Mara tells you Daniel died.', { characters_present: ['mara-vance'], deaths: [{ character_id: 'daniel-okafor', cause: 'a car crash' }] });
+    expect(bondOf(db, 'Daniel Okafor')?.status).toBe('Deceased · acquaintance');
   });
 });
 
@@ -84,74 +78,49 @@ describe('16. minor characters', () => {
 });
 
 describe('17. base look and current look', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('updates set the current look; it ends with the scene; portraits and the narrator use both', () => {
+  test('updates set the current look; it ends with the scene; portraits and the narrator use both', () => {
     let db = seed();
-    const base = person(db, 'Itachi Uchiha').appearance;
-    expect(base).not.toContain('red clouds');
+    const base = person(db, 'Mara Vance').appearance;
+    expect(base).not.toContain('leather jacket');
 
-    db = play(db, 'Itachi is soaked and spattered with blood.', {
-      characters_present: ['itachi-uchiha'],
-      character_updates: [{ character_id: 'itachi-uchiha', mood: null, appearance: 'Soaked, blood-spattered vest', lasting_appearance: null }],
+    db = play(db, 'Mara comes in from the rain, soaked to the skin.', {
+      characters_present: ['mara-vance'],
+      character_updates: [{ character_id: 'mara-vance', mood: null, appearance: 'Soaked, mascara running', lasting_appearance: null }],
     });
-    expect(person(db, 'Itachi Uchiha').appearance).toBe(base);
-    expect(person(db, 'Itachi Uchiha').currentLook).toBe('Soaked, blood-spattered vest');
-    expect(characterPortraitSignature(db, person(db, 'Itachi Uchiha')).appearance).toContain('Right now: Soaked');
+    expect(person(db, 'Mara Vance').appearance).toBe(base);
+    expect(person(db, 'Mara Vance').currentLook).toBe('Soaked, mascara running');
+    expect(characterPortraitSignature(db, person(db, 'Mara Vance')).appearance).toContain('Right now: Soaked');
 
-    db = play(db, 'Morning, somewhere else.', { location: 'Grass country ridge', characters_present: ['itachi-uchiha'] });
-    expect(person(db, 'Itachi Uchiha').currentLook).toBeUndefined();
+    db = play(db, 'Morning, somewhere else.', { location: 'Harbour Market', characters_present: ['mara-vance'] });
+    expect(person(db, 'Mara Vance').currentLook).toBeUndefined();
 
-    db = play(db, 'Itachi pulls on the cloak for good.', {
-      characters_present: ['itachi-uchiha'],
-      character_updates: [{ character_id: 'itachi-uchiha', mood: null, appearance: null, lasting_appearance: 'Long black hair tied low; black Akatsuki cloak with red clouds.' }],
+    db = play(db, 'Mara has cut her hair short and wears a new leather jacket from now on.', {
+      characters_present: ['mara-vance'],
+      character_updates: [{ character_id: 'mara-vance', mood: null, appearance: null, lasting_appearance: 'Cropped dark-red hair, sharp green eyes, a battered leather jacket.' }],
     });
-    expect(person(db, 'Itachi Uchiha').appearance).toContain('Akatsuki cloak');
-  });
-});
-
-describe('18. abilities and natures', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('the state reply records the Sharingan by stage and natures by source', () => {
-    let db = seed();
-    expect(db.state.player.natures ?? []).toEqual([]);
-    expect(db.jutsuRecords.some((record) => record.name === 'Fire Release')).toBe(false);
-
-    db = play(db, 'Your eyes burn red.', { abilities_changed: [{ name: 'Sharingan', stage: '1 tomoe' }] });
-    db = play(db, 'You drain the ninja.', {
-      abilities_changed: [{ name: 'Sharingan', stage: '2 tomoe' }],
-      natures_gained: [{ nature: 'Earth', source: 'thousand-souls', from: 'Iwa ninja' }],
-    });
-    const sharingan = db.state.player.abilityStages!.find((ability) => ability.name === 'Sharingan')!;
-    expect(sharingan.stage).toBe('2 tomoe');
-    expect(sharingan.history?.map((item) => item.stage)).toEqual(['1 tomoe', '2 tomoe']);
-    expect(db.state.player.natures).toEqual([expect.objectContaining({ nature: 'Earth', source: 'thousand-souls', from: 'Iwa ninja' })]);
-    expect(buildNarrationPrompt(db, '*You look.*').messages[0].content).toContain('Sharingan (2 tomoe)');
+    expect(person(db, 'Mara Vance').appearance).toContain('leather jacket');
   });
 });
 
 describe('19. scene labels', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('a ravine is not a settlement, an ambush is not travel, and you are not in your own cast', () => {
+  test('a ravine is not a settlement, an ambush is not travel, and you are not in your own cast', () => {
     let db = seed();
-    db = play(db, 'They strike from the rocks. A kunai lunges at you; you dodge and strike back.', {
-      location: 'Ravine below the pass',
+    db = play(db, 'They jump you from behind the rocks. A knife lunges at you; you dodge and hit back.', {
+      location: 'Ravine below the coast road',
       location_kind: 'settlement',
       scene_pace: 'travel',
-      characters_present: ['kan', 'itachi-uchiha'],
+      characters_present: ['player', 'mara-vance'],
     });
     expect(db.state.locationKind).toBe('wilderness');
     expect(db.state.scenePace).toBe('combat');
-    expect(db.state.sceneCast).toEqual(['Itachi Uchiha']);
+    expect(db.state.sceneCast).toEqual(['Mara Vance']);
   });
 });
 
 describe('21. second person', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('text that reaches you says "you"', () => {
+  test('text that reaches you says "you"', () => {
     const db = seed();
-    expect(db.events[0].summary.startsWith('You wait alone')).toBe(true);
-    expect(db.jutsuRecords.find((record) => record.name === 'Thousand Souls')?.visual).toContain('your skin');
-    expect(db.facts.every((fact) => !/\bKan\b/.test(fact.text))).toBe(true);
-    expect(secondPerson("Kan's cloak is torn, and Kakuzu watches Kan.", ['Kan'])).toBe('Your cloak is torn, and Kakuzu watches you.');
+    expect(db.facts.every((fact) => !/\bAlex\b/.test(fact.text))).toBe(true);
+    expect(secondPerson("Alex's coat is torn, and Daniel watches Alex.", ['Alex Reyes', 'Alex'])).toBe('Your coat is torn, and Daniel watches you.');
   });
 });

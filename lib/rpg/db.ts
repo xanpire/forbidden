@@ -592,7 +592,7 @@ function normalizeState(state: AppDatabase['state'] | undefined, world: AppDatab
     travelLog: normalizeTravelLog({ world }, state.travelLog, state.location ?? seeded.location, normalizeDate(state.inStoryDate, seeded.inStoryDate)),
     flashbacks: normalizeFlashbacks(state.flashbacks, world.flashbacks),
     safehouses: normalizeSafehouses(state.safehouses),
-    purse: normalizePurse(state.purse),
+    purse: normalizePurse(state.purse, normalizeCharacter(state.player, seeded.player).money),
   };
 }
 

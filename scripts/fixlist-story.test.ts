@@ -16,7 +16,6 @@ import { buildIndices, normalizeDatabase } from '../lib/rpg/db';
 import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { compressImage, dataUriBytes } from '../lib/rpg/imageCompress';
 import { appendStoryMessage, pushSnapshot, restoreLastSnapshot, SNAPSHOT_LIMIT } from '../lib/rpg/log';
-import { loreActive } from '../lib/rpg/lore';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import { buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from '../lib/rpg/seed';
@@ -40,12 +39,11 @@ const promptText = (db: AppDatabase) => buildNarrationPrompt(db, '*You wait.*').
 const thread = (db: AppDatabase, title: string) => db.threads.find((item) => item.title === title);
 
 describe('22. indices and undo snapshots', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('events are indexed by a padded date, not under tags', () => {
+  test('events are indexed by a padded date, not under tags', () => {
     const db = seed();
     const index = buildIndices(db);
-    expect(index.eventsByDate['13-10-01']).toEqual([db.events[0].id]);
-    expect(index.eventsByTag['13-10-1']).toBeUndefined();
+    expect(index.eventsByDate['2026-10-01']).toEqual([db.events[0].id]);
+    expect(index.eventsByTag['2026-10-1']).toBeUndefined();
   });
 
   test('snapshots hold no images, keep the last few, and undo brings images back', () => {
@@ -69,58 +67,77 @@ describe('22. indices and undo snapshots', () => {
 });
 
 describe('23. narrator variety', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('question endings, repeated images and settled decisions are named', () => {
+  test('question endings, repeated images and settled decisions are named', () => {
     let db = seed();
-    for (const ending of ['Can you keep up, Kan?', 'How do you take them?', 'Will you come?']) {
-      db = appendStoryMessage(db, 'assistant', `The smell of iron hangs over the stones. ${ending}`, null, 0, 0);
+    for (const ending of ['Can you keep up, Alex?', 'How do you take it?', 'Will you come?']) {
+      db = appendStoryMessage(db, 'assistant', `The smell of diesel hangs over the yard. ${ending}`, null, 0, 0);
     }
     expect(questionEndings(db)).toBe(3);
-    expect(repeatedMotifs(db)).toContain('smell of iron');
+    expect(repeatedMotifs(db)).toContain('smell of diesel');
 
-    db = { ...db, threads: db.threads.map((item) => (item.title === 'Itachi’s offer: join Akatsuki' ? { ...item, status: 'resolved' } : item)) };
+    db = { ...db, threads: db.threads.map((item) => (item.title === 'Find out what the missing shipments are' ? { ...item, status: 'resolved' } : item)) };
     const block = formatVarietyBlock(db);
     expect(block).toContain('ended on a question');
-    expect(block).toContain('"smell of iron"');
-    expect(block).toContain('never ask again: Itachi’s offer: join Akatsuki');
+    expect(block).toContain('"smell of diesel"');
+    expect(block).toContain('never ask again: Find out what the missing shipments are');
     expect(promptText(db)).toContain('VARIETY');
   });
 });
 
 describe('24-26. clock, numbers, places, gear', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('the narrator gets the exact time, stated figures, where others are, geography and its kit', () => {
+  test('the narrator gets the exact time, stated figures, where others are, the world and its kit', () => {
     let db = seed();
-    db = play(db, '"Twenty thousand ryō," Kakuzu says, and Jūzō leaves to wait at the eastern border.', {
-      characters_present: ['kakuzu', 'juzo-biwa'],
-      facts: [{ entity: 'kakuzu', fact: "The deserter's bounty is 20,000 ryō.", type: 'figure', who_knows: ['kan', 'kakuzu'], supersedes: [], claimed_by: null, lasts: null, days: null }],
+    db = play(db, '"Twenty thousand dollars," Daniel says, "and nobody signs for it." Mara leaves to wait at the station.', {
+      characters_present: ['daniel-okafor', 'mara-vance'],
+      facts: [{ entity: 'daniel-okafor', fact: 'The missing shipments are worth $20,000 a week.', type: 'figure', who_knows: ['player', 'daniel-okafor'], supersedes: [], claimed_by: null, lasts: null, days: null }],
     });
-    db = play(db, 'Jūzō is gone.', {
-      characters_present: ['kakuzu'],
-      character_updates: [{ character_id: 'juzo-biwa', mood: null, appearance: null, lasting_appearance: null, whereabouts: 'waiting at the eastern border' }],
+    db = play(db, 'Mara is gone.', {
+      characters_present: ['daniel-okafor'],
+      character_updates: [{ character_id: 'mara-vance', mood: null, appearance: null, lasting_appearance: null, whereabouts: 'waiting at the station' }],
     });
     const text = promptText(db);
 
     expect(text).toMatch(/exactly \d{1,2}:\d{2} (AM|PM)/);
-    expect(text).toContain("FIGURES ALREADY SAID");
-    expect(text).toContain('20,000 ryō');
-    expect(text).toContain('Jūzō Biwa: waiting at the eastern border');
-    expect(text).toContain('GEOGRAPHY');
-    expect(text).toContain('the Land of Grass is NORTH of Rain');
-    expect(db.state.inventory).toContain('Kunai pouch (6 kunai)');
-    expect(db.state.inventory).toContain('Hidden Leaf forehead protector');
+    expect(text).toContain('FIGURES ALREADY SAID');
+    expect(text).toContain('$20,000');
+    expect(text).toContain('Mara Vance: waiting at the station');
+    expect(text).toContain('THE WORLD');
+    expect(text).toContain('Old Town');
+    expect(text).toContain('The Docks about 2 hours away');
+    expect(db.state.inventory).toContain('Company badge');
   });
+});
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('the headband note lasts until you scratch it', () => {
+describe('28. story hooks', () => {
+  test('a timeline beat opens its thread with its people; a later one resolves it', () => {
     let db = seed();
-    const note = db.loreEntries.find((lore) => lore.text.startsWith('Your Hidden Leaf forehead protector'))!;
-    expect(loreActive(db, note)).toBe(true);
-    db = play(db, 'You draw the kunai across the leaf.', {
-      inventory_removed: ['Hidden Leaf forehead protector'],
-      inventory_added: ['Hidden Leaf forehead protector (scratched through)'],
-    });
-    expect(loreActive(db, note)).toBe(false);
+    expect(thread(db, 'Audit the dock shipments')).toBeUndefined();
+
+    db = play(db, '"I\'ll do it," you tell Daniel.', { characters_present: ['daniel-okafor'], timeline_completed: ['audit-offer'] });
+    expect(thread(db, 'Audit the dock shipments')?.status).toBe('open');
+    expect(thread(db, 'Audit the dock shipments')?.participantIds).toContain(db.entities.find((e) => e.name === 'Daniel Okafor')!.id);
+
+    db = {
+      ...db,
+      world: {
+        ...db.world,
+        timeline: [
+          ...db.world.timeline,
+          {
+            id: 'audit-done',
+            title: 'You hand Daniel the audit',
+            description: 'You give Daniel what you found.',
+            from: { year: 2026, month: 10, day: 1 },
+            playerDriven: true,
+            facts: ['You handed Daniel the finished audit.'],
+            resolvesThreadTitles: ['Audit the dock shipments'],
+          },
+        ],
+      },
+    };
+    db = play(db, 'You slide the folder across his desk.', { characters_present: ['daniel-okafor'], timeline_completed: ['audit-done'] });
+    expect(thread(db, 'Audit the dock shipments')?.status).toBe('resolved');
+    expect(db.facts.some((fact) => fact.text.includes('finished audit'))).toBe(true);
   });
 });
 
@@ -129,31 +146,5 @@ describe('27. smaller images', () => {
     const uri = 'data:image/png;base64,AAAAAAAA';
     expect(await compressImage(uri)).toBe(uri);
     expect(dataUriBytes(uri)).toBe(6);
-  });
-});
-
-describe('28. story hooks', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip("Izumi's grave opens when you learn she died, and the Mangekyō closes it with its abilities", () => {
-    let db = seed();
-    expect(thread(db, "Visit Izumi's grave")).toBeUndefined();
-
-    db = play(db, 'Itachi tells you Izumi died.', { characters_present: ['itachi-uchiha'], deaths: [{ character_id: 'izumi-uchiha', cause: 'the massacre' }] });
-    expect(thread(db, "Visit Izumi's grave")?.status).toBe('open');
-
-    db = play(db, 'At her grave, your eyes change.', { canon_completed: ['kan-mangekyo'] });
-    expect(thread(db, "Visit Izumi's grave")?.status).toBe('resolved');
-    expect(db.state.player.abilityStages?.map((ability) => ability.name)).toEqual(['Mangekyō Sharingan', 'Susanoo']);
-  });
-
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('joining opens Survive Kakuzu; the Shisui truth closes the Shisui thread', () => {
-    let db = seed();
-    db = play(db, 'Pain hands you the cloak.', { characters_present: ['pain', 'kakuzu'], canon_completed: ['kan-joins-akatsuki'] });
-    expect(thread(db, 'Survive Kakuzu')?.participantIds).toContain(db.entities.find((e) => e.name === 'Kakuzu')!.id);
-
-    db = play(db, 'Itachi tells you about the river.', { characters_present: ['itachi-uchiha'], canon_completed: ['shisui-truth'] });
-    expect(thread(db, 'What really happened to Shisui?')?.status).toBe('resolved');
-    expect(db.facts.some((fact) => fact.text.includes('Danzō Shimura took one of Shisui'))).toBe(true);
   });
 });

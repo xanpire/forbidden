@@ -34,7 +34,7 @@ const KEY = `${STORAGE_KEYS.slotPrefix}slot_test.v1`;
 
 function bigStory(turns: number) {
   let db = seedDatabase('slot_test', 'Test');
-  const line = 'Rain hisses on the river while Itachi watches the far bank in silence. '.repeat(40);
+  const line = 'Rain hisses on the river while Mara watches the far bank in silence. '.repeat(40);
   db = {
     ...db,
     rawLog: Array.from({ length: turns }, (_, i) => ({

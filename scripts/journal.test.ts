@@ -53,15 +53,15 @@ function sceneJob(db: AppDatabase, logIds: string[]): { db: AppDatabase; job: Me
 }
 
 const SUMMARY =
-  'You follow Itachi north through the rain. He says little, and you do not press him. By nightfall you reach an empty shrine and sleep under its broken roof.';
+  'You follow Mara north through the rain. He says little, and you do not press him. By nightfall you reach an empty shrine and sleep under its broken roof.';
 
 describe('summary replies', () => {
   test('reads TITLE / MEMORY / SUMMARY', () => {
     const parsed = parseTitledSummary(
-      `TITLE: North through the rain\nMEMORY: You walk north with Itachi and sleep in a ruined shrine.\nSUMMARY: ${SUMMARY}`
+      `TITLE: North through the rain\nMEMORY: You walk north with Mara and sleep in a ruined shrine.\nSUMMARY: ${SUMMARY}`
     );
     expect(parsed?.title).toBe('North through the rain');
-    expect(parsed?.memory).toBe('You walk north with Itachi and sleep in a ruined shrine.');
+    expect(parsed?.memory).toBe('You walk north with Mara and sleep in a ruined shrine.');
     expect(parsed?.summary).toBe(SUMMARY);
   });
 
@@ -82,7 +82,7 @@ describe('summary replies', () => {
 describe('journal titles', () => {
   test('long text without a short sentence becomes a short title plus the rest', () => {
     const prose =
-      'The rain had not stopped since the gates of the Leaf fell behind you, and every step north through the cedar forest felt heavier than the last, mud sucking at your sandals';
+      'The rain had not stopped since the city lights fell behind you, and every step north along the coast road felt heavier than the last, mud sucking at your boots';
     const { title, body } = titleAndBody(prose);
     expect(title.length).toBeLessThanOrEqual(62);
     expect(title.endsWith('…')).toBe(true);
@@ -92,8 +92,8 @@ describe('journal titles', () => {
   });
 
   test('a short first sentence is still the title', () => {
-    expect(titleAndBody(SUMMARY).title).toBe('You follow Itachi north through the rain.');
-    expect(shortTitle(SUMMARY)).toBe('You follow Itachi north through the rain');
+    expect(titleAndBody(SUMMARY).title).toBe('You follow Mara north through the rain.');
+    expect(shortTitle(SUMMARY)).toBe('You follow Mara north through the rain');
   });
 });
 
@@ -128,7 +128,7 @@ describe('chapter summaries', () => {
     const applied = applySummaryJob(first.db, first.job, {
       text: SUMMARY,
       title: 'North through the rain',
-      memory: 'You walk north with Itachi.',
+      memory: 'You walk north with Mara.',
       logIds: ids.slice(0, 6),
     })!.db;
 
@@ -143,7 +143,7 @@ describe('chapter summaries', () => {
     const next = applySummaryJob(queued, job, {
       text: SUMMARY,
       title: 'North through the rain',
-      memory: 'You walk north with Itachi and sleep in a ruined shrine.',
+      memory: 'You walk north with Mara and sleep in a ruined shrine.',
       logIds: ids,
     })!.db;
 
@@ -156,7 +156,7 @@ describe('chapter summaries', () => {
     const memory = next.events.find((event) => event.summaryId === summary.id)!;
     expect(summary.eventIds).toEqual([memory.id]);
     expect(memory.title).toBe('North through the rain');
-    expect(memory.summary).toBe('You walk north with Itachi and sleep in a ruined shrine.');
+    expect(memory.summary).toBe('You walk north with Mara and sleep in a ruined shrine.');
   });
 
   test('without a title or memory from the model, both are cut from the summary', () => {
@@ -165,8 +165,8 @@ describe('chapter summaries', () => {
     const { db: queued, job } = sceneJob(db, ids);
     const next = applySummaryJob(queued, job, { text: SUMMARY, logIds: ids })!.db;
     const memory = next.events[next.events.length - 1];
-    expect(memory.title).toBe('You follow Itachi north through the rain');
-    expect(memory.summary).toBe('You follow Itachi north through the rain. He says little, and you do not press him.');
+    expect(memory.title).toBe('You follow Mara north through the rain');
+    expect(memory.summary).toBe('You follow Mara north through the rain. He says little, and you do not press him.');
   });
 
   test('a summary of messages already summarized is not saved again', () => {

@@ -62,8 +62,25 @@ export function normalizeYearly(raw: unknown): YearlyState | undefined {
   };
 }
 
-export function birthdayHabit(_entity: Pick<EntityRecord, 'name'>): BirthdayHabit {
-  return { kind: 'quiet', note: 'lets the day pass unless someone remembers' };
+const HABITS: { kind: BirthdayHabitKind; note: string; weight: number }[] = [
+  { kind: 'announces', note: 'make sure everyone knows it is their birthday', weight: 3 },
+  { kind: 'quiet', note: 'let the day pass unless someone remembers', weight: 4 },
+  { kind: 'hides', note: 'would rather nobody made a fuss', weight: 2 },
+  { kind: 'ritual', note: 'keep a small ritual of their own for the day', weight: 1 },
+  { kind: 'hates', note: 'hate birthdays and get prickly about them', weight: 1 },
+];
+
+/** How someone treats their own birthday: fixed per person, from their name. */
+export function birthdayHabit(entity: Pick<EntityRecord, 'name'>): BirthdayHabit {
+  const total = HABITS.reduce((sum, habit) => sum + habit.weight, 0);
+  let pick = hash(`habit:${entity.name.trim().toLowerCase()}`) % total;
+
+  for (const habit of HABITS) {
+    if (pick < habit.weight) return { kind: habit.kind, note: habit.note };
+    pick -= habit.weight;
+  }
+
+  return { kind: 'quiet', note: HABITS[1].note };
 }
 
 /** The world's festivals. */

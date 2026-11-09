@@ -5,6 +5,7 @@
 import type {
   CalendarDate,
   CharacterDefinition,
+  FactType,
   OpeningScene,
   StartingPerson,
   WorldDefinition,
@@ -12,11 +13,22 @@ import type {
 
 export const TEST_START: CalendarDate = { year: 2026, month: 10, day: 1, hour: 22, minute: 0, second: 0 };
 
+/** Something the player marked as true at the start ("things that are true"). */
+export type StartingTruth = {
+  text: string;
+  /** Who it is about, by name; empty = the player. */
+  about?: string;
+  /** Who knows it, by name; "you" = the player. Empty = only the player. */
+  knownBy?: string[];
+  type?: FactType;
+};
+
 export type SeedInput = {
   world: WorldDefinition;
   character: CharacterDefinition;
   people: StartingPerson[];
   opening: OpeningScene;
+  truths?: StartingTruth[];
 };
 
 export function testWorld(): WorldDefinition {
@@ -49,6 +61,14 @@ export function testWorld(): WorldDefinition {
         description: 'A wealthy, close-knit family with a restaurant empire and a long memory.',
         territoryRegionIds: ['northgate'],
         carriers: ['phone', 'text message'],
+      },
+      {
+        id: 'harbour-police',
+        name: 'Harbourside Police',
+        description: 'The city police: stretched thin, and not all of them clean.',
+        territoryRegionIds: ['old-town'],
+        hasBounties: true,
+        carriers: ['phone'],
       },
     ],
     regions: [
@@ -84,9 +104,68 @@ export function testWorld(): WorldDefinition {
       { id: 'mf-offices', name: 'Marlow & Finch offices', regionId: 'the-docks', kind: 'structure', description: 'Glass and steel over the container yard.' },
       { id: 'coast-road', name: 'Coast Road', regionId: 'northgate', kind: 'road', description: 'The winding road up to the hills.' },
     ],
-    lore: [],
-    timeline: [],
-    festivals: [],
+    lore: [
+      {
+        id: 'lore_yard_nine',
+        keywords: ['yard 9', 'yard nine', 'container yard'],
+        priority: 3,
+        text: 'Container yard 9 at the docks is fenced off and never on the shift rota; only Marlow & Finch security goes in.',
+        enabled: true,
+        hidden: true,
+      },
+      {
+        id: 'lore_rain',
+        keywords: [],
+        priority: 2,
+        text: 'Harbourside rains most days from October to March; locals never carry umbrellas, only hoods.',
+        enabled: true,
+        always: true,
+      },
+    ],
+    timeline: [
+      {
+        id: 'dock-strike',
+        title: 'The dock strike',
+        description: 'The dockworkers walk out over pay and safety after another injury in the yards.',
+        worldPoint: 'The docks are on strike and the city talks of nothing else.',
+        from: { year: 2026, month: 10, day: 5 },
+        to: { year: 2026, month: 10, day: 8 },
+        regionId: 'the-docks',
+        location: 'The Docks',
+        knowledge: 'public',
+        major: true,
+        facts: ['The dockworkers went on strike over pay and safety.'],
+      },
+      {
+        id: 'audit-offer',
+        title: 'Daniel offers you the audit',
+        description: 'Daniel asks you to quietly audit the dock shipments, off the record.',
+        from: { year: 2026, month: 10, day: 2 },
+        to: { year: 2026, month: 10, day: 20 },
+        regionId: 'the-docks',
+        location: 'Marlow & Finch offices',
+        knowledge: 'secret',
+        playerDriven: true,
+        completesWhen: 'You agree to do the audit for Daniel.',
+        encounter: { who: 'Daniel Okafor', where: 'Marlow & Finch offices', context: 'Daniel calls you into his office after hours and closes the door.' },
+        facts: ['You agreed to audit the dock shipments for Daniel, off the record.'],
+        opensThreads: [{ title: 'Audit the dock shipments', description: 'Go through the dock shipments for Daniel without anyone noticing.', type: 'quest', participants: ['Daniel Okafor'] }],
+      },
+      {
+        id: 'vance-dinner',
+        title: 'The Vance anniversary dinner',
+        description: 'The Vance family gathers at their flagship restaurant for the founders\' anniversary.',
+        from: { year: 2026, month: 10, day: 18 },
+        regionId: 'northgate',
+        location: 'Northgate',
+        knowledge: 'faction',
+        factionId: 'vance-family',
+        facts: ['The Vance family held its anniversary dinner in Northgate.'],
+      },
+    ],
+    festivals: [
+      { id: 'harbour-lights', name: 'the Harbour Lights festival', where: ['Old Town', 'Harbour', 'Docks'], month: 11, day: 20, days: 2, note: 'lanterns on the water and food stalls on every quay' },
+    ],
     flashbacks: [],
     letterCarriers: ['text message', 'phone', 'email', 'post'],
     artStyle: 'cinematic photo, 35mm film, natural light',
@@ -121,6 +200,7 @@ export function testPeople(): StartingPerson[] {
       name: 'Mara Vance',
       aliases: ['Mara'],
       age: 31,
+      birthday: { month: 10, day: 12 },
       gender: 'female',
       role: 'Runs The Anchor; the black sheep of the Vance family',
       appearance: 'Short dark-red hair, sharp green eyes, rolled sleeves, a silver ring on her thumb.',
@@ -151,6 +231,51 @@ export function testPeople(): StartingPerson[] {
       knownName: true,
       whereabouts: 'Marlow & Finch offices',
     },
+    {
+      name: 'Theo Marsh',
+      aliases: ['Theo'],
+      age: 33,
+      birthday: { month: 11, day: 3 },
+      gender: 'male',
+      role: 'Your old friend from school; worked the night shift at the docks',
+      appearance: 'Broad, freckled, a laugh you could hear across a room.',
+      personality: 'Loud, generous, reckless.',
+      speechStyle: 'Big stories, bad jokes.',
+      relationship: 'old friend',
+      yourFeelings: { affinity: 7, note: 'You still miss him.' },
+      theirFeelings: { affinity: 7, note: 'He trusted you with anything.' },
+      alive: false,
+      knownName: true,
+    },
+  ];
+}
+
+export function testStrangers(): StartingPerson[] {
+  return [
+    {
+      name: 'Jonah Pike',
+      aliases: ['Jonah'],
+      age: 47,
+      gender: 'male',
+      role: 'Night foreman at the docks',
+      appearance: 'Heavy-set, shaved head, a faded anchor tattoo on his neck.',
+      personality: 'Patient, menacing when crossed.',
+      speechStyle: 'Low and slow; never repeats himself.',
+      relationship: 'stranger',
+      yourFeelings: { affinity: 0, note: '' },
+      theirFeelings: { affinity: 0, note: '' },
+      alive: true,
+      knownName: true,
+      met: false,
+      whereabouts: 'The Docks',
+    },
+  ];
+}
+
+export function testTruths(): StartingTruth[] {
+  return [
+    { text: 'Theo Marsh died in a fall at the docks last winter.', about: 'Theo Marsh', knownBy: ['you', 'Mara Vance'], type: 'death' },
+    { text: 'Your mother still runs the shop under your old flat.', knownBy: ['you', 'Mara Vance'], type: 'event' },
   ];
 }
 
@@ -167,5 +292,5 @@ export function testOpening(): OpeningScene {
 }
 
 export function testSeedInput(): SeedInput {
-  return { world: testWorld(), character: testCharacter(), people: testPeople(), opening: testOpening() };
+  return { world: testWorld(), character: testCharacter(), people: [...testPeople(), ...testStrangers()], opening: testOpening(), truths: testTruths() };
 }

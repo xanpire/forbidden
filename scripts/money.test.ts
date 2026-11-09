@@ -17,13 +17,13 @@ import { resolveCharacterRefs } from '../lib/rpg/entities';
 import { appendStoryMessage } from '../lib/rpg/log';
 import { applyStateStep } from '../lib/rpg/memoryJobs';
 import {
-  STARTING_RYO,
   applyPurse,
   formatChange,
   formatPurseLine,
   normalizePurse,
   purseOf,
-  readRyo,
+  currencyOf,
+  readAmount,
 } from '../lib/rpg/money';
 import { NARRATION_SYSTEM, buildExtractionPrompt, buildNarrationPrompt } from '../lib/rpg/prompt';
 import { seedDatabase } from '../lib/rpg/seed';
@@ -41,7 +41,7 @@ function save(): AppDatabase {
 
   return {
     ...db,
-    state: { ...db.state, location: 'a teahouse in Tanzaku Quarters', locationKind: 'settlement', scenePace: 'conversation' },
+    state: { ...db.state, location: 'a café in Old Town', locationKind: 'settlement', scenePace: 'conversation' },
   };
 }
 
@@ -55,18 +55,19 @@ function play(db: AppDatabase, input: string, narration: string, block: Record<s
   return applyStateStep(next, diff, { turnLogId, userMessage: input, narration }, new Set()).db;
 }
 
+const START = 600;
 const minutes = { time: { elapsed: 5, unit: 'minutes', clock_time: null }, scene_pace: 'conversation' };
 
 describe('the purse', () => {
-  test('a new story starts with the pouch Kan left with; an old save gets it as a guess', () => {
+  test('a new story starts with the money the player wrote; an old save gets it as a guess', () => {
     const db = save();
-    expect(purseOf(db).ryo).toBe(STARTING_RYO);
+    expect(purseOf(db).amount).toBe(START);
     expect(purseOf(db).estimatedStart).toBeUndefined();
 
     const old = normalizeDatabase({ ...seedDatabase('slot_old', 'Old'), state: { ...seedDatabase('slot_old', 'Old').state, purse: undefined } });
-    expect(purseOf(old).ryo).toBe(STARTING_RYO);
+    expect(purseOf(old).amount).toBe(START);
     expect(purseOf(old).estimatedStart).toBe(true);
-    expect(normalizePurse({ ryo: -50, history: [{ bad: true }] })).toEqual({ ryo: 0, history: [] });
+    expect(normalizePurse({ amount: -50, history: [{ bad: true }] })).toEqual({ amount: 0, history: [] });
   });
 
   test('the schema, the narrator and the tracker all carry it', () => {
@@ -76,67 +77,69 @@ describe('the purse', () => {
     expect((TURN_STATE_SCHEMA as { required: string[] }).required).toContain('money');
 
     const db = save();
-    const narrator = buildNarrationPrompt(db, '*You order tea.*').messages.map((m) => m.content).join('\n');
-    expect(narrator).toContain('Purse: 4,000 ryō');
-    expect(NARRATION_SYSTEM).toContain('PRICES (ryō)');
+    const narrator = buildNarrationPrompt(db, '*You order a coffee.*').messages.map((m) => m.content).join('\n');
+    expect(narrator).toContain('Purse: $600');
+    expect(narrator).toContain('Prices: coffee 4-6');
+    expect(NARRATION_SYSTEM).toContain('PRICES');
 
-    const tracker = buildExtractionPrompt(db, '*You order tea.*', 'The tea is bitter.').messages.map((m) => m.content).join('\n');
+    const tracker = buildExtractionPrompt(db, '*You order a coffee.*', 'The coffee is bitter.').messages.map((m) => m.content).join('\n');
     expect(tracker).toContain('money_counted');
-    expect(tracker).toContain('Purse: 4,000 ryō');
+    expect(tracker).toContain('Purse: $600');
+    expect(tracker).toContain('PRICES (dollars)');
   });
 
   test('the tracker’s amounts are read whatever their form', () => {
-    expect(readRyo(-500)).toBe(-500);
-    expect(readRyo('-1,200 ryō')).toBe(-1200);
-    expect(readRyo('−300')).toBe(-300);
-    expect(readRyo('+2000')).toBe(2000);
-    expect(readRyo('a lot')).toBeNull();
+    expect(readAmount(-500)).toBe(-500);
+    expect(readAmount('-1,200 dollars')).toBe(-1200);
+    expect(readAmount('−300')).toBe(-300);
+    expect(readAmount('+2000')).toBe(2000);
+    expect(readAmount('a lot')).toBeNull();
 
-    const diff = convertStateBlock({ money: [{ amount: '-600', reason: 'tea and rice' }, { amount: 0, reason: 'nothing' }], money_counted: null }).diff!;
-    expect(diff.money).toEqual([{ amount: -600, reason: 'tea and rice' }]);
+    const diff = convertStateBlock({ money: [{ amount: '-600', reason: 'coffee and cake' }, { amount: 0, reason: 'nothing' }], money_counted: null }).diff!;
+    expect(diff.money).toEqual([{ amount: -600, reason: 'coffee and cake' }]);
     expect(diff.moneyCounted).toBeUndefined();
   });
 
   test('paying, being paid, and the history newest last', () => {
-    let db = play(save(), '*You pay for the tea.*', 'You set 400 ryō on the counter.', { ...minutes, money: [{ amount: -400, reason: 'tea at the teahouse' }], money_counted: null });
-    expect(purseOf(db).ryo).toBe(3600);
+    let db = play(save(), '*You pay for the coffee.*', 'You set five dollars on the counter.', { ...minutes, money: [{ amount: -5, reason: 'coffee at the café' }], money_counted: null });
+    expect(purseOf(db).amount).toBe(595);
 
-    db = play(db, '"My share."', 'Kakuzu counts out your cut: 50,000 ryō.', { ...minutes, money: [{ amount: 50000, reason: "Kakuzu's cut of the bounty" }], money_counted: null });
-    expect(purseOf(db).ryo).toBe(53600);
-    expect(purseOf(db).history.map((entry) => entry.reason)).toEqual(['Tea at the teahouse', "Kakuzu's cut of the bounty"]);
-    expect(formatChange(-400)).toBe('−400 ryō');
-    expect(formatChange(50000)).toBe('+50,000 ryō');
+    db = play(db, '"My share."', 'Mara counts out your cut: $1,200.', { ...minutes, money: [{ amount: 1200, reason: "Your cut of the night's takings" }], money_counted: null });
+    expect(purseOf(db).amount).toBe(1795);
+    expect(purseOf(db).history.map((entry) => entry.reason)).toEqual(['Coffee at the café', "Your cut of the night's takings"]);
+    expect(formatChange(-400, currencyOf(db))).toBe('−$400');
+    expect(formatChange(50000)).toBe('+50,000 money');
   });
 
-  test('Kan never pays more than he has, and an empty purse says so', () => {
-    const db = play(save(), '*You buy the sword.*', 'You hand over everything you have.', { ...minutes, money: [{ amount: -90000, reason: 'a sword' }], money_counted: null });
-    expect(purseOf(db).ryo).toBe(0);
-    expect(purseOf(db).history.at(-1)?.change).toBe(-STARTING_RYO);
+  test('the player never pays more than they have, and an empty purse says so', () => {
+    const db = play(save(), '*You buy the car.*', 'You hand over everything you have.', { ...minutes, money: [{ amount: -90000, reason: 'a car' }], money_counted: null });
+    expect(purseOf(db).amount).toBe(0);
+    expect(purseOf(db).history.at(-1)?.change).toBe(-START);
     expect(formatPurseLine(db)).toContain('empty');
     expect(applyPurse(db, [{ amount: -10, reason: 'more' }])).toBe(db);
   });
 
   test('a total the prose states sets the count and clears the guess', () => {
-    const old = { ...save(), state: { ...save().state, purse: { ryo: STARTING_RYO, history: [], estimatedStart: true } } };
-    const db = play(old, '*You count your coins.*', 'You count it twice: 12,350 ryō.', { ...minutes, money: [], money_counted: 12350 });
-    expect(purseOf(db).ryo).toBe(12350);
+    const old = { ...save(), state: { ...save().state, purse: { amount: START, history: [], estimatedStart: true } } };
+    const db = play(old, '*You count your cash.*', 'You count it twice: $412.', { ...minutes, money: [], money_counted: 412 });
+    expect(purseOf(db).amount).toBe(412);
     expect(purseOf(db).estimatedStart).toBeUndefined();
-    expect(purseOf(db).history.at(-1)).toMatchObject({ change: 12350 - STARTING_RYO, counted: true });
+    expect(purseOf(db).history.at(-1)).toMatchObject({ change: 412 - START, counted: true });
   });
 
   test('a turn inside a flashback never touches the present purse', () => {
     const db = play(
       save(),
-      '*You buy dango.*',
-      'Your mother pays 200 ryō for dango.',
-      { ...minutes, money: [{ amount: -200, reason: 'dango' }], money_counted: null },
+      '*You buy candy.*',
+      'Your mother pays two dollars for candy.',
+      { ...minutes, money: [{ amount: -2, reason: 'candy' }], money_counted: null },
       (next) => ({
         ...next,
         rawLog: next.rawLog.map((entry, index) =>
-          index >= next.rawLog.length - 2 ? { ...entry, flashback: { id: 'nine-tails-night', date: next.state.inStoryDate } } : entry
+          index >= next.rawLog.length - 2 ? { ...entry, flashback: { id: 'old-days', date: next.state.inStoryDate } } : entry
         ),
       })
     );
-    expect(purseOf(db).ryo).toBe(STARTING_RYO);
+    expect(purseOf(db).amount).toBe(START);
   });
 });

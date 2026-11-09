@@ -30,10 +30,9 @@ const base: AmbienceInput = {
   period: 'morning',
   hour: 10,
   season: 'spring',
-  region: 'fire',
+  climate: 'temperate',
   kind: 'wilderness',
-  place: 'Forest north of the Leaf',
-  placeId: null,
+  place: 'Forest north of the city',
   fight: false,
 };
 const mix = (change: Partial<AmbienceInput>) => ambienceMix({ ...base, ...change });
@@ -58,10 +57,9 @@ describe('ambience: what you hear where you are', () => {
     expect(mix({ season: 'winter', period: 'night', hour: 2 }).beds['forest-night']!).toBeLessThan(0.3);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('summer afternoons in the Land of Fire bring cicadas', () => {
+  test('summer afternoons in a warm climate bring cicadas; a cold one does not', () => {
     expect(mix({ season: 'summer', period: 'afternoon', hour: 14 }).beds.cicadas).toBeGreaterThan(0);
-    expect(mix({ season: 'summer', period: 'afternoon', hour: 14, region: 'iron' }).beds.cicadas).toBeUndefined();
+    expect(mix({ season: 'summer', period: 'afternoon', hour: 14, climate: 'continental' }).beds.cicadas).toBeUndefined();
   });
 
   test('rain outside is rain; inside it is rain on the roof, and outside sounds are muffled', () => {
@@ -86,35 +84,33 @@ describe('ambience: what you hear where you are', () => {
   });
 
   test('snow is hushed; a blizzard howls; sand storms roar', () => {
-    expect(mix({ condition: 'snow', region: 'iron' }).beds['snow-quiet']).toBe(1);
-    const blizzard = mix({ condition: 'blizzard', region: 'iron' });
+    expect(mix({ condition: 'snow', climate: 'tundra' }).beds['snow-quiet']).toBe(1);
+    const blizzard = mix({ condition: 'blizzard', climate: 'tundra' });
     expect(blizzard.beds['wind-strong']).toBe(1);
     expect(blizzard.beds['wind-high']).toBeGreaterThan(0);
-    expect(mix({ condition: 'sandstorm', region: 'wind', place: 'Open desert' }).beds['wind-strong']).toBe(1);
+    expect(mix({ condition: 'sandstorm', climate: 'desert', place: 'Open desert' }).beds['wind-strong']).toBe(1);
   });
 
   test('high places get the wind over the heights', () => {
-    expect(mix({ place: 'Mountain pass into the Land of Earth' }).beds['wind-high']).toBeGreaterThan(0);
+    expect(mix({ place: 'Mountain pass into the north' }).beds['wind-high']).toBeGreaterThan(0);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('water comes from places known to have it', () => {
-    expect(mix({ place: 'Naka River', placeId: 'naka-river', kind: 'road' }).beds.river).toBeGreaterThan(0.5);
-    expect(mix({ place: 'Valley of the End', placeId: 'valley-end' }).beds.waterfall).toBeGreaterThan(0.8);
+  test('water comes from the words of the place', () => {
+    expect(mix({ place: 'The river path', kind: 'road' }).beds.river).toBeGreaterThan(0.5);
+    expect(mix({ place: 'Below the waterfall' }).beds.waterfall).toBeGreaterThan(0.7);
     expect(mix({ place: 'A stream in the woods' }).beds.stream).toBeGreaterThan(0);
     expect(mix({ place: 'Rocky coast', kind: 'road' }).beds.sea).toBeGreaterThan(0.5);
-    expect(mix({ place: 'Ruins of Uzushio', placeId: 'uzushio', region: 'whirlpools', kind: 'structure' }).beds.sea).toBeGreaterThan(0);
+    // A coastal region: the sea is never far outside.
+    expect(mix({ place: 'Market square', kind: 'settlement', climate: 'coastal' }).beds.sea).toBeGreaterThan(0);
     // A plain forest has no water.
     const dry = mix({});
     expect(dry.beds.river ?? dry.beds.stream ?? dry.beds.sea ?? dry.beds.waterfall).toBeUndefined();
-    // The Hidden Waterfall village is a name, not a waterfall in the street.
-    expect(mix({ place: 'Hidden Waterfall village', placeId: 'waterfall', region: 'waterfall', kind: 'settlement' }).beds.waterfall).toBe(0.5);
   });
 
   test('villages bustle by day, markets more, and go quiet at night', () => {
-    const street = mix({ kind: 'settlement', place: 'Hidden Leaf, main road' });
-    const market = mix({ kind: 'settlement', place: 'Market street, Hidden Sand', region: 'wind' });
-    const night = mix({ kind: 'settlement', place: 'Hidden Leaf, main road', period: 'night', hour: 1 });
+    const street = mix({ kind: 'settlement', place: 'Old Town, a side street' });
+    const market = mix({ kind: 'settlement', place: 'Market street, Old Town' });
+    const night = mix({ kind: 'settlement', place: 'Old Town, a side street', period: 'night', hour: 1 });
     expect(street.beds.village).toBeGreaterThan(0.4);
     expect(market.beds.village!).toBeGreaterThan(street.beds.village!);
     expect(night.beds.village!).toBeLessThan(0.2);
@@ -140,7 +136,7 @@ describe('ambience: what you hear where you are', () => {
   test('indoor beds are the only ones that skip the outdoor muffle', () => {
     expect([...INDOOR_BEDS].sort()).toEqual(['cave', 'fire', 'murmur', 'rain-roof', 'room']);
     expect(isIndoors({ kind: 'structure', place: 'Shrine courtyard' })).toBe(false);
-    expect(isIndoors({ kind: 'settlement', place: 'Ichiraku, inside' })).toBe(true);
+    expect(isIndoors({ kind: 'settlement', place: 'The noodle bar, inside' })).toBe(true);
   });
 
   test('every level stays between 0 and 1, and the key only changes with the mix', () => {
@@ -165,17 +161,16 @@ describe('ambience: what you hear where you are', () => {
 });
 
 describe('ambience: read from the save', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('uses the scene weather, the place, the clock and the scene mode', () => {
+  test('uses the scene weather, the place, the clock and the scene mode', () => {
     let db = at(seed(), {
-      location: 'Naka River, Hidden Leaf',
+      location: 'The river path, Old Town',
       locationKind: 'road',
       inStoryDate: { ...seed().state.inStoryDate, hour: 9, minute: 0 },
     });
-    db = at(db, { weather: { region: 'fire', condition: 'storm', since: db.state.inStoryDate, source: 'story', text: 'thunder' } });
+    db = at(db, { weather: { region: 'old-town', condition: 'storm', since: db.state.inStoryDate, source: 'story', text: 'thunder' } });
     const input = ambienceInputOf(db);
     expect(input.condition).toBe('storm');
-    expect(input.placeId).toBe('naka-river');
+    expect(input.climate).toBe('coastal');
     expect(input.period).toBe('morning');
     const result = currentAmbience(db);
     expect(result.beds.storm).toBe(1);

@@ -54,7 +54,7 @@ function play(db: AppDatabase, input: string, narration: string, reply: Reply | 
         fight_options: reply.options ?? [],
         scene_pace: reply.pace ?? null,
         scene_ended: reply.ended ?? false,
-        characters_present: reply.present ?? ['itachi-uchiha'],
+        characters_present: reply.present ?? ['mara-vance'],
       }
     : null;
   const converted = block ? convertStateBlock(block).diff : null;
@@ -67,34 +67,33 @@ function play(db: AppDatabase, input: string, narration: string, reply: Reply | 
 const promptText = (db: AppDatabase, input: string) =>
   buildNarrationPrompt(db, input).messages.map((message) => message.content).join('\n');
 
-/** Two exchanges with Itachi, so the next spoken line is a conversation. */
+/** Two exchanges with Mara, so the next spoken line is a conversation. */
 function talking() {
   let db = seed();
-  db = play(db, '"Is it done?"', '"It is done," Itachi says. He does not look at you.', {
+  db = play(db, '"Is it done?"', '"It is done," Mara says. He does not look at you.', {
     beat: 'exchange',
-    with: ['itachi-uchiha'],
+    with: ['mara-vance'],
     pace: 'conversation',
   }).db;
   db = play(db, '"Why?"', '"Because it had to be," he says. "Ask me again when we are far from here."', {
     beat: 'exchange',
-    with: ['itachi-uchiha'],
+    with: ['mara-vance'],
     pace: 'conversation',
   }).db;
   return db;
 }
 
-describe('reading Kan\'s input', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('speech, attacks, scene changes and small moves in place', () => {
+describe('reading the player\'s input', () => {
+  test('speech, attacks, scene changes and small moves in place', () => {
     expect(readPlayerInput('"Where are we going?"').speaks).toBe(true);
-    expect(readPlayerInput('*I look deep in Itachi\'s eyes* "This is not like you."')).toMatchObject({
+    expect(readPlayerInput('*I look deep in Mara\'s eyes* "This is not like you."')).toMatchObject({
       speaks: true,
       attacks: false,
       changesScene: false,
     });
-    expect(readPlayerInput('*I follow him.*').changesScene).toBe(true);
-    expect(readPlayerInput('*I throw a kunai at his throat.*').attacks).toBe(true);
-    expect(readPlayerInput('*I lunge at Kakuzu.*').attacks).toBe(true);
+    expect(readPlayerInput('*I follow her.*').changesScene).toBe(true);
+    expect(readPlayerInput('*I throw a knife at her throat.*').attacks).toBe(true);
+    expect(readPlayerInput('*I lunge at Daniel.*').attacks).toBe(true);
     // Words he says and attacks he refuses are not attacks.
     expect(readPlayerInput('"I will kill him one day."').attacks).toBe(false);
     expect(readPlayerInput('*I don\'t attack him.*').attacks).toBe(false);
@@ -106,22 +105,21 @@ describe('reading Kan\'s input', () => {
 describe('conversation mode', () => {
   test('a single instruction never flips it', () => {
     let db = seed();
-    db = play(db, '*I wait.*', '"Follow me," Itachi says, already turning away.', {
+    db = play(db, '*I wait.*', '"Follow me," Mara says, already turning away.', {
       beat: 'instruction',
-      with: ['itachi-uchiha'],
+      with: ['mara-vance'],
     }).db;
 
     expect(db.state.sceneMode?.exchangeStreak).toBe(0);
-    expect(resolveTurnMode(db, '*I follow him.*').mode).toBe('normal');
-    expect(resolveTurnMode(db, '*I follow him.*').lean).toBe(false);
+    expect(resolveTurnMode(db, '*I follow her.*').mode).toBe('normal');
+    expect(resolveTurnMode(db, '*I follow her.*').lean).toBe(false);
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('slow to start: one exchange leans, Kan answering out loud settles it', () => {
+  test('slow to start: one exchange leans, you answering out loud settles it', () => {
     let db = seed();
-    const first = play(db, '"Is it done?"', '"It is done," Itachi says.', {
+    const first = play(db, '"Is it done?"', '"It is done," Mara says.', {
       beat: 'exchange',
-      with: ['itachi-uchiha'],
+      with: ['mara-vance'],
       pace: 'conversation',
     });
     db = first.db;
@@ -130,27 +128,26 @@ describe('conversation mode', () => {
     expect(db.state.sceneMode?.partners).toHaveLength(1);
 
     // Doing something in place keeps it leaning, not full conversation.
-    expect(resolveTurnMode(db, '*I stare at him.*')).toMatchObject({ mode: 'normal', lean: true });
-    expect(promptText(db, '*I stare at him.*')).toContain('SCENE MODE: talk is building with Itachi Uchiha');
+    expect(resolveTurnMode(db, '*I stare at her.*')).toMatchObject({ mode: 'normal', lean: true });
+    expect(promptText(db, '*I stare at her.*')).toContain('SCENE MODE: talk is building with Mara Vance');
     // Answering in speech makes it a conversation by the second reply.
-    expect(resolveTurnMode(db, '"Why?"')).toMatchObject({ mode: 'conversation', with: ['Itachi Uchiha'] });
+    expect(resolveTurnMode(db, '"Why?"')).toMatchObject({ mode: 'conversation', with: ['Mara Vance'] });
   });
 
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('after two exchanges small actions stay in it, and the prompt says so', () => {
+  test('after two exchanges small actions stay in it, and the prompt says so', () => {
     const db = talking();
     expect(db.state.sceneMode?.exchangeStreak).toBe(2);
     expect(db.state.sceneMode?.current).toBe('conversation');
 
-    const look = '*I look deep in Itachi\'s eyes* "This is not like you."';
+    const look = '*I look deep in Mara\'s eyes* "This is not like you."';
     expect(resolveTurnMode(db, look).mode).toBe('conversation');
     expect(resolveTurnMode(db, '*I say nothing and look away.*').mode).toBe('conversation');
-    expect(promptText(db, look)).toContain('SCENE MODE: conversation with Itachi Uchiha');
+    expect(promptText(db, look)).toContain('SCENE MODE: conversation with Mara Vance');
   });
 
   test('a remark mid-conversation keeps it going; leaving ends it with a transition', () => {
     let db = talking();
-    db = play(db, '"Fine."', '*Itachi nods.* "Good."', { beat: 'remark', with: ['itachi-uchiha'], pace: 'conversation' }).db;
+    db = play(db, '"Fine."', '*Mara nods.* "Good."', { beat: 'remark', with: ['mara-vance'], pace: 'conversation' }).db;
     expect(resolveTurnMode(db, '"And then?"').mode).toBe('conversation');
 
     const leave = resolveTurnMode(db, '*I stand up and leave.*');
@@ -167,11 +164,11 @@ describe('conversation mode', () => {
 
   test('someone joining turns it into a group conversation', () => {
     let db = talking();
-    db = play(db, '"Who is that?"', '"Kisame," Itachi says. The big man grins. "Nice to meet you, kid."', {
+    db = play(db, '"Who is that?"', '"Jonah," Mara says. The big man grins. "Nice to meet you, kid."', {
       beat: 'exchange',
-      with: ['itachi-uchiha', 'kisame-hoshigaki'],
+      with: ['mara-vance', 'jonah-pike'],
       pace: 'conversation',
-      present: ['itachi-uchiha', 'kisame-hoshigaki'],
+      present: ['mara-vance', 'jonah-pike'],
     }).db;
     expect(db.state.sceneMode?.exchangeStreak).toBe(3);
     expect(db.state.sceneMode?.partners).toHaveLength(2);
@@ -180,7 +177,7 @@ describe('conversation mode', () => {
   test('a conversation-mode turn takes seconds, not minutes', () => {
     const db = talking();
     const before = db.state.inStoryDate;
-    const turn = play(db, '"Then tell me."', '"Not yet."', { beat: 'exchange', with: ['itachi-uchiha'], pace: 'conversation' });
+    const turn = play(db, '"Then tell me."', '"Not yet."', { beat: 'exchange', with: ['mara-vance'], pace: 'conversation' });
     expect(turn.reply.sceneMode).toBe('conversation');
     expect(turn.reply.elapsedSeconds).toBe(CONVERSATION_MODE_MINIMUM_SECONDS);
     expect(turn.db.state.inStoryDate).not.toEqual(before);
@@ -188,19 +185,18 @@ describe('conversation mode', () => {
 });
 
 describe('fight mode', () => {
-  // TODO session 3: rewrite against testWorld (uses the old Naruto seed).
-  test.skip('an attack starts it, options come with the reply, and it ends with the fight', () => {
+  test('an attack starts it, options come with the reply, and it ends with the fight', () => {
     let db = talking();
-    expect(resolveTurnMode(db, '*I throw a kunai at his throat.*').mode).toBe('fight');
+    expect(resolveTurnMode(db, '*I throw a knife at her throat.*').mode).toBe('fight');
 
     const strike = play(
       db,
-      '*I throw a kunai at his throat.*',
-      'Itachi turns his head; the kunai hisses past. He is behind you before you see him move, his elbow already driving at your ribs.',
+      '*I throw a knife at her throat.*',
+      'Mara turns his head; the knife clatters past. She is behind you before you see her move, her elbow already driving at your ribs.',
       {
         beat: 'combat',
         pace: 'combat',
-        options: ['Twist away and slash back', 'Take the hit and grab his arm', 'Fire Style: Great Fireball'],
+        options: ['Twist away and slash back', 'Take the hit and grab his arm', 'Grab the bottle and swing'],
       }
     );
     db = strike.db;
@@ -208,7 +204,7 @@ describe('fight mode', () => {
     expect(strike.reply.fightOptions).toEqual([
       'Twist away and slash back',
       'Take the hit and grab his arm',
-      'Fire Style: Great Fireball',
+      'Grab the bottle and swing',
     ]);
     expect(db.state.sceneMode?.exchangeStreak).toBe(0);
     // While it goes on, everything is fight mode, even a line of speech.
@@ -216,7 +212,7 @@ describe('fight mode', () => {
     expect(promptText(db, '*I block.*')).toContain('SCENE MODE: fight');
     expect(fightOptionInput('Twist away and slash back')).toBe('*Twist away and slash back.*');
 
-    const end = play(db, '*I yield.*', 'Itachi steps back. The fight is over. You breathe in the cold air.', {
+    const end = play(db, '*I yield.*', 'Mara steps back. The fight is over. You breathe in the cold air.', {
       beat: 'action',
       pace: 'downtime',
       options: ['should be ignored'],
@@ -240,16 +236,16 @@ describe('manual override', () => {
     let db = setSceneModeOverride(seed(), 'conversation');
     expect(resolveTurnMode(db, '*We walk north together.*')).toMatchObject({ mode: 'conversation', manual: true });
 
-    db = play(db, '*We walk north together.* "Tell me about the Akatsuki."', '"They are dangerous," Itachi says as the road climbs.', {
+    db = play(db, '*We walk north together.* "Tell me about the Vance family."', '"They are dangerous," Mara says as the road climbs.', {
       beat: 'travel',
       pace: 'travel',
     }).db;
     expect(db.state.sceneMode?.override).toBe('conversation');
     expect(resolveTurnMode(db, '"How dangerous?"').mode).toBe('conversation');
 
-    db = play(db, '"How dangerous?"', 'A blade flashes out of the brush, straight at Itachi.', { beat: 'combat', pace: 'combat' }).db;
+    db = play(db, '"How dangerous?"', 'A blade flashes out of the brush, straight at Mara.', { beat: 'combat', pace: 'combat' }).db;
     expect(db.state.sceneMode?.override).toBeUndefined();
-    expect(resolveTurnMode(db, '*I draw a kunai.*').mode).toBe('fight');
+    expect(resolveTurnMode(db, '*I draw a knife.*').mode).toBe('fight');
   });
 
   test('switching it off holds until the conversation is over, then automatic resumes', () => {
@@ -296,7 +292,7 @@ describe('prompts and schema', () => {
 
   test('a turn with no state reply still keeps the streak sensible', () => {
     let db = seed();
-    db = play(db, '"Is it done?"', '"It is done," Itachi says.', null).db;
+    db = play(db, '"Is it done?"', '"It is done," Mara says.', null).db;
     expect(db.state.sceneMode?.lastBeat).toBe('exchange');
   });
 });

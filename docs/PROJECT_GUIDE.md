@@ -1,6 +1,6 @@
 # frbddn — Engineering & AI Handoff Guide
 
-> **Conversion in progress.** frbddn (`APP_NAME` in `lib/brand.ts`) was Kan, a Naruto-only RPG, and is becoming a grounded sandbox roleplay game. The session plan and progress log live in the claude.ai Project (`kan-master/docs/SANDBOX_CONVERSION_PLAN.md`), not in this repo. Session 2 removed all Naruto data: every system now reads the player's world (`db.world`). Session 3 rewrites the prompts' world blocks and the tests parked in `scripts/session3-rewrite/`.
+> **Conversion in progress.** frbddn (`APP_NAME` in `lib/brand.ts`) was Kan, a Naruto-only RPG, and is becoming a grounded sandbox roleplay game. The session plan and progress log live in the claude.ai Project (`kan-master/docs/SANDBOX_CONVERSION_PLAN.md`), not in this repo. Session 2 removed all Naruto data: every system now reads the player's world (`db.world`). Session 3 gave the narrator the player-written THE WORLD and WHO YOU ARE blocks and moved every test onto the test world (`lib/rpg/testWorld.ts`).
 
 This document is the complete technical map of the app. It is written so a developer **or an AI coding agent** can understand, debug and extend it without prior context.
 
@@ -335,7 +335,7 @@ Main file: `lib/rpg/game.tsx` (`GameProvider`).
 
 The prompt is ordered from never-changing to changing-every-turn, so its front is a stable prefix that providers can cache (cache reads cost a fraction of fresh input; see Settings → Debug for cached tokens per call).
 
-### System message (two cacheable blocks)
+### System message (three cacheable blocks)
 
 1. **Rules** — `NARRATION_SYSTEM`, identical on every turn of every story (~1.3k tokens):
    - **CORE** — never control the player, place-name rule (English names), date/rank/knowledge discipline, supplied context is truth, binding threads.
@@ -344,9 +344,10 @@ The prompt is ordered from never-changing to changing-every-turn, so its front i
    - **WORLD TIMELINE** — never invent a world event, death or date; news only through bearers; in a known setting stay true to it as far as WORLD says; someone with several identities is one person whose card says which identity is in use.
    - **NAMES** — narration uses only the names the player knows; strangers keep one description; characters say names aloud as they would, each with the name they know; a name the player says that he couldn't know gets a reaction (§8i).
    - **STYLE** — plain English, 2–4 paragraphs, no repeats, rare encounters, new characters, the player's `"speech"` / `*action*` markers.
-   - **ROMANCE** (from `romance.ts`): lore-locked vs winnable, adults deflect under 17, explicit intimacy only 18+, rejections hold by default but can slowly thaw when the story earns it.
+   - **ROMANCE** (from `romance.ts`): only someone whose heart is open to the player becomes a romance; romance and intimacy only between adults (18+, stated age); rejections hold by default but can slowly thaw when the story earns it.
    - **OUTPUT** — prose only, changes legible in the prose.
-2. **Slow context** — `formatCharacterSheet`, `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatThreads`, `formatBonds`, `formatTheDead` (everyone dead, flagged when the player does not know yet). Changes only when a summary lands, a thread or bond moves.
+2. **What the player wrote** (`lib/rpg/worldBlocks.ts`) — **THE WORLD** (`formatWorldBlock`: name, premise, genre, tone, when/period/what exists, known setting and how strictly to follow it, money and prices, how messages travel, groups with their territory, areas with places and travel times, the player's own narrator notes) and **WHO YOU ARE** (`formatWhoYouAre`: the `CharacterDefinition` as prose, the backstory verbatim, secrets marked narrator-only). Plain prose, no ids (invariant 2). They change only when the player edits the world or the character, so the cache holds (invariant 10).
+3. **Slow context** — `formatStorySoFar` (latest arc summary + up to 3 newest chapter summaries the arc doesn't cover, never fewer than 2), `formatThreads`, `formatBonds`, `formatTheDead` (everyone dead, flagged when the player does not know yet). Changes only when a summary lands, a thread or bond moves.
 
 Each block is sent as a text part with `cache_control` for models that need explicit breakpoints (`anthropic/`, `google/`, `qwen/` — see `toWireMessages` in `lib/openrouter.ts`; Gemini uses only the last one). Other providers (OpenAI, DeepSeek, …) cache a repeated prefix automatically and get plain string content. `OpenRouterMessage.content` is always the full text; `parts` is only the split.
 
@@ -593,11 +594,11 @@ Living-world Stage 2. The narrator gets at most one `THE DAY` line per turn, nev
 - **Bonds**: the tracker gets a `THE DAY` line for a present birthday: +1 for remembering it, +2 for a real gift, -1 for letting it pass beside them.
 - **Festivals** (`world.festivals`, `festivalsOf`): the player's own, matched to where they are. None by default.
 - **UI**: an "Upcoming birthdays" card on the bonds list (next 30 days) and a "Today" row on the Journal's Now view (`todayNotes`).
-- Tests: parked in `scripts/session3-rewrite/living-world-stage2.ts`.
+- Tests: `scripts/yearly.test.ts`, `scripts/living-world.test.ts`.
 
 ## 8c. People and consequences (living-world Stage 3)
 
-Five systems that build on each other. Each only reaches the narrator when it matters this turn, in a line or two. Tests: parked in `scripts/session3-rewrite/living-world-stage3.ts`.
+Five systems that build on each other. Each only reaches the narrator when it matters this turn, in a line or two. Tests: `scripts/living-world.test.ts`, `scripts/enemies.test.ts`.
 
 **Geography** (`geography.ts`): the world's regions and the travel days between them (`world.regions[].neighbours`, shortest path). `regionOf(text)` reads a place; `whereaboutsRegion(entity)` = what the story said (`whereabouts`), else where the player last saw them. Used by letters, rumours and consequences.
 
@@ -694,7 +695,7 @@ UI: Settings → **Sound**: Ambience switch (its line says what's playing now, e
 
 ## 8f. Playable flashbacks (`lib/rpg/flashbacks.ts`)
 
-Living-world section 19. Short scenes from the player's life before the story. Offered, never requested; each plays once. **The records live in `db.world.flashbacks` and are empty by default**, so nothing is offered until the player writes some (or approves drafted ones, session 7). Tests: `scripts/session3-rewrite/flashbacks.ts` (to be rewritten).
+Living-world section 19. Short scenes from the player's life before the story. Offered, never requested; each plays once. **The records live in `db.world.flashbacks` and are empty by default**, so nothing is offered until the player writes some (or approves drafted ones, session 7). Tests: `scripts/flashbacks.test.ts`.
 
 **Data** (`FlashbackRecord`): id, title, date, place and location kind, cast (entity names), the scene, notes on how people were then, triggers (`people`, `places` by place id or words, `dates`, `beats` reached in the last 7 days, `words`, `afterFight`), what is fixed, what must stay hidden, `requires`, a one-line memory and its importance. `ensureFlashbackPeople` adds a cast member who isn't in the save yet (dead and met) the first time a memory needs them.
 
@@ -749,7 +750,7 @@ Living-world section 20. Any place the player stays can become a safehouse by it
 
 ## 8h. Money (`lib/rpg/money.ts`)
 
-The player's own money, in the world's currency (`world.currency`: name, optional symbol, plain-text `priceGuide`). Tests: `scripts/session3-rewrite/money.ts` (to be rewritten).
+The player's own money, in the world's currency (`world.currency`: name, optional symbol, plain-text `priceGuide`). Tests: `scripts/money.test.ts`.
 
 **Data** (`state.purse`): `amount` (never below 0), `history` (the last 40 changes: date, signed change, reason, `counted` when a stated total set it), `estimatedStart`. New stories start with `CharacterDefinition.money`.
 
@@ -763,7 +764,7 @@ The player's own money, in the world's currency (`world.currency`: name, optiona
 
 ## 8i. Names the player knows (`lib/rpg/names.ts`)
 
-The narrator and the UI only call someone by a name the player has actually learned. Strangers are described by how they look until they give their name, someone else says it, a letter or document shows it, or the player recognises them because they are famous (`fame`). Tests: `scripts/session3-rewrite/names.ts` (to be rewritten).
+The narrator and the UI only call someone by a name the player has actually learned. Strangers are described by how they look until they give their name, someone else says it, a letter or document shows it, or the player recognises them because they are famous (`fame`). Tests: `scripts/names.test.ts`.
 
 **Data, per person** (`EntityRecord`):
 - `known?: { label?, given?, family?, identities?, history? }` — what the player knows. **Missing means he knows the name** (older saves, and anyone the story introduced by name); `{}` means nothing yet. `history` (last 12): which name, part, how (`introduced`, `told`, `written`, `overheard`, `recognised`, `news`) and when.
@@ -916,7 +917,7 @@ Three tabs: **Story / You / Settings** (the You tab switches Bonds / Journal / M
 
 ## 13b. Save-analysis fixes (Nov 2026)
 
-How the fixes from the save-analysis list work, and where they live. Tests: `scripts/fixlist-memory.test.ts` (5–8), `fixlist-people.test.ts` (10–14), `fixlist-world.test.ts` (15–21), `fixlist-story.test.ts` (22–28), `met-and-memories.test.ts` (1–4); cases tied to the old Naruto seed are skipped until session 3.
+How the fixes from the save-analysis list work, and where they live. Tests: `scripts/fixlist-memory.test.ts` (5–8), `fixlist-people.test.ts` (10–14), `fixlist-world.test.ts` (15–21), `fixlist-story.test.ts` (22–28), `met-and-memories.test.ts` (1–4); all run on the test world.
 
 - **One clock** (`correctTurnTime`, `shiftDatesAfter` in calendar.ts): correcting a turn's length shifts every in-story date stamped after the turn began, anywhere in the save.
 - **Fact lifecycle** (facts.ts): the state tracker sees `ACTIVE FACTS` with refs (`f-xxxxxx`) and can `supersedes` / `facts_ended` them; a new fact overtakes a matching "does not know yet"; `lasts` gives conditions `untilRest` and injuries/plans an `expiresAt`; `expireFacts` runs every turn (rest = 5+ hours outside a fight). `whoKnows` holds entity ids, `whoKnowsGroups` group tags; claims are `confidence: 'claimed'` with `claimedBy`; every fact has a subject and a `sourceEventId` or `sourceLogId`. The prompt budget cuts memories, then facts and lore, before recent story.
@@ -970,15 +971,9 @@ Add a `formatX` function and insert it into the `buildDynamic` array. Keep it sh
 
 ## 16. Test coverage map
 
-Run: `bun test`. Tests that still depend on the old Naruto seed are `test.skip` with a `TODO session 3` note, and whole files that imported deleted Naruto modules are parked in `scripts/session3-rewrite/` (renamed so `bun test` skips them). Session 3 rewrites both against `lib/rpg/testWorld.ts`.
+Run: `bun test`. Every test runs against the hand-written test world (`lib/rpg/testWorld.ts`: Harbourside, a present-day port city; player Alex Reyes; Mara Vance, Daniel Okafor, Theo Marsh (dead before the story) and Jonah Pike (not met yet)). `seedDatabase(slotId, name)` with no input seeds it.
 
-Running now:
-- Slot storage (`scripts/slot-store.test.ts`): IndexedDB backend, localStorage migration, newer-copy-wins, long stories past the localStorage cap, AsyncStorage fallback
-- Debug log (`scripts/debug-panel.test.ts`): state-change diff, per-turn cost totals, usage parsing
-- Journal (`scripts/journal.test.ts`)
-- Ambient sound (`scripts/ambience.test.ts`): birds and insects by time and season, rain outside vs on the roof, storms, snow, high places, hearths and caves, fight mode adds nothing, indoor detection, levels in range
-- Scene modes (`scripts/scene-mode.test.ts`): the parts that don't use the old seed
-- Safehouses (`scripts/safehouses.test.ts`): schema and tracker block, an untagged inn night → rented, paying on, running out, camps, upgrades, rest
-- Save-analysis fixes (`scripts/fixlist-*.test.ts`), meeting and shared memories (`scripts/met-and-memories.test.ts`), immersion (`scripts/immersion.test.ts`): the parts that don't use the old seed
-
-Parked for session 3 (`scripts/session3-rewrite/`): `verify-pipeline` (save compatibility, JSON stripping, identity resolution, time parsing, pacing, timeline scheduling, prompt composition, companions, returning characters, token stability), `enemies` (reputation and grudges), `living-world-stage2/3/4` (yearly offers, letters and lives, weather and the road), `flashbacks`, `money`, `names`, `image-director`, `state-fallback`.
+- Pipeline (`scripts/verify-pipeline.test.ts`): save compatibility, JSON stripping, identity resolution, time parsing, pacing, timeline scheduling and deaths, prompt composition, companions, letters, returning characters, portraits and scene references, token stability over 60 turns
+- No legacy words (`scripts/no-legacy-words.test.ts`): no prompt (narrator, tracker, summaries, time skip, scene image, portraits) carries a word from the old setting; the narrator gets THE WORLD and WHO YOU ARE as prose
+- Enemies (`enemies`), living world (`living-world`), yearly offers (`yearly`), weather and map (`weather-map`), flashbacks, money, names, image director, state fallback
+- Slot storage, debug log, journal, ambience, scene modes, safehouses, save-analysis fixes (`fixlist-*`), meeting and shared memories, immersion
