@@ -37,9 +37,31 @@ const pageStyles = `
   }
 `;
 
+// Keeps open copies of the app on the latest deploy. Every deploy ships a new
+// sw.js; we check for it on load, when the app comes back to the foreground
+// and every 10 minutes. When the new worker takes over, the page reloads, but
+// never while the player is looking at it: it waits until the app is in the
+// background, so nothing is cut off mid-scene.
 const serviceWorker = `
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+    var hadController = !!navigator.serviceWorker.controller;
+    var pendingReload = false;
+    function reloadWhenHidden() {
+      if (document.visibilityState === 'hidden') { location.reload(); }
+      else { pendingReload = true; }
+    }
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController) { hadController = true; return; }
+      reloadWhenHidden();
+    });
+    navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' }).then(function (reg) {
+      function check() { reg.update().catch(function () {}); }
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'hidden' && pendingReload) { location.reload(); }
+        if (document.visibilityState === 'visible') { check(); }
+      });
+      setInterval(check, 10 * 60 * 1000);
+    }).catch(function () {});
   }
 `;
 

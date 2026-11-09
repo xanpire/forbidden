@@ -3,5 +3,21 @@
   "outputDirectory": "dist",
   "installCommand": "bun install",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/((?!api/|_expo/|assets/).*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/((?!api/|_expo/|assets/).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
+      ]
+    }
+  ]
 }

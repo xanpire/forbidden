@@ -5,7 +5,10 @@ const pkg = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8')
 );
 const version = pkg.version;
-const cacheName = `frbddn-shell-${version.replace(/\./g, '-')}`;
+// Each deploy gets its own build id, so sw.js changes on every push to master
+// and open copies of the app pick up the new version (see app/+html.tsx).
+const buildId = (process.env.VERCEL_GIT_COMMIT_SHA || String(Date.now())).slice(0, 12);
+const cacheName = `frbddn-shell-${version.replace(/\./g, '-')}-${buildId}`;
 
 const v = `?v=${version}`;
 
