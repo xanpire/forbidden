@@ -35,18 +35,17 @@ export function statePlayerOf(db: AppDatabase): StatePlayer {
 export function convertStateBlock(
   block: Record<string, unknown> | null,
   player: StatePlayer = GENERIC_PLAYER
-): { diff: TurnDiff | null; imageWorthy: boolean } {
+): { diff: TurnDiff | null } {
   const notPlayer = (value: string) => !isPlayerRef(player.refs, value);
 
   if (!block || typeof block !== 'object') {
-    return { diff: null, imageWorthy: false };
+    return { diff: null };
   }
 
   if (Object.keys(block).length === 0) {
-    return { diff: null, imageWorthy: false };
+    return { diff: null };
   }
 
-  const imageWorthy = block.image_worthy === true;
   const sceneEnded = block.scene_ended === true;
   const diff: TurnDiff = {};
 
@@ -133,10 +132,31 @@ export function convertStateBlock(
   if (preferences.length > 0) diff.preferencesLearned = preferences;
 
   const outfits = records(block.outfit_changed)
-    .map((item) => ({ name: cleanString(item.character_id) ?? '', outfit: cleanString(item.outfit) ?? undefined, position: cleanString(item.position) ?? undefined }))
-    .filter((item) => item.name && (item.outfit || item.position))
+    .map((item) => ({
+      name: cleanString(item.character_id) ?? '',
+      outfit: cleanString(item.outfit) ?? undefined,
+      position: cleanString(item.position) ?? undefined,
+      doing: cleanString(item.doing)?.slice(0, 120) ?? undefined,
+    }))
+    .filter((item) => item.name && (item.outfit || item.position || item.doing))
     .slice(0, 6);
   if (outfits.length > 0) diff.outfits = outfits;
+
+  if (block.scene_now && typeof block.scene_now === 'object' && !Array.isArray(block.scene_now)) {
+    const raw = block.scene_now as Record<string, unknown>;
+    const propsAdded = stringItems(raw.props_added).map((item) => item.slice(0, 80)).slice(0, 6);
+    const propsRemoved = stringItems(raw.props_removed).map((item) => item.slice(0, 80)).slice(0, 6);
+    const screens = cleanString(raw.screens)?.slice(0, 120);
+    const mood = cleanString(raw.mood)?.slice(0, 60);
+    if (propsAdded.length || propsRemoved.length || screens || mood) {
+      diff.sceneNow = {
+        ...(propsAdded.length ? { propsAdded } : {}),
+        ...(propsRemoved.length ? { propsRemoved } : {}),
+        ...(screens ? { screens } : {}),
+        ...(mood ? { mood } : {}),
+      };
+    }
+  }
 
   if (block.limit_crossed === true) diff.limitCrossed = true;
   if (block.age_rule_crossed === true) diff.ageRuleCrossed = true;
@@ -604,10 +624,6 @@ export function convertStateBlock(
     }
   }
 
-  if (imageWorthy) {
-    diff.imageWorthy = true;
-  }
-
   const hasChanges =
     Object.keys(diff).length > 0 &&
     (Object.values(diff).some(
@@ -616,7 +632,7 @@ export function convertStateBlock(
       // A sexual scene ending is a change on its own.
       diff.sex?.on === false);
 
-  return { diff: hasChanges ? diff : null, imageWorthy };
+  return { diff: hasChanges ? diff : null };
 }
 
 function companionRefs(value: unknown, notPlayer: (name: string) => boolean): { name: string; reason?: string }[] {

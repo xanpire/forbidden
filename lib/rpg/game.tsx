@@ -1,4 +1,3 @@
-import { withoutExplicit } from './explicitImages';
 import { CORRECTIVE_NOTE, FADE_TO_BLACK_LINE, notificationText, postCheckDecision } from './intimacy';
 import { setTabTitle } from '../privacy';
 import {
@@ -158,7 +157,7 @@ type GameContextValue = {
   duplicateSlotById: (slotId: string, slotName: string) => Promise<void>;
   renameSlotById: (slotId: string, slotName: string) => Promise<void>;
   /** The save as JSON; without images it is a small file of story and memory only. */
-  exportActiveSlot: (options?: { withImages?: boolean; withExplicit?: boolean }) => Promise<string | null>;
+  exportActiveSlot: (options?: { withImages?: boolean }) => Promise<string | null>;
   importSlot: (json: string, slotName?: string) => Promise<void>;
   updateBond: (bondId: string, patch: Partial<BondRecord>) => Promise<void>;
   /** Folds dropId into keepId: one person, with both histories. */
@@ -973,9 +972,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [commitDb, refreshSlots]
   );
 
-  const exportActiveSlot = useCallback(async (options: { withImages?: boolean; withExplicit?: boolean } = {}) => {
-    // Explicit pictures stay out of exports unless the player asks for them.
-    const current = dbRef.current && !options.withExplicit ? withoutExplicit(dbRef.current) : dbRef.current;
+  const exportActiveSlot = useCallback(async (options: { withImages?: boolean } = {}) => {
+    // Exports carry every picture; there is nothing private to leave out.
+    const current = dbRef.current;
 
     if (!current) {
       return null;

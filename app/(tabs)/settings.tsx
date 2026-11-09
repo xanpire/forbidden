@@ -82,7 +82,6 @@ export default function SettingsScreen() {
   const [testingKey, setTestingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [exportExplicit, setExportExplicit] = useState(false);
   const [capsState, setCapsState] = useState<'idle' | 'loading' | 'failed'>('idle');
 
   const [menuSlot, setMenuSlot] = useState<AppDatabase | null>(null);
@@ -202,7 +201,7 @@ export default function SettingsScreen() {
   };
 
   const handleExport = async (withImages: boolean) => {
-    const json = await exportActiveSlot({ withImages, withExplicit: exportExplicit });
+    const json = await exportActiveSlot({ withImages });
 
     if (!json) {
       return;
@@ -511,14 +510,6 @@ export default function SettingsScreen() {
           <ListCard>
             <PrivacySettings />
             <ExplicitSettings settings={db.settings} updateSettings={updateSettings} />
-            <ListRow
-              accessibilityRole="switch"
-              accessibilityState={{ checked: exportExplicit }}
-              meta="Off: exported save files leave your private pictures out."
-              onPress={() => setExportExplicit((on) => !on)}
-              title="Include private pictures in exports"
-              trailing={<Switch onValueChange={setExportExplicit} thumbColor={colors.text} trackColor={{ false: colors.surfaceSoft, true: colors.accent }} value={exportExplicit} {...(Platform.OS === 'web' ? { activeThumbColor: colors.text } : {})} />}
-            />
           </ListCard>
 
           <SectionLabel>Sound</SectionLabel>

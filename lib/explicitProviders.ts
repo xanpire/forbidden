@@ -9,8 +9,8 @@
 //   or public URLs). Output URLs are in tasklist[0].outputs[].url. A sync
 //   timeout (504) returns a taskid to poll at POST /Task/Detail. No filter.
 //
-// The app only ever sends prompts built by explicitImagePrompt (structured,
-// adults-only) and in-app reference images.
+// The app only ever sends prompts built by explicitScenePrompt (checked cast,
+// checked director text, adults-only) and in-app reference images.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { STORAGE_KEYS } from './brand';
@@ -83,8 +83,8 @@ export function buildRunwareTask(prompt: ExplicitPrompt, references: string[], m
     model,
     positivePrompt: prompt.positive,
     negativePrompt: prompt.negative,
-    width: 1024,
-    height: 1024,
+    width: 1344,
+    height: 768,
     numberResults: 1,
     outputType: 'dataURI',
     outputFormat: 'JPG',

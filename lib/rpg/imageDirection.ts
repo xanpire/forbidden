@@ -13,7 +13,6 @@ import { isPlayer } from './player';
 // ---------------------------------------------------------------------------
 
 export type ShotType =
-  | 'impact frame'
   | 'extreme close-up'
   | 'close-up'
   | 'medium'
@@ -22,17 +21,20 @@ export type ShotType =
   | 'extreme wide'
   | 'aerial'
   | 'ensemble'
-  | 'over-the-shoulder';
+  | 'over-the-shoulder'
+  | 'point of view'
+  | 'from above';
 
 /** Matched in this order: the most specific words first. */
 const SHOT_PATTERNS: [RegExp, ShotType][] = [
-  [/\bimpact[- ]frame\b/i, 'impact frame'],
   [/\bextreme close[- ]?up\b/i, 'extreme close-up'],
   [/\bclose[- ]?up\b/i, 'close-up'],
   [/\bensemble\b|\bline[- ]?up\b|\bbattle lines\b|\bgathering in a circle\b/i, 'ensemble'],
   [/\bextreme wide\b|\bestablishing\b/i, 'extreme wide'],
   [/\baerial\b|\bbird'?s[- ]eye\b/i, 'aerial'],
   [/\bover[- ]the[- ]shoulder\b/i, 'over-the-shoulder'],
+  [/\bpoint[- ]of[- ]view\b|\bpov\b/i, 'point of view'],
+  [/\bfrom above\b|\boverhead\b|\btop[- ]down\b/i, 'from above'],
   [/\bwide\b/i, 'wide'],
   [/\bfull[- ]body\b/i, 'full body'],
   [/\bmedium\b/i, 'medium'],
@@ -64,25 +66,30 @@ export function isScaleShot(type: ShotType | null) {
 // Shot chips
 // ---------------------------------------------------------------------------
 
-export type ShotChip = 'auto' | 'closeup' | 'action' | 'impact' | 'epic' | 'ensemble' | 'aftermath';
+export type ShotChip = 'auto' | 'closeup' | 'action' | 'wide' | 'ensemble' | 'close' | 'above' | 'pov' | 'room';
 
-export const SHOT_CHIPS: { value: ShotChip; label: string; hint: string }[] = [
+/** The shot chips; the intimate ones show in a sexual scene. */
+export const SHOT_CHIPS: { value: ShotChip; label: string; hint: string; intimate?: true }[] = [
   { value: 'auto', label: 'Auto', hint: 'The director picks the shot.' },
   { value: 'closeup', label: 'Close-up', hint: 'A face at its peak emotion.' },
-  { value: 'action', label: 'Action', hint: 'Low angle, the action filling the frame.' },
-  { value: 'impact', label: 'Impact', hint: 'The instant a blow lands, in an impact frame.' },
-  { value: 'epic', label: 'Epic wide', hint: 'A tiny figure in a huge landscape and sky.' },
+  { value: 'action', label: 'Action', hint: 'Low angle, the movement filling the frame.' },
+  { value: 'wide', label: 'Wide', hint: 'The whole place, with you in it.' },
   { value: 'ensemble', label: 'Ensemble', hint: 'Everyone in the scene in one frame.' },
-  { value: 'aftermath', label: 'Aftermath', hint: 'From above, looking down on what is left.' },
+  { value: 'close', label: 'Close', hint: 'Close on the two of you, bodies and faces.', intimate: true },
+  { value: 'above', label: 'From above', hint: 'Looking straight down at the bed or the sofa.', intimate: true },
+  { value: 'pov', label: 'POV', hint: 'What you see, from your own eyes.', intimate: true },
+  { value: 'room', label: 'Wide room', hint: 'The whole room: where you are and everything around you.', intimate: true },
 ];
 
 const CHIP_DIRECTION: Record<Exclude<ShotChip, 'auto'>, string> = {
   closeup: 'close-up or extreme close-up on the face at the emotional peak',
-  action: "low angle or worm's-eye, the action filling most of the frame",
-  impact: 'impact frame: the instant the blow lands or the shock hits',
-  epic: 'extreme wide: the figures tiny, a huge landscape and sky around them',
-  ensemble: 'ensemble: everyone in the scene in one frame, using one of the ensemble layouts',
-  aftermath: "aerial or bird's-eye view of the aftermath and destruction",
+  action: 'low angle, the movement filling most of the frame',
+  wide: 'wide: the whole place, the people part of it',
+  ensemble: 'ensemble: everyone in the scene in one frame, each readable',
+  close: 'close-up on the bodies and faces of the people together, shallow depth of field',
+  above: 'from above: looking straight down on them, the bed or sofa filling the frame',
+  pov: "point of view: through the player's own eyes, the player's hands or body at the frame's edge, the other person facing the camera",
+  room: 'wide room: the whole room, the people together in it, the props and light sources visible',
 };
 
 export function chipDirection(chip: ShotChip | undefined): string | null {
@@ -95,7 +102,7 @@ export function wantsEnsemble(chip: ShotChip | undefined, shotType: ShotType | n
 }
 
 // ---------------------------------------------------------------------------
-// Variety tracker (#7) and impact-frame rarity (#11)
+// Variety tracker (#7)
 // ---------------------------------------------------------------------------
 
 function paintedReplies(db: Pick<AppDatabase, 'rawLog'>): RawLogEntry[] {
@@ -110,12 +117,6 @@ export function recentShots(db: Pick<AppDatabase, 'rawLog'>, count = 3): string[
     .filter(Boolean);
 }
 
-/** About 1 in 6 at most: no impact frame among the last five images. */
-export function impactFrameAllowed(db: Pick<AppDatabase, 'rawLog'>) {
-  return !paintedReplies(db)
-    .slice(-5)
-    .some((entry) => (entry.imageMeta?.shotType ?? shotTypeOf(entry.imageMeta?.shot)) === 'impact frame');
-}
 
 // ---------------------------------------------------------------------------
 // Light and atmosphere (#3)

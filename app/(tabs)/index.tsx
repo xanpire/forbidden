@@ -27,7 +27,6 @@ import {
   Download,
   Image as ImageIcon,
   Clock3,
-  Paintbrush,
   RotateCcw,
   Sparkles,
   Wand2,
@@ -36,8 +35,8 @@ import {
 } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
-import { ExplicitSheet } from '@/components/ExplicitSheet';
-import { canPictureThis } from '@/lib/rpg/explicitImages';
+import { addExplicitRef } from '@/lib/rpg/explicitImages';
+import { storeImage } from '@/lib/rpg/imageStore';
 import { FilterPills, ListCard, ListRow, SectionLabel } from '@/components/List';
 import { Wordmark } from '@/components/Wordmark';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
@@ -56,7 +55,7 @@ import { downloadImage } from '@/lib/rpg/file';
 import { ensureImageCaps } from '@/lib/rpg/imageCaps';
 import { useStoredImage } from '@/lib/rpg/imageStore';
 import { SHOT_CHIPS, type ShotChip } from '@/lib/rpg/imageDirection';
-import { paintScene, retouchSceneImage, type PaintedTake } from '@/lib/rpg/paintScene';
+import { paintScene, retouchSceneImage, sexualMoment, type PaintedTake } from '@/lib/rpg/paintScene';
 import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { resolveTurnMode, sceneOptionInput } from '@/lib/rpg/sceneMode';
@@ -72,7 +71,6 @@ type StoryMessage = {
   content: string;
   image: string | null;
   /** The state tracker flagged this beat as worth painting. */
-  imageWorthy?: boolean;
   elapsedSeconds?: number;
   sceneOptions?: string[];
 };
@@ -285,6 +283,7 @@ export default function StoryScreen() {
     correctTurnTime,
     updateSettings,
     setSceneMode,
+    changeSave,
   } = useGame();
   const { showToast } = useToast();
 
@@ -318,7 +317,6 @@ export default function StoryScreen() {
   const [steer, setSteer] = useState<SteerChip | null>(null);
   const [oocNote, setOocNote] = useState('');
   const [oocOpen, setOocOpen] = useState(false);
-  const [pictureOpen, setPictureOpen] = useState(false);
   const selectionRef = useRef<{ start: number; end: number } | null>(null);
   const lastActionRef = useRef('');
 
@@ -338,7 +336,6 @@ export default function StoryScreen() {
             ? stripNarrationJson(message.content)
             : message.content,
         image: message.image ?? null,
-        ...(message.role === 'assistant' && message.imageWorthy ? { imageWorthy: true } : {}),
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
         sceneOptions: message.role === 'assistant' ? message.sceneOptions : undefined,
       };
@@ -470,7 +467,14 @@ export default function StoryScreen() {
           chip,
           takes: twoTakes ? 2 : 1,
           onWarning: (message) => showToast(message, 'error'),
+          updateSettings,
         });
+
+        // Reference sheets painted for an explicit picture are kept for the next ones.
+        for (const sheet of result.refSheets) {
+          const stored = await storeImage(sheet.image);
+          await changeSave((latest) => addExplicitRef(latest, sheet.entityId, stored));
+        }
 
         if (result.takes.length > 1) {
           setPendingTakes(result);
@@ -491,7 +495,7 @@ export default function StoryScreen() {
         setIsGeneratingImage(false);
       }
     },
-    [apiKey, attachImage, db, isGeneratingImage, showToast, updateSettings]
+    [apiKey, attachImage, changeSave, db, isGeneratingImage, showToast, updateSettings]
   );
 
   const keepTake = useCallback(
@@ -740,25 +744,11 @@ export default function StoryScreen() {
                       accessibilityHint="Long-press to pick the shot"
                       busy={isGeneratingImage}
                       disabled={!apiKey}
-                      glow={Boolean(message.imageWorthy && !message.image)}
-                      icon={
-                        message.imageWorthy && !message.image ? (
-                          <Paintbrush color={colors.accent} size={15} strokeWidth={2} />
-                        ) : (
-                          <ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />
-                        )
-                      }
-                      label={message.imageWorthy && !message.image ? 'Paint this' : 'Paint'}
+                      icon={<ImageIcon color={colors.textMuted} size={15} strokeWidth={2} />}
+                      label="Picture"
                       onLongPress={() => setShotMenuOpen(true)}
                       onPress={() => void generateSceneImage()}
                     />
-                    {canPictureThis(db) ? (
-                      <InlineAction
-                        icon={<Paintbrush color={colors.accent} size={15} strokeWidth={2} />}
-                        label="Picture this"
-                        onPress={() => setPictureOpen(true)}
-                      />
-                    ) : null}
                     <InlineAction
                       icon={<RotateCcw color={colors.textMuted} size={15} strokeWidth={2} />}
                       label="Retry"
@@ -1049,7 +1039,6 @@ export default function StoryScreen() {
         </View>
       </SafeAreaView>
 
-      <ExplicitSheet onClose={() => setPictureOpen(false)} visible={pictureOpen} />
 
       <Modal
         animationType="fade"
@@ -1356,7 +1345,7 @@ export default function StoryScreen() {
             <SectionLabel first>Paint this moment</SectionLabel>
             <FilterPills
               onChange={setShotChip}
-              options={SHOT_CHIPS.map((chip) => ({ value: chip.value, label: chip.label }))}
+              options={SHOT_CHIPS.filter((chip) => !chip.intimate || sexualMoment(db)).map((chip) => ({ value: chip.value, label: chip.label }))}
               value={shotChip}
             />
             <Text style={type.rowBody}>{SHOT_CHIPS.find((chip) => chip.value === shotChip)?.hint}</Text>

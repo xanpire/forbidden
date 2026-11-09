@@ -186,7 +186,6 @@ export const TURN_STATE_SCHEMA = object({
     character_id: { type: 'string' },
     reason: nullableString,
   }),
-  image_worthy: { type: 'boolean' },
   scene_ended: { type: 'boolean' },
   // A short name for the scene, only when a new scene starts this turn.
   scene_title: nullableString,
@@ -237,6 +236,14 @@ export const TURN_STATE_SCHEMA = object({
     character_id: { type: 'string' },
     outfit: nullableString,
     position: nullableString,
+    doing: nullableString,
+  }),
+  // The scene as a picture would show it (sceneNow.ts).
+  scene_now: object({
+    props_added: stringList,
+    props_removed: stringList,
+    screens: nullableString,
+    mood: nullableString,
   }),
   limit_crossed: { type: 'boolean' },
   age_rule_crossed: { type: 'boolean' },

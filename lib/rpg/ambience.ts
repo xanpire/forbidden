@@ -12,6 +12,7 @@
 
 import { timeOfDayOf, type DayPeriod } from './calendar';
 import { locationKindOf } from './places';
+import { sceneNowOf } from './sceneNow';
 import { sceneModeOf } from './sceneMode';
 import type { AppDatabase, LocationKind, WeatherCondition } from './types';
 import { currentWeather, type Season } from './weather';
@@ -84,13 +85,14 @@ const CAR_WORDS = /\b(car|cab|taxi|uber|van|truck|back seat|front seat|driver'?s
 const OFFICE_WORDS = /\b(office|offices|workplace|cubicle|meeting room|boardroom|newsroom|precinct|co-?working)\b/i;
 const SEA_WORDS = /\b(sea|seaside|ocean|beach|shore|shoreline|bay|harbou?r|pier|boardwalk|ferry)\b/i;
 const FIRE_WORDS = /\b(fireplace|log fire|fire pit|bonfire|campfire|wood stove|wood-burner)\b/i;
-const TV_WORDS = /\b(tv|television|telly|the screen flickers|a film plays|the film plays|the movie plays|the news is on|netflix|a show on|the show on)\b/i;
+const TV_WORDS = /\b(tv|the tv is on|television|telly|the screen flickers|a film plays|the film plays|the movie plays|the news is on|netflix|a show on|the show on)\b/i;
 const SHOWER_WORDS = /\b(in the shower|the shower runs|shower running|shower is running|under the spray|under the water|turns on the shower|steam fills the bathroom)\b/i;
 
 /** Where the player is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
   const lastReply = [...db.rawLog].reverse().find((entry) => entry.role === 'assistant' && entry.kind === 'story');
+  const now = sceneNowOf(db);
 
   return {
     condition: weather.condition,
@@ -99,7 +101,8 @@ export function ambienceInputOf(db: AppDatabase): AmbienceInput {
     season: weather.season,
     kind: locationKindOf(db),
     place: db.state.location ?? '',
-    recent: lastReply?.content ?? '',
+    // The scene as the tracker keeps it: a TV on, something on screen.
+    recent: [lastReply?.content ?? '', ...(now?.props ?? []), now?.screens ? `the TV is on: ${now.screens}` : ''].join(' '),
     hushed: sceneModeOf(db).current === 'intimate',
   };
 }

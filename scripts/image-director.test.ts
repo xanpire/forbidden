@@ -25,7 +25,6 @@ import {
 } from '../lib/rpg/image';
 import {
   colourAccent,
-  impactFrameAllowed,
   lightLine,
   recentShots,
   shotTypeOf,
@@ -91,37 +90,32 @@ describe('the director', () => {
     expect(shotTypeOf('close-up on his face, a wide sky behind')).toBe('close-up');
     expect(shotTypeOf("aerial, bird's-eye over the crater")).toBe('aerial');
     expect(shotTypeOf('ensemble, line-up in a staggered V')).toBe('ensemble');
-    expect(shotTypeOf('impact frame, inverted')).toBe('impact frame');
+    expect(shotTypeOf('point of view, her face above you')).toBe('point of view');
+    expect(shotTypeOf('from above, the bed filling the frame')).toBe('from above');
     expect(shotTypeOf('dutch tilt')).toBeNull();
   });
 
-  test('the director reads mood, weather, recent shots and a key moment', () => {
+  test('the director reads mood, weather, recent shots and the replies before', () => {
     let db = at(seed(), 18, 'storm');
     db = { ...db, state: { ...db.state, mood: 'furious' } };
     db = reply(db, 'Earlier.', { image: 'img:a', imageMeta: { prompt: '', action: '', shot: 'close-up, eye level', shotType: 'close-up', references: [], model: 'x', createdAt: 0 } });
-    db = reply(db, 'You hurl the bottle through the bar window.', { imageWorthy: true });
+    db = reply(db, 'You hurl the bottle through the bar window.');
 
     const context = directorContext(db)!;
     expect(context).toContain("Alex Reyes's mood: furious");
     expect(context).toContain('thunder');
-    expect(context).toContain('This is a key moment: go big.');
+    expect(context).toContain('EARLIER IN THE SCENE');
     expect(context).toContain('"close-up, eye level"');
 
-    const chip = directorContext(db, { chip: 'epic' })!;
-    expect(chip).toContain('The player asked for this shot: extreme wide');
-    expect(chip).not.toContain('go big');
+    const chip = directorContext(db, { chip: 'wide' })!;
+    expect(chip).toContain('The player asked for this shot: wide');
   });
 
-  test('impact frames stay rare and recent shots are tracked', () => {
+  test('recent shots are tracked', () => {
     let db = seed();
-    expect(impactFrameAllowed(db)).toBe(true);
-    db = reply(db, 'Bang.', { image: 'img:a', imageMeta: { prompt: '', action: '', shot: 'impact frame', references: [], model: 'x', createdAt: 0 } });
-    expect(impactFrameAllowed(db)).toBe(false);
-    expect(recentShots(db)).toEqual(['impact frame']);
-    for (let i = 0; i < 5; i += 1) {
-      db = reply(db, 'Calm.', { image: 'img:b', imageMeta: { prompt: '', action: '', shot: 'wide', references: [], model: 'x', createdAt: 0 } });
-    }
-    expect(impactFrameAllowed(db)).toBe(true);
+    db = reply(db, 'Bang.', { image: 'img:a', imageMeta: { prompt: '', action: '', shot: 'close-up', references: [], model: 'x', createdAt: 0 } });
+    db = reply(db, 'Calm.', { image: 'img:b', imageMeta: { prompt: '', action: '', shot: 'wide', references: [], model: 'x', createdAt: 0 } });
+    expect(recentShots(db)).toEqual(['close-up', 'wide']);
   });
 });
 
@@ -234,16 +228,18 @@ describe('ensembles', () => {
   });
 });
 
-describe('the swapped-roles check', () => {
-  test('reads its JSON and sharpens the actor rule', () => {
-    expect(parseImageCheck('```json\n{"roles_ok": false, "extra_people": true, "note": "Alex is the one choked."}\n```')).toEqual({
+describe('the picture check', () => {
+  test('reads its JSON and sharpens the rule, for roles and for the scene', () => {
+    expect(parseImageCheck('```json\n{"roles_ok": false, "extra_people": true, "scene_ok": false, "note": "Alex is the one choked."}\n```')).toEqual({
       rolesOk: false,
       extraPeople: true,
+      missing: true,
       note: 'Alex is the one choked.',
     });
     expect(parseImageCheck('no idea')).toBeNull();
     const rule = sharperActorRule('Alex chokes the thug.', { rolesOk: false, extraPeople: true, note: 'Alex is the one choked.' });
     expect(rule).toContain('Alex is the one DOING the action');
     expect(rule).toContain('only the people the ACTION names');
+    expect(sharperActorRule('Mara lies on the bed.', { rolesOk: true, extraPeople: false, missing: true, note: 'she is dressed' })).toContain('did not match the scene (she is dressed)');
   });
 });

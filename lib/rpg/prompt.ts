@@ -24,6 +24,7 @@ import { formatVarietyBlock } from './variety';
 import { formatWeatherLine, formatWeatherTracking } from './weather';
 import { formatPurseLine, priceGuideOf } from './money';
 import { formatSexTracking, sexPartners } from './sexMode';
+import { SCENE_NOW_TRACKING } from './sceneNow';
 import { CONVERSATION_MODE_MINIMUM_SECONDS, formatSceneModeLine, formatSceneModeTracking, resolveTurnMode } from './sceneMode';
 import type {
   AppDatabase,
@@ -114,7 +115,7 @@ GRUDGES: grudges, consequences and consequences_returned follow the rules under 
 
 TURN: turn_kind, from the player's input and the reply together: exchange (back-and-forth talk, including small moves in place or a silence the other person reacts to), instruction (someone tells the player to do something that leads into action: "follow me", "wait here"), remark (a one-off line in passing), action (a move that changes the scene: leaving, going somewhere, someone new taking over), or travel. talking_with: ids of who the player is talking with (exchange, instruction, remark); otherwise [].
 
-IMAGE: image_worthy is true only for visually striking moments, never pure dialogue.
+SCENE NOW: ${SCENE_NOW_TRACKING}
 
 SEX: sex follows the rules under SEX below.
 
@@ -1091,8 +1092,8 @@ export function stripNarrationJson(raw: string): string {
   return narration;
 }
 
-const DIFF_KEY_PATTERN = /"(?:state|bonds|facts|threads|new_characters|image_worthy)"\s*:/;
-const DIFF_OBJECT_START = /\{\s*"(?:state|bonds|facts|threads|new_characters|image_worthy)"/g;
+const DIFF_KEY_PATTERN = /"(?:state|bonds|facts|threads|new_characters)"\s*:/;
+const DIFF_OBJECT_START = /\{\s*"(?:state|bonds|facts|threads|new_characters)"/g;
 const FENCE_OPEN = /```(?:json)?/g;
 const TRAILING_LABEL =
   /^\s*\**\s*(?:state|json)\b[\w\s]{0,40}:\s*\**\s*$/i;
@@ -1195,7 +1196,7 @@ function looksLikeStateDiff(obj: Record<string, unknown>): boolean {
   }
 
   const knownKeys = [
-    'state', 'bonds', 'facts', 'threads', 'new_characters', 'image_worthy',
+    'state', 'bonds', 'facts', 'threads', 'new_characters',
   ];
 
   return keys.some((key) => knownKeys.includes(key));

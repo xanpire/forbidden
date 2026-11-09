@@ -10,7 +10,6 @@ import { shortTitle, titleAndBody } from '@/lib/rpg/util';
 import { todayNotes } from '@/lib/rpg/yearly';
 import { PurseCard } from '@/components/player/PurseCard';
 import { ScrapbookView } from '@/components/player/ScrapbookView';
-import { PrivateGallery } from '@/components/player/PrivateGallery';
 import { displayName } from '@/lib/rpg/names';
 import { isPlayer } from '@/lib/rpg/player';
 
@@ -253,7 +252,6 @@ export function JournalSection() {
       {view === 'world' ? <WorldView db={db} /> : null}
       {view === 'memories' ? <MemoriesView db={db} /> : null}
       {view === 'scrapbook' ? <ScrapbookView db={db} /> : null}
-      {view === 'scrapbook' ? <PrivateGallery /> : null}
     </View>
   );
 }

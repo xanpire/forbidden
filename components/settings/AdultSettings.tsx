@@ -1,6 +1,6 @@
 // Settings → Models test and Privacy (session A).
 import { useEffect, useState } from 'react';
-import { Image, Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { ListRow } from '@/components/List';
@@ -10,9 +10,7 @@ import { completeChat } from '@/lib/openrouter';
 import { usePrivacy, validPin, withPin } from '@/lib/privacy';
 import type { Settings } from '@/lib/rpg/types';
 import { loadProviderKey, saveProviderKey } from '@/lib/explicitProviders';
-import { DEFAULT_EXPLICIT_MODELS, EXPLICIT_PROVIDERS, canPictureThis, defaultShot, type ExplicitProviderId } from '@/lib/rpg/explicitImages';
-import { useGame } from '@/lib/rpg/game';
-import { paintSideBySide } from '@/lib/rpg/paintExplicit';
+import { DEFAULT_EXPLICIT_MODELS, EXPLICIT_PROVIDERS, type ExplicitProviderId } from '@/lib/rpg/explicitImages';
 
 /** The story calls read the story, so each needs a model whose terms allow adult content. */
 export const STORY_CALLS: { key: 'narrationModel' | 'extractionModel' | 'summaryModel'; label: string }[] = [
@@ -180,8 +178,14 @@ export function ExplicitSettings({
 
   return (
     <View style={styles.block}>
-      <Text style={type.rowTitle}>Explicit pictures</Text>
-      <Text style={type.rowMeta}>"Picture this" in an intimate scene. Only adults with a stated age, never real people, and never your uploaded photos.</Text>
+      <Text style={type.rowTitle}>Pictures</Text>
+      <Text style={type.rowMeta}>Pictures are only made when you tap Picture on a reply. In a sex scene they always go to the explicit provider: only adults with a stated age, never real people, and never your uploaded photos.</Text>
+      <View style={styles.pinRow}>
+        <AppButton compact label="Standard image model" onPress={() => void updateSettings({ picturesOn: 'standard' })} style={styles.flex} variant={(settings.picturesOn ?? 'standard') === 'standard' ? 'primary' : 'secondary'} />
+        <AppButton compact label="Explicit provider" onPress={() => void updateSettings({ picturesOn: 'explicit' })} style={styles.flex} variant={settings.picturesOn === 'explicit' ? 'primary' : 'secondary'} />
+      </View>
+      <Text style={type.rowMeta}>{settings.picturesOn === 'explicit' ? 'Every picture goes to the explicit provider below, for one look and one key.' : 'Other pictures use the standard image model from Models.'}</Text>
+      <Text style={styles.label}>Explicit provider</Text>
       <View style={styles.pinRow}>
         {EXPLICIT_PROVIDERS.map((item) => (
           <AppButton
@@ -228,47 +232,6 @@ export function ExplicitSettings({
           </View>
         </View>
       ))}
-    </View>
-  );
-}
-
-/** Debug: the same picture on both providers, to compare quality and cost. */
-export function SideBySide() {
-  const { db } = useGame();
-  const [running, setRunning] = useState(false);
-  const [results, setResults] = useState<Awaited<ReturnType<typeof paintSideBySide>>[number][]>([]);
-  if (!db || !canPictureThis(db)) {
-    return <Text style={[type.rowMeta, styles.block]}>Provider comparison: open an intimate scene first.</Text>;
-  }
-  return (
-    <View style={styles.block}>
-      <AppButton
-        compact
-        label="Compare explicit providers on this scene"
-        loading={running}
-        onPress={() => {
-          setRunning(true);
-          void paintSideBySide(db, defaultShot(db))
-            .then(setResults)
-            .finally(() => setRunning(false));
-        }}
-        variant="secondary"
-      />
-      <View style={styles.pinRow}>
-        {results.map((result) => (
-          <View key={result.provider} style={styles.flex}>
-            <Text style={type.rowMeta}>
-              {result.provider}
-              {result.ok && typeof result.painted.cost === 'number' ? ` · $${result.painted.cost.toFixed(4)}` : ''}
-            </Text>
-            {result.ok ? (
-              <Image resizeMode="cover" source={{ uri: result.painted.dataUri }} style={styles.compare} />
-            ) : (
-              <Text style={styles.failed}>{result.error}</Text>
-            )}
-          </View>
-        ))}
-      </View>
     </View>
   );
 }

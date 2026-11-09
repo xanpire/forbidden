@@ -23,6 +23,18 @@ export type SceneModeState = {
   fadeToBlack?: boolean;
 };
 
+export type SceneNow = {
+  /** The scene (state.sceneSeq) this belongs to. */
+  seq: number;
+  /** Things in the scene a picture would show: a bowl of chips, the TV, drinks, a phone. */
+  props: string[];
+  /** What's on any screen: "a horror film", "the late news". */
+  screens?: string;
+  mood?: string;
+  /** What each person is doing right now, by entity id. */
+  doing: Record<string, string>;
+};
+
 /** Where a sexual scene is: building up, escalating, or at its climax. */
 export type SexPhase = 'build-up' | 'escalation' | 'climax';
 /** How a sexual scene ended. */
@@ -114,6 +126,8 @@ export type GameState = {
   sceneCast?: string[];
   /** Conversation and fight mode (see sceneMode.ts). */
   sceneMode?: SceneModeState;
+  /** The scene as a picture would show it now: what's around, what's on screens, the mood, what each person is doing. Reset with each new scene. */
+  sceneNow?: SceneNow;
   /**
    * Counts scenes, so each story turn can be tied to one (RawLogEntry.sceneSeq)
    * and a memory never spans two. Moves on when a scene ends, the place
@@ -265,8 +279,6 @@ export type RawLogEntry = {
   imageMeta?: SceneImageMeta;
   /** The scene mode this reply was narrated in (assistant story turns). */
   sceneMode?: SceneModeName;
-  /** The state tracker judged this moment visually striking (image_worthy). */
-  imageWorthy?: boolean;
   /** Moves offered under the reply (sex mode: four, written by the state tracker). */
   sceneOptions?: string[];
   /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
@@ -288,8 +300,12 @@ export type SceneImageMeta = {
   /** A retouch: the player's tweak, and the stored image it was made from. */
   tweak?: string;
   previous?: string;
-  /** The swapped-roles check: true when it found the roles reversed or extra people. */
+  /** The picture check: true when it found roles reversed, someone missing, extra people, or the wrong position, clothes or props. */
   mightBeOff?: boolean;
+  /** Painted on an explicit provider (Runware or Wiro) instead of the standard image model. */
+  provider?: 'runware' | 'wiro';
+  /** What the provider charged, in dollars, when it said. */
+  cost?: number;
   /** The references sent, in order: their kind, whose they are, and the stored image when there is one. */
   references: { kind: string; name?: string; ref?: string }[];
   model: string;
@@ -693,6 +709,8 @@ export type Settings = {
   imageDirectorModel?: string;
   /** Explicit pictures: which provider, and the model on each. */
   explicitProvider?: 'runware' | 'wiro';
+  /** Where pictures that aren't sexual go: the standard image model (default) or the explicit provider. */
+  picturesOn?: 'standard' | 'explicit';
   runwareModel?: string;
   wiroModel?: string;
   /** Check each scene image for swapped roles and retry once (default on). */
@@ -737,21 +755,8 @@ export type AppDatabase = {
   /** Face references you chose for people, kept only on this device. */
   characterFaces?: CharacterFaceRecord[];
   memoryJobs?: MemoryJob[];
-  /** Explicit pictures of intimate scenes (explicitImages.ts). Behind the PIN lock; left out of exports by default. */
-  explicitImages?: ExplicitImageRecord[];
   /** In-app reference sheets for explicit pictures, made from written appearance only. */
   explicitRefs?: { entityId: string; image: string; createdAt: number }[];
-};
-
-export type ExplicitImageRecord = {
-  id: string;
-  image: string;
-  shot: import('./explicitImages').ExplicitShot;
-  provider: 'runware' | 'wiro';
-  model: string;
-  cost?: number;
-  inStoryDate: CalendarDate;
-  createdAt: number;
 };
 
 /** What the player wore, in words (their sheet's outfit). */
@@ -817,7 +822,6 @@ export type SceneInfo = {
   tags?: string[];
   entities?: string[];
   importance?: 1 | 2 | 3 | 4 | 5;
-  imageWorthy?: boolean;
 };
 
 export type TurnDiff = {
@@ -836,8 +840,8 @@ export type TurnDiff = {
     scene?: string;
     sceneCast?: string[];
   };
-  /** The state model judged this moment visually striking (queues a scene summary). */
-  imageWorthy?: boolean;
+  /** The scene as a picture would show it now (sceneNow.ts): props, screens, mood. */
+  sceneNow?: { propsAdded?: string[]; propsRemoved?: string[]; screens?: string; mood?: string };
   /** How this turn played, and who the player was talking with (ids from the tracker). */
   turnKind?: { kind: TurnKind; with: string[] };
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
@@ -930,7 +934,7 @@ export type TurnDiff = {
   intimacyStages?: { entityId?: string; name: string; stage: string }[];
   firsts?: { entityId?: string; name: string; what: string }[];
   preferencesLearned?: { entityId?: string; name: string; preference: string; aboutPlayer: boolean }[];
-  outfits?: { entityId?: string; name: string; outfit?: string; position?: string }[];
+  outfits?: { entityId?: string; name: string; outfit?: string; position?: string; doing?: string }[];
   /** Sex mode (sexMode.ts): a sexual scene starts, goes on or ends. */
   sex?: {
     /** true: a sexual scene with the player is under way this turn; false: it isn't (any more). */

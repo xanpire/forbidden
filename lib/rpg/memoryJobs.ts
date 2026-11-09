@@ -19,6 +19,7 @@
  */
 import { applyIntimacyStages, applyFirsts, applyOutfits, applyPreferences } from './intimacy';
 import { applySexStep } from './sexMode';
+import { applySceneNow } from './sceneNow';
 import { syncBondSides } from './bonds';
 import { markKnownDeathsOnBonds } from './deaths';
 import { markMet } from './met';
@@ -284,7 +285,7 @@ export function applyStateStep(
     // The chip under the reply shows this, and tapping it corrects it.
     rawLog: next.rawLog.map((entry) =>
       entry.id === turn.turnLogId
-        ? { ...entry, elapsedSeconds: appliedSeconds, ...(extraction?.imageWorthy ? { imageWorthy: true } : {}) }
+        ? { ...entry, elapsedSeconds: appliedSeconds }
         : entry
     ),
     state: {
@@ -334,6 +335,8 @@ export function applyStateStep(
   next = applyFirsts(next, extraction?.firsts);
   next = applyPreferences(next, extraction?.preferencesLearned);
   next = applyOutfits(next, extraction?.outfits);
+  // What a picture of the scene would show now: props, screens, mood, who's doing what.
+  next = applySceneNow(next, extraction);
   const sexStep = applySexStep(next, {
     report: extraction?.sex,
     modeUsed,
@@ -387,7 +390,6 @@ export function applyStateStep(
 
   // A finished sexual scene becomes a memory like any other scene.
   const shouldSummarize =
-    extraction?.imageWorthy === true ||
     sceneEnded ||
     sexStep.closed ||
     storyMessagesSinceLastSummary(next) >= next.settings.autoSummarizeThreshold;

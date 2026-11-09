@@ -1,4 +1,3 @@
-import { SideBySide } from '@/components/settings/AdultSettings';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ChevronDown, ChevronLeft, ChevronRight, Copy } from 'lucide-react-native';
@@ -187,7 +186,6 @@ export function DebugPanel() {
           )}
         </View>
       ) : null}
-      {open ? <SideBySide /> : null}
     </ListCard>
   );
 }

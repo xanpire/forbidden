@@ -896,28 +896,24 @@ describe('two-call turn: prose narrator + structured state call', () => {
   });
 
   test('converts a full structured reply with nulls and empty lists', () => {
-    const { diff, imageWorthy } = convertStateBlock({
+    const { diff } = convertStateBlock({
       time: { elapsed: 2, unit: 'hours', clock_time: null },
       scene_pace: 'travel',
       location: 'Coast Road, north of town',
       location_kind: 'road',
       mood: null,
       world_description: null,
-      world_point: null,
       inventory_added: ['Takeaway coffee'],
       inventory_removed: [],
       bonds: [{ character: 'Mara Vance', affinity_change: 1, status: null, note: null, relationship: null, attraction: null, romance_note: null }],
-      facts: [{ entity: 'Alex Reyes', fact: 'Alex Reyes knows the massacre happened.', type: 'knowledge', who_knows: ['Alex Reyes', 'Mara Vance'] }],
-      threads: [{ title: 'Reach the safe house', description: 'You and Mara head for the safe house.', status: 'open' }],
+      facts: [{ entity: 'Alex Reyes', fact: 'Alex Reyes knows about the missing money.', type: 'knowledge', who_knows: ['Alex Reyes', 'Mara Vance'] }],
+      threads: [{ title: 'Get to the cabin', description: 'You and Mara head for the cabin.', status: 'open' }],
       new_characters: [],
       character_updates: [{ name: 'Mara Vance', mood: 'withdrawn', appearance: null }],
       characters_present: ['Mara Vance'],
-      image_worthy: true,
       scene_ended: false,
     });
 
-    expect(imageWorthy).toBe(true);
-    expect(diff?.imageWorthy).toBe(true);
     expect(diff?.state?.elapsedSeconds).toBe(7200);
     expect(diff?.state?.scenePace).toBe('travel');
     expect(diff?.state?.location).toBe('Coast Road, north of town');
@@ -927,7 +923,7 @@ describe('two-call turn: prose narrator + structured state call', () => {
     expect(diff?.bonds?.[0].affinityDelta).toBe(1);
     expect(diff?.facts?.[0].type).toBe('knowledge');
     expect(diff?.facts?.[0].whoKnows).toEqual(['Alex Reyes', 'Mara Vance']);
-    expect(diff?.threads?.[0]).toMatchObject({ action: 'open', title: 'Reach the safe house' });
+    expect(diff?.threads?.[0]).toMatchObject({ action: 'open', title: 'Get to the cabin' });
     expect(diff?.entities?.[0]).toMatchObject({ name: 'Mara Vance', mood: 'withdrawn' });
   });
 
@@ -935,9 +931,9 @@ describe('two-call turn: prose narrator + structured state call', () => {
     const { diff } = convertStateBlock({
       time: { elapsed: null, unit: null, clock_time: null },
       scene_pace: null, location: null, location_kind: null, mood: null,
-      world_description: null, world_point: null, inventory_added: [], inventory_removed: [],
+      world_description: null, inventory_added: [], inventory_removed: [],
       bonds: [], facts: [], threads: [], new_characters: [], character_updates: [],
-      characters_present: [], image_worthy: false, scene_ended: false,
+      characters_present: [], scene_ended: false,
     });
 
     expect(diff).toBeNull();

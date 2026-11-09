@@ -8,7 +8,6 @@ import type { PlannedReference } from './referencePlan';
 import { entityAge, timeOfDayOf } from './calendar';
 import {
   chipDirection,
-  impactFrameAllowed,
   isScaleShot,
   lightLine,
   lookTags,
@@ -19,11 +18,14 @@ import {
   type ShotType,
 } from './imageDirection';
 import { CONDITION_INFO } from './weather';
+import { sceneNowLines } from './sceneNow';
 import type { AppDatabase, EntityRecord } from './types';
 import { isPlayer, isPlayerName, playerEntity, playerName } from './player';
 
 /** At most one earlier scene is sent, for rendering style only (#4). */
 const RECENT_IMAGE_LIMIT = 1;
+/** The director also reads this many replies before the latest. */
+const PREVIOUS_REPLIES = 2;
 
 /** People in the scene: 5 normally, up to 10 for an ensemble shot. */
 export const SCENE_CAST_LIMIT = 5;
@@ -172,52 +174,37 @@ function cleanProse(text: string) {
     .trim();
 }
 
-/** Used when the description call fails: the end of the reply, cleaned up. */
-export function fallbackImageAction(db: AppDatabase) {
-  const reply = latestStoryReply(db);
-  return tailOf(cleanProse(reply?.content ?? db.state.scene), 700);
-}
+const IMAGE_ACTION_SYSTEM = `You are the director of one picture from an interactive story set in the real world today, like a film's director of photography. The player character is named on the PLAYER line.
 
-const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive story, like a film storyboard artist. The player character is named on the PLAYER line.
+Read the narrator's latest reply (and the replies before it for anything still in the scene) and pick the single INSTANT to show, normally the one at the END of the latest reply: a freeze frame of the whole moment, not a summary. Then write three lines.
 
-Read the narrator's latest reply and pick the single most dramatic INSTANT from it, normally the one at the END of the reply: a freeze frame, not a summary. Then write three lines.
-
-ACTION: exactly who does what to whom at that instant, and where.
-- One or two sentences, at most 45 words (up to 80 words for an ensemble shot, so you can place everyone), present tense, third person.
+ACTION: exactly who does what to whom at that instant, where, and with what around them.
+- Two or three sentences, at most 70 words, present tense, third person.
 - The actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
-- Name people by name (the player by their name, "Sam"). Unnamed people get a short description ("a security guard").
-- Only people physically present in that moment. Include body positions, expressions at their peak, and anything visible that matters: a weapon, a vehicle, the weather.
-- No dialogue, sounds, thoughts, backstory, or text in the image.
+- Name people by name (the player by their name). Unnamed people get a plain description of their role ("a waiter"), never of their age or body.
+- Only people physically present at that instant, with their body positions, what they are doing and their expressions.
+- Everything visible that makes the moment: the room and furniture, props from SCENE NOW (food, drinks, a phone, the TV and what is on it), the light sources.
+- Never describe anyone's age, body type, face or hair: the app adds each person's looks from their own sheet. What they are wearing (or not) is fine.
+- No dialogue, sounds, thoughts or backstory, and no text in the image.
 
 SHOT: frame that instant like a film still in a wide 16:9 frame. One line, in this order:
-- shot type: extreme close-up | close-up | medium | full body | wide | extreme wide | aerial | ensemble | impact frame
-- angle: worm's-eye | low angle | eye level | high angle | bird's-eye | over-the-shoulder | dutch tilt
-- lens feel: wide-angle distortion | telephoto compression | shallow depth of field
-- composition: where the subject sits (lower third, off-center, tiny in frame, filling the frame), and what fills the rest of the wide frame (open sky, city lights, smoke, the room, the landscape)
-- focus: the ONE person who gets the sharpest light and the most space in the frame (usually the player)
-- emotion at its peak, shown physically (screaming with veins on the neck, tears streaking a face, eyes wide)
-- light and effects: light source and colour, motion (wind-whipped hair and coat, rain, debris, embers, dust, steam)
-Pick the shot that sells the moment:
-- emotional peak: close-up or extreme close-up on a face
-- action or power: low angle or worm's-eye, the action filling most of the frame
-- the instant a blow lands, a shocking reveal: impact frame
-- arrival, journey, calm: extreme wide, tiny figure, big landscape and sky
-- aftermath or destruction: aerial or bird's-eye
-- confrontation: over-the-shoulder, or two figures facing off across the frame
-- a group together, a gathering, one against many: ensemble, with one of these layouts:
-  - line-up: everyone facing the camera in a staggered V, the leader at the front, low angle, like an opening-credits shot
-  - battle lines: the player in the foreground seen from behind or over the shoulder, facing a row of opponents across the frame
-  - circle: a high angle looking down on figures in a ring (a meeting around a table, faces lit from below)
-  - depth layers: 1-2 sharp hero faces in front, the others in mid-ground, silhouettes or out-of-focus figures at the back
-  - clash: two groups colliding, the space between them charged
-Avoid: eye-level medium shots of people standing, centered symmetrical framing, neutral faces, posing for the camera.
+- shot type: extreme close-up | close-up | medium | full body | wide | extreme wide | aerial | over-the-shoulder | ensemble
+- angle: low angle | eye level | high angle | from above | point of view | over-the-shoulder | dutch tilt
+- lens feel: wide-angle | telephoto compression | shallow depth of field
+- composition: where the people sit in the frame and what fills the rest (the room, the city at night, the screen's glow)
+- focus: the ONE person who gets the sharpest light and the most space (usually the player or the person they are with)
+- light: its source and colour (a TV in a dark room, neon through the window, morning sun, candles)
+Pick the shot that sells the moment: close-ups for feelings, wide for a room or a place, from above for two people in bed, point of view for what the player sees. Avoid eye-level medium shots of people standing and centered symmetrical framing.
 
-CAPTION: the same moment for the player's scrapbook of photos of their life. The caption calls the player "you" and "your", never their name, "he", "she", "his" or "her": one sentence, at most 20 words, present tense, plain words ("You kneel at the grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
+CAPTION: the same moment for the player's photo album. Call the player "you" and "your", never their name or "he"/"she": one sentence, at most 20 words, present tense, plain words ("You curl up on the sofa while the film flickers."). Call people only by the name you know them by (after "to you:"), or describe them.
 
 Output exactly three lines and nothing else:
 ACTION: <the action sentences>
 SHOT: <the camera line>
 CAPTION: <the caption>`;
+
+/** Added for a sexual scene: the director describes it as it is, never ages or bodies. */
+const EXPLICIT_DIRECTION = `This is a sexual scene between adults and the picture is explicit. In ACTION, say exactly who does what to whom: positions, hands and mouths, who is on top, what each person has taken off and what is still on, their expressions, and the setting and props around them, as plainly as the story has it. Use only the names given; never describe anyone as young, never give an age, and never describe faces or bodies beyond what they are doing.`;
 
 const LABELS = ['action', 'shot', 'caption'] as const;
 
@@ -248,6 +235,8 @@ export function parseImageAction(text: string): { action: string; shot?: string;
 export type DirectorOptions = {
   /** A shot the player picked with a chip. */
   chip?: ShotChip;
+  /** The picture goes to an explicit provider: the director gets the explicit section. */
+  explicit?: boolean;
 };
 
 export type DirectedImage = {
@@ -288,6 +277,14 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
   const forced = chipDirection(options.chip);
   const outfit = currentOutfit(db);
   const notes = peopleNotes(db, cast);
+  const castEntities = cast
+    .map((name) => resolveEntity(db, name))
+    .filter((entity): entity is EntityRecord => Boolean(entity));
+  const player = playerEntity(db);
+  const now = sceneNowLines(db, [...(player ? [player] : []), ...castEntities]);
+  // The replies before the latest, for anything still in the scene.
+  const story = db.rawLog.filter((message) => message.kind === 'story' && message.role === 'assistant');
+  const earlier = story.slice(Math.max(0, story.length - PREVIOUS_REPLIES - 1), -1);
 
   const who = playerName(db);
 
@@ -304,14 +301,14 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
           return known === name ? name : `${name} (to you: ${known})`;
         }).join(', ')}.` : `Known people in the scene: none besides ${who}.`,
     notes.length > 0 ? `How they are: ${notes.join('; ')}.` : '',
+    now.length > 0 ? `SCENE NOW:\n${now.join('\n')}` : '',
     `Time and weather: ${timeOfDayOf(moment.date)}, ${String(moment.date.hour ?? 12).padStart(2, '0')}:${String(moment.date.minute ?? 0).padStart(2, '0')}; ${moment.weatherText ?? CONDITION_INFO[moment.condition].label}${moment.indoors ? ' (indoors)' : ''}.`,
-    reply.imageWorthy && !forced ? 'This is a key moment: go big.' : '',
     forced ? `The player asked for this shot: ${forced}. Use it.` : '',
     shots.length > 0
       ? `Recent images were framed: ${shots.map((shot) => `"${shot.slice(0, 90)}"`).join('; ')}. Don't repeat the same shot type and angle as last time unless the moment demands it.`
       : '',
-    options.chip === 'impact' || impactFrameAllowed(db) ? '' : 'Do not use an impact frame this time (one was used recently).',
     playerAction ? `What the player wrote this turn: ${tailOf(playerAction, 600)}` : '',
+    ...(earlier.length > 0 ? ['', 'EARLIER IN THE SCENE (oldest first):', ...earlier.map((message) => tailOf(message.content.trim(), 900))] : []),
     '',
     'NARRATOR REPLY:',
     tailOf(reply.content.trim(), 4000),
@@ -323,10 +320,12 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
 /** A chip's shot type, to keep when the director answers with another. */
 const CHIP_SHOT: Partial<Record<ShotChip, ShotType>> = {
   closeup: 'close-up',
-  impact: 'impact frame',
-  epic: 'extreme wide',
+  wide: 'wide',
   ensemble: 'ensemble',
-  aftermath: 'aerial',
+  close: 'close-up',
+  above: 'from above',
+  pov: 'point of view',
+  room: 'wide',
 };
 
 /**
@@ -360,7 +359,7 @@ export async function writeImageAction(
         apiKey,
         model: attempt.model,
         messages: [
-          { role: 'system', content: IMAGE_ACTION_SYSTEM },
+          { role: 'system', content: options.explicit ? `${IMAGE_ACTION_SYSTEM}\n\n${EXPLICIT_DIRECTION}` : IMAGE_ACTION_SYSTEM },
           { role: 'user', content: context },
         ],
         temperature: attempt.temperature,
@@ -379,12 +378,6 @@ export async function writeImageAction(
       if (wanted && shotType !== wanted) {
         shot = `${wanted}${shot ? `, ${shot}` : ''}`;
         shotType = wanted;
-      }
-
-      // Impact frames stay rare unless asked for.
-      if (shotType === 'impact frame' && options.chip !== 'impact' && !impactFrameAllowed(db)) {
-        shot = shot?.replace(/impact[- ]frame/i, 'close-up');
-        shotType = 'close-up';
       }
 
       return {
@@ -418,10 +411,6 @@ function styleOpener(db: AppDatabase) {
   return `A dramatic widescreen still: ${style.replace(/\.$/, '')}; dynamic composition, strong contrast.`;
 }
 
-function impactOpener(accent: string) {
-  return `An impact frame: inverted, limited palette of black, white and ${accent}; rough expressive sketch lines; radial speed lines exploding from the point of impact; flat background.`;
-}
-
 const IDENTITY_ONLY =
   'Identity only: copy face, hair, eyes and clothing design. Ignore its pose, expression, framing, lighting and background. The expression comes from the ACTION and SHOT.';
 
@@ -441,7 +430,6 @@ export function buildSceneImagePrompt(
   const ensemble = shotType === 'ensemble';
   const cast = sceneCast(db, ensemble ? ENSEMBLE_CAST_LIMIT : SCENE_CAST_LIMIT);
   const sceneText = `${action} ${options.shot ?? ''}`;
-  const impact = shotType === 'impact frame';
   const outfit = currentOutfit(db).replace(/\.$/, '') || 'their usual clothes';
 
   const hasFace = references.some((reference) => reference.kind === 'face');
@@ -467,9 +455,8 @@ export function buildSceneImagePrompt(
   });
 
   // 1. Frame and style first: image models weight the start most.
-  const accent = /\blightning\b/i.test(sceneText) ? 'electric blue' : 'red';
   const lines = [
-    impact ? impactOpener(accent) : styleOpener(db),
+    styleOpener(db),
     'Visual image only: no words, letters, numbers, captions, subtitles, logos, watermarks, or readable text anywhere.',
   ];
 
@@ -480,10 +467,8 @@ export function buildSceneImagePrompt(
 
   lines.push(`ACTION (depict this exactly): ${action}`);
 
-  // 4. Light and atmosphere from the real weather and clock (not for impact frames: flat colour).
-  if (!impact) {
-    lines.push(lightLine(db, sceneText));
-  }
+  // 4. Light and atmosphere from the real weather and clock.
+  lines.push(lightLine(db, sceneText));
 
   lines.push(`Location: ${db.state.location}.`);
 
