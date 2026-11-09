@@ -60,6 +60,7 @@ import { currentWeather, weatherPhrase } from '@/lib/rpg/weather';
 import { WeatherIcon } from '@/components/WeatherIcon';
 import { resolveTurnMode, sceneOptionInput } from '@/lib/rpg/sceneMode';
 import { sexStrip } from '@/lib/rpg/sexMode';
+import { setupDone } from '@/lib/setup';
 import type { SceneModeName, SteerChip } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
@@ -70,9 +71,9 @@ type StoryMessage = {
   role: 'user' | 'assistant';
   content: string;
   image: string | null;
-  /** The state tracker flagged this beat as worth painting. */
   elapsedSeconds?: number;
   sceneOptions?: string[];
+  heldBack?: 'refused' | 'faded';
 };
 
 const STEER_CHIPS: { value: SteerChip; label: string; intimateOnly: boolean }[] = [
@@ -284,8 +285,17 @@ export default function StoryScreen() {
     updateSettings,
     setSceneMode,
     changeSave,
+    loading,
   } = useGame();
   const { showToast } = useToast();
+
+  // First launch: no OpenRouter key and the setup never finished.
+  useEffect(() => {
+    if (loading || apiKey) return;
+    void setupDone().then((done) => {
+      if (!done) router.push('/setup');
+    });
+  }, [apiKey, loading, router]);
 
   const [input, setInput] = useState('');
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
@@ -338,6 +348,7 @@ export default function StoryScreen() {
         image: message.image ?? null,
         elapsedSeconds: message.role === 'assistant' ? message.elapsedSeconds : undefined,
         sceneOptions: message.role === 'assistant' ? message.sceneOptions : undefined,
+        heldBack: message.role === 'assistant' ? message.heldBack : undefined,
       };
     });
   }, [db]);
@@ -731,6 +742,19 @@ export default function StoryScreen() {
                     onOpen={(uri) => openImage(uri, message.id)}
                     value={message.image}
                   />
+                ) : null}
+                {message.id === lastAssistantId && !isNarrating && message.heldBack ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.navigate('/(tabs)/settings')}
+                    style={({ pressed }) => [styles.heldBack, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.heldBackText}>
+                      {message.heldBack === 'refused'
+                        ? 'The narrator model refused this scene. Some models won’t write sex scenes: try Retry, or switch the Story model to a recommended one in Settings → Models.'
+                        : 'The narrator faded out on its own. If you wanted the scene, try Retry, or switch the Story model to a recommended one in Settings → Models.'}
+                    </Text>
+                  </Pressable>
                 ) : null}
                 {message.id === lastAssistantId && !isNarrating ? (
                   <View style={styles.inlineActions}>
@@ -1609,6 +1633,16 @@ const styles = StyleSheet.create({
   modeHint: {
     ...type.rowMeta,
     flexShrink: 1,
+  },
+  heldBack: {
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  heldBackText: {
+    ...type.rowMeta,
+    color: colors.warning,
   },
   sexStrip: {
     gap: 2,

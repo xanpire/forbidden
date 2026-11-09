@@ -11,6 +11,7 @@ import { useSyncExternalStore } from 'react';
 import { IDB_NAMES } from '../brand';
 import { fetchGenerationCost, type CallUsage } from '../openrouter';
 import { formatDate } from './calendar';
+import { providerOf, recordCost, settleCost } from '../costs';
 import type { AppDatabase, OpenRouterMessage, TurnDiff } from './types';
 
 export type DebugCallKind =
@@ -280,8 +281,22 @@ export function recordDebugCall(
     finishReason?: string;
     error?: string;
     apiKey?: string;
+    /** Rough dollars for a picture, when the provider returns no price. */
+    estimate?: number;
   }
 ) {
+  // What it cost, for Settings → Costs, whether or not the debug log keeps this turn.
+  const provider = providerOf(call.model);
+  const priceLater = typeof call.usage?.cost !== 'number' && Boolean(call.usage?.generationId && call.apiKey);
+  if (!call.error) {
+    recordCost({
+      provider,
+      image: call.kind === 'image' || call.kind === 'portrait',
+      cost: typeof call.usage?.cost === 'number' ? call.usage.cost : null,
+      ...(typeof call.estimate === 'number' ? { estimate: call.estimate } : {}),
+    });
+  }
+
   if (!turnId || !log.turns.some((turn) => turn.id === turnId)) {
     return;
   }
@@ -305,6 +320,7 @@ export function recordDebugCall(
   if (canLookUp) {
     void fetchGenerationCost(call.apiKey as string, call.usage?.generationId as string).then(
       (cost) => {
+        if (priceLater && typeof cost === 'number') settleCost(provider, cost);
         const owner = log.turns.find((turn) => turn.calls.some((c) => c.id === id));
 
         if (!owner) {
@@ -334,18 +350,16 @@ export function recordDebugImage(
   kind: 'image' | 'portrait',
   model: string,
   cost: number | null,
-  durationMs: number
+  durationMs: number,
+  estimate?: number
 ) {
   const target =
     (turnLogId && log.turns.find((turn) => turn.id === turnLogId)) || log.turns[0] || null;
 
-  if (!target) {
-    return;
-  }
-
-  recordDebugCall(target.id, {
+  recordDebugCall(target?.id ?? null, {
     kind,
     model,
+    ...(typeof estimate === 'number' ? { estimate } : {}),
     usage: {
       promptTokens: 0,
       completionTokens: 0,

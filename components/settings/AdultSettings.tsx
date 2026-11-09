@@ -9,7 +9,7 @@ import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { completeChat } from '@/lib/openrouter';
 import { usePrivacy, validPin, withPin } from '@/lib/privacy';
 import type { Settings } from '@/lib/rpg/types';
-import { loadProviderKey, saveProviderKey } from '@/lib/explicitProviders';
+import { loadProviderKey, saveProviderKey, testProviderKey } from '@/lib/explicitProviders';
 import { DEFAULT_EXPLICIT_MODELS, EXPLICIT_PROVIDERS, type ExplicitProviderId } from '@/lib/rpg/explicitImages';
 
 /** The story calls read the story, so each needs a model whose terms allow adult content. */
@@ -164,17 +164,7 @@ export function ExplicitSettings({
   settings: Settings;
   updateSettings: (patch: Partial<Settings>) => Promise<void>;
 }) {
-  const { showToast } = useToast();
-  const provider = settings.explicitProvider ?? 'runware';
-  const [keys, setKeys] = useState<Record<ExplicitProviderId, string>>({ runware: '', wiro: '' });
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    void Promise.all([loadProviderKey('runware'), loadProviderKey('wiro')]).then(([runware, wiro]) => {
-      setKeys({ runware, wiro });
-      setLoaded(true);
-    });
-  }, []);
+  const provider = settings.explicitProvider ?? 'wiro';
 
   return (
     <View style={styles.block}>
@@ -200,38 +190,97 @@ export function ExplicitSettings({
       </View>
       <Text style={type.rowMeta}>{EXPLICIT_PROVIDERS.find((item) => item.id === provider)?.note}</Text>
       {EXPLICIT_PROVIDERS.map((item) => (
-        <View key={item.id} style={styles.providerBlock}>
-          <Text style={styles.label}>{item.label} model</Text>
-          <TextInput
-            accessibilityLabel={`${item.label} model`}
-            autoCapitalize="none"
-            onChangeText={(value) => void updateSettings(item.id === 'runware' ? { runwareModel: value } : { wiroModel: value })}
-            placeholder={DEFAULT_EXPLICIT_MODELS[item.id]}
-            placeholderTextColor={colors.textDim}
-            style={styles.input}
-            value={(item.id === 'runware' ? settings.runwareModel : settings.wiroModel) ?? ''}
-          />
-          <Text style={styles.label}>{item.label} API key</Text>
-          <View style={styles.pinRow}>
-            <TextInput
-              accessibilityLabel={`${item.label} API key`}
-              autoCapitalize="none"
-              editable={loaded}
-              onChangeText={(value) => setKeys((current) => ({ ...current, [item.id]: value }))}
-              placeholder="Stays on this device"
-              placeholderTextColor={colors.textDim}
-              secureTextEntry
-              style={styles.input}
-              value={keys[item.id]}
-            />
-            <AppButton
-              compact
-              label="Save"
-              onPress={() => void saveProviderKey(item.id, keys[item.id]).then(() => showToast(`${item.label} key saved.`, 'success'))}
-            />
-          </View>
-        </View>
+        <ProviderKeyBlock
+          key={item.id}
+          model={(item.id === 'runware' ? settings.runwareModel : settings.wiroModel) ?? ''}
+          onModel={(value) => void updateSettings(item.id === 'runware' ? { runwareModel: value } : { wiroModel: value })}
+          provider={item.id}
+        />
       ))}
+    </View>
+  );
+}
+
+function openLink(url: string) {
+  void import('expo-web-browser').then((module) => module.openBrowserAsync(url));
+}
+
+/** One explicit provider: where to get a key and models, the model, the key, and a free key test. */
+export function ProviderKeyBlock({
+  provider,
+  model,
+  onModel,
+  onSaved,
+}: {
+  provider: ExplicitProviderId;
+  /** Omit to hide the model field (first-launch setup). */
+  model?: string;
+  onModel?: (value: string) => void;
+  onSaved?: () => void;
+}) {
+  const { showToast } = useToast();
+  const info = EXPLICIT_PROVIDERS.find((item) => item.id === provider)!;
+  const [key, setKey] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    void loadProviderKey(provider).then((stored) => {
+      setKey(stored);
+      setLoaded(true);
+    });
+  }, [provider]);
+
+  const test = async () => {
+    setTesting(true);
+    const outcome = await testProviderKey(provider, key);
+    setResult(outcome);
+    setTesting(false);
+    if (outcome.ok) {
+      await saveProviderKey(provider, key);
+      onSaved?.();
+    }
+  };
+
+  return (
+    <View style={styles.providerBlock}>
+      <Text style={styles.label}>{info.label}</Text>
+      <View style={styles.pinRow}>
+        <AppButton compact label="Get a key" onPress={() => openLink(info.keyUrl)} style={styles.flex} variant="secondary" />
+        <AppButton compact label="Browse models" onPress={() => openLink(info.modelsUrl)} style={styles.flex} variant="secondary" />
+      </View>
+      {onModel ? (
+        <TextInput
+          accessibilityLabel={`${info.label} model`}
+          autoCapitalize="none"
+          onChangeText={onModel}
+          placeholder={DEFAULT_EXPLICIT_MODELS[provider]}
+          placeholderTextColor={colors.textDim}
+          style={styles.input}
+          value={model ?? ''}
+        />
+      ) : null}
+      <Text style={type.rowMeta}>{info.modelNote}</Text>
+      <View style={styles.pinRow}>
+        <TextInput
+          accessibilityLabel={`${info.label} API key`}
+          autoCapitalize="none"
+          editable={loaded}
+          onChangeText={(value) => {
+            setKey(value);
+            setResult(null);
+          }}
+          placeholder="API key · stays on this device"
+          placeholderTextColor={colors.textDim}
+          secureTextEntry
+          style={styles.input}
+          value={key}
+        />
+        <AppButton compact label="Save" onPress={() => void saveProviderKey(provider, key).then(() => { showToast(`${info.label} key saved.`, 'success'); onSaved?.(); })} />
+      </View>
+      <AppButton compact label="Test key" loading={testing} onPress={() => void test()} variant="secondary" />
+      {result ? <Text style={[styles.result, !result.ok && styles.failed]}>{result.ok ? '✓' : '✕'} {result.message}</Text> : null}
     </View>
   );
 }

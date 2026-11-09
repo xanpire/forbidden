@@ -27,14 +27,44 @@ import type { AppDatabase, EntityRecord } from './types';
 
 export type ExplicitProviderId = 'runware' | 'wiro';
 
-export const EXPLICIT_PROVIDERS: { id: ExplicitProviderId; label: string; filtered: boolean; note: string }[] = [
-  { id: 'runware', label: 'Runware', filtered: true, note: 'Content check off; the provider still blocks illegal content.' },
-  { id: 'wiro', label: 'Wiro', filtered: false, note: 'Uncensored Seedream: no provider filter, so the app is the only safeguard.' },
+/** The explicit providers, with where to get a key and browse models (checked November 2026). */
+export const EXPLICIT_PROVIDERS: {
+  id: ExplicitProviderId;
+  label: string;
+  filtered: boolean;
+  note: string;
+  keyUrl: string;
+  modelsUrl: string;
+  /** The prefilled model and what one picture roughly costs on it. */
+  modelNote: string;
+  /** Rough dollars per picture on the prefilled model, for estimates when the provider doesn't say. */
+  estimate: number;
+}[] = [
+  {
+    id: 'wiro',
+    label: 'Wiro',
+    filtered: false,
+    note: 'Uncensored Seedream: no provider filter, so the app is the only safeguard.',
+    keyUrl: 'https://wiro.ai/panel/project/new',
+    modelsUrl: 'https://wiro.ai/models',
+    modelNote: 'Seedream 4.5 Uncensored: about $0.04 a picture. Seedream 5.0 Lite Uncensored (bytedance/seedream-v5-lite-uncensored) is a newer option.',
+    estimate: 0.04,
+  },
+  {
+    id: 'runware',
+    label: 'Runware',
+    filtered: true,
+    note: 'Content check off; the provider still blocks illegal content.',
+    keyUrl: 'https://runware.ai/signup',
+    modelsUrl: 'https://runware.ai/models',
+    modelNote: 'FLUX.1 Dev: about $0.004 a picture. FLUX tends to hold back on nudity; for fully explicit pictures pick an NSFW-capable model from Browse models.',
+    estimate: 0.004,
+  },
 ];
 
 export const DEFAULT_EXPLICIT_MODELS: Record<ExplicitProviderId, string> = {
   runware: 'runware:101@1',
-  wiro: 'ByteDance/seedream-v4-5-uncensored',
+  wiro: 'bytedance/seedream-v4-5-uncensored',
 };
 
 export const ADULT_NEGATIVE =

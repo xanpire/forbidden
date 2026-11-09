@@ -183,6 +183,37 @@ export function explicitModel(provider: ExplicitProviderId, settings: { runwareM
   return (provider === 'runware' ? settings.runwareModel : settings.wiroModel)?.trim() || DEFAULT_EXPLICIT_MODELS[provider];
 }
 
+/**
+ * Checks a key without making (or paying for) a picture: Runware's
+ * authentication task, and a task lookup on Wiro (a bad key is refused with
+ * 401 or 403; a good one only finds no such task).
+ */
+export async function testProviderKey(provider: ExplicitProviderId, key: string): Promise<{ ok: boolean; message: string }> {
+  const apiKey = key.trim();
+  if (!apiKey) return { ok: false, message: 'Paste a key first.' };
+  try {
+    if (provider === 'runware') {
+      const response = await providerFetch('runware', 'https://api.runware.ai/v1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{ taskType: 'authentication', apiKey }]),
+      });
+      const json = (await response.json().catch(() => null)) as { errors?: { message?: string }[] } | null;
+      if (!response.ok || json?.errors?.length) return { ok: false, message: json?.errors?.[0]?.message ?? `Runware said no (HTTP ${response.status}).` };
+      return { ok: true, message: 'Runware key works.' };
+    }
+    const response = await providerFetch('wiro', 'https://api.wiro.ai/v1/Task/Detail', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskid: '0' }),
+    });
+    if (response.status === 401 || response.status === 403) return { ok: false, message: 'Wiro refused this key. Check it, and that the project uses "API Key Only".' };
+    return { ok: true, message: 'Wiro key works.' };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Could not reach the provider.' };
+  }
+}
+
 const KEY_NAMES: Record<ExplicitProviderId, string> = { runware: STORAGE_KEYS.runwareKey, wiro: STORAGE_KEYS.wiroKey };
 
 /** Provider keys stay on this device, outside the save. */

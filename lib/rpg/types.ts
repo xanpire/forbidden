@@ -281,6 +281,8 @@ export type RawLogEntry = {
   sceneMode?: SceneModeName;
   /** Moves offered under the reply (sex mode: four, written by the state tracker). */
   sceneOptions?: string[];
+  /** The narrator refused, or faded out of a sex scene unasked (refusal.ts). */
+  heldBack?: 'refused' | 'faded';
   /** Part of an intimate scene (its memory is summarised, never kept verbatim). */
   intimate?: boolean;
 };

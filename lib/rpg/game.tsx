@@ -51,6 +51,7 @@ import { mergeEntityPair } from './entities';
 import { addCharacterPortraitToDb, setCharacterFaceInDb } from './characterPortrait';
 import { trimToSentence } from './util';
 import { setSceneModeOverride } from './sceneMode';
+import { narratorHeldBack } from './refusal';
 import {
   applyStateStep,
   applySummaryJob,
@@ -750,9 +751,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
           turnLogId = withReply.rawLog[withReply.rawLog.length - 1].id;
           // Which mode the reply was written in: the state step reads it for
           // the clock and the conversation streak.
+          // A refusal, or a fade to black nobody asked for, is flagged so the
+          // Story screen can suggest a model that writes these scenes.
+          const heldBack = narratorHeldBack(narration, {
+            inSexScene: prompt.sceneMode.mode === 'intimate',
+            playerAskedToFade: turnOptions.steer === 'fade-to-black' || prompt.sceneMode.fade === true,
+          });
           withReply.rawLog[withReply.rawLog.length - 1] = {
             ...withReply.rawLog[withReply.rawLog.length - 1],
             sceneMode: prompt.sceneMode.mode,
+            ...(heldBack ? { heldBack } : {}),
           };
           // Clear the live text in the same tick the saved reply appears, so
           // the turn never shows twice.

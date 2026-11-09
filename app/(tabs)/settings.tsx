@@ -29,6 +29,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ListCard, ListRow, SectionLabel } from '@/components/List';
 import { ModelSelect } from '@/components/ModelSelect';
 import { ExplicitSettings, ModelTest, PrivacySettings } from '@/components/settings/AdultSettings';
+import { CostSettings } from '@/components/settings/CostSettings';
 import { SegmentedControl } from '@/components/SegmentedControl';
 import { Slider } from '@/components/Slider';
 import { DebugPanel } from '@/components/settings/DebugPanel';
@@ -397,6 +398,7 @@ export default function SettingsScreen() {
               hint="Writes the story."
               label="Story"
               onChange={(value) => void updateSettings({ narrationModel: value })}
+              roleplay
               value={db.settings.narrationModel}
             />
             <ModelSelect
@@ -504,6 +506,7 @@ export default function SettingsScreen() {
               </View>
             ) : null}
             <ModelTest apiKey={apiKey} settings={db.settings} />
+            <CostSettings />
           </ListCard>
 
           <SectionLabel>Privacy</SectionLabel>

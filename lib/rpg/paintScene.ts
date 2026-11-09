@@ -10,7 +10,7 @@
 import { generateImage, type ImageModelCaps } from '../openrouter';
 import { PROVIDERS, explicitModel, loadProviderKey } from '../explicitProviders';
 import { resolveEntity } from './entities';
-import { checkPictureCast, explicitScenePrompt, missingReferences, type ExplicitProviderId } from './explicitImages';
+import { EXPLICIT_PROVIDERS, checkPictureCast, explicitScenePrompt, missingReferences, type ExplicitProviderId } from './explicitImages';
 import { mentionsEntity } from './characterRefs';
 import { loadImages } from './imageStore';
 import { paintReferenceSheet } from './paintExplicit';
@@ -53,7 +53,7 @@ export function sexualMoment(db: AppDatabase): boolean {
  * provider for all pictures.
  */
 export function pictureRoute(db: AppDatabase): PictureRoute {
-  const provider = db.settings.explicitProvider ?? 'runware';
+  const provider = db.settings.explicitProvider ?? 'wiro';
   if (sexualMoment(db)) return { kind: 'explicit', provider, sexual: true };
   if (db.settings.picturesOn === 'explicit') return { kind: 'explicit', provider, sexual: false };
   return { kind: 'standard' };
@@ -332,7 +332,7 @@ async function paintExplicitScene({
       cost += result.cost;
       priced = true;
     }
-    recordDebugImage(turnId, 'image', `${route.provider}:${model}`, result.cost ?? null, Date.now() - startedAt);
+    recordDebugImage(turnId, 'image', `${route.provider}:${model}`, result.cost ?? null, Date.now() - startedAt, EXPLICIT_PROVIDERS.find((item) => item.id === route.provider)?.estimate);
     return result.dataUri;
   };
 

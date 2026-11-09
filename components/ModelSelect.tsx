@@ -14,6 +14,7 @@ import { ChevronRight, RefreshCw, Search, X } from 'lucide-react-native';
 
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import {
+  ROLEPLAY_MODELS,
   fetchOpenRouterImageModels,
   fetchOpenRouterModels,
   type OpenRouterModelSummary,
@@ -25,9 +26,11 @@ type ModelSelectProps = {
   onChange: (value: string) => void;
   hint?: string;
   kind?: 'text' | 'image';
+  /** Show the models recommended for explicit roleplay first, with a note on each. */
+  roleplay?: boolean;
 };
 
-export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: ModelSelectProps) {
+export function ModelSelect({ label, value, onChange, hint, kind = 'text', roleplay = false }: ModelSelectProps) {
   const insets = useSafeAreaInsets();
   const [pickerVisible, setPickerVisible] = useState(false);
   const [models, setModels] = useState<OpenRouterModelSummary[]>([]);
@@ -178,6 +181,31 @@ export function ModelSelect({ label, value, onChange, hint, kind = 'text' }: Mod
               <Text style={styles.error}>{error}</Text>
             ) : null}
 
+            {roleplay && !query.trim() ? (
+              <View style={styles.recommended}>
+                <Text style={styles.recommendedTitle}>Recommended for explicit roleplay</Text>
+                {ROLEPLAY_MODELS.filter((model) => models.length === 0 || models.some((item) => item.id === model.id)).map((model) => (
+                  <Pressable
+                    accessibilityLabel={`Select ${model.name}`}
+                    accessibilityRole="button"
+                    key={model.id}
+                    onPress={() => {
+                      onChange(model.id);
+                      setPickerVisible(false);
+                    }}
+                    style={({ pressed }) => [styles.modelRow, model.id === value && styles.modelRowSelected, pressed && styles.pressed]}
+                  >
+                    <View style={styles.modelCopy}>
+                      <Text numberOfLines={1} style={styles.modelName}>{model.name}</Text>
+                      <Text numberOfLines={1} style={styles.modelId}>{model.id}</Text>
+                      <Text style={styles.modelMeta}>{model.note}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+                <Text style={styles.modelMeta}>Claude and some other models refuse or tone down sex scenes. If the story fades to black on its own, switch to one of these.</Text>
+              </View>
+            ) : null}
+
             <ScrollView
               contentContainerStyle={styles.list}
               keyboardShouldPersistTaps="handled"
@@ -242,6 +270,16 @@ function shortModelName(value: string) {
 }
 
 const styles = StyleSheet.create({
+  recommended: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  recommendedTitle: {
+    fontFamily: fonts.semibold,
+    fontSize: 13,
+    color: colors.textSoft,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

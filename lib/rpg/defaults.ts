@@ -1,8 +1,8 @@
 import type { MemoryIndex, Settings } from './types';
 
 export const DEFAULT_SETTINGS: Settings = {
-  narrationModel: 'google/gemini-3.8-flash',
-  summaryModel: 'google/gemini-3.8-flash',
+  narrationModel: 'deepseek/deepseek-v4.1-flash-1017',
+  summaryModel: 'deepseek/deepseek-v4.1-flash-1017',
   extractionModel: 'deepseek/deepseek-v4.1-flash-1017',
   imageModel: 'google/gemini-nano-banana-2.1',
   contextMessages: 16,

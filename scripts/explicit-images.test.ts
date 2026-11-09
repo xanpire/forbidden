@@ -112,7 +112,8 @@ function story(): AppDatabase {
   );
   input.opening = { ...input.opening, location: 'Your flat on Kell Street', castNames: ['Mara Vance'] };
   input.world = { ...input.world, artStyle: 'cinematic photo, 35mm film' };
-  return normalizeDatabase(seedDatabase('slot_explicit', 'Explicit', input));
+  const db = normalizeDatabase(seedDatabase('slot_explicit', 'Explicit', input));
+  return { ...db, settings: { ...db.settings, explicitProvider: 'runware' } };
 }
 
 /** A turn the way game.tsx plays it: the mode first, saved on the reply, then the tracker. */

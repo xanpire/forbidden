@@ -162,13 +162,18 @@ export async function fetchGenerationCost(
   return null;
 }
 
-const RECOMMENDED_MODELS = new Set([
-  'deepseek/deepseek-v4.1-flash-1017',
-  'google/gemini-3.8-flash',
-  'anthropic/claude-sonnet-5.5',
-  'google/gemini-4-argon',
-  'openai/gpt-6.1-sol',
-]);
+/**
+ * Narrator models that write fully explicit roleplay well, checked against
+ * OpenRouter's catalog in November 2026 (prices per million tokens, in/out).
+ * The picker only shows the ones the live catalog still has.
+ */
+export const ROLEPLAY_MODELS: { id: string; name: string; note: string }[] = [
+  { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash', note: 'The everyday pick: cheap and fast, keeps characters steady over long chats. About $0.05 / $0.40.' },
+  { id: 'z-ai/glm-5.2', name: 'GLM 5.2', note: 'Rich prose and strong character voices; widely used on roleplay apps. About $0.50 / $3.' },
+  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', note: 'A distinct voice, good with long scenes. About $0.65 / $3.40.' },
+];
+
+const RECOMMENDED_MODELS = new Set(ROLEPLAY_MODELS.map((model) => model.id));
 
 export async function fetchOpenRouterModels(): Promise<OpenRouterModelSummary[]> {
   const response = await fetch(MODELS_URL, {
