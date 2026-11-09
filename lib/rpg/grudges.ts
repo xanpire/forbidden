@@ -1,14 +1,14 @@
 // Grudges: the dark mirror of romance.
 //
-// Love in Kan is slow and earned; so is hatred. When a bond sours far enough
-// (affinity at GRUDGE_AFFINITY or below), or the story shows Kan truly wrong
+// Love in the player is slow and earned; so is hatred. When a bond sours far enough
+// (affinity at GRUDGE_AFFINITY or below), or the story shows the player truly wrong
 // someone (the state tracker's grudges: wronged), that person starts holding
 // a grudge. It lives on their bond:
 //
-// - heat (0-100) grows while it is left alone (stewing), grows when Kan hurts
+// - heat (0-100) grows while it is left alone (stewing), grows when the player hurts
 //   them again, and cools only when the bond really improves.
 // - The stage follows the heat: resentful → vengeful → hunting. Original
-//   characters can reach hunting and come after Kan wherever he is. Canon
+//   characters can reach hunting and come after the player wherever he is. Canon
 //   characters stop at vengeful, the way lore-locked hearts never turn: they
 //   stay on their canon path and act when paths cross or through others.
 // - Now and then a vengeful or hunting grudge is offered to the narrator
@@ -34,7 +34,7 @@ import { applyFactDiff, applyThreadDiff } from './facts';
 import { isOriginalCharacter } from './returning';
 import { clamp, hashText, playerTurnCount } from './util';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord, Grudge, TurnDiff } from './types';
-import { isPlayerEntity } from './player';
+import { isPlayerEntity, playerName } from './player';
 
 /** A bond this cold turns into a grudge. */
 export const GRUDGE_AFFINITY = -6;
@@ -63,9 +63,9 @@ export const GRUDGE_EVENTS = ['wronged', 'struck', 'settled', 'forgiven'] as con
 export type GrudgeEvent = (typeof GRUDGE_EVENTS)[number];
 
 export const GRUDGE_RULES = `ENEMIES
-- Hatred is the dark mirror of love: slow, earned, and lasting. Someone Kan truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, their revenge, or death.
-- People with a grudge act in character and within their canon power. Original characters can hunt Kan down; canon characters stay on their canon path and act when paths cross, or through others (a message, a price, hired blades). They plan, wait, and pick their ground; they are rarely stupid.
-- Strangers react to Kan through YOUR NAME OUT THERE: a bounty makes hunters bold and a cloak makes people afraid, but most people never look twice.`;
+- Hatred is the dark mirror of love: slow, earned, and lasting. Someone the player truly wronged remembers it. A grudge grows while it is left alone, never fades just because time passed, and ends only when the story earns it: real amends, a reckoning they accept, their revenge, or death.
+- People with a grudge act in character and within their canon power. Original characters can hunt the player down; canon characters stay on their canon path and act when paths cross, or through others (a message, a price, hired blades). They plan, wait, and pick their ground; they are rarely stupid.
+- Strangers react to the player through YOUR NAME OUT THERE: a bounty makes hunters bold and a cloak makes people afraid, but most people never look twice.`;
 
 export function stageFor(heat: number, canCapHunt: boolean): GrudgeStage {
   if (heat >= HUNTING_HEAT && !canCapHunt) return 'hunting';
@@ -80,7 +80,7 @@ export function grudgeHeat(grudge: Grudge, now: CalendarDate): number {
   return clamp(grudge.heat + Math.min(STEW_CAP, Math.floor(quiet / STEW_DAYS)), 0, 100);
 }
 
-/** Canon characters never leave their path to hunt Kan. */
+/** Canon characters never leave their path to hunt the player. */
 function huntCapped(entity: EntityRecord | undefined) {
   return !entity || !isOriginalCharacter(entity);
 }
@@ -165,10 +165,10 @@ function startGrudge(db: AppDatabase, entity: EntityRecord, heat: number, reason
 function endGrudge(db: AppDatabase, entity: EntityRecord, how: 'let-go' | 'settled' | 'forgiven' | 'died', reason?: string) {
   let next = setGrudge(db, entity.id, undefined);
   const outcome: Record<typeof how, string> = {
-    'let-go': `${displayName(db, entity)} let go of their grudge against Kan.`,
-    settled: `${displayName(db, entity)}'s grudge against Kan was settled${reason ? `: ${reason}` : '.'}`,
-    forgiven: `${displayName(db, entity)} forgave Kan${reason ? `: ${reason}` : '.'}`,
-    died: `${displayName(db, entity)} died still holding a grudge against Kan.`,
+    'let-go': `${displayName(db, entity)} let go of their grudge against you.`,
+    settled: `${displayName(db, entity)}'s grudge against you was settled${reason ? `: ${reason}` : '.'}`,
+    forgiven: `${displayName(db, entity)} forgave you${reason ? `: ${reason}` : '.'}`,
+    died: `${displayName(db, entity)} died still holding a grudge against you.`,
   };
 
   next = applyThreadDiff(next, {
@@ -183,7 +183,7 @@ function endGrudge(db: AppDatabase, entity: EntityRecord, how: 'let-go' | 'settl
       type: 'other',
       text: outcome[how].slice(0, 200),
       subject: entity.name,
-      whoKnows: [entity.name, 'Kan'],
+      whoKnows: [entity.name, playerName(db)],
     });
   }
 
@@ -409,7 +409,7 @@ function isStrikeTurn(db: AppDatabase, turn: number) {
 function styleFor(db: AppDatabase, offer: Omit<GrudgeOffer, 'pressed' | 'style'>, turn: number): string {
   const kind = locationKindOf(db);
   const name = offer.entity.name;
-  // Someone Kan cares about, for a hunter who has struck before and failed.
+  // Someone the player cares about, for a hunter who has struck before and failed.
   const dear = db.bonds
     .filter((bond) => bond.affinity >= 5 && bond.entityId !== offer.entity.id && !bond.grudge)
     .map((bond) => db.entities.find((item) => item.id === bond.entityId))
@@ -493,7 +493,7 @@ export function formatGrudgeOffer(db: AppDatabase, offer: GrudgeOffer | null): s
 
 export function grudgeTrackingLines(offer: GrudgeOffer | null, idOf: (entity: EntityRecord) => string): string[] {
   return [
-    'grudges: { character_id, event, reason }. wronged: Kan truly wrongs someone this turn (kills or maims someone they love, betrays them, humiliates or ruins them); a cold word is a bond change, not this. struck: someone with a grudge, or people they sent, acts on it on the page this turn. settled: the grudge is truly resolved between them (a reckoning they accept, a debt paid). forgiven: they clearly forgive Kan. Otherwise [].',
+    'grudges: { character_id, event, reason }. wronged: the player truly wrongs someone this turn (kills or maims someone they love, betrays them, humiliates or ruins them); a cold word is a bond change, not this. struck: someone with a grudge, or people they sent, acts on it on the page this turn. settled: the grudge is truly resolved between them (a reckoning they accept, a debt paid). forgiven: they clearly forgive Kan. Otherwise [].',
     offer ? `This turn's offered grudge is ${idOf(offer.entity)}: struck only if the prose shows their move.` : '',
   ].filter(Boolean);
 }

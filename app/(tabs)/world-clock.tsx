@@ -208,7 +208,7 @@ export default function WorldClockScreen() {
                   ]
                     .filter(Boolean)
                     .join(' · ')}
-                  title={letter.direction === 'from-kan' ? `Your letter to ${displayNameOf(db, letter.entityId, letter.name)}` : `${displayNameOf(db, letter.entityId, letter.name)}'s reply to you`}
+                  title={letter.direction === 'from-player' ? `Your letter to ${displayNameOf(db, letter.entityId, letter.name)}` : `${displayNameOf(db, letter.entityId, letter.name)}'s reply to you`}
                 />
               ))}
             </ListCard>

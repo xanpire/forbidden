@@ -268,13 +268,13 @@ const ART_DIRECTION_WINDOW_SECONDS = 2 * 24 * 3600;
 
 /**
  * A fixed visual hint when the story is at, or just past, a big canon
- * moment Kan is part of or near: the beat he took on, or a milestone that
+ * moment the player is part of or near: the beat he took on, or a milestone that
  * happened in the last two days where he is.
  */
 export function canonArtDirection(db: AppDatabase): string | null {
   const date = db.state.inStoryDate;
 
-  // The massacre night, if Kan is where it happened.
+  // The massacre night, if the player is where it happened.
   if (date.year === 13 && date.month === 10 && date.day <= 1 && /\buchiha\b|\bdistrict\b|\bcompound\b/i.test(db.state.location ?? '')) {
     return 'the night of the Uchiha massacre: a huge blood-red full moon low in the sky, silhouettes on rooftops, deep red and black';
   }

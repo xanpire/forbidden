@@ -1,12 +1,12 @@
 // Canon engine: schedules the milestones in canonData.ts against the in-story
-// clock, applies the state tracker's marks, and routes news to Kan.
+// clock, applies the state tracker's marks, and routes news to the player.
 //
 // Rules:
 // - World milestones fire on the in-story date (+ every earlier world milestone),
 //   never on turn counts. Each is stamped with the day it happened.
 // - Personal beats (playerDriven) are offers; only the state tracker's marks fire them.
-// - Nothing fires or expires while Kan is mid-fight.
-// - Every fired world event is unheard until someone who could know tells Kan,
+// - Nothing fires or expires while the player is mid-fight.
+// - Every fired world event is unheard until someone who could know tells the player,
 //   one piece of news per turn.
 
 import { daysBetween, daysFromCivil, dateSortValue, shiftDate } from './calendar';
@@ -31,15 +31,15 @@ import { makeId } from './id';
 import { secondPerson } from './util';
 import { conditionHolds } from './lore';
 import { applyAbilityChanges } from './abilities';
-import { isPlayerName, playerDisplayNames, playerEntity } from './player';
+import { isPlayerName, playerDisplayNames, playerEntity, playerName } from './player';
 import type { AppDatabase, CalendarDate, FactRecord } from './types';
 
 export type { CanonKnowledge, CanonMilestone, CanonProgress } from './canonData';
 
-/** At most one piece of world news reaches Kan per turn. */
+/** At most one piece of world news reaches the player per turn. */
 export const NEWS_PER_TURN = 1;
 
-/** Kan is mid-fight (or mid-chase): the world holds its breath. */
+/** The player is mid-fight (or mid-chase): the world holds its breath. */
 export function isCombatPace(pace: string | undefined): boolean {
   return pace === 'combat' || pace === 'chase';
 }
@@ -155,7 +155,7 @@ function addMissedFact(db: AppDatabase, milestone: CanonMilestone): AppDatabase 
     db,
     `fact_missed_${milestone.id}`,
     `You never crossed paths with ${who} before this window closed.`,
-    ['Kan']
+    [playerName(db)]
   );
 }
 
@@ -216,7 +216,7 @@ function fireMilestone(
   db: AppDatabase,
   milestone: CanonMilestone,
   happenedAt: CalendarDate = db.state.inStoryDate,
-  /** Who saw it happen (Kan and the scene cast); world events go by how word travels instead. */
+  /** Who saw it happen (the player and the scene cast); world events go by how word travels instead. */
   witnesses?: string[]
 ): AppDatabase {
   if (hasFired(db, milestone.id)) {
@@ -332,7 +332,7 @@ function fireMilestone(
   return next;
 }
 
-/** Records a jutsu Kan gained from a story beat, once. */
+/** Records a jutsu the player gained from a story beat, once. */
 function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate): AppDatabase {
   const lower = grant.name.toLowerCase();
   const hasRecord = db.jutsuRecords.some(
@@ -345,7 +345,7 @@ function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate)
         {
           id: makeId('jutsu'),
           name: grant.name,
-          user: 'Kan',
+          user: playerName(db),
           chakraNature: grant.chakraNature,
           effect: grant.effect,
           visual: grant.visual,
@@ -353,7 +353,7 @@ function grantJutsu(db: AppDatabase, grant: CanonJutsuGrant, when: CalendarDate)
           lastSeen: when,
           timesUsed: 0,
           description: grant.description,
-          tags: [...new Set(['signature', 'kan', ...(grant.tags ?? [])])],
+          tags: [...new Set(['signature', ...(grant.tags ?? [])])],
         },
       ];
   const known = db.state.jutsu.some((name) => name.toLowerCase() === lower);
@@ -372,7 +372,7 @@ function gateOpen(db: AppDatabase, milestone: CanonMilestone): boolean {
 
 /** You and whoever is in the scene. */
 function sceneWitnesses(db: AppDatabase): string[] {
-  return ['Kan', ...(db.state.sceneCast ?? [])];
+  return [playerName(db), ...(db.state.sceneCast ?? [])];
 }
 
 // ---------------------------------------------------------------------------
@@ -380,9 +380,9 @@ function sceneWitnesses(db: AppDatabase): string[] {
 // ---------------------------------------------------------------------------
 
 /**
- * completed → happened with Kan there (attendance fact, heard as "witnessed").
+ * completed → happened with the player there (attendance fact, heard as "witnessed").
  * engaged   → a personal beat has started but not finished.
- * passed    → the window closed without Kan; logs a "never crossed paths" fact.
+ * passed    → the window closed without the player; logs a "never crossed paths" fact.
  */
 export function applyCanonMarks(
   db: AppDatabase,
@@ -418,7 +418,7 @@ export function applyCanonMarks(
     };
 
     if (milestone.attendanceFact) {
-      next = addFactOnce(next, `fact_attended_${id}`, milestone.attendanceFact, ['Kan']);
+      next = addFactOnce(next, `fact_attended_${id}`, milestone.attendanceFact, [playerName(next)]);
     }
   }
 
@@ -467,7 +467,7 @@ export function applyCanonMarks(
 
 /**
  * Moves the world forward to the current in-story date. Only the date decides
- * what fires — never how many turns have been played. While Kan is in a fight
+ * what fires — never how many turns have been played. While the player is in a fight
  * nothing fires or expires; everything due waits until the fight is over.
  */
 export function advanceCanon(db: AppDatabase, options: { inCombat?: boolean } = {}): AppDatabase {
@@ -497,7 +497,7 @@ export function advanceCanon(db: AppDatabase, options: { inCombat?: boolean } = 
     progress = { ...progress, completed: addId(progress.completed, id) };
   };
 
-  // A world event is stamped with the day it happened, not the day Kan's
+  // A world event is stamped with the day it happened, not the day the player's
   // clock caught up with it (clamped to the start of this save).
   const happenedAt = (milestone: CanonMilestone): CalendarDate => {
     const opens = milestoneOpensAt(milestone);
@@ -754,7 +754,7 @@ function newsPriority(item: Pick<UnheardNews, 'major' | 'daysOld'>) {
   return (item.daysOld + 1) * (item.major ? MAJOR_NEWS_WEIGHT : 1);
 }
 
-/** The last time any news reached Kan (not counting beats he witnessed), or the story's start. */
+/** The last time any news reached the player (not counting beats he witnessed), or the story's start. */
 export function lastNewsHeardDate(db: AppDatabase): CalendarDate {
   const progress = normalizeProgress(db);
   let latest: CalendarDate | null = null;
@@ -773,7 +773,7 @@ export function lastNewsHeardDate(db: AppDatabase): CalendarDate {
 }
 
 /**
- * Fired events Kan has not heard about, most pressing first: by weighted
+ * Fired events the player has not heard about, most pressing first: by weighted
  * waiting time, then major first, then oldest first.
  */
 export function unheardCanonNews(db: AppDatabase, limit = 3): UnheardNews[] {
@@ -818,7 +818,7 @@ export function unheardCanonNews(db: AppDatabase, limit = 3): UnheardNews[] {
 }
 
 /**
- * Records who told Kan. Accepts at most `limit` relays per call: one piece
+ * Records who told the player. Accepts at most `limit` relays per call: one piece
  * of news per turn, or the size of a catch-up report (see newsDelivery.ts).
  */
 export function markNewsHeard(

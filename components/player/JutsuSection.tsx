@@ -9,6 +9,7 @@ import { formatDayMonth } from '@/lib/rpg/calendar';
 import { useGame } from '@/lib/rpg/game';
 import { groupJutsuByNature, jutsuKey } from '@/lib/rpg/jutsu';
 import type { JutsuRecord } from '@/lib/rpg/types';
+import { isPlayerName, playerName } from '@/lib/rpg/player';
 
 export function JutsuSection() {
   const { db, renameJutsu, deleteJutsu } = useGame();
@@ -59,7 +60,7 @@ export function JutsuSection() {
     ) ?? null;
 
   const groups = useMemo(
-    () => (db ? groupJutsuByNature(db.jutsuRecords) : []),
+    () => (db ? groupJutsuByNature(db.jutsuRecords, playerName(db)) : []),
     [db],
   );
 
@@ -125,7 +126,7 @@ export function JutsuSection() {
             {group.jutsu.map((record) => {
               const open = openId === record.id;
               const meta =
-                record.user === 'Kan'
+                isPlayerName(db, record.user)
                   ? `Used ${record.timesUsed}×`
                   : `${record.user} · used ${record.timesUsed}×`;
 
@@ -224,7 +225,7 @@ export function JutsuSection() {
       ))}
       <ConfirmDialog
         body={
-          deleting?.user === 'Kan'
+          deleting && isPlayerName(db, deleting.user)
             ? 'It comes off your jutsu list. If you use it again in the story, it is recorded fresh.'
             : 'It comes off the list. If it shows up again in the story, it is recorded fresh.'
         }

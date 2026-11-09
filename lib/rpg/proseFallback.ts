@@ -1,20 +1,20 @@
 // What a turn can still record when the state model's reply was unreadable.
 // The clock and pace are read from the prose elsewhere (timeparse, pacing);
-// this adds which jutsu Kan used, and suggests who the prose shows (never
+// this adds which jutsu the player used, and suggests who the prose shows (never
 // applied: only the state reply's characters_present can say who is there).
 
 import { mentionsEntity, mentionsName } from './characterRefs';
 import { isCompanion } from './companions';
 import { jutsuKey, jutsuNameVariants, NATURE_WORDS, normalizeJutsuNature } from './jutsu';
 import type { AppDatabase, TurnDiff } from './types';
-import { isPlayerName } from './player';
+import { isPlayer, isPlayerName, playerName } from './player';
 
-/** Sentences that describe someone else, or talk about a jutsu, not Kan using it. */
+/** Sentences that describe someone else, or talk about a jutsu, not the player using it. */
 const NOT_USING =
   /\b(watch|watches|watched|see|sees|saw|seen|ask|asks|asked|about|remember|remembers|recall|tell|tells|told|explain|explains|how|teach|teaches|taught|learn|learns|study|studies|think|thinks)\b/i;
 
 /** Lead words that are part of the sentence, not the jutsu's name. */
-const LEAD_WORDS = new Set(['i', 'the', 'my', 'a', 'an', 'then', 'and', 'with', 'kan', 'so', 'now']);
+const LEAD_WORDS = new Set(['i', 'the', 'my', 'a', 'an', 'then', 'and', 'with', 'so', 'now']);
 
 /** Small words allowed inside a name ("Dragon of the Flames", "Gōkakyū no Jutsu"). */
 const NAME_JOINERS = '(?:(?:of|no|the|and|to|de)\\s+){0,2}';
@@ -111,7 +111,7 @@ export function presentFromProse(db: AppDatabase, narration: string): string[] {
   for (const entity of db.entities) {
     if (
       entity.type !== 'character' ||
-      entity.name === 'Kan' ||
+      isPlayer(db, entity) ||
       entity.deceased ||
       entity.status === 'Deceased'
     ) {
@@ -125,7 +125,7 @@ export function presentFromProse(db: AppDatabase, narration: string): string[] {
     }
 
     // A single passing mention ("rumors of Orochimaru") isn't enough for
-    // someone new; it is for someone already here or travelling with Kan.
+    // someone new; it is for someone already here or travelling with the player.
     const alreadyHere =
       isCompanion(entity) ||
       cast.has(entity.name.toLowerCase()) ||
@@ -139,14 +139,14 @@ export function presentFromProse(db: AppDatabase, narration: string): string[] {
   return present.slice(0, 8);
 }
 
-/** Jutsu Kan uses in the player's own message: ones he already knows, and named techniques. */
+/** Jutsu the player uses in the player's own message: ones he already knows, and named techniques. */
 export function playerJutsuFromMessage(db: AppDatabase, userMessage: string): string[] {
   if (!userMessage.trim()) {
     return [];
   }
 
   const known = [
-    ...db.jutsuRecords.filter((record) => record.user === 'Kan').map((record) => record.name),
+    ...db.jutsuRecords.filter((record) => isPlayerName(db, record.user)).map((record) => record.name),
     ...(db.state.jutsu ?? []),
   ];
   const storedByKey = new Map(known.map((name) => [jutsuKey(name), name]));
@@ -171,7 +171,7 @@ export function playerJutsuFromMessage(db: AppDatabase, userMessage: string): st
     }
 
     for (const name of namedJutsuIn(part)) {
-      // Prefer the stored spelling when it's one Kan already has.
+      // Prefer the stored spelling when it's one the player already has.
       add(storedByKey.get(jutsuKey(name)) ?? name);
     }
   }
@@ -194,8 +194,8 @@ function isPlayerUser(db: AppDatabase, user: string | undefined) {
 }
 
 /**
- * Kan's jutsu keep the names the player wrote. When the state model reports
- * one of Kan's jutsu under another name (often the generic canon one, like
+ * The player's jutsu keep the names the player wrote. When the state model reports
+ * one of the player's jutsu under another name (often the generic canon one, like
  * "Fire Release" for "Fire Style: Hell"), the player's name replaces it; a
  * jutsu the player named that the model missed is added.
  */
@@ -215,7 +215,7 @@ export function preferPlayerJutsuNames(
   const reportedKeys = new Set(used.filter((item) => isPlayerUser(db, item.user)).map((item) => jutsuKey(item.name)));
   const missing = written.filter((name) => !reportedKeys.has(jutsuKey(name)));
 
-  // Kan's entries the player didn't name: candidates to carry the player's name.
+  // The player's entries the player didn't name: candidates to carry the player's name.
   const spare = used
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => isPlayerUser(db, item.user) && !writtenKeys.has(jutsuKey(item.name)));
@@ -237,9 +237,9 @@ export function preferPlayerJutsuNames(
 
     if (match) {
       taken.add(match.index);
-      used[match.index] = { ...match.item, name, user: 'Kan' };
+      used[match.index] = { ...match.item, name, user: playerName(db) };
     } else {
-      used.push({ name, user: 'Kan', ...(nature !== 'Unknown' ? { chakraNature: nature } : {}) });
+      used.push({ name, user: playerName(db), ...(nature !== 'Unknown' ? { chakraNature: nature } : {}) });
     }
   }
 
@@ -277,7 +277,7 @@ export function fallbackDiffFromProse(
   }
 
   if (jutsu.length > 0) {
-    diff.jutsuUsed = jutsu.map((name) => ({ name, user: 'Kan' }));
+    diff.jutsuUsed = jutsu.map((name) => ({ name, user: playerName(db) }));
   }
 
   return diff;

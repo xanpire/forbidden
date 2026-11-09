@@ -4,11 +4,11 @@
 //
 // Two ways someone dies during play:
 // - a canon milestone fires (canonData `deaths`), stamped with the milestone's
-//   event, so Kan only "knows" once that news reaches him or he was there;
-// - the state tracker reports `deaths` (someone dies on screen, or Kan sees
-//   the body or is told), which Kan knows at once.
+//   event, so the player only "knows" once that news reaches them or he was there;
+// - the state tracker reports `deaths` (someone dies on screen, or the player sees
+//   the body or is told), which the player knows at once.
 //
-// What Kan knows matters: the bonds screen never shows a death before the
+// What the player knows matters: the bonds screen never shows a death before the
 // story has told him, so it cannot spoil news that is still on its way.
 
 import { CANON_MILESTONES } from './canonData';
@@ -21,18 +21,18 @@ const REVIVED_TAG = 'revived';
 export type DeathMark = {
   date?: CalendarDate;
   cause?: string;
-  /** Kan saw it or was told. */
+  /** The player saw it or was told. */
   known?: boolean;
-  /** The canon event that killed them; Kan knows once this news is heard. */
+  /** The canon event that killed them; the player knows once this news is heard. */
   canonEventId?: string;
 };
 
-/** Dead, whether or not Kan knows it yet. */
+/** Dead, whether or not the player knows it yet. */
 export function isDeceased(entity: Pick<EntityRecord, 'deceased' | 'status'>): boolean {
   return Boolean(entity.deceased) || entity.status === 'Deceased';
 }
 
-/** Dead, and the story has let Kan know. */
+/** Dead, and the story has let the player know. */
 export function playerKnowsDeath(db: AppDatabase, entity: EntityRecord): boolean {
   if (!isDeceased(entity)) {
     return false;
@@ -118,7 +118,7 @@ export function markDeathsByName(db: AppDatabase, names: string[], mark: DeathMa
     const entity = next.entities.find(
       (item) =>
         item.type === 'character' &&
-        // Canon data, not story text: an identity Kan hasn't learned still
+        // Canon data, not story text: an identity the player hasn't learned still
         // finds its person ("Nagato" is Pain), without revealing it anywhere.
         identityNames(item).some((candidate) => candidate.trim().toLowerCase() === wanted)
     );
@@ -155,7 +155,7 @@ export function markAlive(db: AppDatabase, entityId: string): AppDatabase {
  * - canon milestones that already fired mark their dead (Jiraiya died in
  *   your save before deaths were recorded, so he is marked now);
  * - people who started out "Deceased" get a death record. If a milestone
- *   names them (Izumi and her funeral) Kan knows once that news is heard;
+ *   names them (Izumi and her funeral) the player knows once that news is heard;
  *   otherwise he already knows.
  * Safe to run on every load: nothing changes once the records exist.
  */

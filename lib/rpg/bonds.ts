@@ -1,4 +1,4 @@
-// Bonds: affinity, status and romance stage for each person Kan knows.
+// Bonds: affinity, status and romance stage for each person the player knows.
 
 import { resolveEntity } from './entities';
 import { makeId } from './id';
@@ -12,7 +12,7 @@ export type BondOptions = {
   /**
    * The turn's scene cast. Given for bonds from the state tracker: someone
    * unmet who isn't here gets no bond. Left out by the app's own callers
-   * (letters, companions), which only touch people Kan already knows.
+   * (letters, companions), which only touch people the player already knows.
    */
   presentIds?: ReadonlySet<string>;
 };
@@ -51,7 +51,7 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOpti
     return db;
   }
 
-  // Talked about, not met: no bond until they are in a scene with Kan.
+  // Talked about, not met: no bond until they are in a scene with the player.
   if (existingEntity.met === false && options.presentIds && !options.presentIds.has(existingEntity.id)) {
     return db;
   }
@@ -127,7 +127,7 @@ export function applyBondDiff(db: AppDatabase, bond: BondDiff, options: BondOpti
 
 /**
  * Keeps theirFeelings in step with affinity/note (the many places that move
- * how someone feels about Kan write those), and gives every bond a yours side.
+ * how someone feels about the player write those), and gives every bond a yours side.
  */
 export function syncBondSides(db: AppDatabase): AppDatabase {
   let changed = false;

@@ -39,7 +39,7 @@ export async function ensureImageCaps(
 /** One line for Settings describing what the model takes. */
 export function describeImageCaps(caps: ImageModelCaps) {
   if (caps.maxReferences === 0) {
-    return 'Takes no reference images. Kan’s face can’t be sent, so his look may drift.';
+    return 'Takes no reference images. Your face can’t be sent, so your look may drift.';
   }
 
   const extras: string[] = [];
@@ -51,7 +51,7 @@ export function describeImageCaps(caps: ImageModelCaps) {
 
   const refs =
     caps.maxReferences === 1
-      ? 'Takes 1 reference image: only Kan’s face is sent.'
+      ? 'Takes 1 reference image: only your face is sent.'
       : `Takes up to ${caps.maxReferences} reference images.`;
 
   return extras.length > 0 ? `${refs} ${extras.join(' · ')}.` : refs;

@@ -144,7 +144,7 @@ describe('better letters', () => {
     expect(keepPlayersWords('Hana, I am alive and I am sorry I left without a word.', input)).toBe(
       'Hana, I am alive and I am sorry I left without a word.'
     );
-    // The tracker rewrote it: Kan's own words win.
+    // The tracker rewrote it: the player's own words win.
     const rewritten = keepPlayersWords('Dearest Hana, my heart aches with regret for my sudden departure into the night.', input);
     expect(rewritten).toBe('Hana, I am alive and I am sorry I left without a word.');
   });
@@ -157,13 +157,13 @@ describe('better letters', () => {
       [{ entityId: hana.id, name: hana.name, gist: 'alive and sorry', text: 'Hana, I am alive.', carrier: 'bird' }],
       '"Hana, I am alive."'
     );
-    const sent = db.state.post!.letters.find((letter) => letter.direction === 'from-kan')!;
+    const sent = db.state.post!.letters.find((letter) => letter.direction === 'from-player')!;
     expect(sent.text).toBe('Hana, I am alive.');
     expect(sent.carrier).toBe('bird');
     expect(sent.toRegion).toBe('fire');
 
     db = deliverLetters(later(db, 21));
-    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-kan');
+    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-player');
 
     // Whatever the road did, it is decided and kept.
     if (!reply) {
@@ -188,7 +188,7 @@ describe('better letters', () => {
     const letter = db.state.post!.letters[0];
     expect(letter.status).toBe('unsent');
     db = deliverLetters(later(db, 30));
-    expect(db.state.post!.letters.some((item) => item.direction === 'to-kan')).toBe(false);
+    expect(db.state.post!.letters.some((item) => item.direction === 'to-player')).toBe(false);
     expect(letterArchive(db)[0].label).toBe('To Shisui Uchiha · never sent');
   });
 
@@ -237,7 +237,7 @@ describe('better letters', () => {
       // She left for the Land of Lightning before it got there.
       db = update(db, 'Hana Inuzuka', { whereabouts: 'on a long mission in the Land of Lightning' });
       db = deliverLetters(later(db, 25));
-      const letter = db.state.post!.letters.find((item) => item.direction === 'from-kan')!;
+      const letter = db.state.post!.letters.find((item) => item.direction === 'from-player')!;
 
       // The road itself can also lose one (a bird, a courier); keep looking
       // for one lost because she had moved on.

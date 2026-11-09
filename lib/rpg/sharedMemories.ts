@@ -1,4 +1,4 @@
-// The memories a person shares with Kan: ones they were there for.
+// The memories a person shares with the player: ones they were there for.
 
 import { dateSortValue } from './calendar';
 import type { AppDatabase, EventRecord } from './types';

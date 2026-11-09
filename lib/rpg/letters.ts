@@ -1,18 +1,18 @@
-// Personal letters: the people Kan is close to write to him, and he can write
+// Personal letters: the people the player is close to write to them, and he can write
 // back. Separate from canon news (newsDelivery.ts): these are their own
 // words, about their own lives and how they feel about him.
 //
-// - Incoming, unprompted: now and then someone Kan is close to who is far
+// - Incoming, unprompted: now and then someone the player is close to who is far
 //   away (not travelling with him, not in the scene, not seen for a while)
 //   sends a letter, a crow, or a coded note. At most one in a few weeks of
-//   story time, and each person at most every month and a half. On Kan's
+//   story time, and each person at most every month and a half. On the player's
 //   birthday someone close and far away may write regardless.
-// - Outgoing: when the story shows Kan send a letter (the state tracker's
+// - Outgoing: when the story shows the player send a letter (the state tracker's
 //   letters_sent), it travels for as long as the distance and the carrier
 //   take (geography.ts). When it arrives the bond moves, the recipient
-//   remembers it, and they write back: the reply sets out and reaches Kan
+//   remembers it, and they write back: the reply sets out and reaches the player
 //   some days later.
-// - Letters are kept: the archive holds Kan's own words (the player writes
+// - Letters are kept: the archive holds the player's own words (the player writes
 //   them; only spelling and punctuation are tidied) and the words the
 //   narrator gave each writer.
 // - The road is real: Root, the Akatsuki or a village can read a letter on
@@ -62,25 +62,25 @@ export const LETTER_MAX_DAYS = 21;
 const UNKNOWN_MIN_DAYS = 3;
 const UNKNOWN_SPREAD_DAYS = 7;
 
-/** No unprompted letter until this many days after the last one reached Kan. */
+/** No unprompted letter until this many days after the last one reached the player. */
 export const LETTER_GAP_DAYS = 21;
 
 /** The same person writes unprompted at most this often. */
 export const LETTER_PER_PERSON_DAYS = 45;
 
-/** They must not have seen Kan for this long to write unprompted. */
+/** They must not have seen the player for this long to write unprompted. */
 export const LETTER_MIN_DAYS_APART = 10;
 
 /** Affinity at which someone cares enough to write unprompted. */
 export const LETTER_MIN_AFFINITY = 5;
 
-/** Kan's letter arriving lifts the bond this much (half for someone cold toward him). */
+/** The player's letter arriving lifts the bond this much (half for someone cold toward them). */
 export const LETTER_BOND_GAIN = 2;
 
 /** Below this they read it but do not answer. */
 export const LETTER_REPLY_FLOOR = -3;
 
-/** A birthday letter: a birthday letter Kan writes counts if sent this close to the day. */
+/** A birthday letter: a birthday letter the player writes counts if sent this close to the day. */
 const BIRTHDAY_LETTER_DAYS = 3;
 
 /** Letters kept in the archive with their words / without. */
@@ -88,7 +88,7 @@ const ARCHIVE_WITH_TEXT = 200;
 const ARCHIVE_WITHOUT_TEXT = 40;
 
 const CLOSE_STAGES = new Set(['close', 'old friend', 'family', 'partner', 'mentor', 'romantic interest', 'lover']);
-/** People Kan grew up with: they remember his birthday. */
+/** People the player grew up with: they remember their birthday. */
 const GREW_UP_WITH = new Set(['Itachi Uchiha', 'Hana Inuzuka', 'Suzume']);
 
 /** Turns a letter, once offered, may wait before the offer is pressed. */
@@ -115,7 +115,7 @@ export function normalizePost(raw: unknown): PostState | undefined {
         (letter): letter is Letter =>
           Boolean(letter) &&
           typeof letter.id === 'string' &&
-          (letter.direction === 'to-kan' || letter.direction === 'from-kan') &&
+          (letter.direction === 'to-player' || letter.direction === 'from-player') &&
           typeof letter.entityId === 'string' &&
           STATUSES.has(letter.status) &&
           Boolean(letter.sentOn) &&
@@ -256,9 +256,9 @@ function wartime(date: CalendarDate) {
 const SAFETY: Partial<Record<LetterCarrierKind, number>> = { summon: 0.3, 'dead-drop': 0.5, hand: 0.2 };
 
 /**
- * Who might read a letter between Kan and this person, with the chance in
+ * Who might read a letter between the player and this person, with the chance in
  * percent: Root while Danzō lives (anything to or from the Leaf), Zetsu once
- * Kan is in the Akatsuki (anything outside it), and a village that wants Kan
+ * The player is in the Akatsuki (anything outside it), and a village that wants the player
  * when the letter crosses its land.
  */
 export function interceptionRisks(
@@ -310,7 +310,7 @@ function crossTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): { 
   for (const risk of interceptionRisks(db, entity, carrier, letter.coded === true)) {
     if (roll(db, 'intercept', risk.who, entity.name, dayKey(letter.sentOn), letter.direction) >= risk.chance) continue;
 
-    const towards = letter.direction === 'from-kan' ? `your letter to ${entity.name}` : `${entity.name}'s letter to you`;
+    const towards = letter.direction === 'from-player' ? `your letter to ${entity.name}` : `${entity.name}'s letter to you`;
     const seized = risk.who !== 'root' && risk.who !== 'akatsuki' && roll(db, 'seized', entity.name, dayKey(letter.sentOn)) < 34;
     const next = plantSeed(db, {
       kind: 'intercepted',
@@ -362,7 +362,7 @@ function lossOnTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): s
   }
 
   // They moved on before it got there.
-  if (letter.direction === 'from-kan' && letter.toRegion) {
+  if (letter.direction === 'from-player' && letter.toRegion) {
     const now = whereaboutsRegion(entity);
 
     if (now && now !== letter.toRegion && roll(db, 'moved', letter.name, dayKey(letter.sentOn)) < 50) {
@@ -374,10 +374,10 @@ function lossOnTheRoad(db: AppDatabase, letter: Letter, entity: EntityRecord): s
 }
 
 // ---------------------------------------------------------------------------
-// Kan's own words
+// The player's own words
 
 /**
- * Tidies a letter Kan wrote: spacing, capitals at sentence starts, "i" → "I",
+ * Tidies a letter the player wrote: spacing, capitals at sentence starts, "i" → "I",
  * spaces before punctuation, a closing full stop. Never the wording.
  */
 export function tidyLetter(text: string): string {
@@ -403,7 +403,7 @@ export function tidyLetter(text: string): string {
 const words = (text: string) => text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
 
 /**
- * Kan's letter as it should be kept: the tracker's copy (spelling fixed) when
+ * The player's letter as it should be kept: the tracker's copy (spelling fixed) when
  * it kept to his words, else the words in his own input. Never a rewrite.
  */
 export function keepPlayersWords(trackerText: string | undefined, userMessage: string | undefined): string | undefined {
@@ -428,7 +428,7 @@ export function keepPlayersWords(trackerText: string | undefined, userMessage: s
 }
 
 // ---------------------------------------------------------------------------
-// Who writes to Kan
+// Who writes to the player
 
 export type LetterOffer = {
   kind: 'reply' | 'unprompted' | 'birthday';
@@ -437,7 +437,7 @@ export type LetterOffer = {
   carrier: string;
   /** The waiting reply, when kind is reply. */
   letter?: Letter;
-  /** Kan's letter it answers. */
+  /** The player's letter it answers. */
   answering?: Letter;
   daysWaiting: number;
   /** News of their own life the letter can carry. */
@@ -446,7 +446,7 @@ export type LetterOffer = {
 
 function lastLetterFrom(db: AppDatabase, entityId: string): CalendarDate | null {
   const dates = postOf(db)
-    .letters.filter((letter) => letter.direction === 'to-kan' && letter.entityId === entityId && letter.status === 'delivered')
+    .letters.filter((letter) => letter.direction === 'to-player' && letter.entityId === entityId && letter.status === 'delivered')
     .map((letter) => letter.deliveredOn ?? letter.arrivesOn);
 
   return dates.sort((a, b) => dateSortValue(b) - dateSortValue(a))[0] ?? null;
@@ -473,12 +473,12 @@ function warmth(db: AppDatabase, entity: EntityRecord) {
 function pendingWriters(db: AppDatabase) {
   return new Set(
     postOf(db)
-      .letters.filter((letter) => letter.status === 'travelling' && letter.direction === 'to-kan')
+      .letters.filter((letter) => letter.status === 'travelling' && letter.direction === 'to-player')
       .map((letter) => letter.entityId)
   );
 }
 
-/** People close enough to Kan to write unprompted right now, warmest first. */
+/** People close enough to the player to write unprompted right now, warmest first. */
 export function correspondents(db: AppDatabase): EntityRecord[] {
   const now = db.state.inStoryDate;
   const here = inScene(db);
@@ -512,7 +512,7 @@ export function correspondents(db: AppDatabase): EntityRecord[] {
     );
 }
 
-/** Kan's birthday was today or in the last couple of days (a letter may be late). */
+/** The player's birthday was today or in the last couple of days (a letter may be late). */
 function birthdayJustPassed(db: AppDatabase): boolean {
   const birthday = db.state.player.birthday;
 
@@ -525,11 +525,11 @@ function birthdayJustPassed(db: AppDatabase): boolean {
   return since >= 0 && since <= 2;
 }
 
-/** Who writes for Kan's birthday this year: someone close who knows the date, far away. */
+/** Who writes for the player's birthday this year: someone close who knows the date, far away. */
 function birthdayWriter(db: AppDatabase): EntityRecord | null {
   const now = db.state.inStoryDate;
   const already = postOf(db).letters.some(
-    (letter) => letter.direction === 'to-kan' && letter.occasion === 'birthday' && letter.arrivesOn.year === now.year
+    (letter) => letter.direction === 'to-player' && letter.occasion === 'birthday' && letter.arrivesOn.year === now.year
   );
 
   if (already || !birthdayJustPassed(db)) return null;
@@ -551,7 +551,7 @@ function birthdayWriter(db: AppDatabase): EntityRecord | null {
 }
 
 /**
- * The letter that may reach Kan this turn: a reply that has arrived first,
+ * The letter that may reach the player this turn: a reply that has arrived first,
  * then a birthday letter, otherwise (if it has been long enough) an
  * unprompted one. Null mid-fight.
  */
@@ -570,7 +570,7 @@ export function letterOffer(db: AppDatabase): LetterOffer | null {
   const arrived = post.letters
     .filter(
       (letter) =>
-        letter.direction === 'to-kan' &&
+        letter.direction === 'to-player' &&
         letter.status === 'travelling' &&
         dateSortValue(letter.arrivesOn) <= dateSortValue(now) &&
         !here.has(letter.entityId)
@@ -660,18 +660,18 @@ export function formatLetterOffer(offer: LetterOffer | null, address?: string, w
     address
       ? `It reaches you by ${offer.carrier}, or it was waiting for you at ${address}: they know you stay here.`
       : `It reaches you by ${offer.carrier}. You are a missing-nin with no address, so show how it found you; if nothing could have found you here, leave it for later.`,
-    `Write the letter out in their own voice, in full on the page (it is kept): short, in character, about their own life and what they could know, shaped by how they feel about you (${feeling}). No canon news Kan has not heard.${life}${press}`,
+    `Write the letter out in their own voice, in full on the page (it is kept): short, in character, about their own life and what they could know, shaped by how they feel about you (${feeling}). No canon news you have not heard.${life}${press}`,
   ].join(' ');
 }
 
 export function letterTrackingLines(offer: LetterOffer | null, idOf: (entity: EntityRecord) => string): string[] {
   const lines = [
-    "- letters_sent: {to: id, gist, text, carrier, coded} only when Kan actually writes and sends (or hands off) a letter or message to someone NOT in the scene this turn, or writes to someone dead (it is kept, never sent). gist = what it says, in a few words. text = the letter exactly as the player wrote it in Kan's input, with ONLY spelling, commas and punctuation corrected: never change a word choice, the tone or the content; null if Kan's words are not given. carrier: bird, ninken, summon (a toad, a crow, a paper butterfly), courier, dead-drop, or hand (a trusted person carries it). coded: true if it is in a cipher or code.",
+    "- letters_sent: {to: id, gist, text, carrier, coded} only when the player actually writes and sends (or hands off) a letter or message to someone NOT in the scene this turn, or writes to someone dead (it is kept, never sent). gist = what it says, in a few words. text = the letter exactly as the player wrote it in their input, with ONLY spelling, commas and punctuation corrected: never change a word choice, the tone or the content; null if the player's words are not given. carrier: bird, ninken, summon (a toad, a crow, a paper butterfly), courier, dead-drop, or hand (a trusted person carries it). coded: true if it is in a cipher or code.",
   ];
 
   if (offer) {
     lines.push(
-      `- letter from ${idOf(offer.entity)}: letters_received [{from: "${idOf(offer.entity)}", text}] only if their letter actually reached Kan on the page this turn; text = the letter's words exactly as the narration gives them (null if it only summarizes). life_events for anything it says happened in their own life.`
+      `- letter from ${idOf(offer.entity)}: letters_received [{from: "${idOf(offer.entity)}", text}] only if their letter actually reached the player on the page this turn; text = the letter's words exactly as the narration gives them (null if it only summarizes). life_events for anything it says happened in their own life.`
     );
   }
 
@@ -690,7 +690,7 @@ function nearTheirBirthday(entity: EntityRecord, date: CalendarDate) {
 }
 
 /**
- * Kan sends letters: each sets out and arrives as many days later as the
+ * The player sends letters: each sets out and arrives as many days later as the
  * road takes. Letters to the dead are kept, never sent.
  */
 export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], userMessage?: string): AppDatabase {
@@ -716,7 +716,7 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
     if (isDeceased(entity) && playerKnowsDeath(db, entity)) {
       letters.push({
         id,
-        direction: 'from-kan',
+        direction: 'from-player',
         entityId: entity.id,
         name: entity.name,
         sentOn: now,
@@ -736,7 +736,7 @@ export function sendLetters(db: AppDatabase, sent: TurnDiff['lettersSent'], user
     const seed = `${db.meta.slotId}:${entity.name}:${dayKey(now)}`;
     let letter: Letter = {
       id,
-      direction: 'from-kan',
+      direction: 'from-player',
       entityId: entity.id,
       name: entity.name,
       sentOn: now,
@@ -779,7 +779,7 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
     const text = item.text?.trim() ? item.text.trim().slice(0, 2400) : undefined;
     const waiting = letters.find(
       (letter) =>
-        letter.direction === 'to-kan' &&
+        letter.direction === 'to-player' &&
         letter.entityId === entityId &&
         letter.status === 'travelling' &&
         dateSortValue(letter.arrivesOn) <= dateSortValue(now)
@@ -799,7 +799,7 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
 
       letters.push({
         id: makeId('letter'),
-        direction: 'to-kan',
+        direction: 'to-player',
         entityId,
         name: entity.name,
         sentOn: shiftDate(now, -letterDays(whereaboutsRegion(entity), playerRegion(db), carrier, `${db.meta.slotId}:${entityId}:${now.year}-${now.month}`)),
@@ -812,7 +812,7 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
       });
     }
 
-    // Whatever their life news was, Kan has it now.
+    // Whatever their life news was, the player has it now.
     if (offer?.theirNews && offer.entity.id === entityId) {
       next = markLifeKnown(next, entityId);
     }
@@ -824,7 +824,7 @@ export function receiveLetters(db: AppDatabase, received: TurnDiff['lettersRecei
 }
 
 /**
- * Letters that reached the end of their road by now. Kan's: the bond moves,
+ * Letters that reached the end of their road by now. The player's: the bond moves,
  * they remember it, and (unless they are cold toward him) a reply sets out,
  * which may itself be read on the way. Some never arrive at all.
  */
@@ -848,8 +848,8 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
   for (const letter of due) {
     const entity = next.entities.find((person) => person.id === letter.entityId);
 
-    // Replies to Kan: lost ones simply never come. The rest wait for the page.
-    if (letter.direction === 'to-kan') {
+    // Replies to the player: lost ones simply never come. The rest wait for the page.
+    if (letter.direction === 'to-player') {
       const lost = entity && !letter.lostReason ? lossOnTheRoad(next, letter, entity) : null;
 
       if (lost) replace(letter.id, { status: 'lost', lostReason: lost });
@@ -893,7 +893,7 @@ export function deliverLetters(db: AppDatabase): AppDatabase {
       const [, carrier] = carrierOf(entity);
       let reply: Letter = {
         id,
-        direction: 'to-kan',
+        direction: 'to-player',
         entityId: entity.id,
         name: entity.name,
         sentOn: letter.arrivesOn,
@@ -926,19 +926,19 @@ export function lettersInTransit(db: AppDatabase): Letter[] {
 }
 
 export type ArchivedLetter = Letter & {
-  /** What Kan can tell of it, in second person. */
+  /** What the player can tell of it, in second person. */
   label: string;
 };
 
 /**
- * The letters Kan can reread, newest first: everything he wrote (sent or
+ * The letters the player can reread, newest first: everything he wrote (sent or
  * kept) and everything that reached him. Letters lost to him on the way
  * never show; his own read on the way show it only once that came back.
  */
 export function letterArchive(db: AppDatabase): ArchivedLetter[] {
   const post = postOf(db);
   const answered = new Set(
-    post.letters.filter((letter) => letter.direction === 'to-kan' && letter.status === 'delivered' && letter.replyTo).map((letter) => letter.replyTo!)
+    post.letters.filter((letter) => letter.direction === 'to-player' && letter.status === 'delivered' && letter.replyTo).map((letter) => letter.replyTo!)
   );
   const discovered = new Set(
     (db.state.consequences ?? [])
@@ -947,13 +947,13 @@ export function letterArchive(db: AppDatabase): ArchivedLetter[] {
   );
 
   return post.letters
-    .filter((letter) => (letter.direction === 'to-kan' ? letter.status === 'delivered' : true))
+    .filter((letter) => (letter.direction === 'to-player' ? letter.status === 'delivered' : true))
     .map((letter) => {
       let label: string;
       // As you know them now (a stranger who later gave a name shows it).
       const name = displayNameOf(db, letter.entityId, letter.name);
 
-      if (letter.direction === 'to-kan') {
+      if (letter.direction === 'to-player') {
         label = letter.occasion === 'birthday' ? `Birthday letter from ${name}` : `From ${name}`;
       } else if (letter.status === 'unsent') {
         label = `To ${name} · never sent`;

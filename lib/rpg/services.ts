@@ -178,7 +178,7 @@ export function applyTurnDiff(db: AppDatabase, diff: TurnDiff | null): AppDataba
   next = syncBondSides(next);
   next = applyClockTick(next, diff);
   // Temporary conditions run out; a long stretch of rest ends the "until rest" ones
-  // (not in a compromised safehouse: Kan may not sleep there at all).
+  // (not in a compromised safehouse: the player may not sleep there at all).
   next = expireFacts(next, { rested: isRest(diff) && !restBlocked(next) });
   // After the clock: a bond the story set this turn cannot outlast canon.
   next = applyCanonEndgames(next);
@@ -387,7 +387,7 @@ export async function extractTurnDiff(options: {
   recordDebugState(debugTurnId, { status: 'running', raw, note });
 
   // Still unreadable: the caller falls back to what the app can read from
-  // the prose itself (clock, pace, who is named, jutsu Kan called).
+  // the prose itself (clock, pace, who is named, jutsu the player called).
   if (!parsed) {
     return null;
   }

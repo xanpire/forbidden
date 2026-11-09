@@ -19,7 +19,7 @@ export default function NotFoundScreen() {
           <Text style={styles.eyebrow}>Page not found</Text>
           <Text style={styles.title}>This path ends here.</Text>
           <Text style={styles.body}>
-            The page you were looking for is not part of Kan’s story.
+            The page you were looking for is not part of this story.
           </Text>
         </View>
         <AppButton

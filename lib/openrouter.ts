@@ -1,4 +1,5 @@
 import type { OpenRouterMessage } from './rpg/types';
+import { APP_NAME } from './brand';
 
 const CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const IMAGE_MODELS_URL = 'https://openrouter.ai/api/v1/images/models';
@@ -527,7 +528,7 @@ export async function generateImage({
   });
 
   // A rejected optional setting: retry with only the prompt and the same
-  // references. References are never dropped here: that would lose Kan's face.
+  // references. References are never dropped here: that would lose the player's face.
   if (response.status === 400 || response.status === 422) {
     const minimal: Record<string, unknown> = { model: body.model, prompt: body.prompt };
 
@@ -636,7 +637,7 @@ function buildHeaders(apiKey: string, json: boolean) {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
-    'X-Title': 'Kan RPG',
+    'X-Title': APP_NAME,
   };
 
   if (json) {

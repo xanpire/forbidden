@@ -25,7 +25,7 @@ import { WEATHER_CONDITIONS } from './weather';
 import { normalizeFlashbacks } from './flashbacks';
 import { normalizeSafehouses } from './safehouses';
 import { normalizePurse } from './money';
-import { STORAGE_KEYS } from '../brand';
+import { APP_NAME, STORAGE_KEYS } from '../brand';
 import { isPlayerEntity, normalizeCharacter } from './player';
 import { normalizeWorld } from './world';
 
@@ -327,7 +327,7 @@ export async function importDatabase(
   const parsed = JSON.parse(json) as AppDatabase;
 
   if (!parsed || parsed.schemaVersion !== 1) {
-    throw new Error('This save file is not a valid Kan story database.');
+    throw new Error(`This save file is not a valid ${APP_NAME} story database.`);
   }
 
   const slotId = makeId('slot');

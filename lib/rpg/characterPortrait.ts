@@ -14,7 +14,7 @@ import type {
 } from './types';
 
 /**
- * Portraits for the people in your bonds. Like Kan's, each is painted only
+ * Portraits for the people in your bonds. Like the player's, each is painted only
  * when you ask, remembers the few traits it was painted with, and says when
  * the person has changed enough to repaint.
  *
@@ -28,7 +28,7 @@ export const PORTRAITS_PER_CHARACTER = 4;
 
 /** Their base look, plus how they look right now when that is known. */
 function cleanAppearance(db: AppDatabase, entity: EntityRecord) {
-  // As Kan has seen them: no canon secret painted before he knows it.
+  // As the player has seen them: no canon secret painted before he knows it.
   const text = shownField(db, entity, 'appearance')?.trim() ?? '';
   const base = text && text !== 'Unknown' ? text : '';
   const now = entity.currentLook?.trim();

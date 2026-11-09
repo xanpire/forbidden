@@ -13,7 +13,7 @@ export type PlannedReference = {
 
 /**
  * Picks the references that fit the model's limit, most important first:
- * the image being retouched (only for a retouch), then Kan's face, so it is
+ * the image being retouched (only for a retouch), then the player's face, so it is
  * the last thing to be left out, then his outfit, then the people in the
  * scene (one by one or packed on a cast sheet), then an earlier scene for style.
  * `faceDropped` is true when the face could not be sent, so the caller can
@@ -24,7 +24,7 @@ export function planReferences(
   maxReferences: number
 ): {
   references: PlannedReference[];
-  /** Why Kan's face isn't in the request, or null when it is. */
+  /** Why the player's face isn't in the request, or null when it is. */
   faceDropped: 'no-references' | 'not-loaded' | null;
   leftOut: ReferenceKind[];
 } {
@@ -55,6 +55,6 @@ export function faceDroppedWarning(
   model: string
 ) {
   return reason === 'not-loaded'
-    ? 'Kan’s face reference couldn’t be loaded, so this image went without it and his face may not match.'
-    : `Kan’s face reference wasn’t sent: ${model} doesn’t accept reference images, so his face may not match. Pick a reference-capable image model in Settings.`;
+    ? 'Your face reference couldn’t be loaded, so this image went without it and your face may not match.'
+    : `Your face reference wasn’t sent: ${model} doesn’t accept reference images, so your face may not match. Pick a reference-capable image model in Settings.`;
 }

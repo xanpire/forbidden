@@ -12,11 +12,12 @@ import { Check, GitMerge, Search } from 'lucide-react-native';
 
 import { AppButton } from '@/components/AppButton';
 import { EmptyRow, ListCard, ListRow } from '@/components/List';
-import { Avatar } from '@/components/kan/BondsSection';
+import { Avatar } from '@/components/player/BondsSection';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue } from '@/lib/rpg/calendar';
 import type { AppDatabase, EntityRecord } from '@/lib/rpg/types';
 import { alsoKnownAs, displayName, searchableNames } from '@/lib/rpg/names';
+import { isPlayer } from '@/lib/rpg/player';
 
 type MergeSheetProps = {
   visible: boolean;
@@ -71,7 +72,7 @@ export function MergeSheet({ visible, db, entity, onCancel, onMerge }: MergeShee
         (item) =>
           item.type === 'character' &&
           item.id !== entity.id &&
-          item.name.toLowerCase() !== 'kan'
+          !isPlayer(db, item)
       )
       .filter(
         (item) =>

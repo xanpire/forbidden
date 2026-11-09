@@ -36,9 +36,9 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="kan"
+        name="you"
         options={{
-          title: 'Kan',
+          title: 'You',
           tabBarIcon: ({ color, focused }) => (
             <UserRound color={color} size={21} strokeWidth={focused ? 2.2 : 1.8} />
           ),
@@ -53,7 +53,7 @@ export default function TabsLayout() {
           ),
         }}
       />
-      {/* Bond detail lives inside the tabs so the tab bar stays visible; Kan stays highlighted. */}
+      {/* Bond detail lives inside the tabs so the tab bar stays visible; You stays highlighted. */}
       <Tabs.Screen name="bond/[id]" options={{ href: null }} />
       {/* Hidden: long-press the clock on the Story tab. */}
       <Tabs.Screen name="world-clock" options={{ href: null }} />

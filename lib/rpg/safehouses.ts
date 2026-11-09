@@ -1,21 +1,21 @@
 // Safehouses (living-world section 20).
 //
-// Any place Kan stays can become a safehouse by itself: he sleeps there, or
+// Any place the player stays can become a safehouse by itself: he sleeps there, or
 // the story says he settles in, and the state tracker names it and says what
 // kind it is. It stays until it stops working: a rented room's time runs
 // out, it's destroyed, the wrong people find it, the host takes it back, or
-// Kan gives it up. A camp is gone when he leaves, unless he comes back to it
+// The player gives it up. A camp is gone when he leaves, unless he comes back to it
 // or sets it up properly; then it becomes his own. Ended places move to the
 // former places with what happened to them.
 //
 // A safehouse holds who knows of it (what makes it safe or not), a stash,
 // upgrades the story builds over the years, and people living there. Resting
-// somewhere safe heals more; in a compromised place Kan may not sleep at
-// all. Someone with a reason to come after Kan who learns of a place becomes
+// somewhere safe heals more; in a compromised place the player may not sleep at
+// all. Someone with a reason to come after the player who learns of a place becomes
 // a delayed consequence ("found"): it comes back when he is there, or they
 // search it while he is away and the stash goes.
 //
-// The narrator only hears about it when Kan is at one or heading to one, in
+// The narrator only hears about it when the player is at one or heading to one, in
 // one line. Otherwise CURRENT STATE names the places he can go back to.
 
 import { dateSortValue, daysBetween, formatDayMonth, shiftDate } from './calendar';
@@ -55,9 +55,9 @@ const MAX_ACTIVE = 16;
 const MAX_ENDED = 24;
 /** Not visited in this long: overgrown. */
 export const OVERGROWN_DAYS = 730;
-/** A camp Kan comes back to within this long becomes his own. */
+/** A camp the player comes back to within this long becomes their own. */
 const CAMP_RETURN_DAYS = 60;
-/** Searched this long after its time came, while Kan is away. */
+/** Searched this long after its time came, while the player is away. */
 const RAID_AFTER_DAYS = 7;
 /** Extra days of healing per night slept somewhere safe. */
 const SAFE_REST_HEAL_DAYS = 2;
@@ -143,11 +143,11 @@ export function normalizeSafehouses(raw: unknown): SafehouseState | undefined {
 }
 
 // ---------------------------------------------------------------------------
-// Where Kan is
+// Where the player is
 
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'of', 'in', 'at', 'on', 'to', 'by', 'near', 'outside', 'inside', 'above', 'below', 'under', 'over',
-  'land', 'your', 'you', 'kan', 'kans', 'his', 'her', 'their', 'with', 'from', 'into', 'and', 'old', 'small', 'little',
+  'land', 'your', 'you', 'player', 'his', 'her', 'their', 'with', 'from', 'into', 'and', 'old', 'small', 'little',
   'room', 'back', 'front', 'upstairs', 'downstairs', 'edge', 'side', 'north', 'south', 'east', 'west', 'hidden', 'village',
 ]);
 
@@ -189,7 +189,7 @@ export function matchesSafehouse(house: Safehouse, location: string | undefined 
   return shared >= 2 && shared / Math.max(1, Math.min(a.size, words(house.place).size || 1)) >= 0.6;
 }
 
-/** The safehouse Kan is at, if any. */
+/** The safehouse the player is at, if any. */
 export function currentSafehouse(db: Pick<AppDatabase, 'state'>): Safehouse | null {
   if (db.state.flashbacks?.active) return null;
 
@@ -311,7 +311,7 @@ function isPlayerFact(db: AppDatabase, subjectId: string | null, text: string) {
   return subject ? isPlayerEntity(subject) : /^you\b/i.test(text.trim());
 }
 
-/** What Kan's newest membership fact about this owner says: in, out, or nothing. */
+/** What the player's newest membership fact about this owner says: in, out, or nothing. */
 function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
   const key = OWNER_KEYS[owner];
 
@@ -327,9 +327,9 @@ function membershipSays(db: AppDatabase, owner: string): 'in' | 'out' | null {
 }
 
 /**
- * Does Kan belong to the people who run this base? Membership facts first;
+ * Does the player belong to the people who run this base? Membership facts first;
  * for the Akatsuki also the joining beat, or travelling with a member (Itachi
- * before Kan joins). An owner the words don't name gets the benefit of the doubt.
+ * before the player joins). An owner the words don't name gets the benefit of the doubt.
  */
 export function belongsTo(db: AppDatabase, owner: string): boolean {
   if (!OWNER_KEYS[owner]) return true;
@@ -384,7 +384,7 @@ function newSafehouse(
   kind: SafehouseKind,
   name: string | undefined,
   diff: SafehouseDiff | undefined,
-  /** When Kan got there: the start of a night's rest, not the morning after. */
+  /** When the player got there: the start of a night's rest, not the morning after. */
   now: CalendarDate = db.state.inStoryDate,
   /** A base he doesn't belong to: whose guest he is. */
   guestOf?: string
@@ -447,7 +447,7 @@ const GROUP_FACTIONS: Array<[RegExp, ReputationFaction | 'territory']> = [
 
 type Threat = { entityId?: string; who: string; want: string; faction?: ReputationFaction };
 
-/** Would this person come after Kan here, and why? */
+/** Would this person come after the player here, and why? */
 function personThreat(db: AppDatabase, house: Safehouse, entity: EntityRecord): Threat | null {
   if (isDeceased(entity) || isPlayerEntity(entity)) return null;
 
@@ -460,7 +460,7 @@ function personThreat(db: AppDatabase, house: Safehouse, entity: EntityRecord): 
   if (entity.tags.includes('root') && (bond?.affinity ?? 0) < 10) {
     return { entityId: entity.id, who: entity.name, want: 'to tell Danzō where you hide', faction: 'leaf' };
   }
-  // The Akatsuki learns Kan has a private place.
+  // The Akatsuki learns the player has a private place.
   // (Not their own hideout he is a guest in.)
   const theirs = house.knownGroups.some((group) => /akatsuki/i.test(group));
   if (entity.tags.includes('akatsuki') && !theirs && (house.kind === 'own' || house.kind === 'borrowed') && (bond?.affinity ?? 0) < 10) {
@@ -481,7 +481,7 @@ function groupThreat(db: AppDatabase, house: Safehouse, group: string): Threat |
     }
 
     const village: VillageFaction | null = faction === 'territory' ? territoryOf(house.place) : faction;
-    // A village's own people only hunt Kan once he's in their book.
+    // A village's own people only hunt the player once he's in their book.
     const listed = village ? Boolean(db.state.reputation?.villages?.[village]?.listedOn) : false;
 
     if (faction === 'territory' || /\broot\b/i.test(group) || listed) {
@@ -516,7 +516,7 @@ function plantFound(db: AppDatabase, house: Safehouse, threat: Threat): AppDatab
   });
 }
 
-/** Adds people and groups to who knows; anyone with a reason to come after Kan may come back for it. */
+/** Adds people and groups to who knows; anyone with a reason to come after the player may come back for it. */
 function learnOf(db: AppDatabase, houseId: string, refs: string[]): AppDatabase {
   let next = db;
 
@@ -637,7 +637,7 @@ export type SafehouseTurn = {
 
 /**
  * After a present turn's state step: the tracker's safehouse report, where
- * Kan is now, leaving and coming back, rest, and every place's own course
+ * The player is now, leaving and coming back, rest, and every place's own course
  * (rooms running out, hosts, residents, found places searched).
  */
 export function applySafehouses(before: AppDatabase, db: AppDatabase, diff: SafehouseDiff | undefined, turn: SafehouseTurn): AppDatabase {
@@ -648,7 +648,7 @@ export function applySafehouses(before: AppDatabase, db: AppDatabase, diff: Safe
   const target = diff?.id ? activeSafehouses(next).find((house) => house.id === diff.id) ?? null : null;
   let here: Safehouse | null = target ?? findHere(next);
 
-  // Kan sleeps somewhere, or the story says he settles in.
+  // The player sleeps somewhere, or the story says he settles in.
   const wantsNew = Boolean(diff && (diff.name || diff.kind) && !target);
   let created: string | null = null;
   let kind = diff?.kind ?? (turn.rested && !here ? guessKind(next) : null);
@@ -819,14 +819,14 @@ function returningCamp(db: AppDatabase): Safehouse | null {
 
 export type RestQuality = 'safe' | 'rough' | 'unsafe';
 
-/** How well Kan sleeps here: safe (his own, a host's, a base), rough (a camp, an inn, nowhere), unsafe (compromised). */
+/** How well the player sleeps here: safe (their own, a host's, a base), rough (a camp, an inn, nowhere), unsafe (compromised). */
 export function restQuality(house: Safehouse | null): RestQuality {
   if (!house) return 'rough';
   if (house.compromised) return 'unsafe';
   return house.kind === 'camp' || house.kind === 'rented' ? 'rough' : 'safe';
 }
 
-/** Kan rests in a compromised place: he may not sleep at all, so the "until rest" conditions stay. */
+/** The player rests in a compromised place: he may not sleep at all, so the "until rest" conditions stay. */
 export function restBlocked(db: AppDatabase): boolean {
   return restQuality(currentSafehouse(db)) === 'unsafe';
 }
@@ -904,7 +904,7 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
       next = updateHouse(next, house.id, (item) => ({ ...item, residents: living }));
     }
 
-    // People living there are there while Kan is away.
+    // People living there are there while the player is away.
     if (living.length > 0) {
       const at = `${house.name} (${localizePlaceNames(house.place)})`.slice(0, 120);
       next = {
@@ -918,7 +918,7 @@ export function advanceSafehouses(db: AppDatabase): AppDatabase {
     }
   }
 
-  // Someone who found a place searches it while Kan is away.
+  // Someone who found a place searches it while the player is away.
   for (const seed of seedsOf(next)) {
     if (seed.kind !== 'found' || seed.status !== 'waiting' || !seed.safehouseId) continue;
 
@@ -1028,7 +1028,7 @@ function ago(days: number) {
   return `${Math.max(1, days)} days`;
 }
 
-/** Kan says he is going back to one of his places. */
+/** The player says he is going back to one of their places. */
 export function headingTo(db: AppDatabase, userMessage: string): Safehouse | null {
   const text = norm(userMessage);
 
@@ -1088,7 +1088,7 @@ function houseFacts(db: AppDatabase, house: Safehouse, at: boolean): string[] {
 }
 
 /**
- * For the narrator, only when Kan is at a safehouse or heading to one: one
+ * For the narrator, only when the player is at a safehouse or heading to one: one
  * line with its name, kind, who knows, the stash, upgrades, shelter and rest.
  */
 export function formatSafehouseLine(db: AppDatabase, userMessage: string): string {
@@ -1131,7 +1131,7 @@ export function formatSafehouseLine(db: AppDatabase, userMessage: string): strin
   return '';
 }
 
-/** For CURRENT STATE: the places Kan can go back to, names only. */
+/** For CURRENT STATE: the places the player can go back to, names only. */
 export function placesLine(db: AppDatabase): string {
   const here = currentSafehouse(db)?.id;
   const places = activeSafehouses(db)
@@ -1154,13 +1154,13 @@ export function formatSafehouseTracking(db: AppDatabase): string {
     .slice(0, 8)
     .map(
       (house) =>
-        `- ${house.id}: ${house.name} (${house.kind}; ${truncate(localizePlaceNames(house.place), 60)})${house.id === here ? ' [Kan is here]' : ''}${house.stash.length ? `; stash: ${house.stash.slice(0, 6).join(', ')}` : ''}`
+        `- ${house.id}: ${house.name} (${house.kind}; ${truncate(localizePlaceNames(house.place), 60)})${house.id === here ? ' [you are here]' : ''}${house.stash.length ? `; stash: ${house.stash.slice(0, 6).join(', ')}` : ''}`
     );
 
   return [
     'SAFEHOUSES',
     ...(listed.length > 0 ? listed : ['- none yet']),
-    'safehouse: null on most turns. Fill it when Kan sleeps somewhere or the page says he settles in (name: a short name for the place, like "the cave above the falls"; kind: own = a place he takes or builds himself, rented = an inn or teahouse room, borrowed = someone\'s home lent to him (host = their id), base = an organisation\'s place Kan belongs to, like an Akatsuki hideout or an army\'s field camp (where he is only a guest it is borrowed, host = who lets him stay; a prisoner or an intruder gets null), camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when he comes back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items he leaves there or picks up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
+    'safehouse: null on most turns. Fill it when the player sleeps somewhere or the page says they settle in (name: a short name for the place, like "the cave above the falls"; kind: own = a place they take or build themselves, rented = an inn or teahouse room, borrowed = someone\'s home lent to them (host = their id), base = an organisation\'s place the player belongs to, like an Akatsuki hideout or an army\'s field camp (where they are only a guest it is borrowed, host = who lets him stay; a prisoner or an intruder gets null), camp = a night in the wild or among strangers, like a refugee camp), or when something changes at a listed one: then id = its id (also when they come back to it under other words). paid_nights: nights paid for, when the page says. stored / taken: items they leave there or pick up (inventory names). upgrade: something finished there on the page (sealing, traps, a barrier, a garden, a library, a shrine). shown_to: ids, or group names ("Root", "hunter-nin"), of whoever he brings there or who sees him come or go. residents_joined / residents_left: ids of people who come to live there or move out. ended: expired, destroyed, compromised (found by someone he hides from), withdrawn (the host takes it back), given-up. Otherwise null and [].',
   ].join('\n');
 }
 
@@ -1168,7 +1168,7 @@ function truncate(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** A writer who knows where Kan stays: the letter can wait for him there. */
+/** A writer who knows where the player stays: the letter can wait for them there. */
 export function letterAddress(db: AppDatabase, entityId: string): Safehouse | null {
   const house = currentSafehouse(db);
 
@@ -1177,7 +1177,7 @@ export function letterAddress(db: AppDatabase, entityId: string): Safehouse | nu
   return house.knownBy.includes(entityId) || house.residents.includes(entityId) ? house : null;
 }
 
-/** Where on the board Kan's places go. */
+/** Where on the board the player's places go. */
 export function safehouseStop(house: Safehouse) {
   return { place: house.place, region: house.region, placeId: house.placeId };
 }

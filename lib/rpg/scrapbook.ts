@@ -105,7 +105,7 @@ export function scrapbookPhotos(db: AppDatabase): ScrapbookPhoto[] {
   return db.rawLog
     .filter((entry) => entry.role === 'assistant' && typeof entry.image === 'string' && entry.image.length > 0)
     .map((entry) => {
-      // A flashback photo keeps the memory's own date, place and Kan's age then.
+      // A flashback photo keeps the memory's own date, place and the player's age then.
       const memory = entry.flashback ? FLASHBACK_BY_ID[entry.flashback.id] : undefined;
       const date = entry.flashback?.date ?? entry.inStoryDate;
 

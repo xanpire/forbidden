@@ -10,7 +10,7 @@ import { isPlayerEntity } from './player';
 export const UNMET_STATUS = 'Not yet met';
 export const NEWLY_MET_STATUS = 'Newly met';
 
-/** A placeholder status that says nothing about how they relate to Kan. */
+/** A placeholder status that says nothing about how they relate to the player. */
 export function isPlaceholderStatus(status: string | undefined) {
   const value = status?.trim().toLowerCase();
   return !value || value === 'not yet met' || value === 'newly met' || value === 'unknown';

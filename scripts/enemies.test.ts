@@ -130,7 +130,7 @@ describe('reputation: bingo books and Akatsuki standing', () => {
     expect(block).toContain('YOUR NAME OUT THERE');
     expect(block).toContain("Hidden Sand's bingo book lists you C-rank");
     expect(block).toContain('Also wanted by: Hidden Leaf (B-rank)');
-    expect(block).toContain('Kan has not seen what');
+    expect(block).toContain('You have not seen what');
 
     const wilds = { ...db, state: { ...db.state, location: 'Deep forest', locationKind: 'wilderness' as const, inStoryDate: { ...db.state.inStoryDate, hour: 23 } } };
     expect(formatReputationBlock(wilds)).toBe('');

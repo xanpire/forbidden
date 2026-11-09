@@ -1,5 +1,5 @@
 import { calculateAge } from './calendar';
-import { playerAge } from './player';
+import { playerAge, playerName } from './player';
 import { locationKindOf } from './encounters';
 import { localizePlaceNames } from './glossary';
 import type { PlannedReference } from './referencePlan';
@@ -74,7 +74,7 @@ const SETTING_LABEL: Record<PortraitSetting, string> = {
   indoors: 'indoors',
 };
 
-/** Why the latest portrait no longer matches Kan, or null if it still does. */
+/** Why the latest portrait no longer matches the player, or null if it still does. */
 export function portraitStaleReason(
   latest: PortraitRecord | null,
   current: PortraitSignature
@@ -144,8 +144,9 @@ export function buildPortraitPrompt(
     signature.outfit === 'akatsuki'
       ? 'the Akatsuki cloak (black with red clouds)'
       : 'the plain black shinobi outfit, no Akatsuki cloak';
+  const who = playerName(db);
   const lines = [
-    'Character portrait of Kan, a shinobi from the Naruto world. Dark cinematic anime illustration.',
+    `Character portrait of ${who}, a shinobi from the Naruto world. Dark cinematic anime illustration.`,
     'Visual image only. No words, letters, numbers, captions, logos, watermarks or readable text anywhere.',
   ];
 
@@ -154,29 +155,29 @@ export function buildPortraitPrompt(
 
     if (reference.kind === 'face') {
       lines.push(
-        `Reference image ${n}: Kan's face sheet. Match his face exactly: black spiky hair, brown eyes, facial structure, hairline.`
+        `Reference image ${n}: ${who}'s face sheet. Match the face exactly: hair, eyes, facial structure, hairline.`
       );
     } else if (reference.kind === 'outfit') {
       lines.push(
-        `Reference image ${n}: the outfit he wears now (${outfit}), shown without a person. Dress him in exactly this.`
+        `Reference image ${n}: the outfit ${who} wears now (${outfit}), shown without a person. Dress ${who} in exactly this.`
       );
     } else if (reference.kind === 'previous') {
       lines.push(
-        `Reference image ${n}: his previous portrait. Keep the same art style, framing and lighting, but update age, clothes, expression and background as described below.`
+        `Reference image ${n}: the previous portrait. Keep the same art style, framing and lighting, but update age, clothes, expression and background as described below.`
       );
     }
   });
 
   if (!references.some((reference) => reference.kind === 'face')) {
-    lines.push('Kan has black spiky hair, brown eyes, and a lean, guarded face.');
+    lines.push(`${who}: ${db.state.player.appearance.trim() || 'the main character'}`);
   }
 
   lines.push(
-    `Age: ${signature.age}. Draw him with the build and face of a ${signature.age}-year-old.`,
+    `Age: ${signature.age}. Draw ${who} with the build and face of a ${signature.age}-year-old.`,
     `Expression: ${EXPRESSION_TEXT[signature.expression]}. Current mood: ${db.state.mood}.`,
     `Clothing: ${outfit}.`,
     `Background: softly blurred ${localizePlaceNames(db.state.location)}, ${SETTING_LABEL[signature.setting]}, at ${db.state.inStoryDate.hour}:${String(db.state.inStoryDate.minute).padStart(2, '0')}.`,
-    'Framing: head and upper body, three-quarter view, centered, vertical portrait. Kan alone, no other people.',
+    `Framing: head and upper body, three-quarter view, centered, vertical portrait. ${who} alone, no other people.`,
     'Style: Naruto-inspired anime, gritty realism, moody lighting, red accents, high detail.',
     'Final reminder: no text or lettering in the image.'
   );

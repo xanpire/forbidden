@@ -3,11 +3,11 @@ import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Segmented } from '@/components/List';
-import { BondsSection } from '@/components/kan/BondsSection';
-import { JournalSection } from '@/components/kan/JournalSection';
-import { JutsuSection } from '@/components/kan/JutsuSection';
-import { MapSection } from '@/components/kan/MapSection';
-import { PortraitHeader } from '@/components/kan/PortraitHeader';
+import { BondsSection } from '@/components/player/BondsSection';
+import { JournalSection } from '@/components/player/JournalSection';
+import { JutsuSection } from '@/components/player/JutsuSection';
+import { MapSection } from '@/components/player/MapSection';
+import { PortraitHeader } from '@/components/player/PortraitHeader';
 import { colors, spacing } from '@/constants/theme';
 import { useGame } from '@/lib/rpg/game';
 

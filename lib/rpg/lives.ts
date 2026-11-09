@@ -1,12 +1,12 @@
 // People with their own lives (living-world Stage 3, section 8).
 //
-// - Side characters do not freeze between Kan's visits. As story time passes,
-//   the people Kan knows who have little canon story of their own (Hana,
-//   Suzume, the people Kan met on the road) get small life events: a hard
+// - Side characters do not freeze between the player's visits. As story time passes,
+//   the people the player knows who have little canon story of their own (Hana,
+//   Suzume, the people the player met on the road) get small life events: a hard
 //   mission, an injury, a posting, a new team, a move, a promotion, a
 //   wedding. Canon characters only get events that cannot touch their canon
 //   path; romance, moves and promotions are for original characters only.
-// - When Kan meets someone again after a long time, the narrator gets a short
+// - When the player meets someone again after a long time, the narrator gets a short
 //   "since you last saw them" note: their canon events since then (from the
 //   fired milestones that name them), their life events, how the era has
 //   changed them, and, where canon says nothing, room for one small change
@@ -30,7 +30,7 @@ import { isPlayerEntity } from './player';
 /** Apart this long, meeting again is a reunion with a "since you last saw them" note. */
 export const REUNION_DAYS = 30;
 
-/** A side character's life moves on about this often while Kan is away. */
+/** A side character's life moves on about this often while the player is away. */
 export const LIFE_EVENT_MIN_DAYS = 60;
 export const LIFE_EVENT_SPREAD_DAYS = 90;
 
@@ -182,7 +182,7 @@ function lifeOf(entity: EntityRecord): LifeEvent[] {
   return Array.isArray(entity.lifeEvents) ? entity.lifeEvents : [];
 }
 
-/** People whose lives move on by themselves while Kan is away. */
+/** People whose lives move on by themselves while the player is away. */
 function livesOnOwn(db: AppDatabase, entity: EntityRecord, here: Set<string>): boolean {
   if (!isSideCharacter(entity) || entity.met === false || isDeceased(entity)) return false;
   if (entity.companion || entity.tier === 'minor' || here.has(entity.id)) return false;
@@ -223,7 +223,7 @@ function promote(role: string | undefined): { role: string; rank: string } | nul
 /**
  * Moves side characters' lives forward to the current date. A long time
  * skip catches up a few events at once, each on its own day; nothing is
- * dated before Kan last saw them.
+ * dated before the player last saw them.
  */
 export function advanceLives(db: AppDatabase): AppDatabase {
   const now = db.state.inStoryDate;
@@ -279,7 +279,7 @@ export function advanceLives(db: AppDatabase): AppDatabase {
 function trimLife(events: LifeEvent[]): LifeEvent[] {
   if (events.length <= LIFE_EVENTS_KEPT) return events;
 
-  // Drop the oldest ones Kan already knows first, then the oldest.
+  // Drop the oldest ones the player already knows first, then the oldest.
   const known = events.findIndex((event) => event.known);
   const drop = known >= 0 ? known : 0;
 
@@ -308,7 +308,7 @@ export function applyLifeEvents(db: AppDatabase, items: TurnDiff['lifeEvents']):
   return next;
 }
 
-/** Kan learned these from them (in person or by letter). */
+/** The player learned these from them (in person or by letter). */
 export function markLifeKnown(db: AppDatabase, entityId: string, upTo: CalendarDate = db.state.inStoryDate): AppDatabase {
   let changed = false;
   const entities = db.entities.map((entity) => {
@@ -328,7 +328,7 @@ export function markLifeKnown(db: AppDatabase, entityId: string, upTo: CalendarD
   return changed ? { ...db, entities } : db;
 }
 
-/** The newest life event Kan has not heard of yet: something a letter could tell. */
+/** The newest life event the player has not heard of yet: something a letter could tell. */
 export function newsOfTheirLife(entity: EntityRecord, before: CalendarDate): LifeEvent | null {
   return (
     [...lifeOf(entity)]
@@ -341,9 +341,9 @@ export function newsOfTheirLife(entity: EntityRecord, before: CalendarDate): Lif
 // Reunions
 
 /**
- * After a turn: anyone now present whom Kan had not seen for REUNION_DAYS is
+ * After a turn: anyone now present whom the player had not seen for REUNION_DAYS is
  * a reunion. The note stays with them for the rest of that scene, and what
- * happened in their life is now something Kan can see or be told.
+ * happened in their life is now something the player can see or be told.
  */
 export function markReunions(before: AppDatabase, after: AppDatabase): AppDatabase {
   const previous = new Map(before.entities.map((entity) => [entity.id, entity]));
@@ -396,7 +396,7 @@ function canonSince(db: AppDatabase, entity: EntityRecord, since: CalendarDate):
 
 /**
  * The "since you last saw them" note for one person, or '' when it does not
- * apply: they are a reunion in this scene, or Kan is about to meet them
+ * apply: they are a reunion in this scene, or the player is about to meet them
  * (named in the turn) after REUNION_DAYS apart.
  */
 export function sinceYouLastSaw(db: AppDatabase, entity: EntityRecord): string {
@@ -458,7 +458,7 @@ export function reunionNotes(db: AppDatabase, entities: EntityRecord[]): Map<str
   return notes;
 }
 
-/** Life events Kan knows of, newest first (the bond screen). */
+/** Life events the player knows of, newest first (the bond screen). */
 export function knownLife(entity: EntityRecord): LifeEvent[] {
   return lifeOf(entity)
     .filter((event) => event.known)

@@ -1,7 +1,7 @@
 // Ambient sound (living-world Stage 5, section 17).
 //
 // Ambience only: no music, no stingers. The point is to make you feel where
-// Kan is: water running by a river, birds in a forest by day, a little wind
+// The player is: water running by a river, birds in a forest by day, a little wind
 // on the road, rain on a roof.
 //
 // This module is pure. It reads state the app already tracks (the scene's
@@ -53,7 +53,7 @@ export const AMBIENCE_BEDS = [
 
 export type AmbienceBed = (typeof AMBIENCE_BEDS)[number];
 
-/** Beds that sit inside with Kan; everything else is outside and gets muffled indoors. */
+/** Beds that sit inside with the player; everything else is outside and gets muffled indoors. */
 export const INDOOR_BEDS: ReadonlySet<AmbienceBed> = new Set<AmbienceBed>(['rain-roof', 'murmur', 'room', 'fire', 'cave']);
 
 export type AmbienceInput = {
@@ -68,14 +68,14 @@ export type AmbienceInput = {
   /** A map place id, when the location names one. */
   placeId: string | null;
   fight: boolean;
-  /** The kind of safehouse Kan is at: walls and a roof, or a camp under the sky. */
+  /** The kind of safehouse the player is at: walls and a roof, or a camp under the sky. */
   shelter?: SafehouseKind;
 };
 
 export type AmbienceMix = {
   /** Bed levels, 0–1. Beds not listed are silent. */
   beds: Partial<Record<AmbienceBed, number>>;
-  /** Kan is inside: outside sounds go through a low-pass and drop. */
+  /** The player is inside: outside sounds go through a low-pass and drop. */
   indoors: boolean;
   /** A fight lowers everything instead of adding anything. */
   fight: boolean;
@@ -104,7 +104,7 @@ const RIVER_PLACES = new Set(['naka-river']);
 const SEA_PLACES = new Set(['uzushio', 'naruto-bridge', 'mist']);
 const SEA_REGIONS = new Set<Region>(['whirlpools', 'water', 'sea']);
 
-/** Where Kan is right now, read from the save. */
+/** Where the player is right now, read from the save. */
 export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   const weather = currentWeather(db);
   const house = currentSafehouse(db);
@@ -125,7 +125,7 @@ export function ambienceInputOf(db: AppDatabase): AmbienceInput {
   };
 }
 
-/** Is Kan inside? The location's own words decide; a structure counts unless it says outside. */
+/** Is the player inside? The location's own words decide; a structure counts unless it says outside. */
 export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place' | 'shelter'>): boolean {
   const location = input.place;
 
@@ -136,7 +136,7 @@ export function isIndoors(input: Pick<AmbienceInput, 'kind' | 'place' | 'shelter
     // "A hut in the forest" is inside the hut; "outside the hut" is not.
     return cover === 'walls' && !/\b(outside|roof of|rooftop)\b/i.test(location);
   }
-  // Ruins with no place of Kan's own in them are open to the sky.
+  // Ruins with no place of the player's own in them are open to the sky.
   if (!input.shelter && campCover(location) === 'ruin') return false;
   // Any other safehouse has walls unless the words say he's outside it.
   if (input.shelter && !(OUTSIDE_WORDS.test(location) && !INDOOR_WORDS.test(location))) return true;
@@ -177,7 +177,7 @@ function rainOf(condition: WeatherCondition) {
   }
 }
 
-/** What Kan should hear, from where he is. */
+/** What the player should hear, from where he is. */
 export function ambienceMix(input: AmbienceInput): AmbienceMix {
   const beds: Partial<Record<AmbienceBed, number>> = {};
   const indoors = isIndoors(input);

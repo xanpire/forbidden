@@ -18,7 +18,7 @@ export type RelationshipStage =
   | 'romantic interest'
   | 'lover'
   | 'rejected'
-  /** Was with Kan once; it ended. Canon-bound hearts land here (canonEndgame). */
+  /** Was with the player once; it ended. Canon-bound hearts land here (canonEndgame). */
   | 'ex';
 
 export type Attraction = 'none' | 'warm' | 'strong';
@@ -171,14 +171,14 @@ export type CharacterLoreProfile = {
   orientation: string;
   /**
    * Winnable, but canon wins in the end: from this date she is with her canon
-   * partner, and anything she had with Kan is over (canonEndgame.ts).
+   * partner, and anything she had with the player is over (canonEndgame.ts).
    */
   canonEndgame?: { partner: string; from: { year: number; month: number } };
 };
 
 // Lore-accurate hearts. "lore-locked" characters have canon feelings that do
-// not bend to Kan no matter what; "winnable" characters can develop real
-// feelings for Kan over long, genuinely earned story time.
+// not bend to the player no matter what; "winnable" characters can develop real
+// feelings for the player over long, genuinely earned story time.
 export const CHARACTER_LORE: Record<string, CharacterLoreProfile> = {
   'Sakura Haruno': {
     canonDevotion: 'Devoted to Sasuke Uchiha since childhood; will stay loyal to that devotion.',
@@ -1089,7 +1089,7 @@ const LORE_BY_KEY = new Map<string, CharacterLoreProfile>(
 );
 
 /**
- * Whether Kan could win someone's heart, from who they are: men never, a
+ * Whether the player could win someone's heart, from who they are: men never, a
  * woman by her lore heart, an original woman by whether she is drawn to men.
  */
 export function romanceFor(
@@ -1129,12 +1129,12 @@ export function loreProfileFor(name: string): CharacterLoreProfile | null {
 // protect the token budget.
 export const ROMANCE_RULES = `ROMANCE
 - Romance is slow, earned over many scenes, and can fail. NPCs have loves of their own. Bonds show a stage, an attraction, and a lore heart.
-- Kan is straight: only women can ever be romance options. Men are never romantic interests for him, whatever their bond; friendship, loyalty and brotherhood still grow.
-- Lore-locked hearts never turn to Kan: Sakura→Sasuke, Hinata→Naruto, Kurenai↔Asuma, Konan→Yahiko, Kushina↔Minato, Yūgao→Hayate, Tsunade (grieving Dan), Rin→Kakashi; married women stay married. Friendship can still grow.
+- Only someone whose heart is open to the player can ever become a romance option; anyone not drawn to the player stays a friend at most, whatever their bond, and friendship, loyalty and closeness still grow.
+- Lore-locked hearts never turn to the player: Sakura→Sasuke, Hinata→Naruto, Kurenai↔Asuma, Konan→Yahiko, Kushina↔Minato, Yūgao→Hayate, Tsunade (grieving Dan), Rin→Kakashi; married women stay married. Friendship can still grow.
 - Winnable hearts (Tenten, Anko, Shizune, Mei, Karin, Hana Inuzuka, Suzume, Yugito, Fū, Kurotsuchi, Samui, Ayame, original women drawn to men) open only through long, consistent effort, never one kind act.
-- Canon-bound hearts (Temari→Shikamaru, Ino→Sai, Karui→Choji) can truly love Kan, but canon wins. As her canon time nears, the story ends it naturally: duty, distance, growing apart, her own choice; never cheating or a sudden change of character. After that Kan is her ex, she is with her canon partner, and she does not go back to Kan.
-- Adults deflect Kan's advances while he is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
-- A rejection holds by default: the refusal stands, and Kan pushing again only hardens it. It is not forever. Over a long stretch of in-story time and many scenes, someone who turned Kan down can change their mind as they truly come to know him: his real self behind the reserve, what he has done for them or others, or the power he keeps hidden. The change comes from their side, never soon after the refusal, never from repeated asking, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest). Lore-locked hearts and the age rules above still hold.`;
+- Canon-bound hearts (Temari→Shikamaru, Ino→Sai, Karui→Choji) can truly love the player, but canon wins. As her canon time nears, the story ends it naturally: duty, distance, growing apart, her own choice; never cheating or a sudden change of character. After that the player is her ex, she is with her canon partner, and she does not go back to the player.
+- Adults deflect the player's advances while the player is under 17; from 17 an adult heart may open if earned. Teen attraction is honest (tension, confessions, kissing). Explicit intimacy only when both are 18+ in-story, written openly with no fade-out; younger, the scene stops at the boundary without moralizing.
+- A rejection holds by default: the refusal stands, and the player pushing again only hardens it. It is not forever. Over a long stretch of in-story time and many scenes, someone who turned the player down can change their mind as they truly come to know the player: their real self, what they have done for them or others, or the strength they keep hidden. The change comes from their side, never soon after the refusal, never from repeated asking, needs a clear reason in the story, and moves in steps (rejected → friendly/close → romantic interest). Lore-locked hearts and the age rules above still hold.`;
 export type EraKey = 'pre' | 'part1' | 'shippuden' | 'war' | 'after';
 
 export function eraKeyForYear(year: number): EraKey {

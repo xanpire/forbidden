@@ -1,19 +1,19 @@
-// Reputation: what the world has on Kan.
+// Reputation: what the world has on the player.
 //
-// - Bingo books. Each great village keeps a `heat` for Kan (0-100): how badly
+// - Bingo books. Each great village keeps a `heat` for the player (0-100): how badly
 //   it wants him. Deeds its shinobi survive to report raise it (the state
 //   tracker's `reputation`); time without new deeds cools it slowly. Past
 //   LIST_HEAT he is in that village's bingo book with a rank (C → S) and a
 //   bounty, and an entry, once written, is never torn out.
 // - Akatsuki standing (-100..100): how the organization regards him, which
 //   changes how Pain, Konan and his partners treat him once he is a member.
-// - Kan does not know what is written about him until the story shows him
+// - the player does not know what is written about them until the story shows them
 //   (a poster, a hunter naming his price, someone telling him): the tracker's
 //   `bounty_seen` marks a village's entry as known. The narrator always knows,
-//   so strangers react honestly; the player's screen shows only what Kan has
+//   so strangers react honestly; the player's screen shows only what the player has
 //   seen.
 //
-// The narrator gets YOUR NAME OUT THERE: how the people where Kan stands
+// The narrator gets YOUR NAME OUT THERE: how the people where the player stands
 // would react to his face, and, now and then, an optional bounty hunter.
 
 import { dateSortValue, daysBetween, timeOfDayOf } from './calendar';
@@ -42,7 +42,7 @@ export const VILLAGE_NAME: Record<VillageFaction, string> = {
   stone: 'Hidden Stone',
 };
 
-/** Heat at which a village writes Kan into its bingo book. */
+/** Heat at which a village writes the player into its bingo book. */
 export const LIST_HEAT = 15;
 
 /** Rank thresholds (heat at or above). */
@@ -87,7 +87,7 @@ function emptyReputation(): ReputationState {
 }
 
 /**
- * The morning after the massacre night the Leaf finds Kan gone from ANBU and
+ * The morning after the massacre night the Leaf finds the player gone from ANBU and
  * writes him into its book beside Itachi. Before that, nobody has anything on
  * him. Runs every turn; an entry, once there, is never touched again here.
  */
@@ -139,7 +139,7 @@ export function normalizeReputation(raw: unknown): ReputationState {
   };
 }
 
-/** Heat today: a village forgets slowly, but never takes Kan out of its book. */
+/** Heat today: a village forgets slowly, but never takes the player out of its book. */
 export function currentHeat(entry: BingoEntry | undefined, now: CalendarDate): number {
   if (!entry) {
     return 0;
@@ -186,7 +186,7 @@ export type BingoListing = {
   lastReason?: string;
 };
 
-/** Every village that has Kan in its book, worst first. */
+/** Every village that has the player in its book, worst first. */
 export function bingoListings(db: AppDatabase): BingoListing[] {
   const reputation = reputationOf(db);
   const now = db.state.inStoryDate;
@@ -214,7 +214,7 @@ export function bingoListings(db: AppDatabase): BingoListing[] {
   return listings.sort((a, b) => b.heat - a.heat);
 }
 
-/** The highest price on Kan's head anywhere: what a bounty hunter would chase. */
+/** The highest price on the player's head anywhere: what a bounty hunter would chase. */
 export function topBounty(db: AppDatabase): BingoListing | null {
   return bingoListings(db)[0] ?? null;
 }
@@ -313,7 +313,7 @@ export function applyReputationChanges(
 }
 
 // ---------------------------------------------------------------------------
-// Where Kan stands, and who would know his face
+// Where the player stands, and who would know their face
 
 const TERRITORY: Array<[RegExp, VillageFaction]> = [
   [/\b(leaf|konoha|land of fire|fire country|tanzaku|otafuku|uchiha|nakano|forest of death)\b/i, 'leaf'],
@@ -323,7 +323,7 @@ const TERRITORY: Array<[RegExp, VillageFaction]> = [
   [/\b(stone|iwa|land of earth|earth country)\b/i, 'stone'],
 ];
 
-/** The great village whose land Kan is in, or null in the small countries and the wilds between. */
+/** The great village whose land the player is in, or null in the small countries and the wilds between. */
 export function territoryOf(location: string): VillageFaction | null {
   const text = localizePlaceNames(location ?? '');
   let best: { index: number; village: VillageFaction } | null = null;
@@ -403,7 +403,7 @@ function standingLine(db: AppDatabase) {
 }
 
 /**
- * The narrator block: how people where Kan stands would react to him. Skipped
+ * The narrator block: how people where the player stands would react to them. Skipped
  * where nobody would be around, except for his standing inside the Akatsuki.
  */
 export function formatReputationBlock(db: AppDatabase): string {
@@ -452,9 +452,9 @@ export function formatReputationBlock(db: AppDatabase): string {
     'YOUR NAME OUT THERE (how strangers react to you; never state these numbers as narration)',
     ...lines.map((line) => `- ${line}`),
     unknown.length > 0
-      ? `- Kan has not seen what ${unknown.map((listing) => listing.name).join(' or ')} wrote about him; he can find out through a bounty poster, a hunter naming his price, or someone telling him.`
+      ? `- You have not seen what ${unknown.map((listing) => listing.name).join(' or ')} wrote about you; you can find out through a bounty poster, a hunter naming their price, or someone telling you.`
       : '',
-    '- Recognition takes a good look and someone who would know. When it happens, show it: a double take, a lowered voice, a sudden exit, a price named. Nobody recognizes Kan just because he is wanted.',
+    '- Recognition takes a good look and someone who would know. When it happens, show it: a double take, a lowered voice, a sudden exit, a price named. Nobody recognizes you just because you are wanted.',
   ]
     .filter(Boolean)
     .join('\n');
@@ -540,9 +540,9 @@ export function reputationTrackingLines(db: AppDatabase): string[] {
   const unknown = bingoListings(db).filter((listing) => !listing.known);
 
   return [
-    'reputation: a village id (leaf, sand, mist, cloud, stone) or akatsuki, with change and a short reason, only when THIS turn gave that village something to report: its shinobi saw Kan and lived, he hurt or killed its people, worked openly in its land, or was linked to a deed by witnesses. Usually 3-10; 15-25 for killing a known jonin or a public massacre; negative only when Kan clearly clears his name or does that village a real service. akatsuki: missions done well or badly, loyalty shown or doubted, defying Pain; usually -10..10. Otherwise [].',
+    'reputation: a village id (leaf, sand, mist, cloud, stone) or akatsuki, with change and a short reason, only when THIS turn gave that village something to report: its people saw the player and lived, the player hurt or killed its people, worked openly in its land, or was linked to a deed by witnesses. Usually 3-10; 15-25 for killing a known jonin or a public massacre; negative only when the player clearly clears their name or does that village a real service. akatsuki: missions done well or badly, loyalty shown or doubted, defying Pain; usually -10..10. Otherwise [].',
     unknown.length > 0
-      ? `bounty_seen: village ids whose bingo-book entry or bounty on Kan he sees or is told about this turn (not yet seen: ${unknown.map((listing) => listing.village).join(', ')}). Otherwise [].`
-      : 'bounty_seen: village ids whose bingo-book entry or bounty on Kan he sees or is told about this turn; otherwise [].',
+      ? `bounty_seen: village ids whose bingo-book entry or bounty on the player they see or are told about this turn (not yet seen: ${unknown.map((listing) => listing.village).join(', ')}). Otherwise [].`
+      : 'bounty_seen: village ids whose bingo-book entry or bounty on the player they see or are told about this turn; otherwise [].',
   ];
 }

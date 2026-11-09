@@ -3,7 +3,7 @@
 // A stylised map of the shinobi world built on the same geography as the
 // GEOGRAPHY lore and geography.ts: the countries, the great villages, the
 // places the story uses (the Naka Shrine and the Uzumaki mask shrine in the
-// Leaf, Karin's Grass, Uzushio's ruins, the Land of Silence), Kan's road over
+// Leaf, Karin's Grass, Uzushio's ruins, the Land of Silence), the player's road over
 // time, and where the people he knows are, as far as he knows. That last part
 // is what he was told or last saw, never the truth the save holds.
 //
@@ -27,6 +27,7 @@ import type { AppDatabase, CalendarDate, EntityRecord, TravelStop } from './type
 import { hashText } from './util';
 import { REGION_SHAPES } from './mapShapes';
 import { regionWeather, weatherTravelFactor } from './weather';
+import { isPlayer } from './player';
 
 export const MAP_WIDTH = 100;
 export const MAP_HEIGHT = 100;
@@ -38,7 +39,7 @@ export type MapPlaceKind = 'village' | 'place' | 'shrine' | 'ruin' | 'hideout';
 export type MapPlace = {
   id: string;
   name: string;
-  /** null for places off every road Kan knows (the Land of Silence). */
+  /** null for places off every road the player knows (the Land of Silence). */
   region: Region | null;
   x: number;
   y: number;
@@ -99,7 +100,7 @@ export const MAP_PLACES: MapPlace[] = [
   { id: 'degarashi', name: 'Degarashi Port', region: 'tea', x: 46.7, y: 75.3, kind: 'place', match: /\bdegarashi\b/i },
   { id: 'modoroki', name: 'Modoroki Shrine', region: 'tea', x: 64, y: 64.3, kind: 'shrine', match: /\b(modoroki shrine|nagi island)\b/i, note: 'On Nagi Island.' },
   { id: 'todoroki', name: 'Todoroki Great Shrine', region: 'tea', x: 79.8, y: 81.8, kind: 'shrine', match: /\b(todoroki (great )?shrine|ouza island)\b/i, note: 'At the southern end of Ouza Island.' },
-  // Off every map Kan knows.
+  // Off every map the player knows.
   { id: 'snow', name: 'Land of Snow', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\b(land of snow|snow country|land of spring)\b/i, note: 'Reached by ship from the Land of Fire; no map you know shows where.' },
   { id: 'valley-lies', name: 'Valley of Lies', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\b(valley of lies|shangri-?la)\b/i, note: 'A mountain valley far from every village: five days from the Rain, they say.' },
   { id: 'flowers', name: 'Land of Flowers', region: null, x: 0, y: 0, unplaced: true, kind: 'place', match: /\bland of flowers\b/i, note: 'Somewhere on the Land of Earth’s border.' },
@@ -157,7 +158,7 @@ function samePlace(a: string, b: string) {
 }
 
 /**
- * After a turn: a new place goes on Kan's road. A place that names no
+ * After a turn: a new place goes on the player's road. A place that names no
  * country stays in the country he was last in.
  */
 export function recordTravel(db: AppDatabase): AppDatabase {
@@ -187,7 +188,7 @@ export function normalizeTravelLog(value: unknown, location: string, date: Calen
 
   if (stops.length > 0) return stops.slice(-TRAVEL_LOG_LIMIT);
 
-  // Older saves: the road starts where Kan is now.
+  // Older saves: the road starts where the player is now.
   const region = regionOf(location);
   const placeId = placeIdOf(location);
 
@@ -216,7 +217,7 @@ export function pointOfStop(stop: Pick<TravelStop, 'place' | 'region' | 'placeId
   };
 }
 
-/** Kan's road as points, oldest first, with repeats of the same spot folded. */
+/** The player's road as points, oldest first, with repeats of the same spot folded. */
 export function routePoints(db: AppDatabase, limit = 60): (MapPoint & { date: CalendarDate; place: string })[] {
   const points: (MapPoint & { date: CalendarDate; place: string })[] = [];
 
@@ -237,7 +238,7 @@ export function routePoints(db: AppDatabase, limit = 60): (MapPoint & { date: Ca
 
 export type PlaceVisits = { count: number; first: CalendarDate; last: CalendarDate };
 
-/** How often and when Kan has been at each map place (a shrine also counts for its village). */
+/** How often and when the player has been at each map place (a shrine also counts for its village). */
 export function placeVisits(db: AppDatabase): Map<string, PlaceVisits> {
   const visits = new Map<string, PlaceVisits>();
   const add = (id: string, date: CalendarDate) => {
@@ -258,13 +259,13 @@ export function placeVisits(db: AppDatabase): Map<string, PlaceVisits> {
   return visits;
 }
 
-/** Countries Kan has set foot in. */
+/** Countries the player has set foot in. */
 export function regionsVisited(db: AppDatabase): Set<Region> {
   return new Set((db.state.travelLog ?? []).map((stop) => stop.region).filter(isRegion));
 }
 
 /**
- * Shinobi days from where Kan is to a place, plain and in the weather
+ * Shinobi days from where the player is to a place, plain and in the weather
  * where he is now. Null for a place off every road.
  */
 export function travelEstimate(db: AppDatabase, to: Region | null): { days: number; inWeather: number } | null {
@@ -300,9 +301,9 @@ export type KnownWhereabouts = {
 const HOME_TAGS = ['akatsuki', 'leaf', 'sand', 'mist', 'cloud', 'stone', 'sound', 'rain', 'waves', 'waterfall'];
 
 /**
- * Where the people Kan has met are, as far as he knows: what he was told,
+ * Where the people the player has met are, as far as he knows: what he was told,
  * else where he last saw them, else where they would usually be. Someone
- * who died without Kan knowing is still where he thinks they are.
+ * who died without the player knowing is still where he thinks they are.
  */
 export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
   const companions = new Set(companionsOf(db).map((entity) => entity.id));
@@ -311,7 +312,7 @@ export function knownWhereabouts(db: AppDatabase): KnownWhereabouts[] {
   const result: KnownWhereabouts[] = [];
 
   for (const entity of db.entities) {
-    if (entity.type !== 'character' || entity.name === 'Kan' || entity.met === false || entity.tier === 'minor') continue;
+    if (entity.type !== 'character' || isPlayer(db, entity) || entity.met === false || entity.tier === 'minor') continue;
     if (isDeceased(entity) && playerKnowsDeath(db, entity)) continue;
 
     if (companions.has(entity.id)) {

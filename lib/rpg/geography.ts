@@ -3,7 +3,7 @@
 // The GEOGRAPHY lore (seed.ts) gives the narrator fixed directions and
 // travel times. This module turns the same numbers into a small graph so the
 // engine can reason about distance too: how long a letter takes, how far a
-// rumour has travelled, whether someone could plausibly cross Kan's path.
+// rumour has travelled, whether someone could plausibly cross the player's path.
 //
 // Regions are coarse (a country, or the land around a great village). Times
 // are shinobi days at a hard pace with rest, matching the lore; civilians and
@@ -231,7 +231,7 @@ const HOME_BY_TAG: Array<[string, Region]> = [
 
 /**
  * Where someone most likely is right now, as far as the save knows: where
- * the story last said they were going, else where Kan last saw them, else
+ * the story last said they were going, else where the player last saw them, else
  * their home village.
  */
 export function whereaboutsRegion(entity: EntityRecord): Region | null {
@@ -259,7 +259,7 @@ export function isRegion(value: unknown): value is Region {
 }
 
 /**
- * The region Kan is in now: the one his location names, else the last one
+ * The region the player is in now: the one their location names, else the last one
  * on his road (a forest clearing is still in the country he was last in),
  * else the Land of Fire, where the story starts.
  */

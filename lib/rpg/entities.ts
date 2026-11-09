@@ -184,7 +184,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
     });
   }
 
-  // Names Kan learned belong to someone the save knows (a stranger added this
+  // Names the player learned belong to someone the save knows (a stranger added this
   // turn included, by the label they were added under).
   const freshId = (raw: string) => {
     const ref = resolve(raw);
@@ -243,7 +243,7 @@ export function resolveCharacterRefs(db: AppDatabase, diff: TurnDiff): TurnDiff 
 //   Preta, Naraka) controlled by one hidden mind.
 // - Zetsu is one being split into Black Zetsu and White Zetsu halves.
 // Only names count, never descriptions ("the masked man" is how anyone in a
-// mask is described), and never an identity Kan has not learned (names.ts).
+// mask is described), and never an identity the player has not learned (names.ts).
 const FAKE_HINTS = ['tobi', 'fake madara', 'masked madara'];
 
 const REAL_MADARA_HINTS = ['madara'];
@@ -422,7 +422,7 @@ function strangerName(db: AppDatabase, raw: string) {
   return base;
 }
 
-/** Kan knows the merged person by everything he knew of either record. */
+/** The player knows the merged person by everything he knew of either record. */
 function mergeKnown(keep: EntityRecord, drop: EntityRecord): EntityRecord['known'] {
   const named = (entity: EntityRecord) => !entity.unnamed && entity.known === undefined;
 
@@ -471,7 +471,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
     ...drop,
     ...keep,
     aliases,
-    // What Kan knew of either name carries over to the one person.
+    // What the player knew of either name carries over to the one person.
     known: mergeKnown(keep, drop),
     unnamed: keep.unnamed && drop.unnamed ? true : undefined,
     identities: keep.identities ?? drop.identities,
@@ -580,7 +580,7 @@ export function mergeEntityPair(db: AppDatabase, keepId: string, dropId: string)
 
 /**
  * The scene cast (characters_present, plus companions) is the one thing
- * that marks people met and stamps when and where Kan last saw them.
+ * that marks people met and stamps when and where the player last saw them.
  */
 export function recordPresence(db: AppDatabase, names: string[]): AppDatabase {
   const matched = new Set(names.map((name) => resolveEntity(db, name)?.id).filter(Boolean) as string[]);
@@ -780,7 +780,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
     : null;
   // Someone flagged as new is only a known person under a name they already
   // go by: "Haku the Fisherman" is not Haku, "Hayate Moriya" is not Hayate.
-  // A stranger Kan cannot name yet is always someone new: their "name" is
+  // A stranger the player cannot name yet is always someone new: their "name" is
   // only how they look to him, and two strangers can look alike.
   const stranger = !byId && entity.isNew === true && entity.nameKnown === false;
   let existing = stranger ? null : (byId ?? resolveEntity(db, name, { exactOnly: entity.isNew === true }));
@@ -854,7 +854,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
 
   const nextMood = entity.mood?.trim() || existing.mood;
 
-  // An identity Kan has not learned (Obito, before the mask breaks) never becomes a matchable alias.
+  // An identity the player has not learned (Obito, before the mask breaks) never becomes a matchable alias.
   const hidden = new Set(
     (existing.identities ?? [])
       .filter((identity) => !existing.aliases.some((alias) => alias.toLowerCase() === identity.name.toLowerCase()))
@@ -903,7 +903,7 @@ export function applyEntityDiff(db: AppDatabase, entity: EntityDiff): AppDatabas
   };
 }
 
-/** Whether Kan has learned what a canon milestone reveals: its news reached him, or he was part of it. */
+/** Whether the player has learned what a canon milestone reveals: its news reached them, or he was part of it. */
 export function milestoneKnown(db: AppDatabase, milestoneId: string) {
   const progress = db.state.canonProgress;
 

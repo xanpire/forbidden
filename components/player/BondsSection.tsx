@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Search } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
-import { ReputationCard } from '@/components/kan/ReputationCard';
+import { ReputationCard } from '@/components/player/ReputationCard';
 import { colors, fonts, radius, spacing } from '@/constants/theme';
 import { formatDayMonth } from '@/lib/rpg/calendar';
 import { playerKnowsDeath } from '@/lib/rpg/deaths';
@@ -16,6 +16,7 @@ import { useStoredImage } from '@/lib/rpg/imageStore';
 import { upcomingBirthdays, type UpcomingBirthday } from '@/lib/rpg/yearly';
 import type { AppDatabase, BondRecord, CalendarDate, EntityRecord } from '@/lib/rpg/types';
 import { displayName, searchableNames } from '@/lib/rpg/names';
+import { isPlayer } from '@/lib/rpg/player';
 
 type BondEntry = {
   entity: EntityRecord;
@@ -148,7 +149,7 @@ export function BondsSection() {
       // People you have not met, and one-scene characters, stay off the list.
       .filter(
         (entity) =>
-          entity.type === 'character' && entity.name !== 'Kan' && entity.met !== false && entity.tier !== 'minor'
+          entity.type === 'character' && !isPlayer(db, entity) && entity.met !== false && entity.tier !== 'minor'
       )
       .map((entity) => ({
         entity,

@@ -69,14 +69,14 @@ export function paceMinimumSeconds(pace: ScenePace | undefined) {
   return PACE_MINIMUM_SECONDS[pace ?? 'conversation'];
 }
 
-/** Hour a full night's sleep wakes Kan at. */
+/** Hour a full night's sleep wakes the player at. */
 export const WAKE_HOUR = 7;
 const MIN_NIGHT_SECONDS = 4 * 3600;
 const LATE_SLEEP_SECONDS = 8 * 3600;
 
 /**
  * Seconds until the next morning. Going to bed after 3 AM means a short night
- * would end before 7, so Kan sleeps eight hours instead.
+ * would end before 7, so the player sleeps eight hours instead.
  */
 export function secondsUntilMorning(current: CalendarDate) {
   const now = current.hour * 3600 + current.minute * 60 + (current.second ?? 0);

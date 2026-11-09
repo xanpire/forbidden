@@ -1,6 +1,6 @@
-// Kan's chakra natures and abilities (dōjutsu, Susanoo...), as the state
+// The player's chakra natures and abilities (dōjutsu, Susanoo...), as the state
 // reply reports them. Thousand Souls needs the list of natures to know what
-// it has taken; the Kan tab shows both.
+// it has taken; the the player tab shows both.
 
 import { normalizeJutsuNature } from './jutsu';
 import type { AbilityRecord, AppDatabase, NatureRecord, TurnDiff } from './types';
@@ -9,7 +9,7 @@ function sameName(a: string, b: string) {
   return a.trim().toLowerCase().replace(/ō/g, 'o') === b.trim().toLowerCase().replace(/ō/g, 'o');
 }
 
-/** Applies the turn's natures_gained and abilities_changed to Kan's sheet. */
+/** Applies the turn's natures_gained and abilities_changed to the player's sheet. */
 export function applyAbilityChanges(db: AppDatabase, diff: TurnDiff): AppDatabase {
   const gained = diff.naturesGained ?? [];
   const changed = diff.abilitiesChanged ?? [];

@@ -1,11 +1,11 @@
-// Names Kan knows. The narrator and the UI only ever call someone by a name
-// Kan has actually learned: strangers are described by how they look until
+// Names the player knows. The narrator and the UI only ever call someone by a name
+// The player has actually learned: strangers are described by how they look until
 // they give their name, someone else says it, a letter or document shows it,
-// or Kan recognises them because they are famous. People with more than one
+// or the player recognises them because they are famous. People with more than one
 // identity (Tobi, Pain, Tenzo) are shown by the best one he knows, and
 // everyone in the world calls them by the name *they* know.
 //
-// Data (who Kan knows at the start, identities, fame, labels) is in nameData.ts.
+// Data (who the player knows at the start, identities, fame, labels) is in nameData.ts.
 
 import { dateSortValue, entityAge } from './calendar';
 import { milestoneKnown, resolveEntity } from './entities';
@@ -43,7 +43,7 @@ export function happened(db: AppDatabase, milestoneId: string | undefined) {
 }
 
 /**
- * Whether a milestone has reached Kan: its news, or he was part of it (a beat
+ * Whether a milestone has reached the player: its news, or he was part of it (a beat
  * he lived is heard as "witnessed"). A personal beat that closed without him
  * taught him nothing.
  */
@@ -101,9 +101,9 @@ function identityName(identity: Identity, renamedNow: boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// What Kan knows
+// What the player knows
 
-/** Kan knows at least one of their names. */
+/** The player knows at least one of their names. */
 export function playerKnowsName(entity: EntityRecord) {
   if (isPlayerEntity(entity) || entity.unnamed) return isPlayerEntity(entity);
   if (entity.known === undefined) return true;
@@ -112,7 +112,7 @@ export function playerKnowsName(entity: EntityRecord) {
   return Boolean(entity.known.given || entity.known.family);
 }
 
-/** Kan knows their whole name (both parts, or their highest identity). */
+/** The player knows their whole name (both parts, or their highest identity). */
 function playerKnowsFully(entity: EntityRecord) {
   if (isPlayerEntity(entity)) return true;
   if (entity.unnamed) return false;
@@ -129,13 +129,13 @@ function playerKnowsFully(entity: EntityRecord) {
   return Boolean((!parts.given || entity.known.given) && (!parts.family || entity.known.family));
 }
 
-/** The short description for someone Kan cannot name yet. */
+/** The short description for someone the player cannot name yet. */
 export function labelOf(db: AppDatabase, entity: EntityRecord): string {
   return entity.known?.label ?? (entity.unnamed ? entity.name : makeLabel(db, entity));
 }
 
 /**
- * The one name everything shows: the best identity Kan knows, else the parts
+ * The one name everything shows: the best identity the player knows, else the parts
  * of the name he has heard in canon order (given only: "Karin"; both:
  * "Karin Uzumaki"; family only: "Uzumaki"), else his description of them.
  */
@@ -176,7 +176,7 @@ export function displayNameOf(db: AppDatabase, entityId: string | null | undefin
   return entity ? displayName(db, entity) : fallback;
 }
 
-/** Other names Kan has learned for them, for "Also known as". */
+/** Other names the player has learned for them, for "Also known as". */
 export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
   if (entity.type !== 'character' || isPlayerEntity(entity)) return [];
 
@@ -194,7 +194,7 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
     if (item.part === 'identity' || item.part === 'full') names.add(item.name);
   }
 
-  // Older saves and story people: the aliases they already had are names Kan knew.
+  // Older saves and story people: the aliases they already had are names the player knew.
   if (entity.known === undefined && !entity.unnamed && !hasIdentities(entity)) {
     for (const alias of entity.aliases.slice(0, 4)) names.add(alias);
   }
@@ -206,7 +206,7 @@ export function alsoKnownAs(db: AppDatabase, entity: EntityRecord): string[] {
   return [...names].filter((name) => name.trim().length > 0 && !sameName(name)).slice(0, 6);
 }
 
-/** Every name the player may search by: only names Kan knows, never a hidden one. */
+/** Every name the player may search by: only names the player knows, never a hidden one. */
 export function searchableNames(db: AppDatabase, entity: EntityRecord): string[] {
   const label = !playerKnowsName(entity) ? [labelOf(db, entity)] : [];
 
@@ -215,14 +215,14 @@ export function searchableNames(db: AppDatabase, entity: EntityRecord): string[]
 
 /**
  * For the narrator's lists (bonds, the dead, elsewhere, companions): the name
- * Kan knows, or his description with the truth marked as narrator-only.
+ * The player knows, or their description with the truth marked as narrator-only.
  */
 export function narratorName(db: AppDatabase, entity: EntityRecord): string {
   const shown = displayName(db, entity);
 
   if (isPlayerEntity(entity) || entity.unnamed || playerKnowsName(entity)) return shown;
 
-  return `${shown} [Kan doesn't know their name; narrator only: ${entity.name}]`;
+  return `${shown} [the player doesn't know their name; narrator only: ${entity.name}]`;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ export function uniqueLabel(db: AppDatabase, entity: EntityRecord, label: string
   return label;
 }
 
-/** Gives everyone present whom Kan cannot name a stable, unique label. */
+/** Gives everyone present whom the player cannot name a stable, unique label. */
 export function ensureLabels(db: AppDatabase, ids: Iterable<string>): AppDatabase {
   const wanted = new Set(ids);
   let next = db;
@@ -361,7 +361,7 @@ function findIdentity(entity: EntityRecord, name: string): Identity | undefined 
   );
 }
 
-/** Everything Kan knows of them, made explicit (an older record with no `known` knows its name). */
+/** Everything the player knows of them, made explicit (an older record with no `known` knows its name). */
 function explicitKnowledge(entity: EntityRecord): NameKnowledge {
   if (entity.known) return entity.known;
 
@@ -373,7 +373,7 @@ function explicitKnowledge(entity: EntityRecord): NameKnowledge {
 }
 
 /**
- * Kan learns a name: a part of it, the whole of it, or one of their
+ * The player learns a name: a part of it, the whole of it, or one of their
  * identities. A stranger the story never named takes the name. Silent: no
  * notice, as in life.
  */
@@ -495,8 +495,8 @@ export function applyNamesLearned(db: AppDatabase, learned: TurnDiff['namesLearn
 }
 
 /**
- * Identities that reach Kan through the canon timeline (the mask breaking,
- * the truth behind Pain), and names others learned because Kan or someone
+ * Identities that reach the player through the canon timeline (the mask breaking,
+ * the truth behind Pain), and names others learned because the player or someone
  * in the scene told them.
  */
 export function learnFromCanon(db: AppDatabase): AppDatabase {
@@ -515,7 +515,7 @@ export function learnFromCanon(db: AppDatabase): AppDatabase {
   return next;
 }
 
-/** Someone in the scene learned another identity of a person (Kan told Deidara who Tobi really is). */
+/** Someone in the scene learned another identity of a person (the player told Deidara who Tobi really is). */
 export function applyNamesTold(db: AppDatabase, told: TurnDiff['namesTold']): AppDatabase {
   let next = db;
 
@@ -616,7 +616,7 @@ function owners(db: AppDatabase, name: string) {
   ).length;
 }
 
-/** The names of theirs Kan does not know yet, each with how learning it would count. */
+/** The names of theirs the player does not know yet, each with how learning it would count. */
 function unknownNames(entity: EntityRecord): { name: string; part: NamePart }[] {
   if (entity.type !== 'character' || isPlayerEntity(entity) || entity.unnamed || entity.known === undefined) return [];
 
@@ -664,7 +664,7 @@ export function learnFromDialogue(db: AppDatabase, narration: string, presentIds
   return next;
 }
 
-/** Names the narration used outside dialogue that Kan could not know: for the Debug panel. */
+/** Names the narration used outside dialogue that the player could not know: for the Debug panel. */
 export function nameLeaks(db: AppDatabase, narration: string): string[] {
   const prose = withoutQuotes(narration);
   const known = new Set(
@@ -676,7 +676,7 @@ export function nameLeaks(db: AppDatabase, narration: string): string[] {
     for (const candidate of unknownNames(entity)) {
       if (known.has(lower(candidate.name)) || !namesInText(prose, candidate.name)) continue;
 
-      leaks.push(`${candidate.name} (Kan knows them as ${displayName(db, entity)})`);
+      leaks.push(`${candidate.name} (you know them as ${displayName(db, entity)})`);
       break;
     }
   }
@@ -761,9 +761,9 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
   const truth = identities.find((identity) => identity.kind === 'true');
   const claimed = identities.find((identity) => identity.kind === 'claimed');
   const persona = identities.find((identity) => identity.kind === 'persona' && happened(db, identity.existsFrom));
-  const kan = db.entities.find(isPlayerEntity);
+  const you = db.entities.find(isPlayerEntity);
   const viewers = [
-    ...(kan ? [kan] : []),
+    ...(you ? [you] : []),
     ...presentIds.map((id) => db.entities.find((item) => item.id === id)).filter((item): item is EntityRecord => Boolean(item) && item!.id !== entity.id && !isPlayerEntity(item!)),
   ];
 
@@ -772,7 +772,7 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
     const name = nameKnownBy(db, entity, viewer);
     const along = known.find((item) => item.playsAlong);
     const note = known.find((item) => item.note)?.note;
-    const who = isPlayerEntity(viewer) ? 'Kan' : displayName(db, viewer);
+    const who = isPlayerEntity(viewer) ? 'You' : displayName(db, viewer);
 
     return {
       viewer,
@@ -794,7 +794,7 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
         : (persona ?? claimed ?? truth!);
   const voices = VOICES[entity.name];
   const voice = voices?.[inUse.kind];
-  const playerKnowsMask = Boolean(persona && claimed && kan && knowsIdentity(entity, claimed));
+  const playerKnowsMask = Boolean(persona && claimed && you && knowsIdentity(entity, claimed));
 
   const truthText = truth
     ? `truly ${truth.name}${truth.note ? `, ${truth.note}` : ''}${claimed ? `; claims to be ${claimed.name}` : ''}${persona ? `; plays "${persona.name}"` : ''}`
@@ -804,13 +804,13 @@ export function identityLine(db: AppDatabase, entity: EntityRecord, presentIds: 
     `  Truth (narrator only): ${truthText}.`,
     `  Going by "${identityName(inUse, Boolean(inUse.renamed && happened(db, inUse.renamed.after)))}" in this scene${voice ? `, ${voice}` : ''}.${
       voices && persona && claimed ? ' He switches in an instant: Tobi whenever anyone who only knows Tobi is there, Madara when alone with someone who knows him as Madara; the act sometimes slips into his serious side as a joke.' : ''
-    }${playerKnowsMask ? ' Kan knows the act is a mask and may be expected to play along; keeping or breaking that silence has consequences.' : ''}`,
+    }${playerKnowsMask ? ' The player knows the act is a mask and may be expected to play along; keeping or breaking that silence has consequences.' : ''}`,
     `  Who knows him as what: ${views.map((view) => view.text).join('; ')}.`,
   ].join('\n');
 }
 
 /**
- * For CHARACTERS IN SCENE: how Kan knows them, and what the narrator may
+ * For CHARACTERS IN SCENE: how the player knows them, and what the narrator may
  * call them.
  */
 export function playerKnowsLine(db: AppDatabase, entity: EntityRecord): string {
@@ -819,16 +819,16 @@ export function playerKnowsLine(db: AppDatabase, entity: EntityRecord): string {
   if (!playerKnowsName(entity)) {
     const fame = fameOf(db, entity);
 
-    return `Kan doesn't know their name: call them "${labelOf(db, entity)}" every time until he learns it${
-      fame === 'heard' ? `; he has heard the name ${entity.name} but doesn't know the face (only an introduction or a clear sign tells him)` : ''
+    return `The player doesn't know their name: call them "${labelOf(db, entity)}" every time until they learn it${
+      fame === 'heard' ? `; the player has heard the name ${entity.name} but doesn't know the face (only an introduction or a clear sign tells them)` : ''
     }`;
   }
 
   if (!playerKnowsFully(entity) && !hasIdentities(entity)) {
-    return `Kan knows them only as ${displayName(db, entity)} (narrator only: ${fullNameOf(entity)})`;
+    return `The player knows them only as ${displayName(db, entity)} (narrator only: ${fullNameOf(entity)})`;
   }
 
-  return `Kan knows them as ${displayName(db, entity)}`;
+  return `The player knows them as ${displayName(db, entity)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +851,7 @@ export function castKnowledge(name: string): NameKnowledge | undefined {
 /**
  * Load-time setup. Every save gets identities and name parts for the people
  * who need them, and the old spoiler-name lists become identities. A save
- * from before names were tracked keeps every name for everyone Kan already
+ * from before names were tracked keeps every name for everyone the player already
  * met; the people he has not met start from what he knew at the beginning.
  */
 export function ensureNames(db: AppDatabase): AppDatabase {
@@ -891,7 +891,7 @@ export function ensureNames(db: AppDatabase): AppDatabase {
   return legacy ? learnFromCanon(next) : next;
 }
 
-/** Everyone Kan learned about in the scene and through the world this turn. */
+/** Everyone the player learned about in the scene and through the world this turn. */
 export function applyNameStep(
   db: AppDatabase,
   input: { learned?: TurnDiff['namesLearned']; told?: TurnDiff['namesTold']; narration: string; presentIds: string[] }

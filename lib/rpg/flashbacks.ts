@@ -1,24 +1,24 @@
 /**
- * Playable flashbacks (living-world section 19): short scenes from Kan's life
+ * Playable flashbacks (living-world section 19): short scenes from the player's life
  * before the story, offered at fitting moments and never on request.
  *
  * - Offer: at most one a month, only in downtime or a quiet conversation,
  *   when something in the present fits one (a person, a place, a date, a
  *   word, a beat just reached). The narrator gets one optional line and lets
- *   a small trigger touch Kan; the reply that showed it gets a "Remember"
- *   chip, and Kan can follow it by the chip or in his own words.
+ *   a small trigger touch the player; the reply that showed it gets a "Remember"
+ *   chip, and the player can follow it by the chip or in their own words.
  * - Playing: the memory has its own clock, place and weather. Its turns never
  *   move the present clock, place, inventory, jutsu, injuries or canon; the
- *   narrator gets a FLASHBACK block (Kan's age and what he could do then,
+ *   narrator gets a FLASHBACK block (the player's age and what he could do then,
  *   who is there at their age, what is fixed and what must stay hidden)
  *   instead of the present state.
- * - Ending: after about 3-10 turns the narrator closes it and carries Kan
+ * - Ending: after about 3-10 turns the narrator closes it and carries the player
  *   back to the second he left. It becomes a memory dated in the past,
  *   tagged `flashback`, shared by everyone in it, and it can nudge a bond by
  *   one point at most. Each flashback plays once.
  */
 import { advanceSeconds, calculateAge, daysBetween, daysFromCivil, entityAge, formatDate, timeOfDayOf } from './calendar';
-import { isPlayer, playerAgeAt } from './player';
+import { isPlayer, playerAgeAt, playerName } from './player';
 
 export { playerAgeAt };
 import { FLASHBACKS, FLASHBACK_BY_ID, KAN_PARENTS, type FlashbackRecord } from './flashbackData';
@@ -123,7 +123,7 @@ export function isFlashbackEntry(entry: Pick<RawLogEntry, 'flashback'>): boolean
 /**
  * The save as the memory sees it: its date, place and weather instead of the
  * present's. Used for the WEATHER line, the ambience and the Story header, so
- * the present's held weather and Kan's road are never touched.
+ * the present's held weather and the player's road are never touched.
  */
 export function flashbackView(db: AppDatabase): AppDatabase | null {
   const playing = activeFlashback(db);
@@ -150,7 +150,7 @@ export function flashbackView(db: AppDatabase): AppDatabase | null {
 }
 
 // ---------------------------------------------------------------------------
-// Kan as he was
+// The player as he was
 
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen'];
 
@@ -159,7 +159,7 @@ export function ageWord(age: number): string {
 }
 
 
-/** What Kan could do at an age, for the narrator. */
+/** What the player could do at an age, for the narrator. */
 export function playerThen(age: number): string {
   if (age <= 5) {
     return `a small child of ${ageWord(age)}: no jutsu and no chakra training; he can run, climb, hide and cry like any child his age, and his size and strength are a child’s`;
@@ -176,21 +176,21 @@ export function playerThen(age: number): string {
   return `an ANBU operative of ${ageWord(age)}: everything a sharp chunin-level shinobi knows, quick and quiet; he picks up jutsu fast by watching; a boy’s size, not yet grown`;
 }
 
-/** How Kan looks at an age, for images (his reference sheets show him at 13 and older). */
-export function playerLookAt(age: number): string {
+/** How the player looks at an age, for images (their reference sheets show them at 13 and older). */
+export function playerLookAt(age: number, name = 'The player'): string {
   if (age <= 5) {
-    return `Kan as a small child of ${age}: round face, short black spiky hair, the same brown eyes, small and slight, in plain child’s clothes`;
+    return `${name} as a small child of ${age}: round face, short black spiky hair, the same brown eyes, small and slight, in plain child’s clothes`;
   }
 
   if (age <= 8) {
-    return `Kan at ${age}: a skinny Academy boy with black spiky hair and brown eyes, in a plain dark shirt and shorts`;
+    return `${name} at ${age}: a skinny Academy boy with black spiky hair and brown eyes, in a plain dark shirt and shorts`;
   }
 
   if (age <= 11) {
-    return `Kan at ${age}: a young genin with black spiky hair and brown eyes, a Leaf forehead protector, dark shinobi clothes cut small`;
+    return `${name} at ${age}: a young genin with black spiky hair and brown eyes, a Leaf forehead protector, dark shinobi clothes cut small`;
   }
 
-  return `Kan at ${age}: a boy in ANBU gear, black spiky hair and brown eyes, grey armour and arm guards, an animal mask pushed up on his head or worn over his face`;
+  return `${name} at ${age}: a boy in ANBU gear, black spiky hair and brown eyes, grey armour and arm guards, an animal mask pushed up on his head or worn over his face`;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ function beatJustReached(db: AppDatabase, id: string) {
 
   if (!event || !milestone) return false;
 
-  // A world event counts from the day word of it reached Kan, never before.
+  // A world event counts from the day word of it reached the player, never before.
   const since = milestone.playerDriven
     ? milestoneStage(db, id) === 'completed' || milestoneStage(db, id) === 'accepted'
       ? event.inStoryDate
@@ -315,7 +315,7 @@ function whenLine(db: AppDatabase, record: FlashbackRecord, date: CalendarDate =
 export function formatFlashbackOffer(db: AppDatabase, record: FlashbackRecord | null): string {
   if (!record) return '';
 
-  return `A MEMORY (optional): a flashback fits here: ${record.title} (${whenLine(db, record)}: ${record.memoryLine.replace(/\.$/, '')}). If it fits the moment, let one small trigger touch Kan this turn, drawn from what is really here (${record.hint}), and leave it there: do not start the memory, do not narrate it, do not say what he feels. He can follow it or let it pass. If nothing here fits, leave it out.`;
+  return `A MEMORY (optional): a flashback fits here: ${record.title} (${whenLine(db, record)}: ${record.memoryLine.replace(/\.$/, '')}). If it fits the moment, let one small trigger touch you this turn, drawn from what is really here (${record.hint}), and leave it there: do not start the memory, do not narrate it, do not say what he feels. He can follow it or let it pass. If nothing here fits, leave it out.`;
 }
 
 /** The date line shown above a flashback in the chat ("Year 5, Oct 10. You are five."). */
@@ -328,7 +328,7 @@ export function flashbackDateLine(db: Pick<AppDatabase, 'state'>, date: Calendar
 // ---------------------------------------------------------------------------
 // Starting
 
-/** Kan's parents enter the save the first time a memory needs them. */
+/** The player's parents enter the save the first time a memory needs them. */
 export function ensureFlashbackPeople(db: AppDatabase, record: FlashbackRecord): AppDatabase {
   const missing = KAN_PARENTS.filter(
     (parent) => record.cast.includes(parent.name) && !db.entities.some((entity) => entity.name === parent.name)
@@ -362,7 +362,7 @@ export function ensureFlashbackPeople(db: AppDatabase, record: FlashbackRecord):
 }
 
 /**
- * Kan steps into a flashback: it plays from the next narrated turn. Nothing
+ * The player steps into a flashback: it plays from the next narrated turn. Nothing
  * in the present changes except that its pace and mode are kept to put back.
  */
 export function beginFlashback(db: AppDatabase, id: string): AppDatabase {
@@ -448,11 +448,11 @@ function pacingLine(turns: number): string {
   }
 
   if (turns >= FLASHBACK_LAST_TURN) {
-    return `Turn ${turns + 1}: END THE MEMORY THIS REPLY. Close it in a short paragraph and bring Kan back to the present, to the very second he left (THE PRESENT below): the river, the smoke or the voice fades and the present is there again.`;
+    return `Turn ${turns + 1}: END THE MEMORY THIS REPLY. Close it in a short paragraph and bring the player back to the present, to the very second they left (THE PRESENT below): the river, the smoke or the voice fades and the present is there again.`;
   }
 
   if (turns >= FLASHBACK_WRAP_TURN) {
-    return `Turn ${turns + 1} of about 3-10: look for the scene's natural end. When it comes, close the memory in a short paragraph and bring Kan back to the present, to the very second he left (THE PRESENT below).`;
+    return `Turn ${turns + 1} of about 3-10: look for the scene's natural end. When it comes, close the memory in a short paragraph and bring the player back to the present, to the very second they left (THE PRESENT below).`;
   }
 
   return `Turn ${turns + 1} of about 3-10: play the scene; one scene only, no time skips beyond it.`;
@@ -460,7 +460,7 @@ function pacingLine(turns: number): string {
 
 /**
  * Replaces the present state for the narrator while a flashback plays: the
- * memory's date and place, Kan as he was, who is there at their age, what is
+ * memory's date and place, the player as he was, who is there at their age, what is
  * fixed and what must stay hidden, and where the present stands still.
  */
 export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): string {
@@ -485,9 +485,9 @@ export function formatFlashbackBlock(db: AppDatabase, weatherLine: string): stri
     ...castLines(db, record, active.date),
     ...(record.castNotes ?? []).map((note) => `- ${note}`),
     `FIXED (the memory cannot change these): ${record.fixed.join(' ')}`,
-    'FREE: inside that, Kan’s choices are his and become real: what he says, does and feels, and the small things that happen.',
-    `NEVER REVEALED: ${hidden.length > 0 ? `${hidden.join('; ')}. ` : ''}Nobody in the memory tells Kan anything he does not already know in the present, and nothing from after this date is mentioned.`,
-    `PACING: ${pacingLine(active.turns)} If Kan pulls himself out of the memory, end it this reply the same way.`,
+    'FREE: inside that, the player’s choices are their own and become real: what they say, do and feel, and the small things that happen.',
+    `NEVER REVEALED: ${hidden.length > 0 ? `${hidden.join('; ')}. ` : ''}Nobody in the memory tells the player anything they do not already know in the present, and nothing from after this date is mentioned.`,
+    `PACING: ${pacingLine(active.turns)} If the player pulls out of the memory, end it this reply the same way.`,
     `THE PRESENT (frozen at ${formatDate(active.startedOn)}, ${localizePlaceNames(db.state.location)})${presentTail ? `: the last moment there was "…${presentTail}"` : ''}`,
   ]
     .filter(Boolean)
@@ -501,9 +501,9 @@ export function formatFlashbackReturn(db: AppDatabase): string {
 
   if (!returned || !record) return '';
 
-  return `BACK FROM A MEMORY: Kan has just come back from remembering ${record.title} (${whenLine(db, record)}). No time passed in the present: continue from the LAST NARRATED BEAT, the same second he left. ${
-    returned.forced ? 'The memory let go of him before it was finished. ' : ''
-  }How the memory ended: "…${returned.ending}". Let it linger in him if it fits; never retell it.`;
+  return `BACK FROM A MEMORY: you have just come back from remembering ${record.title} (${whenLine(db, record)}). No time passed in the present: continue from the LAST NARRATED BEAT, the same second you left. ${
+    returned.forced ? 'The memory let go of you before it was finished. ' : ''
+  }How the memory ended: "…${returned.ending}". Let it linger in you if it fits; never retell it.`;
 }
 
 /** For the state tracker: what to report about flashbacks this turn. */
@@ -540,7 +540,7 @@ export function flashbackTrackingLines(db: AppDatabase, offeredId: string | unde
 
 /**
  * The present turn's flashback marks: an offer the reply showed waits for
- * Kan (the chip), Kan following one starts it from the next turn, and a
+ * The player (the chip), the player following one starts it from the next turn, and a
  * waiting offer runs out. The month gap counts from the offer, shown or not.
  */
 export function applyFlashbackMarks(
@@ -674,7 +674,7 @@ export function applyFlashbackTurn(
 /**
  * The memory is over: it becomes a memory dated in the past, shared by
  * everyone in it, each bond it moved moves a little, and the present picks
- * up the same second Kan left.
+ * up the same second the player left.
  */
 export function endFlashback(
   db: AppDatabase,
@@ -773,14 +773,14 @@ export function applyFlashbackWriteUp(
   };
 }
 
-/** Flashbacks Kan has lived through with someone (for remembrance days). */
+/** Flashbacks the player has lived through with someone (for remembrance days). */
 export function flashbacksWith(db: AppDatabase, entityId: string): string[] {
   const ids = new Set(db.eventEntities.filter((link) => link.entityId === entityId).map((link) => link.eventId));
   return db.events.filter((event) => ids.has(event.id) && event.tags.includes('flashback')).map((event) => event.title ?? event.scene);
 }
 
 /**
- * For the image of a flashback reply: Kan and everyone else at their age
+ * For the image of a flashback reply: the player and everyone else at their age
  * then, in the memory's place.
  */
 export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'flashback' | 'content'> | undefined): string | null {
@@ -790,7 +790,7 @@ export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'fl
   const date = entry.flashback.date;
   const age = playerAgeAt(db, date);
   const people = db.entities
-    .filter((entity) => entity.type === 'character' && entity.name !== 'Kan' && mentionsEntity(entry.content, entity))
+    .filter((entity) => entity.type === 'character' && !isPlayer(db, entity) && mentionsEntity(entry.content, entity))
     .slice(0, 5)
     .map((entity) => {
       const then = entityAge(date, entity);
@@ -799,7 +799,7 @@ export function flashbackImageNote(db: AppDatabase, entry: Pick<RawLogEntry, 'fl
 
   return [
     `THIS IS A MEMORY from Year ${date.year}${record ? ` (${record.title})` : ''}, before the story: draw everyone at their age then.`,
-    `${playerLookAt(age)}. Keep his face recognisable from the face sheet, but make him truly ${age} years old: a child's proportions and size, not a teenager.`,
+    `${playerLookAt(age, playerName(db))}. Keep the face recognisable from the face sheet, but make them truly ${age} years old: a child's proportions and size, not a teenager.`,
     people.length > 0 ? `Others at their age then: ${people.join(', ')}.` : '',
     record ? `Place: ${localizePlaceNames(record.place)}.` : '',
     'A warm, faded, nostalgic tint over the whole image, like an old memory.',

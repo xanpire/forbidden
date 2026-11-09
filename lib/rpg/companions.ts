@@ -1,8 +1,8 @@
-// Companions: people travelling with Kan. While someone is flagged
+// Companions: people travelling with the player. While someone is flagged
 // (EntityRecord.companion) they are in every scene — the scene cast, presence
 // and memories include them whether or not the state tracker listed them —
 // until the story shows them leave (or they die). The scenes they share with
-// Kan move their bond: the state tracker reports the big swings, and plain
+// The player move their bond: the state tracker reports the big swings, and plain
 // time together slowly builds familiarity on top.
 
 import { applyBondDiff } from './bonds';
@@ -13,7 +13,7 @@ import { applyFactDiff } from './facts';
 import { resolveEntity } from './entities';
 import { clamp, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, ScenePace, TurnDiff } from './types';
-import { isPlayerEntity } from './player';
+import { isPlayerEntity, playerName } from './player';
 
 /** More than this and scenes stop being readable; the scene cast holds six. */
 export const MAX_COMPANIONS = 4;
@@ -27,7 +27,7 @@ export const SHARED_TIME_AFFINITY_CAP = 6;
 /** Below this, real hostility: familiarity alone does not soften it. */
 export const SHARED_TIME_AFFINITY_FLOOR = -2;
 
-/** Everyone travelling with Kan right now, longest-standing first. */
+/** Everyone travelling with the player right now, longest-standing first. */
 export function companionsOf(db: AppDatabase): EntityRecord[] {
   return db.entities
     .filter(
@@ -68,7 +68,7 @@ function withCast(db: AppDatabase, cast: string[]): AppDatabase {
   return { ...db, state: { ...db.state, sceneCast: uniqueList(cast.filter(Boolean)).slice(0, 6) } };
 }
 
-/** Starts someone travelling with Kan. No-op for Kan, the dead, existing companions, or a full party. */
+/** Starts someone travelling with the player. No-op for the player, the dead, existing companions, or a full party. */
 export function startCompanion(db: AppDatabase, entityId: string, reason?: string): AppDatabase {
   const entity = db.entities.find((item) => item.id === entityId);
 
@@ -111,7 +111,7 @@ export function startCompanion(db: AppDatabase, entityId: string, reason?: strin
     type: 'event',
     text: `${displayName(next, entity)} began travelling with you${cleanReason ? ` (${cleanReason})` : ''}.`,
     subject: entity.name,
-    whoKnows: ['Kan', entity.name],
+    whoKnows: [playerName(db), entity.name],
   });
 
   return withCast(next, [entity.name, ...(next.state.sceneCast ?? [])]);
@@ -138,7 +138,7 @@ export function endCompanion(db: AppDatabase, entityId: string, reason?: string)
     type: 'event',
     text: `${displayName(next, entity)} parted ways with you after ${days <= 0 ? 'less than a day' : formatTogether(days)} together${cleanReason ? ` (${cleanReason})` : ''}.`,
     subject: entity.name,
-    whoKnows: ['Kan', entity.name],
+    whoKnows: [playerName(db), entity.name],
   });
 
   // Gone from the scene, unless the story still has them standing there (a death on screen).
@@ -210,7 +210,7 @@ export function castWithCompanions(db: AppDatabase, cast: string[]): string[] {
 }
 
 /**
- * A scene ended with the companions at Kan's side. Each one's count of shared
+ * A scene ended with the companions at the player's side. Each one's count of shared
  * scenes grows; when the state tracker did not move their bond this turn,
  * shared time adds points (fights count double) and every
  * BOND_POINTS_PER_STEP points lift the bond by one — never above

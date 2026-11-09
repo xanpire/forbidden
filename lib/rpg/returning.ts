@@ -14,9 +14,9 @@ import { isPlayerEntity } from './player';
  * Characters who come back.
  *
  * Every so often the narrator is offered ONE original character (someone the
- * story introduced, not the canon cast) whom Kan has not seen in a while and
+ * story introduced, not the canon cast) whom the player has not seen in a while and
  * who would plausibly be at the current place: they were last seen there,
- * their role or notes tie them to it, or they travel for a living and Kan is
+ * their role or notes tie them to it, or they travel for a living and the player is
  * on a road or in a town. The offer is optional; the narrator uses it only if
  * it fits.
  *
@@ -27,7 +27,7 @@ import { isPlayerEntity } from './player';
 
 /** Player turns per window; at most one offer per window. */
 export const RETURN_WINDOW_TURNS = 8;
-/** In-story days since Kan last saw them before they can be offered. */
+/** In-story days since the player last saw them before they can be offered. */
 export const RETURN_MIN_DAYS_AWAY = 14;
 /** No offers in the first few turns of a story. */
 const RETURN_MIN_TURN = 6;
@@ -249,7 +249,7 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
   const where = entity.lastSeenAt ? ` at ${localizePlaceNames(entity.lastSeenAt)}` : '';
   const why =
     reason === 'last-seen-here'
-      ? 'Kan last met them around here'
+      ? 'you last met them around here'
       : reason === 'tied-to-place'
         ? 'they have ties to this place'
         : 'they travel these roads and towns';
@@ -261,6 +261,6 @@ export function formatReturningCharacter(db: AppDatabase, recentText = '') {
   return [
     'A FAMILIAR FACE (optional)',
     `${who}. Last seen ${formatAway(daysAway)} ago${where}; ${why}.${bondLine ? ` ${bondLine}` : ''}${traits ? ` ${traits}` : ''}`,
-    'If it fits the scene naturally, they can resurface: a face in the crowd, a voice at the next table, word that they are nearby, or them seeking Kan out. They remember Kan and have lived their own life since. If you use them, they are this turn\'s encounter; if it does not fit, ignore this.',
+    'If it fits the scene naturally, they can resurface: a face in the crowd, a voice at the next table, word that they are nearby, or them seeking you out. They remember you and have lived their own life since. If you use them, they are this turn\'s encounter; if it does not fit, ignore this.',
   ].join('\n');
 }

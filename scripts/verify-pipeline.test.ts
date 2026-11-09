@@ -837,7 +837,7 @@ describe('cross-era memory and romance', () => {
 
     for (const entity of db.entities.filter((e) => e.type === 'character' && e.name !== 'Kan')) {
       expect(['winnable', 'lore-locked', 'not-applicable']).toContain(entity.romanceAccessibility ?? 'not-applicable');
-      // Kan is straight: no man is ever a romance option.
+      // The player is straight: no man is ever a romance option.
       if (entity.gender === 'male') {
         expect(entity.romanceAccessibility).toBe('not-applicable');
       }
@@ -2376,11 +2376,11 @@ describe('image model capabilities', () => {
     expect(full.body.input_references).toBeUndefined();
   });
 
-  test('a scene without the face reference describes Kan in words', () => {
+  test('a scene without the face reference describes the player in words', () => {
     const db = loadSave();
     const prompt = buildSceneImagePrompt(db, [], 'Kan stands in the rain.');
     expect(prompt).not.toContain('Reference image');
-    expect(prompt).toContain('black spiky hair');
+    expect(prompt).toContain(`Kan: ${db.state.player.appearance}`);
   });
 });
 
@@ -2453,7 +2453,7 @@ describe('canon timing: dates only, combat holds, one news per turn', () => {
 
   test('narrator is offered at most one piece of news, and none mid-fight', () => {
     const fired = advanceCanon(withProgress(loadSave()));
-    // Kan heard something today, so nothing has piled up: one item, not a catch-up.
+    // The player heard something today, so nothing has piled up: one item, not a catch-up.
     const db = {
       ...fired,
       state: {
@@ -2980,14 +2980,14 @@ describe('news delivery: bearers, styles, escalation, catch-up', () => {
     };
     const offer = newsOffer(db)!;
     expect(offer.mode).toBe('single');
-    // Kan hasn't learned his name here, so he is offered by his look (the name is for the narrator only).
+    // The player hasn't learned their name here, so he is offered by their look (the name is for the narrator only).
     expect(offer.items[0].sceneBearers.some((label) => label.includes('narrator only: Kakuzu'))).toBe(true);
     // Hana is a Leaf shinobi: she could not know Akatsuki business.
     expect(offer.items[0].sceneBearers.some((label) => label.startsWith('Hana'))).toBe(false);
     expect(offer.items[0].otherBearers).not.toContain('Kakuzu');
 
     const prompt = buildNarrationPrompt(db, '*Kan listens.*').messages.map((m) => m.content).join('\n');
-    expect(prompt).toContain('In the scene: the masked man with stitched arms [Kan doesn\'t know their name; narrator only: Kakuzu]');
+    expect(prompt).toContain('In the scene: the masked man with stitched arms [the player doesn\'t know their name; narrator only: Kakuzu]');
     expect(prompt).toContain('Delivery this time:');
   });
 
@@ -3063,7 +3063,7 @@ describe('news delivery: bearers, styles, escalation, catch-up', () => {
     const left = unheardCanonNews(relayed, 99).map((item) => item.eventId);
     expect(offer.items.every((item) => !left.includes(item.eventId))).toBe(true);
 
-    // Once news has reached Kan today, it is back to one item at a time.
+    // Once news has reached the player today, it is back to one item at a time.
     expect(newsOffer(relayed)?.mode ?? 'single').toBe('single');
 
     const tracking = buildExtractionPrompt(db, '*Kan rests.*', 'Itachi tells you everything.').messages[1].content;
@@ -3086,7 +3086,7 @@ describe('personal letters', () => {
 
     db = sendLetters(db, [{ entityId: hana.id, name: hana.name, gist: 'you are alive and sorry you left' }]);
     expect(db.state.post!.letters).toHaveLength(1);
-    expect(db.state.post!.letters[0]).toMatchObject({ direction: 'from-kan', status: 'travelling' });
+    expect(db.state.post!.letters[0]).toMatchObject({ direction: 'from-player', status: 'travelling' });
 
     // Not there yet the same day (a letter takes at least a day, even inside the Land of Fire).
     db = deliverLetters(db);
@@ -3096,7 +3096,7 @@ describe('personal letters', () => {
     expect(affinity(db, hana.id)).toBe(Math.min(10, before + LETTER_BOND_GAIN));
     expect(db.facts.some((fact) => fact.text.includes('Hana Inuzuka received a letter from you'))).toBe(true);
 
-    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-kan')!;
+    const reply = db.state.post!.letters.find((letter) => letter.direction === 'to-player')!;
     expect(reply.status).toBe('travelling');
 
     db = later(db, LETTER_MAX_DAYS + 1);
@@ -3135,7 +3135,7 @@ describe('personal letters', () => {
     db = { ...db, entities: db.entities.map((entity) => (entity.id === hana.id ? { ...entity, deceased: { known: false } } : entity)) };
     db = deliverLetters(later(db, LETTER_MAX_DAYS + 1));
     expect(db.state.post!.letters[0].status).toBe('lost');
-    expect(db.state.post!.letters.some((letter) => letter.direction === 'to-kan')).toBe(false);
+    expect(db.state.post!.letters.some((letter) => letter.direction === 'to-player')).toBe(false);
   });
 
   test('the state block carries letters, resolved to known people', () => {

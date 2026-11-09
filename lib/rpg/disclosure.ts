@@ -2,13 +2,13 @@
 //
 // The cast seed (canonCast.ts) describes people as canon knows them, and the
 // narrator gets all of it: Sasori really sits inside Hiruko, Yagura is under
-// a genjutsu, Minato is Naruto's father. The bond screens are Kan's view, so
+// a genjutsu, Minato is Naruto's father. The bond screens are the player's view, so
 // until the story reveals it (the milestone in `revealedBy` is witnessed,
-// heard of or engaged), a profile shows the version Kan could know instead.
+// heard of or engaged), a profile shows the version the player could know instead.
 //
 // Only seed text is covered: once the story itself rewrites a field (the
 // state tracker's character updates, from what was on the page), that is
-// what Kan saw, and it shows as it is.
+// what the player saw, and it shows as it is.
 
 import { CANON_CAST } from './canonCast';
 import { milestoneKnown } from './entities';
@@ -17,7 +17,7 @@ import type { AppDatabase, EntityRecord } from './types';
 type ProfileField = 'role' | 'personality' | 'speechStyle' | 'appearance';
 
 type Disclosure = Partial<Record<ProfileField, string>> & {
-  /** The milestone that lets Kan know the truth; null: only the story itself can tell him. */
+  /** The milestone that lets the player know the truth; null: only the story itself can tell them. */
   revealedBy: string | null;
 };
 
@@ -96,12 +96,12 @@ function seedOf(name: string) {
   return seedByName.get(name);
 }
 
-/** Whether the story has let Kan know the truth behind this person's profile. */
+/** Whether the story has let the player know the truth behind this person's profile. */
 function revealed(db: AppDatabase, disclosure: Disclosure) {
   return disclosure.revealedBy !== null && milestoneKnown(db, disclosure.revealedBy);
 }
 
-/** One profile field as Kan can know it. */
+/** One profile field as the player can know it. */
 export function shownField(db: AppDatabase, entity: EntityRecord, field: ProfileField): string | undefined {
   const value = entity[field] ?? undefined;
   const disclosure = DISCLOSURES[entity.name];
@@ -114,7 +114,7 @@ export function shownField(db: AppDatabase, entity: EntityRecord, field: Profile
   return disclosure[field];
 }
 
-/** The four profile fields as Kan can know them. */
+/** The four profile fields as the player can know them. */
 export function shownProfile(db: AppDatabase, entity: EntityRecord) {
   return {
     role: shownField(db, entity, 'role'),
@@ -127,7 +127,7 @@ export function shownProfile(db: AppDatabase, entity: EntityRecord) {
 // ---------------------------------------------------------------------------
 // Feelings and grudges
 
-/** How someone seems toward Kan, in words: what he can read off them, not a number. */
+/** How someone seems toward the player, in words: what he can read off them, not a number. */
 export function howTheySeem(affinity: number): string {
   if (affinity <= -7) return 'hostile';
   if (affinity <= -4) return 'cold';
@@ -139,7 +139,7 @@ export function howTheySeem(affinity: number): string {
   return 'devoted';
 }
 
-/** Kan knows of a grudge once they have acted on it. Until then it stews unseen. */
+/** The player knows of a grudge once they have acted on it. Until then it stews unseen. */
 export function grudgeKnown(grudge: { strikes: number } | undefined | null): boolean {
   return Boolean(grudge && grudge.strikes > 0);
 }

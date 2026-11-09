@@ -828,7 +828,7 @@ function formatCharacterDetails(db: AppDatabase, turnText: string) {
 }
 
 function formatJutsu(db: AppDatabase) {
-  const groups = groupJutsuByNature(db.jutsuRecords).slice(0, 5);
+  const groups = groupJutsuByNature(db.jutsuRecords, playerName(db)).slice(0, 5);
 
   if (groups.length === 0) {
     return 'KNOWN JUTSU\nNone.';

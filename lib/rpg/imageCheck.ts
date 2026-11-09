@@ -1,6 +1,6 @@
 // The swapped-roles check (#14): a cheap vision call after each scene image
 // that compares the picture with its ACTION. When the roles came out
-// reversed (Kan choking himself instead of the other person), the image is
+// reversed (the player choking themselves instead of the other person), the image is
 // redone once with a sharper actor rule built from the check's note.
 
 import { completeChat, type CallUsage } from '../openrouter';
@@ -46,7 +46,7 @@ export function parseImageCheck(text: string): { rolesOk: boolean; extraPeople: 
 
 /** The first person named in the action: who should be doing it. */
 function actorOf(action: string) {
-  return /^\s*([A-Z][\w'-]*(?:\s[A-Z][\w'-]*)?)/.exec(action)?.[1] ?? 'Kan';
+  return /^\s*([A-Z][\w'-]*(?:\s[A-Z][\w'-]*)?)/.exec(action)?.[1] ?? 'the main character';
 }
 
 export async function checkSceneImage(
@@ -66,7 +66,7 @@ export async function checkSceneImage(
       messages: [
         {
           role: 'user',
-          content: `ACTION: ${action}\nIn this image, is ${actor} the one doing the action to the others, or is it reversed (someone else doing it, or ${actor} doing it to himself)? Are there extra people who shouldn't be there (recognisable faces not in the ACTION)? Answer only JSON: { "roles_ok": true|false, "extra_people": true|false, "note": "what is wrong, in one short sentence" }`,
+          content: `ACTION: ${action}\nIn this image, is ${actor} the one doing the action to the others, or is it reversed (someone else doing it, or ${actor} doing it to themselves)? Are there extra people who shouldn't be there (recognisable faces not in the ACTION)? Answer only JSON: { "roles_ok": true|false, "extra_people": true|false, "note": "what is wrong, in one short sentence" }`,
           images: [image],
         },
       ],

@@ -91,7 +91,7 @@ export const TURN_STATE_SCHEMA = object({
     clock_time: nullableString,
   }),
   scene_pace: nullableEnum(SCENE_PACES),
-  // How this turn played (Kan's input and the reply together), who Kan was
+  // How this turn played (the player's input and the reply together), who the player was
   // talking with, and, while a fight goes on, a few moves he could make next.
   beat: nullableEnum(SCENE_BEATS),
   beat_with: stringList,
@@ -103,7 +103,7 @@ export const TURN_STATE_SCHEMA = object({
   canon_point: nullableString,
   inventory_added: stringList,
   inventory_removed: stringList,
-  // Every change to Kan's own money this turn, in ryō (negative when he pays),
+  // Every change to the player's own money this turn, in ryō (negative when he pays),
   // and his total only when the prose states it.
   money: list({
     amount: { type: 'number' },
@@ -112,7 +112,7 @@ export const TURN_STATE_SCHEMA = object({
   money_counted: nullableNumber,
   jutsu_used: list({
     name: { type: 'string' },
-    // A character ID ("kan", "kisame-hoshigaki"), or a description for an unnamed user.
+    // A character ID ("player", "old-tom"), or a description for an unnamed user.
     user: { type: 'string' },
     chakra_nature: nullableString,
     effect: nullableString,
@@ -120,8 +120,8 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // People are referred to by their ID from KNOWN CHARACTERS (or, for someone
   // added this turn under new_characters, by that exact name).
-  // Two sides: affinity_change / note are how THEY feel about Kan (only from
-  // what they could see or hear); your_change / your_note are how Kan feels
+  // Two sides: affinity_change / note are how THEY feel about the player (only from
+  // what they could see or hear); your_change / your_note are how the player feels
   // about them (his inner thoughts move only this side).
   bonds: list({
     character_id: { type: 'string' },
@@ -134,7 +134,7 @@ export const TURN_STATE_SCHEMA = object({
     attraction: nullableEnum(ATTRACTIONS),
     romance_note: nullableString,
   }),
-  // entity: who the fact is about (an id; "kan" when it is about Kan).
+  // entity: who the fact is about (an id; "player" when it is about the player).
   // supersedes: refs of active facts this one replaces. claimed_by: the
   // speaker, when this is only what someone said. lasts/days: how long a
   // temporary condition, injury or plan holds.
@@ -150,7 +150,7 @@ export const TURN_STATE_SCHEMA = object({
   }),
   // Refs of active facts that stopped being true this turn.
   facts_ended: stringList,
-  // participants: ids of the people the thread is about (besides Kan).
+  // participants: ids of the people the thread is about (besides the player).
   threads: list({
     title: { type: 'string' },
     description: nullableString,
@@ -171,7 +171,7 @@ export const TURN_STATE_SCHEMA = object({
     attracted_to: nullableEnum(ATTRACTED_TO),
     // A one-scene character: a target, a guard, a shopkeeper.
     minor: { type: 'boolean' },
-    // false for a stranger whose name Kan has not learned: name is then a
+    // false for a stranger whose name the player has not learned: name is then a
     // short description of how they look to him ("the scarred ferryman").
     name_known: { type: 'boolean' },
   }),
@@ -184,8 +184,8 @@ export const TURN_STATE_SCHEMA = object({
     lasting_appearance: nullableString,
     whereabouts: nullableString,
   }),
-  // A death the prose makes certain this turn — on screen, a body Kan sees,
-  // or someone telling Kan — by character id. revived is only a true return
+  // A death the prose makes certain this turn — on screen, a body the player sees,
+  // or someone telling the player — by character id. revived is only a true return
   // to life (Chiyo's jutsu, say), never an Edo Tensei reanimation.
   deaths: list({
     character_id: { type: 'string' },
@@ -193,7 +193,7 @@ export const TURN_STATE_SCHEMA = object({
   }),
   revived: stringList,
   characters_present: stringList,
-  // Someone who clearly sets out with Kan this turn, or a companion who truly
+  // Someone who clearly sets out with the player this turn, or a companion who truly
   // parts ways (not a short step away), by character id.
   companions_joined: list({
     character_id: { type: 'string' },
@@ -203,7 +203,7 @@ export const TURN_STATE_SCHEMA = object({
     character_id: { type: 'string' },
     reason: nullableString,
   }),
-  // Kan's own chakra natures and abilities, when this turn changes them.
+  // The player's own chakra natures and abilities, when this turn changes them.
   natures_gained: list({
     nature: { type: 'string' },
     source: { type: 'string', enum: ['innate', 'thousand-souls'] },
@@ -219,7 +219,7 @@ export const TURN_STATE_SCHEMA = object({
   scene_title: nullableString,
   // The weather, only when the page changes it from WEATHER NOW.
   weather: nullableString,
-  // A place Kan sleeps at or settles in, or what changed at one (see SAFEHOUSES).
+  // A place the player sleeps at or settles in, or what changed at one (see SAFEHOUSES).
   safehouse: {
     type: ['object', 'null'],
     properties: {
@@ -246,7 +246,7 @@ export const TURN_STATE_SCHEMA = object({
   // turn, a big change of place, or a time skip).
   chapter_title: nullableString,
   // Flashbacks (see FLASHBACK in the state prompt): an offered memory's
-  // trigger was shown, Kan let a memory take him, or the memory ended.
+  // trigger was shown, the player let a memory take them, or the memory ended.
   flashback: nullableEnum(FLASHBACK_MARKS),
   canon_engaged: stringList,
   canon_completed: stringList,
@@ -255,8 +255,8 @@ export const TURN_STATE_SCHEMA = object({
     id: { type: 'string' },
     from: nullableString,
   }),
-  // A letter or message Kan writes and sends to someone not in the scene (or
-  // to the dead: kept, never sent). text: Kan's words with only spelling and
+  // A letter or message the player writes and sends to someone not in the scene (or
+  // to the dead: kept, never sent). text: the player's words with only spelling and
   // punctuation fixed.
   letters_sent: list({
     to: { type: 'string' },
@@ -265,32 +265,32 @@ export const TURN_STATE_SCHEMA = object({
     carrier: nullableEnum(LETTER_CARRIERS),
     coded: { type: ['boolean', 'null'] },
   }),
-  // Letters that actually reached Kan on the page this turn, with their words.
+  // Letters that actually reached the player on the page this turn, with their words.
   letters_received: list({
     from: { type: 'string' },
     text: nullableString,
   }),
-  // Something in a person's own life away from Kan that this turn revealed.
+  // Something in a person's own life away from the player that this turn revealed.
   life_events: list({
     character_id: { type: 'string' },
     event: { type: 'string' },
   }),
-  // People whose birthday Kan learned on the page this turn.
+  // People whose birthday the player learned on the page this turn.
   birthdays_learned: stringList,
-  // Names Kan heard, read or recognised this turn, within his hearing or reading.
+  // Names the player heard, read or recognised this turn, within their hearing or reading.
   names_learned: list({
     character_id: { type: 'string' },
     name: { type: 'string' },
     part: { type: 'string', enum: ['given', 'family', 'full', 'identity'] },
     how: { type: 'string', enum: ['introduced', 'told', 'written', 'overheard', 'recognised'] },
   }),
-  // Someone present learned another name a person goes by (Kan told Deidara who Tobi is).
+  // Someone present learned another name a person goes by (the player told Deidara who Tobi is).
   names_told: list({
     character_id: { type: 'string' },
     name: { type: 'string' },
     told_to: stringList,
   }),
-  // What a village (or the Akatsuki) now has on Kan, from deeds its people
+  // What a village (or the Akatsuki) now has on the player, from deeds its people
   // saw or survived this turn; and villages whose entry on him he learned of.
   reputation: list({
     faction: { type: 'string', enum: [...REPUTATION_FACTIONS] },
@@ -298,7 +298,7 @@ export const TURN_STATE_SCHEMA = object({
     reason: nullableString,
   }),
   bounty_seen: { type: 'array', items: { type: 'string', enum: [...VILLAGE_FACTIONS] } },
-  // A name the prose calls Kan by, and whose name it is.
+  // A name the prose calls the player by, and whose name it is.
   epithet: {
     type: ['object', 'null'],
     properties: {
@@ -320,7 +320,7 @@ export const TURN_STATE_SCHEMA = object({
     when: nullableEnum(['weeks', 'months', 'years']),
   }),
   consequences_returned: stringList,
-  // Grudges against Kan: started, acted on, settled, or forgiven.
+  // Grudges against the player: started, acted on, settled, or forgiven.
   grudges: list({
     character_id: { type: 'string' },
     event: { type: 'string', enum: [...GRUDGE_EVENTS] },
@@ -328,4 +328,4 @@ export const TURN_STATE_SCHEMA = object({
   }),
 });
 
-export const TURN_STATE_SCHEMA_NAME = 'kan_turn_state';
+export const TURN_STATE_SCHEMA_NAME = 'turn_state';

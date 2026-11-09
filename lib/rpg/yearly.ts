@@ -2,14 +2,14 @@
 //
 // Rules (living-world Stage 2):
 // - At most one yearly offer per turn, never in a fight, each one once a year.
-// - Kan only knows the birthdays he plausibly would: the people he grew up
+// - the player only knows the birthdays he plausibly would: the people he grew up
 //   with and is close to (or was), and those he learned in the story.
-// - Birthdays come up mostly when the person is in the scene; sometimes Kan
+// - Birthdays come up mostly when the person is in the scene; sometimes the player
 //   thinks of a close person who is far away (rarer). The dead get
 //   remembrance days.
-// - Kan's own hard days come first: the massacre (Oct 1), the Nine-Tails
+// - the player's own hard days come first: the massacre (Oct 1), the Nine-Tails
 //   night that took his parents (Oct 10), Itachi's death, joining the cloak.
-// - Festivals only when Kan is in or near their village.
+// - Festivals only when the player is in or near their village.
 // - Offered, never forced: the narrator gets one line.
 
 import { daysFromCivil, entityAge, isLeapYear } from './calendar';
@@ -27,10 +27,10 @@ export { BIRTHDAY_HABITS, FESTIVALS } from './yearlyData';
 
 /** The night of the massacre (the story opens on it). */
 const MASSACRE = { month: 10, day: 1 };
-/** The Nine-Tails attack, Naruto's birthday, the night Kan's parents died. */
+/** The Nine-Tails attack, Naruto's birthday, the night the player's parents died. */
 const NINE_TAILS_NIGHT = { month: 10, day: 10 };
 
-/** People Kan grew up with: he has always known their birthdays. */
+/** People the player grew up with: he has always known their birthdays. */
 const ALWAYS_KNOWN = new Set(['Itachi Uchiha', 'Izumi Uchiha', 'Shisui Uchiha', 'Hana Inuzuka', 'Suzume']);
 
 const CLOSE_STAGES = new Set(['close', 'old friend', 'family', 'romantic interest', 'lover']);
@@ -87,14 +87,14 @@ function bondOf(db: AppDatabase, entityId: string): BondRecord | null {
   return db.bonds.find((bond) => bond.entityId === entityId) ?? null;
 }
 
-/** Close to Kan now, or before they died: a strong bond or a close relationship. */
+/** Close to the player now, or before they died: a strong bond or a close relationship. */
 export function isClose(db: AppDatabase, entity: EntityRecord) {
   if (ALWAYS_KNOWN.has(entity.name)) return true;
   const bond = bondOf(db, entity.id);
   return Boolean(bond && (bond.affinity >= CLOSE_AFFINITY || CLOSE_STAGES.has(bond.relationship ?? '')));
 }
 
-/** Kan knows this birthday: someone he is (or was) close to, or one he learned in the story. */
+/** The player knows this birthday: someone he is (or was) close to, or one he learned in the story. */
 export function knowsBirthday(db: AppDatabase, entity: EntityRecord) {
   if (!entity.birthday || entity.met === false || isPlayerEntity(entity)) return false;
   return isClose(db, entity) || yearlyOf(db).knownBirthdays.includes(entity.id);
@@ -137,7 +137,7 @@ function turns(age: number | undefined) {
   return age !== undefined ? ` (${age} today)` : '';
 }
 
-/** Kan is in or near a place: its words appear in the location. */
+/** The player is in or near a place: its words appear in the location. */
 function nearPlace(db: AppDatabase, words: string[]) {
   const location = db.state.location.toLowerCase();
   return words.some((word) => location.includes(word));
@@ -248,7 +248,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
     const knows = knowsBirthday(db, entity);
 
     if (isDeceased(entity)) {
-      // Only the dead Kan was close to, and knows are dead.
+      // Only the dead the player was close to, and knows are dead.
       if (knows && playerKnowsDeath(db, entity)) {
         remembrance.push({
           key: `remembrance:${entity.id}`,
@@ -281,7 +281,7 @@ function birthdays(db: AppDatabase): YearlyOffer[] {
       continue;
     }
 
-    // Far away: only people Kan is close to, and only some years.
+    // Far away: only people the player is close to, and only some years.
     if (knows && isClose(db, entity) && hash(`${db.meta.slotId}:${entity.id}:${now.year}`) % 2 === 0) {
       absent.push({
         key: `birthday:${entity.id}`,
@@ -329,7 +329,7 @@ function festivals(db: AppDatabase): YearlyOffer[] {
 }
 
 /** Everything the calendar holds for today, most important first (offered or not). */
-/** A flashback Kan lived through with someone who is gone, for their remembrance day. */
+/** A flashback the player lived through with someone who is gone, for their remembrance day. */
 function sharedMemoryLine(db: AppDatabase, entity: EntityRecord): string {
   const linked = new Set(db.eventEntities.filter((link) => link.entityId === entity.id).map((link) => link.eventId));
   const memory = db.events
@@ -374,18 +374,18 @@ export function yearlyTrackingLines(offer: YearlyOffer | null, idOf: (entity: En
 
   if (offer.kind === 'birthday') {
     return [
-      `It is ${id}'s birthday and you (Kan) know it. If you mark it on the page (a word, a gift), give ${id} a bonds entry: affinity_change +1, or +2 for a real gift. If you let the day pass beside them without a word, -1.`,
+      `It is ${id}'s birthday and you know it. If you mark it on the page (a word, a gift), give ${id} a bonds entry: affinity_change +1, or +2 for a real gift. If you let the day pass beside them without a word, -1.`,
     ];
   }
 
   if (offer.kind === 'birthday-unknown') {
-    return [`It is ${id}'s birthday. If they or anyone tells you (Kan) on the page, list ${id} in birthdays_learned; if you then mark it, affinity_change +1.`];
+    return [`It is ${id}'s birthday. If they or anyone tells you on the page, list ${id} in birthdays_learned; if you then mark it, affinity_change +1.`];
   }
 
   return [];
 }
 
-/** After a turn: the offer is spent for the year, and birthdays Kan learned are kept. */
+/** After a turn: the offer is spent for the year, and birthdays the player learned are kept. */
 export function applyYearly(
   db: AppDatabase,
   offer: YearlyOffer | null,
@@ -428,7 +428,7 @@ export type UpcomingBirthday = {
   dead: boolean;
 };
 
-/** Birthdays Kan knows in the next `days` days: the living, and the dead he knows are gone. */
+/** Birthdays the player knows in the next `days` days: the living, and the dead he knows are gone. */
 export function upcomingBirthdays(db: AppDatabase, days = 30): UpcomingBirthday[] {
   const now = db.state.inStoryDate;
   const today = daysFromCivil(now.year, now.month, now.day);
@@ -461,7 +461,7 @@ export function upcomingBirthdays(db: AppDatabase, days = 30): UpcomingBirthday[
   return out.sort((a, b) => a.inDays - b.inDays || a.entity.name.localeCompare(b.entity.name));
 }
 
-/** Short notes for the journal: what today is, as far as Kan knows. */
+/** Short notes for the journal: what today is, as far as the player knows. */
 export function todayNotes(db: AppDatabase): string[] {
   const now = db.state.inStoryDate;
   const notes: string[] = [];

@@ -120,7 +120,7 @@ export function ScrapbookView({ db }: { db: AppDatabase }) {
   const eras = useMemo(() => scrapbook(db), [db]);
   const photos = useMemo(() => eras.flatMap((era) => era.chapters.flatMap((chapter) => chapter.photos)), [eras]);
   const [open, setOpen] = useState<number | null>(null);
-  // The Kan screen is at most 680 wide with 20 padding each side.
+  // The the player screen is at most 680 wide with 20 padding each side.
   const inner = Math.min(width, 680) - spacing.xl * 2;
   const size = Math.floor((inner - GAP * (COLUMNS - 1)) / COLUMNS);
 

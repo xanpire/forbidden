@@ -71,6 +71,7 @@ import {
 import type { SceneModeName } from '@/lib/rpg/types';
 import { displayName } from '@/lib/rpg/names';
 import { playerAge } from '@/lib/rpg/player';
+import { APP_NAME } from '@/lib/brand';
 
 type StoryMessage = {
   id: string;
@@ -165,7 +166,7 @@ function NarrationParagraph({ text, memory }: { text: string; memory?: boolean }
   );
 }
 
-/** Renders Kan's turn with *actions* in italics and everything else plain. */
+/** Renders the player's turn with *actions* in italics and everything else plain. */
 function PlayerText({ text, memory }: { text: string; memory?: boolean }) {
   const parts = text.split(/(\*[^*]+\*)/g).filter(Boolean);
 
@@ -1288,7 +1289,7 @@ export default function StoryScreen() {
                       icon={<Download color={colors.onAccent} size={15} strokeWidth={2} />}
                       label="Download"
                       onPress={() => {
-                        downloadImage(`kan-scene-${Date.now()}.jpg`, selectedImage);
+                        downloadImage(`${APP_NAME}-scene-${Date.now()}.jpg`, selectedImage);
                         resetImageZoom();
                       }}
                       style={styles.imageActionButton}

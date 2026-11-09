@@ -44,6 +44,7 @@ import { currentAmbience, describeAmbience } from '@/lib/rpg/ambience';
 import { ambienceEngine, ambienceSupported } from '@/lib/audio/ambienceEngine';
 import { setAmbienceSettings, useAmbienceSettings } from '@/lib/audio/ambienceSettings';
 import type { AppDatabase } from '@/lib/rpg/types';
+import { APP_NAME } from '@/lib/brand';
 
 type Feedback = {
   tone: 'success' | 'error';
@@ -207,7 +208,7 @@ export default function SettingsScreen() {
       return;
     }
 
-    downloadJson(`kan-story-${db?.meta.slotName ?? 'save'}${withImages ? '' : '-no-images'}.json`, json);
+    downloadJson(`${APP_NAME}-story-${db?.meta.slotName ?? 'save'}${withImages ? '' : '-no-images'}.json`, json);
     showToast(withImages ? 'Save file downloaded.' : 'Save file downloaded, without images.', 'success');
   };
 
@@ -407,7 +408,7 @@ export default function SettingsScreen() {
               value={db.settings.narrationModel}
             />
             <ModelSelect
-              hint="Reference-capable models keep Kan consistent."
+              hint="Reference-capable models keep your character consistent."
               kind="image"
               label="Images"
               onChange={(value) => void updateSettings({ imageModel: value })}
@@ -652,7 +653,7 @@ export default function SettingsScreen() {
           <DebugPanel />
 
           <View style={styles.about}>
-            <Text style={type.rowMeta}>{`KAN · v${APP_VERSION}`}</Text>
+            <Text style={type.rowMeta}>{`${APP_NAME} · v${APP_VERSION}`}</Text>
             <Text style={type.rowMeta}>an app made by xanpire.</Text>
           </View>
         </ScrollView>

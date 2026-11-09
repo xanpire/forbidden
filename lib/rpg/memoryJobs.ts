@@ -250,7 +250,7 @@ export type StateStepResult = {
   notice: string | null;
   /** The diff that was applied, after the app settled the clock. */
   appliedDiff: TurnDiff | null;
-  /** Names the narration used outside dialogue that Kan couldn't know (for the Debug panel). */
+  /** Names the narration used outside dialogue that the player couldn't know (for the Debug panel). */
   nameLeaks?: string[];
 };
 
@@ -272,8 +272,8 @@ export function applyStateStep(
   }
 
   // Unreadable state reply: still record who the prose shows and the jutsu
-  // Kan called in his own message. Clock and pace come from the prose below.
-  // Kan's jutsu always keep the names the player wrote.
+  // The player called in their own message. Clock and pace come from the prose below.
+  // The player's jutsu always keep the names the player wrote.
   const extraction = stateReply
     ? preferPlayerJutsuNames(latest, stateReply, turn.userMessage)
     : fallbackDiffFromProse(latest, turn);
@@ -308,7 +308,7 @@ export function applyStateStep(
   const effectiveDiff: TurnDiff = merged;
 
   let next = applyTurnDiff(latest, effectiveDiff);
-  // Someone Kan had not seen in a long time is here again.
+  // Someone the player had not seen in a long time is here again.
   next = markReunions(latest, next);
   const appliedSeconds = Math.max(0, secondsBetween(beforeDate, next.state.inStoryDate));
   const stalled = latest.state.turnsWithoutTimeChange ?? 0;
@@ -351,7 +351,7 @@ export function applyStateStep(
   // Which scene this turn belongs to, and who was in it: memories are cut
   // and shared by this, never by names in their text.
   next = stampTurnScene(latest, next, turn.turnLogId, extraction?.scene?.ended === true, next.state.chapter !== chapterBefore);
-  // Kan's road and the scene's weather (held through the scene unless the page changed it).
+  // The player's road and the scene's weather (held through the scene unless the page changed it).
   next = recordTravel(next);
   next = applyWeather(next, extraction?.weather);
 
@@ -370,7 +370,7 @@ export function applyStateStep(
   );
   next = markNewsHeard(next, relays, allowance);
   next = advanceCanon(next, { inCombat });
-  // Names Kan heard, read or recognised this turn, and identities the world
+  // Names the player heard, read or recognised this turn, and identities the world
   // revealed to him (the mask breaking); labels for anyone he can't name.
   const presentIds =
     next.rawLog.find((entry) => entry.id === turn.turnLogId)?.sceneCastIds ??
@@ -389,7 +389,7 @@ export function applyStateStep(
   next = advanceLives(next);
   next = advanceConsequences(next);
 
-  // Letters: what Kan sent sets out, what reached him on the page is read,
+  // Letters: what the player sent sets out, what reached them on the page is read,
   // and his letters that arrived by now move their reader's bond.
   next = receiveLetters(next, extraction?.lettersReceived, turnLetterOffer(latest));
   next = sendLetters(next, extraction?.lettersSent, turn.userMessage);
@@ -403,10 +403,10 @@ export function applyStateStep(
   const offeredSeed = turnConsequenceOffer(latest);
   const planted = applyConsequences(next, extraction?.consequences, extraction?.consequencesReturned, offeredSeed);
   next = markConsequenceOffered(planted.db, offeredSeed);
-  // Kan's own money: what he paid, was paid, found or lost, and his total
+  // The player's own money: what he paid, was paid, found or lost, and their total
   // when the prose states it.
   next = applyPurse(next, extraction?.money, extraction?.moneyCounted);
-  // Where Kan stays: a place he sleeps at or settles in, what is stashed or built there, who
+  // Where the player stays: a place he sleeps at or settles in, what is stashed or built there, who
   // knows (after consequences, so a found place that came back this turn is compromised).
   // Only real downtime counts as sleeping somewhere: a long day on the road is not a night's rest.
   next = applySafehouses(latest, next, extraction?.safehouse, {
@@ -414,9 +414,9 @@ export function applyStateStep(
     elapsedSeconds: clock.elapsedSeconds,
   });
   // The day's birthday or anniversary was offered (once a year), and any
-  // birthday Kan learned is kept.
+  // birthday the player learned is kept.
   next = applyYearly(next, yearlyOffer(latest), extraction?.birthdaysLearned);
-  // A memory offered on this reply waits for Kan; one he follows starts next turn.
+  // A memory offered on this reply waits for the player; one he follows starts next turn.
   next = applyFlashbackMarks(next, {
     offeredId: turnEntry?.flashbackOffer,
     mark: extraction?.flashback,
@@ -438,7 +438,7 @@ export function applyStateStep(
     if (delivered) {
       const title = delivered.summary.split(':')[0].trim();
       const bearer = relays[0].from?.trim() ? resolveEntity(next, relays[0].from.trim()) : null;
-      // As Kan knows them; never an id or a name he hasn't learned.
+      // As the player knows them; never an id or a name he hasn't learned.
       const from = bearer ? displayName(next, bearer) : relays[0].from?.trim() || 'a rumor';
       notice = `${title} — from ${from}`.slice(0, 110);
 
@@ -455,7 +455,7 @@ export function applyStateStep(
     notice = `A letter from ${writer ? displayName(next, writer) : extraction.lettersReceived[0].name}`;
   }
 
-  // Kan just learned what a village has on him.
+  // The player just learned what a village has on them.
   if (!notice && extraction?.bountySeen?.length) {
     const listing = bingoListings(next).find((item) => item.village === extraction.bountySeen![0]);
 
@@ -592,7 +592,7 @@ function placeKey(location: string | undefined) {
 /**
  * Ties this turn's story entries to a scene (GameState.sceneSeq) and records
  * the scene cast on them. A new scene starts on the turn after one ended, or
- * on a turn that moves Kan somewhere else. Scene-end memories made this turn
+ * on a turn that moves the player somewhere else. Scene-end memories made this turn
  * remember the turn they came from.
  */
 function stampTurnScene(

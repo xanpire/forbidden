@@ -265,7 +265,7 @@ describe('birthdays, anniversaries and festivals', () => {
     const db = withScene(at({ year: 18, month: 10, day: 10, hour: 18, minute: 0 }), ['Naruto Uzumaki'], {
       location: 'the Hidden Leaf Village',
     });
-    // Kan's own hard day comes first.
+    // The player's own hard day comes first.
     expect(yearlyOffer(db)?.key).toBe('anniversary:nine-tails');
     const candidates = yearlyCandidates(db).map((offer) => offer.kind);
     expect(candidates).toContain('birthday-unknown');

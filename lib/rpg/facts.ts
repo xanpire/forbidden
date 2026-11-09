@@ -88,7 +88,7 @@ export function knowersOf(db: AppDatabase, names: string[]): { ids: string[]; gr
 
 /** The names of whoever knows a fact, for prompts and the Journal. */
 export function knowerNames(db: AppDatabase, fact: Pick<FactRecord, 'whoKnows' | 'whoKnowsGroups'>) {
-  // As Kan knows them: "the masked man", not a name he has never heard.
+  // As the player knows them: "the masked man", not a name he has never heard.
   const names = fact.whoKnows.map((id) => {
     const entity = db.entities.find((item) => item.id === id);
 
@@ -100,7 +100,7 @@ export function knowerNames(db: AppDatabase, fact: Pick<FactRecord, 'whoKnows' |
 }
 
 const NOT_YET = /\b(does not know|doesn't know|do not know|don't know|not yet|has not (?:yet )?(?:learned|heard|been told))\b/i;
-const STOP = new Set(['the', 'a', 'an', 'and', 'of', 'to', 'in', 'on', 'is', 'was', 'that', 'this', 'with', 'for', 'his', 'her', 'their', 'you', 'your', 'kan', 'kan’s', "kan's", 'yet', 'not', 'does', 'know', 'knows', 'now', 'has', 'had', 'been']);
+const STOP = new Set(['the', 'a', 'an', 'and', 'of', 'to', 'in', 'on', 'is', 'was', 'that', 'this', 'with', 'for', 'his', 'her', 'their', 'you', 'your', 'player', 'yet', 'not', 'does', 'know', 'knows', 'now', 'has', 'had', 'been']);
 
 function contentWords(text: string) {
   return new Set(
@@ -179,7 +179,7 @@ export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
     };
   }
 
-  // Every fact is about someone: whoever the tracker named, else Kan.
+  // Every fact is about someone: whoever the tracker named, else the player.
   const subjectEntity = (fact.subject ? resolveEntity(db, fact.subject) : null) ?? playerEntity(db);
 
   const duplicate = db.facts.find(
@@ -234,7 +234,7 @@ export function applyFactDiff(db: AppDatabase, fact: FactDiff): AppDatabase {
 /**
  * Runs after a turn: temporary conditions run out (their date passed, or a
  * rest ended them), and a "does not know yet" about someone's death ends once
- * Kan knows.
+ * The player knows.
  */
 export function expireFacts(db: AppDatabase, options: { rested: boolean }): AppDatabase {
   const now = db.state.inStoryDate;
@@ -273,7 +273,7 @@ export function threadKey(title: string) {
     .trim();
 }
 
-const THREAD_STOP = new Set(['the', 'a', 'an', 'to', 'of', 'and', 'for', 'with', 'your', 'you', 'kan', 'kans', 'his', 'her', 'on', 'in', 'at']);
+const THREAD_STOP = new Set(['the', 'a', 'an', 'to', 'of', 'and', 'for', 'with', 'your', 'you', 'player', 'his', 'her', 'on', 'in', 'at']);
 
 function threadWords(text: string) {
   return new Set(threadKey(text).split(' ').filter((word) => word.length > 2 && !THREAD_STOP.has(word)));
@@ -313,7 +313,7 @@ function matchingThread(db: AppDatabase, title: string, description?: string) {
 /**
  * Opens, updates or resolves a thread. A thread the story already has (same
  * title once normalized, or the same goal in other words) is updated rather
- * than opened twice. Every thread has participants, by name and id: Kan and
+ * than opened twice. Every thread has participants, by name and id: the player and
  * whoever is in the scene unless the tracker names them.
  */
 export function applyThreadDiff(

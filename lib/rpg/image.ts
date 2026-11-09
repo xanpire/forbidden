@@ -26,7 +26,7 @@ import {
 } from './imageDirection';
 import { CONDITION_INFO } from './weather';
 import type { AppDatabase, EntityRecord } from './types';
-import { isPlayer, isPlayerName } from './player';
+import { isPlayer, isPlayerName, playerEntity, playerName } from './player';
 
 /** At most one earlier scene is sent, for rendering style only (#4). */
 const RECENT_IMAGE_LIMIT = 1;
@@ -77,7 +77,7 @@ export function isCanonCharacter(entity: Pick<EntityRecord, 'name'>) {
 
 /**
  * How many people can get their own reference slot: what the model takes,
- * minus Kan's face and outfit.
+ * minus the player's face and outfit.
  */
 export function personReferenceSlots(maxReferences: number, withOutfit = true) {
   return Math.max(0, maxReferences - 1 - (withOutfit ? 1 : 0));
@@ -201,14 +201,14 @@ export function fallbackImageAction(db: AppDatabase) {
   return tailOf(cleanProse(reply?.content ?? db.state.scene), 700);
 }
 
-const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive Naruto story, like an anime storyboard artist. The player character is Kan.
+const IMAGE_ACTION_SYSTEM = `You are the director of one illustration of an interactive Naruto story, like an anime storyboard artist. The player character is named on the PLAYER line.
 
 Read the narrator's latest reply and pick the single most dramatic INSTANT from it, normally the one at the END of the reply: a freeze frame, not a summary. Then write three lines.
 
 ACTION: exactly who does what to whom at that instant, and where.
 - One or two sentences, at most 45 words (up to 80 words for an ensemble shot, so you can place everyone), present tense, third person.
 - The actor first, then the action, then the target. Keep the roles right; never swap who acts and who is acted on.
-- Name people by name ("Kan", "Itachi"). Unnamed people get a short description ("a Stone ninja").
+- Name people by name (the player by their name, "Itachi"). Unnamed people get a short description ("a Stone ninja").
 - Only people physically present in that moment. Include body positions, expressions at their peak, and any visible jutsu, weapon, or weather.
 - No dialogue, sounds, thoughts, backstory, or text in the image.
 
@@ -217,7 +217,7 @@ SHOT: frame that instant like an anime key frame in a wide 16:9 frame. One line,
 - angle: worm's-eye | low angle | eye level | high angle | bird's-eye | over-the-shoulder | dutch tilt
 - lens feel: wide-angle distortion | telephoto compression | shallow depth of field
 - composition: where the subject sits (lower third, off-center, tiny in frame, filling the frame), and what fills the rest of the wide frame (open sky, smoke, flames, the jutsu, the landscape)
-- focus: the ONE person who gets the sharpest light and the most space in the frame (usually Kan)
+- focus: the ONE person who gets the sharpest light and the most space in the frame (usually the player)
 - emotion at its peak, shown physically (screaming with veins on the neck, tears streaking a bloodied face, eyes wide with Sharingan spinning)
 - light and effects: light source and colour, motion (wind-whipped hair and cloak, speed lines, debris, embers, dust, chakra glow)
 Pick the shot that sells the moment:
@@ -229,13 +229,13 @@ Pick the shot that sells the moment:
 - confrontation: over-the-shoulder, or two figures facing off across the frame
 - a group together, a gathering, one against many: ensemble, with one of these layouts:
   - line-up: everyone facing the camera in a staggered V, the leader at the front, low angle, like an opening-credits shot
-  - battle lines: Kan in the foreground seen from behind or over the shoulder, facing a row of opponents across the frame
+  - battle lines: the player in the foreground seen from behind or over the shoulder, facing a row of opponents across the frame
   - circle: a high angle looking down on figures in a ring (an Akatsuki meeting: members as glowing ghostly projections standing on the fingers of the giant statue, faces lit from below)
   - depth layers: 1-2 sharp hero faces in front, the others in mid-ground, silhouettes or out-of-focus figures at the back
   - clash: two groups colliding mid-air, jutsu crossing between them
 Avoid: eye-level medium shots of people standing, centered symmetrical framing, neutral faces, posing for the camera.
 
-CAPTION: the same moment for the player's scrapbook of photos of Kan's life. The player is Kan, so the caption calls Kan "you" and "your", never "Kan", "he" or "his": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
+CAPTION: the same moment for the player's scrapbook of photos of their life. The caption calls the player "you" and "your", never their name, "he", "she", "his" or "her": one sentence, at most 20 words, present tense, plain words ("You kneel at Izumi's grave and set down a white flower."). Call people only by the name you know them by (after "to you:"), or describe them.
 
 Output exactly three lines and nothing else:
 ACTION: <the action sentences>
@@ -306,7 +306,7 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
 
   const cast = sceneCast(db, ENSEMBLE_CAST_LIMIT);
   const playerAction = latestPlayerAction(db, reply.id);
-  // A reply inside a flashback: the memory's place and Kan at his age then.
+  // A reply inside a flashback: the memory's place and the player at their age then.
   const memory = reply.flashback ? db.state.flashbacks?.active ?? null : null;
   const moment = sceneMoment(db, Boolean(reply.flashback));
   const sceneText = `${playerAction} ${reply.content}`;
@@ -316,13 +316,16 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
   const art = reply.flashback ? null : canonArtDirection(db);
   const notes = reply.flashback ? [] : peopleNotes(db, cast);
 
+  const who = playerName(db);
+
   return [
+    `PLAYER: ${who}.`,
     memory || reply.flashback
-      ? `This reply is a memory from Year ${reply.flashback!.date.year}: Kan is ${playerAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
+      ? `This reply is a memory from Year ${reply.flashback!.date.year}: ${who} is ${playerAgeAt(db, reply.flashback!.date)} years old in it.${memory ? ` Location: ${memory.place}.` : ''}`
       : `Location: ${db.state.location}.`,
     reply.flashback ? '' : `Scene: ${db.state.scene}.`,
-    reply.flashback ? '' : `Kan wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
-    reply.flashback || !db.state.mood ? '' : `Kan's mood: ${db.state.mood}.`,
+    reply.flashback ? '' : `${who} wears ${wearsAkatsukiCloak(db) ? 'the Akatsuki cloak' : 'a plain black shinobi outfit'}.`,
+    reply.flashback || !db.state.mood ? '' : `${who}'s mood: ${db.state.mood}.`,
     reply.flashback
       ? ''
       : cast.length > 0 ? `Known people in the scene: ${cast.map((name) => {
@@ -330,18 +333,18 @@ export function directorContext(db: AppDatabase, options: DirectorOptions = {}):
           const known = entity ? displayName(db, entity) : name;
 
           return known === name ? name : `${name} (to you: ${known})`;
-        }).join(', ')}.` : 'Known people in the scene: none besides Kan.',
+        }).join(', ')}.` : `Known people in the scene: none besides ${who}.`,
     notes.length > 0 ? `How they are: ${notes.join('; ')}.` : '',
     `Time and weather: ${timeOfDayOf(moment.date)}, ${String(moment.date.hour ?? 12).padStart(2, '0')}:${String(moment.date.minute ?? 0).padStart(2, '0')}; ${moment.weatherText ?? CONDITION_INFO[moment.condition].label}${moment.indoors ? ' (indoors)' : ''}.`,
     ...jutsu.map((record) => `Jutsu in this turn: ${record.name} looks like this: ${record.visual.trim()}`),
-    art ? `ART DIRECTION for this moment in canon (a hint; still frame it around Kan and what he does): ${art}.` : '',
+    art ? `ART DIRECTION for this moment in canon (a hint; still frame it around ${who} and what they do): ${art}.` : '',
     reply.imageWorthy && !forced ? 'This is a key moment: go big.' : '',
     forced ? `The player asked for this shot: ${forced}. Use it.` : '',
     shots.length > 0
       ? `Recent images were framed: ${shots.map((shot) => `"${shot.slice(0, 90)}"`).join('; ')}. Don't repeat the same shot type and angle as last time unless the moment demands it.`
       : '',
     options.chip === 'impact' || impactFrameAllowed(db) ? '' : 'Do not use an impact frame this time (one was used recently).',
-    playerAction ? `What Kan's player wrote this turn: ${tailOf(playerAction, 600)}` : '',
+    playerAction ? `What the player wrote this turn: ${tailOf(playerAction, 600)}` : '',
     '',
     'NARRATOR REPLY:',
     tailOf(reply.content.trim(), 4000),
@@ -433,7 +436,13 @@ export async function writeImageAction(
   return null;
 }
 
-const PLAYER_LOOK = 'Kan: a lean young shinobi with black spiky hair and brown eyes.';
+/** The player's look in words, for when no face reference is sent. */
+function playerLook(db: AppDatabase) {
+  const entity = playerEntity(db);
+  const look = db.state.player.appearance.trim() || entity?.appearance?.trim() || 'the main character';
+
+  return `${playerName(db)}: ${look.replace(/\.$/, '')}.`;
+}
 
 const STYLE_OPENER =
   'A dramatic widescreen anime key frame, like a still from a high-budget Naruto Shippuden fight episode: bold cel shading, clean line art, saturated colour with strong contrast, dynamic composition, film grain.';
@@ -456,7 +465,8 @@ export function buildSceneImagePrompt(
   action: string,
   options: ScenePromptOptions = {}
 ) {
-  // A memory: Kan and everyone else at their age then, no present outfit.
+  const who = playerName(db);
+  // A memory: the player and everyone else at their age then, no present outfit.
   const memoryReply = latestReplyIsFlashback(db);
   const memoryNote = flashbackImageNote(db, memoryReply);
   const shotType = options.shotType ?? shotTypeOf(options.shot);
@@ -535,20 +545,20 @@ export function buildSceneImagePrompt(
     lines.push(`Location: ${db.state.location}.`);
   }
 
-  // Kan's look.
+  // The player's look.
   if (!hasFace) {
-    lines.push(PLAYER_LOOK);
+    lines.push(playerLook(db));
   }
 
   if (!memoryNote) {
     if (!hasOutfit) {
       lines.push(
         cloak
-          ? 'Kan wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.'
-          : 'Kan wears a plain black shinobi outfit: fitted black top and pants, no Akatsuki cloak.'
+          ? `${who} wears the Akatsuki cloak: long black cloak with red clouds outlined in white, high collar.`
+          : `${who} wears a plain black shinobi outfit: fitted black top and pants, no Akatsuki cloak.`
       );
     } else {
-      lines.push(`Kan currently wears ${currentOutfit}.`);
+      lines.push(`${who} currently wears ${currentOutfit}.`);
     }
   }
 
@@ -568,15 +578,15 @@ export function buildSceneImagePrompt(
       lines.push(`Reference image ${n}: the image to edit.`);
     } else if (reference.kind === 'face') {
       lines.push(
-        `Reference image ${n}: Kan's face sheet (front, both profiles, back of head; no clothes). Match his face exactly: black spiky hair, brown eyes, facial structure, hairline. ${IDENTITY_ONLY}`
+        `Reference image ${n}: ${who}'s face sheet (front, both profiles, back of head; no clothes). Match the face exactly: hair, eyes, facial structure, hairline. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'outfit') {
       lines.push(
-        `Reference image ${n}: the clothes Kan currently wears (${currentOutfit}), front, side and back views with NO person. Dress Kan in exactly these clothes. ${IDENTITY_ONLY}`
+        `Reference image ${n}: the clothes ${who} currently wears (${currentOutfit}), front, side and back views with NO person. Dress ${who} in exactly these clothes. ${IDENTITY_ONLY}`
       );
     } else if (reference.kind === 'alternate') {
       lines.push(
-        `Reference image ${n}: the alternate outfit (${alternateOutfit}), views with NO person. Use only if the story explicitly changes his clothing.`
+        `Reference image ${n}: the alternate outfit (${alternateOutfit}), views with NO person. Use only if the story explicitly changes their clothing.`
       );
     } else if (reference.kind === 'character') {
       const name = reference.name ?? 'this person';
@@ -600,20 +610,20 @@ export function buildSceneImagePrompt(
   if (hasFace) {
     lines.push(
       references.some((reference) => reference.kind === 'character' || reference.kind === 'cast')
-        ? 'Kan\'s face sheet and outfit images are for Kan only; each other person\'s reference is for that person only, and never give one person another\'s face. Do not redesign Kan’s face or hairstyle.'
-        : 'The reference images are for Kan\'s face and clothing only, and any other people in them must not appear. Do not redesign Kan’s face or hairstyle.'
+        ? `${who}'s face sheet and outfit images are for ${who} only; each other person's reference is for that person only, and never give one person another's face. Do not redesign ${who}'s face or hairstyle.`
+        : `The reference images are for ${who}'s face and clothing only, and any other people in them must not appear. Do not redesign ${who}'s face or hairstyle.`
     );
   }
 
   // 6. Rules, condensed at the end.
   lines.push(
-    'ACTOR RULE: Kan performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict Kan as the victim of his own action. If the ACTION says Kan chokes someone, draw Kan choking the other person, never Kan holding his own throat.',
+    `ACTOR RULE: ${who} performs the action unless the ACTION says someone else does. Any other person in the ACTION is the one being acted upon — a target, a captive, an ally. NEVER depict ${who} as the victim of their own action. If the ACTION says ${who} chokes someone, draw ${who} choking the other person, never ${who} holding their own throat.`,
     isScaleShot(shotType)
       ? 'Only the people named in the ACTION may appear with recognisable faces. Unnamed extras described there are allowed, and so are tiny, distant, faceless figures, rooftops, smoke columns, a whole village or battlefield below. No other recognisable faces.'
       : 'Only the people named in the ACTION may appear. Unnamed extras explicitly described there (for example "a Stone ninja") are allowed. No other faces, no crowd, no bystanders.',
     cast.length > 0
-      ? `Named people in this scene besides Kan: ${cast.join(', ')}.`
-      : 'Named people in this scene besides Kan: none — any other person must come from the ACTION text itself.',
+      ? `Named people in this scene besides ${who}: ${cast.join(', ')}.`
+      : `Named people in this scene besides ${who}: none — any other person must come from the ACTION text itself.`,
     ensemble
       ? 'Ensemble: keep every person distinct and readable; the focal person named in the SHOT gets the sharpest light and the most space.'
       : '',
@@ -624,8 +634,8 @@ export function buildSceneImagePrompt(
   return localizePlaceNames(lines.filter(Boolean).join('\n'));
 }
 
-/** A short edit of an existing image (#12): the image, plus Kan's face so it doesn't drift. */
-export function buildRetouchPrompt(tweak: string, references: PlannedReference[]) {
+/** A short edit of an existing image (#12): the image, plus the player's face so it doesn't drift. */
+export function buildRetouchPrompt(tweak: string, references: PlannedReference[], name = 'the main character') {
   const lines = [
     `Edit this image: ${tweak.trim()}. Keep everything else the same: characters, faces, clothing, composition, style.`,
   ];
@@ -636,7 +646,7 @@ export function buildRetouchPrompt(tweak: string, references: PlannedReference[]
     if (reference.kind === 'edit') {
       lines.push(`Reference image ${n}: the image to edit.`);
     } else if (reference.kind === 'face') {
-      lines.push(`Reference image ${n}: Kan's face sheet. Keep his face exactly like this. ${IDENTITY_ONLY}`);
+      lines.push(`Reference image ${n}: ${name}'s face sheet. Keep that face exactly like this. ${IDENTITY_ONLY}`);
     }
   });
 

@@ -1,6 +1,6 @@
-// News delivery: who brings Kan the news, and how it reaches him.
+// News delivery: who brings the player the news, and how it reaches them.
 //
-// canon.ts decides WHAT Kan has not heard yet. This module decides how the
+// canon.ts decides WHAT the player has not heard yet. This module decides how the
 // next piece reaches him this turn:
 //
 // - Bearers: anyone in the scene who could plausibly know (a companion, an
@@ -11,7 +11,7 @@
 //   sealed scroll at a dead drop, a summoned animal...). The pick is
 //   deterministic per turn, so a regenerate gets the same one, and it varies
 //   from turn to turn.
-// - Catch-up reports: when Kan has heard nothing for a while (a time skip, a
+// - Catch-up reports: when the player has heard nothing for a while (a time skip, a
 //   long stretch in the wilds) and news has piled up, it can come as ONE
 //   report — a bundle of letters at an inn, a companion catching him up over
 //   a fire — covering several events at once.
@@ -36,7 +36,7 @@ import { hashText, playerTurnCount, uniqueList } from './util';
 import type { AppDatabase, EntityRecord, LocationKind } from './types';
 import { isPlayerEntity } from './player';
 
-/** Kan has heard nothing for this many in-story days: piled-up news comes as one report. */
+/** The player has heard nothing for this many in-story days: piled-up news comes as one report. */
 export const CATCH_UP_QUIET_DAYS = 14;
 
 /** At most this many events in one catch-up report. */
@@ -45,9 +45,9 @@ export const CATCH_UP_MAX = 4;
 export type NewsOffer = {
   mode: 'single' | 'catch-up';
   items: OfferedNews[];
-  /** How it reaches Kan this time. */
+  /** How it reaches the player this time. */
   style: string;
-  /** catch-up: days since Kan last heard any news. */
+  /** catch-up: days since the player last heard any news. */
   quietDays: number;
 };
 
@@ -126,7 +126,7 @@ const LOCAL_BEARERS: Partial<Record<LocationKind, string>> = {
 function sceneBearersFor(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): string[] {
   const knowing = present
     .filter((entity) => couldKnow(db, entity, item))
-    // Companions first: they are the ones Kan talks to.
+    // Companions first: they are the ones the player talks to.
     .sort((a, b) => Number(Boolean(b.companion)) - Number(Boolean(a.companion)));
   const labels = knowing.map((entity) => bearerLabel(db, entity));
   const local = item.knowledge === 'public' ? LOCAL_BEARERS[locationKindOf(db)] : undefined;
@@ -261,7 +261,7 @@ function singleStyle(db: AppDatabase, item: OfferedNews, present: EntityRecord[]
     pool.push(`${displayName(db, knowingCompanion)} bringing it up in passing, from word they picked up`);
   }
 
-  // Overdue news cannot wait for a chance meeting: it comes looking for Kan.
+  // Overdue news cannot wait for a chance meeting: it comes looking for the player.
   if (item.urgency === 'overdue') {
     return pick(
       [item.channel, 'a messenger bird or a summoned animal that finds you', 'a rider or runner who tracked you down'],
@@ -290,7 +290,7 @@ function offered(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): O
   return {
     ...item,
     sceneBearers: sceneBearersFor(db, item, present),
-    // As Kan knows them: the masked man is not "Tobi" to him before he hears it.
+    // As the player knows them: the masked man is not "Tobi" to them before he hears it.
     otherBearers: livingBearers(db, item, present).map((name) => {
       const entity = db.entities.find((person) => person.type === 'character' && person.name === name);
 
@@ -301,7 +301,7 @@ function offered(db: AppDatabase, item: UnheardNews, present: EntityRecord[]): O
 }
 
 /**
- * The news that may reach Kan this turn, or null (nothing unheard, or a
+ * The news that may reach the player this turn, or null (nothing unheard, or a
  * fight). Pass `ignoreCombat` to size the allowance after a turn.
  */
 export function newsOffer(db: AppDatabase, options: { ignoreCombat?: boolean } = {}): NewsOffer | null {
@@ -383,7 +383,7 @@ export function formatNewsOffer(offer: NewsOffer | null): string {
   const [item] = offer.items;
 
   return [
-    'NEWS & RUMORS (an event Kan has NOT learned yet; deliver at most this one this turn). Prefer a bearer already in the scene. Make clear who tells him. Never deliver any other world news.',
+    'NEWS & RUMORS (an event you have NOT learned yet; deliver at most this one this turn). Prefer a bearer already in the scene. Make clear who tells you. Never deliver any other world news.',
     `- ${item.title} (${item.location}, ${item.region}). ${bearerLine(item)} Delivery this time: ${offer.style}.${URGENCY_TEXT[item.urgency](item)}`,
   ].join('\n');
 }
@@ -397,12 +397,12 @@ export function newsTrackingLines(offer: NewsOffer | null): string[] {
   if (offer.mode === 'catch-up') {
     return offer.items.map(
       (item) =>
-        `- ${item.milestoneId}: ${item.title} (news, part of a catch-up report). news_relayed with "from" = the speaker or channel, for each event the report actually told Kan this turn.`
+        `- ${item.milestoneId}: ${item.title} (news, part of a catch-up report). news_relayed with "from" = the speaker or channel, for each event the report actually told the player this turn.`
     );
   }
 
   return offer.items.map(
     (item) =>
-      `- ${item.milestoneId}: ${item.title} (news Kan has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told Kan this turn.`
+      `- ${item.milestoneId}: ${item.title} (news the player has not heard). news_relayed with "from" = the speaker or channel, only if someone actually told the player this turn.`
   );
 }

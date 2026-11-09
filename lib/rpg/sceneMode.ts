@@ -4,12 +4,12 @@
 // *action* lines), or a fight in short exchanges. The mode is decided before
 // each narrator call from two signals:
 //
-// 1. Kan's own input. Speaking, acting in place, attacking or leaving is the
+// 1. The player's own input. Speaking, acting in place, attacking or leaving is the
 //    most reliable signal there is, because the player knows what they meant.
 // 2. The beat the state tracker tagged on earlier turns (exchange,
 //    instruction, remark, action, travel, combat). Conversation mode is slow
 //    to start (two exchange beats in a row with the same people, or one plus
-//    Kan answering in speech) and quick to stop (a scene-changing move).
+//    The player answering in speech) and quick to stop (a scene-changing move).
 //    A fight starts on an attack and ends when the tracker says it is over.
 //
 // Before full conversation mode, an exchange already leans the narrator
@@ -47,7 +47,7 @@ export function sceneModeOf(db: AppDatabase): SceneModeState {
 }
 
 // ---------------------------------------------------------------------------
-// Reading Kan's input
+// Reading the player's input
 
 const QUOTED = /["“”„«»]([^"“”„«»]*[\p{L}\p{N}][^"“”„«»]*)["“”„«»]/u;
 const ATTACK =
@@ -69,21 +69,21 @@ const LEAVES =
   /\b(leave|leaves|leaving|walk (?:away|off|out|on|back|to|toward|towards|into|through|down|up|north|south|east|west)|walk away|head (?:out|off|back|north|south|east|west|to|toward|towards|for|into|down|up)|go (?:to|back|out|inside|outside|home|north|south|east|west|into|up|down)|set (?:off|out)|travel|journey|run (?:off|away|to|toward|towards|after)|flee|race (?:off|to|after)|follow (?:him|her|them|the|it)|i follow|you follow|climb|enter|step (?:out|outside|inside|into|through)|jump (?:down|off|into|across|from)|leap (?:down|off|into|across|from|away)|sleep|go to bed|lie down to sleep|turn in for the night|rest (?:for|until) |wait (?:until|till|for (?:the|an?|hours?|nightfall|dawn|morning))|train (?:for|until)|keep (?:walking|moving|going|running))\b/gi;
 
 export type PlayerInput = {
-  /** Kan says something out loud. */
+  /** The player says something out loud. */
   speaks: boolean;
-  /** Kan attacks someone. */
+  /** The player attacks someone. */
   attacks: boolean;
-  /** Kan dodges, blocks or counters (fighting back). */
+  /** The player dodges, blocks or counters (fighting back). */
   defends: boolean;
-  /** Kan does something that changes the scene: leaves, moves on, sleeps, waits it out. */
+  /** The player does something that changes the scene: leaves, moves on, sleeps, waits it out. */
   changesScene: boolean;
 };
 
-/** What Kan's input is: talk, an attack, a scene change, or a small move in place. */
+/** What the player's input is: talk, an attack, a scene change, or a small move in place. */
 export function readPlayerInput(input: string): PlayerInput {
   const text = input ?? '';
   const speaks = QUOTED.test(text);
-  // Only what Kan does counts as action, never the words he says.
+  // Only what the player does counts as action, never the words he says.
   const doing = text.replace(new RegExp(QUOTED.source, 'gu'), ' ');
   const plainSpeech = !speaks && !/\*/.test(text) && /\?\s*$/.test(text.trim());
 
@@ -103,11 +103,11 @@ export type TurnMode = {
   mode: SceneModeName;
   /** Not yet a conversation, but talk is building: shorter, more spoken. */
   lean: boolean;
-  /** The mode Kan's move ends this turn, for a short normal-prose transition. */
+  /** The mode the player's move ends this turn, for a short normal-prose transition. */
   ending?: 'conversation';
   /** True when the player chose the mode from the chip. */
   manual: boolean;
-  /** Who Kan is talking with or fighting (names, for the prompt and the chip). */
+  /** Who the player is talking with or fighting (names, for the prompt and the chip). */
   with: string[];
 };
 
@@ -134,7 +134,7 @@ function castNames(db: AppDatabase) {
 }
 
 /**
- * The mode a turn will be narrated in, from the scene so far and what Kan
+ * The mode a turn will be narrated in, from the scene so far and what the player
  * writes now. Pure and deterministic, so a regenerated turn gets the same.
  */
 export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
@@ -176,7 +176,7 @@ export function resolveTurnMode(db: AppDatabase, input: string): TurnMode {
     };
   }
 
-  // Slow to start: two exchanges in a row, or one and Kan answering out loud.
+  // Slow to start: two exchanges in a row, or one and the player answering out loud.
   const settled =
     talking &&
     (state.exchangeStreak >= CONVERSATION_STREAK ||
@@ -207,7 +207,7 @@ function resolvePartners(db: AppDatabase, raw: string[]): string[] {
   return [...new Set(ids)].slice(0, 6);
 }
 
-/** When the tracker gave no beat: read it from the pace and Kan's input. */
+/** When the tracker gave no beat: read it from the pace and the player's input. */
 export function fallbackBeat(pace: ScenePace | undefined, input: string, narration: string): SceneBeat {
   const kan = readPlayerInput(input);
 
@@ -267,7 +267,7 @@ export function applySceneBeat(
     kept = [];
   }
 
-  // Kan's own scene-changing move ends the talk, whatever the tag said.
+  // The player's own scene-changing move ends the talk, whatever the tag said.
   if (kan.changesScene && kind !== 'exchange') {
     streak = 0;
     kept = [];
@@ -310,7 +310,7 @@ export function cleanFightOptions(options: string[] | undefined): string[] | und
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
-/** A quick fight move as Kan's input. */
+/** A quick fight move as the player's input. */
 export function fightOptionInput(option: string) {
   const text = option.trim().replace(/^\*+|\*+$/g, '').replace(/[.!]*$/, '');
   return `*${text}.*`;
@@ -355,13 +355,13 @@ function playerCondition(db: AppDatabase) {
 /** One or two lines for the narrator: which mode this turn is, and with whom. */
 export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
   const who = turn.with.length > 0 ? ` with ${turn.with.join(', ')}` : '';
-  const chosen = turn.manual ? ' (Kan chose this mode: keep it even if the scene moves on)' : '';
+  const chosen = turn.manual ? ' (the player chose this mode: keep it even if the scene moves on)' : '';
 
   if (turn.mode === 'fight') {
     const condition = playerCondition(db);
     return [
-      `SCENE MODE: fight${turn.with.length > 0 ? ` against or beside ${turn.with.join(', ')}` : ''}${chosen}. Short exchange: show what Kan's move does, then the opponent's next specific move, and stop before it lands.`,
-      condition.length > 0 ? `Kan right now: ${condition.join('; ')}.` : '',
+      `SCENE MODE: fight${turn.with.length > 0 ? ` against or beside ${turn.with.join(', ')}` : ''}${chosen}. Short exchange: show what the player's move does, then the opponent's next specific move, and stop before it lands.`,
+      condition.length > 0 ? `You right now: ${condition.join('; ')}.` : '',
     ]
       .filter(Boolean)
       .join('\n');
@@ -372,7 +372,7 @@ export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
   }
 
   if (turn.ending === 'conversation') {
-    return 'SCENE MODE: Kan\'s move ends the conversation. A short transition in normal prose, then carry on normally.';
+    return 'SCENE MODE: the player\'s move ends the conversation. A short transition in normal prose, then carry on normally.';
   }
 
   if (turn.lean) {
@@ -380,7 +380,7 @@ export function formatSceneModeLine(db: AppDatabase, turn: TurnMode): string {
   }
 
   if (turn.manual) {
-    return 'SCENE MODE: normal narration (Kan chose this).';
+    return 'SCENE MODE: normal narration (the player chose this).';
   }
 
   return '';

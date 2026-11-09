@@ -24,6 +24,7 @@ import { loadImage } from './imageStore';
 import { wearsAkatsukiCloak } from './portrait';
 import { faceDroppedWarning, loadPlayerReferenceImages, planReferences, type PlannedReference } from './referenceImages';
 import type { AppDatabase, SceneImageMeta } from './types';
+import { playerName } from './player';
 
 export type PaintedTake = { dataUri: string; meta: SceneImageMeta };
 
@@ -73,7 +74,7 @@ export async function paintScene({
   const shot = written?.shot;
   const shotType = written?.shotType ?? null;
   const ensemble = wantsEnsemble(chip, shotType);
-  // A memory: Kan is a child there, so his present outfits stay out.
+  // A memory: the player is a child there, so their present outfits stay out.
   const inMemory = Boolean(latestAssistant.flashback);
 
   // People named in the action with a face reference or a portrait; original
@@ -211,7 +212,7 @@ function referenceRecord(reference: PlannedReference, refOf: Map<string, string>
 
 /**
  * The quick retouch (#12): edits an existing scene image with a short tweak
- * instead of painting a new one. Sends the image and Kan's face.
+ * instead of painting a new one. Sends the image and the player's face.
  */
 export async function retouchSceneImage({
   apiKey,
@@ -242,7 +243,7 @@ export async function retouchSceneImage({
     ],
     caps.maxReferences
   );
-  const prompt = buildRetouchPrompt(tweak, plan.references);
+  const prompt = buildRetouchPrompt(tweak, plan.references, playerName(db));
   const startedAt = Date.now();
   const result = await generateImage({
     apiKey,

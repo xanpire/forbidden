@@ -116,7 +116,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       personality: 'Kind, observant, gentle, quietly stubborn.',
       speechStyle: 'Soft and careful, with a warm teasing streak.',
       status: 'Deceased',
-      // Kan learns of it when someone tells him, or when news of her funeral reaches him.
+      // The player learns of it when someone tells them, or when news of her funeral reaches them.
       deceased: { known: false, canonEventId: 'event_canon_izumi-funeral' },
       notes: 'Kan’s former teammate from Team 3; he left the team when he joined ANBU, but they stayed close. Killed in the Uchiha massacre. She had loved Itachi since the Academy, and Kan knew it.',
       mood: 'Unknown',
@@ -461,7 +461,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
     },
   ];
 
-  // One voice throughout: "you" is Kan. Entries that stop being true carry
+  // One voice throughout: "you" is the player. Entries that stop being true carry
   // an activeUntil (see lore.ts), so they leave the prompt when the story
   // moves past them.
   const loreEntries: LoreRecord[] = [
@@ -697,7 +697,7 @@ export function seedDatabase(slotId: string, slotName: string): AppDatabase {
       chapterStart: { turn: 1, date: DEFAULT_DATE },
       scene: 'The rain after',
       purse: startingPurse(),
-      // A new story tracks which names Kan knows from the start (names.ts).
+      // A new story tracks which names the player knows from the start (names.ts).
       namesVersion: NAMES_VERSION,
     },
     indices: emptyIndex(),

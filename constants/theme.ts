@@ -115,7 +115,7 @@ export const type: Record<
     lineHeight: 23,
     color: colors.textMuted,
   },
-  /** 24px page heading (Kan, Settings). */
+  /** 24px page heading (the player, Settings). */
   pageTitle: {
     fontFamily: fonts.extrabold,
     fontSize: 24,

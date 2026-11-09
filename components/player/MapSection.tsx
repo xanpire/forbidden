@@ -62,7 +62,7 @@ const LAND_VISITED = '#1f1416';
 const LAND_SELECTED = '#26262a';
 const BORDER = '#3a3a3e';
 const LABEL_SIZE = { large: 2.6, medium: 2.1, small: 1.6 } as const;
-/** Zoomed in, the board shows this much of the map around Kan or the selection. */
+/** Zoomed in, the board shows this much of the map around the player or the selection. */
 const ZOOM_SPAN = 50;
 const PLACE_NAME_SIZE = 0.9;
 /** How close a tap must land to a place to pick it, in board units. */
@@ -91,7 +91,7 @@ function selectionAt(x: number, y: number): Selection | null {
   return region ? { kind: 'region', id: region } : null;
 }
 
-/** The board: countries, places, Kan's road and where he is. */
+/** The board: countries, places, the player's road and where he is. */
 function WorldBoard({
   db,
   selection,
@@ -127,7 +127,7 @@ function WorldBoard({
     return counts;
   }, [people]);
 
-  // Zoomed in, the window centres on the selection (or Kan) and stays on the board.
+  // Zoomed in, the window centres on the selection (or the player) and stays on the board.
   const focus = selection?.kind === 'place' ? mapPlace(selection.id) : selection?.kind === 'region' ? REGION_SHAPES[selection.id] : null;
   const center = focus ?? you;
   const span = zoomed ? ZOOM_SPAN : MAP_WIDTH;
@@ -490,7 +490,7 @@ function placeBody(db: AppDatabase, house: Safehouse) {
     .join('\n');
 }
 
-/** Kan's places: safehouses, rooms, hideouts, camps, and the ones he lost. */
+/** The player's places: safehouses, rooms, hideouts, camps, and the ones he lost. */
 function PlacesList({ db }: { db: AppDatabase }) {
   const here = currentSafehouse(db)?.id;
   const active = [...activeSafehouses(db)].sort((a, b) =>

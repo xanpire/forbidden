@@ -3,13 +3,13 @@
 // Everyone in the room shares the same memory card. For the people who
 // matter most (a major bond, a strong feeling either way, a companion), the
 // chapter summary call also writes the memory as they would remember it:
-// one line in their own voice, speaking to Kan as "you", limited to what
+// one line in their own voice, speaking to the player as "you", limited to what
 // they could see or hear. Only when the scene mattered to them; the model
 // leaves the others out. No extra call: it rides on the summary.
 //
 // The bond screen shows their side under each shared memory, and the
 // narrator gets each person's latest line on their character card, so they
-// remember Kan the way they saw it.
+// remember the player the way they saw it.
 
 import { dateSortValue } from './calendar';
 import { isDeceased } from './deaths';
@@ -51,7 +51,7 @@ export function povInstruction(candidates: EntityRecord[]): string {
 
   return [
     `POINTS OF VIEW: ${candidates.map((entity) => entity.name).join(', ')} ${candidates.length === 1 ? 'was' : 'were'} there.`,
-    'After SUMMARY, add a POV: section with one line for each of them the scene truly mattered to, as they will remember it: in their own voice and manner, speaking to you (Kan) as "you", only what they could see or hear (never your thoughts), under 35 words. Leave out anyone it did not matter to; if it mattered to none, leave POV: out.',
+    'After SUMMARY, add a POV: section with one line for each of them the scene truly mattered to, as they will remember it: in their own voice and manner, speaking to you (the player) as "you", only what they could see or hear (never your thoughts), under 35 words. Leave out anyone it did not matter to; if it mattered to none, leave POV: out.',
     'POV:',
     '- Name: line',
   ].join('\n');
@@ -102,7 +102,7 @@ export function povOf(event: EventRecord, entityId: string): string | null {
   return event.povs?.find((item) => item.entityId === entityId)?.text ?? null;
 }
 
-/** How this person last remembered a moment with Kan (for their character card). */
+/** How this person last remembered a moment with the player (for their character card). */
 export function latestPov(db: AppDatabase, entityId: string): string | null {
   const events = db.events
     .filter((event) => event.povs?.some((item) => item.entityId === entityId))

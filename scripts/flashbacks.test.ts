@@ -403,7 +403,7 @@ describe('playing a flashback', () => {
 
     expect(activeFlashback(db)).toBeNull();
     expect(db.state.flashbacks!.returned?.forced).toBe(true);
-    expect(narratorText(db, '*You blink.*')).toContain('let go of him before it was finished');
+    expect(narratorText(db, '*You blink.*')).toContain('let go of you before it was finished');
   });
 
   test('the narrator is told to wrap it up, then to end it', () => {

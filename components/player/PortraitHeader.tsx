@@ -36,7 +36,7 @@ import {
 } from '@/lib/rpg/referenceImages';
 import type { PortraitRecord } from '@/lib/rpg/types';
 
-/** Empty frame until Kan's first portrait is painted. */
+/** Empty frame until the player's first portrait is painted. */
 function EmptyPortrait() {
   return (
     <View style={styles.empty}>
@@ -110,7 +110,7 @@ export function PortraitHeader() {
       return;
     }
 
-    const lock = portraitKey('kan', signature);
+    const lock = portraitKey('player', signature);
 
     if (!beginPainting(lock)) {
       return;

@@ -5,14 +5,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChevronLeft, Flame, Footprints, GitMerge, HeartPulse, Skull, UserMinus } from 'lucide-react-native';
 
 import { EmptyRow, ListCard, ListRow, SectionLabel } from '@/components/List';
-import { formatAffinity } from '@/components/kan/BondsSection';
-import { CharacterPortraitCard } from '@/components/kan/CharacterPortraitCard';
-import { memoryTitle } from '@/components/kan/JournalSection';
+import { formatAffinity } from '@/components/player/BondsSection';
+import { CharacterPortraitCard } from '@/components/player/CharacterPortraitCard';
+import { memoryTitle } from '@/components/player/JournalSection';
 import { sharedMemories } from '@/lib/rpg/sharedMemories';
 import { knownLife } from '@/lib/rpg/lives';
 import { grudgeKnown, howTheySeem, shownProfile } from '@/lib/rpg/disclosure';
 import { resolveEntity } from '@/lib/rpg/entities';
-import { MergeSheet } from '@/components/kan/MergeSheet';
+import { MergeSheet } from '@/components/player/MergeSheet';
 import { colors, fonts, radius, spacing, type } from '@/constants/theme';
 import { dateSortValue, entityAge, formatDayMonth } from '@/lib/rpg/calendar';
 import { MAX_COMPANIONS, castWithCompanions, companionsOf, daysTogether, formatTogether } from '@/lib/rpg/companions';
@@ -20,6 +20,7 @@ import { playerKnowsDeath } from '@/lib/rpg/deaths';
 import { STAGE_LABEL, grudgeStage } from '@/lib/rpg/grudges';
 import { useGame } from '@/lib/rpg/game';
 import { alsoKnownAs, displayName, playerKnowsName } from '@/lib/rpg/names';
+import { isPlayer } from '@/lib/rpg/player';
 
 function Chip({ label, accent }: { label: string; accent?: boolean }) {
   return (
@@ -47,8 +48,8 @@ export default function BondScreen() {
     return person ? knownLife(person) : [];
   }, [db, id]);
 
-  // Tabs' back() falls through to the first tab (Story), so go to Kan explicitly.
-  const back = () => router.navigate('/(tabs)/kan');
+  // Tabs' back() falls through to the first tab (Story), so go to the player explicitly.
+  const back = () => router.navigate('/(tabs)/you');
 
   if (!db || !entity) {
     return (
@@ -75,7 +76,7 @@ export default function BondScreen() {
   // Your own feelings you know exactly; theirs only as they seem to you.
   const affinity = bond?.yourFeelings?.affinity ?? bond?.affinity ?? 0;
   const theySeem = howTheySeem(bond?.theirFeelings?.affinity ?? bond?.affinity ?? 0);
-  // What Kan can know of them: no canon secret before the story tells him.
+  // What the player can know of them: no canon secret before the story tells them.
   const profile = shownProfile(db, entity);
   // Their mood now only if they are here; otherwise how they were when you last saw them.
   const hereNow =
@@ -255,7 +256,7 @@ export default function BondScreen() {
           </ListCard>
         )}
 
-        {entity.name.toLowerCase() !== 'kan' ? (
+        {!isPlayer(db, entity) ? (
           <>
             {!dead ? (
               <>

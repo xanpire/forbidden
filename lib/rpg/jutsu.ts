@@ -61,7 +61,9 @@ export function normalizeJutsuNature(value: string | undefined): JutsuNature {
   return 'Unknown';
 }
 
-export function groupJutsuByNature(records: JutsuRecord[]) {
+export function groupJutsuByNature(records: JutsuRecord[], playerUser = '') {
+  const mine = (user: string) => playerUser.length > 0 && user.trim().toLowerCase() === playerUser.trim().toLowerCase();
+
   const grouped = new Map<JutsuNature, JutsuRecord[]>();
 
   for (const record of records) {
@@ -76,8 +78,8 @@ export function groupJutsuByNature(records: JutsuRecord[]) {
       nature,
       jutsu: [...jutsu].sort((a, b) => {
         if (a.user !== b.user) {
-          const aPlayer = a.user === 'Kan' ? 1 : 0;
-          const bPlayer = b.user === 'Kan' ? 1 : 0;
+          const aPlayer = mine(a.user) ? 1 : 0;
+          const bPlayer = mine(b.user) ? 1 : 0;
 
           if (aPlayer !== bPlayer) {
             return bPlayer - aPlayer;
@@ -226,7 +228,7 @@ function sameUser(db: AppDatabase, a: string, b: string) {
   return a.toLowerCase() === b.toLowerCase() || resolveEntity(db, a)?.id === resolveEntity(db, b)?.id;
 }
 
-/** Swaps one name for another in Kan's quick jutsu list. */
+/** Swaps one name for another in the player's quick jutsu list. */
 function renameInPlayerList(db: AppDatabase, oldName: string, newName: string | null) {
   const oldKey = jutsuKey(oldName);
   const list = db.state.jutsu ?? [];
@@ -297,7 +299,7 @@ export function renameJutsuRecord(db: AppDatabase, recordId: string, rawName: st
   };
 }
 
-/** Removes a jutsu record (and, for Kan, the same name from his quick list). */
+/** Removes a jutsu record (and, for the player, the same name from their quick list). */
 export function deleteJutsuRecord(db: AppDatabase, recordId: string): AppDatabase {
   const record = db.jutsuRecords.find((item) => item.id === recordId);
 

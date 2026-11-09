@@ -1,9 +1,9 @@
-// Rumours, posters and Kan's name (living-world Stage 3, section 10).
+// Rumours, posters and the player's name (living-world Stage 3, section 10).
 //
-// - Deeds: every time the people of a village (or the Akatsuki) see Kan do
+// - Deeds: every time the people of a village (or the Akatsuki) see the player do
 //   something and live to tell it (the state tracker's `reputation`), the
 //   deed is kept with where and when it happened.
-// - Kan's name grows by itself: each audience (a village's bingo book, the
+// - the player's name grows by itself: each audience (a village's bingo book, the
 //   Akatsuki, the people of the Rain, the underworld of bounty hunters and
 //   mercenaries) calls him by an epithet that grows from what they saw, never
 //   one the player picks. It can change over the years as new deeds outweigh
@@ -32,7 +32,7 @@ import { hashText, playerTurnCount } from './util';
 import type { AppDatabase, Audience, Deed, Epithet, RenownState, TurnDiff, VillageFaction } from './types';
 
 const MAX_DEEDS = 40;
-/** A theme needs this much weight before an audience names Kan after it. */
+/** A theme needs this much weight before an audience names the player after it. */
 const NAME_AT = 12;
 /** A new theme replaces the old name only when it leads by this much... */
 const RENAME_LEAD = 1.25;
@@ -216,7 +216,7 @@ export function themeScores(db: AppDatabase, audience: Audience): { theme: Theme
     for (const theme of THEMES) {
       if (!theme.test.test(deed.text)) continue;
 
-      // The massacre is the Leaf's first word on Kan; later deeds outgrow it.
+      // The massacre is the Leaf's first word on the player; later deeds outgrow it.
       const fade = theme.fades && age(deed) > 365 ? 0.35 : 1;
       scores.set(theme.id, (scores.get(theme.id) ?? 0) + weight * fade);
     }
@@ -228,7 +228,7 @@ export function themeScores(db: AppDatabase, audience: Audience): { theme: Theme
     .sort((a, b) => b.score - a.score || THEMES.indexOf(a.theme) - THEMES.indexOf(b.theme));
 }
 
-/** Re-names Kan where the deeds call for it. Story-given names stand while they are young. */
+/** Re-names the player where the deeds call for it. Story-given names stand while they are young. */
 function settleEpithets(db: AppDatabase): AppDatabase {
   const now = db.state.inStoryDate;
   const renown = renownOf(db);
@@ -269,7 +269,7 @@ function settleEpithets(db: AppDatabase): AppDatabase {
 
 /**
  * Keeps this turn's deeds (from the tracker's reputation changes) and lets
- * the names follow. The Leaf's first entry on Kan counts as its first deed.
+ * the names follow. The Leaf's first entry on the player counts as its first deed.
  */
 export function recordDeeds(db: AppDatabase, changes: TurnDiff['reputation']): AppDatabase {
   let renown = renownOf(db);
@@ -303,7 +303,7 @@ export function recordDeeds(db: AppDatabase, changes: TurnDiff['reputation']): A
   return settleEpithets(withRenown(db, renown));
 }
 
-/** The tracker's epithet: someone called Kan by a name on the page. */
+/** The tracker's epithet: someone called the player by a name on the page. */
 export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDatabase {
   if (!heard?.name?.trim() || !AUDIENCES.includes(heard.audience)) return db;
 
@@ -315,7 +315,7 @@ export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDa
     return current.known ? db : withRenown(db, { ...renown, epithets: { ...renown.epithets, [heard.audience]: { ...current, known: true } } });
   }
 
-  // Heard under another audience's name: Kan learns that one.
+  // Heard under another audience's name: the player learns that one.
   for (const audience of AUDIENCES) {
     const other = renown.epithets[audience];
 
@@ -339,7 +339,7 @@ export function applyEpithet(db: AppDatabase, heard: TurnDiff['epithet']): AppDa
   });
 }
 
-/** Kan saw a village's poster or bingo book: he now knows what it calls him. */
+/** The player saw a village's poster or bingo book: he now knows what it calls them. */
 export function markEpithetsSeen(db: AppDatabase, villages: TurnDiff['bountySeen']): AppDatabase {
   if (!villages?.length) return db;
 
@@ -359,7 +359,7 @@ export function markEpithetsSeen(db: AppDatabase, villages: TurnDiff['bountySeen
   return changed ? withRenown(db, { ...renown, epithets }) : db;
 }
 
-/** Whose name for Kan strangers use where he stands. */
+/** Whose name for the player strangers use where he stands. */
 export function localAudience(db: AppDatabase): Audience {
   const place = `${db.state.location} ${db.state.scene ?? ''}`;
   const village = territoryOf(place);
@@ -384,7 +384,7 @@ export function localEpithet(db: AppDatabase): { audience: Audience; epithet: Ep
   return null;
 }
 
-/** Names Kan has heard himself called, for the Kan tab. */
+/** Names the player has heard themselves called, for the the player tab. */
 export function knownEpithets(db: AppDatabase): { audience: Audience; epithet: Epithet }[] {
   const epithets = renownOf(db).epithets;
 

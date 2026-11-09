@@ -6,16 +6,16 @@
 // plant them too (letters.ts).
 //
 // A seed only comes back when that is realistic: the person is alive and
-// could plausibly cross Kan's path (near where they are, or present for a
+// could plausibly cross the player's path (near where they are, or present for a
 // lie to come out), and enough time has passed. It comes back softly, as an
 // optional offer to the narrator like a personal beat (SOMETHING COMES
 // BACK), never forced; the tracker marks it returned when it plays out. A
-// witness Kan left alive does not need to find him: when the time comes they
+// witness the player left alive does not need to find them: when the time comes they
 // talk, and the village they talk to wants him more. Seeds that never find a
 // fitting moment fade.
 //
 // Canon characters stay on their canon path: a consequence changes how they
-// see Kan, not their story.
+// see the player, not their story.
 
 import { daysBetween, dateSortValue, shiftDate } from './calendar';
 import { isCombatPace } from './canon';
@@ -83,7 +83,7 @@ function windowDays(when: 'weeks' | 'months' | 'years' | undefined, seed: string
   }
 }
 
-/** Someone whose memory of Kan matters to the story. */
+/** Someone whose memory of the player matters to the story. */
 export function isImportant(db: AppDatabase, entity: EntityRecord): boolean {
   const bond = db.bonds.find((item) => item.entityId === entity.id);
 
@@ -203,7 +203,7 @@ export function advanceConsequences(db: AppDatabase): AppDatabase {
       return { ...seed, status: 'faded' as const, resolvedOn: now };
     }
 
-    // A witness Kan left alive talks: the village they talk to wants him more.
+    // A witness the player left alive talks: the village they talk to wants them more.
     if (seed.kind === 'witness' && seed.faction && seed.faction !== 'akatsuki' && dateSortValue(now) >= dateSortValue(seed.after)) {
       next = applyReputationChanges(next, [{ faction: seed.faction, change: WITNESS_HEAT, reason: `A witness talked: ${seed.what}` }], []);
       changed = true;
@@ -263,7 +263,7 @@ export function canReturn(db: AppDatabase, seed: ConsequenceSeed): boolean {
       // Without a village to talk to, the talk reaches a town near the place.
       return peopled && kind === 'settlement' && near(playerRegion, seed.region as Region, 4);
     case 'found':
-      // They come to the place they found, while Kan is there (safehouses.ts searches it while he is away).
+      // They come to the place they found, while the player is there (safehouses.ts searches it while he is away).
       return Boolean(seed.safehouseId) && db.state.safehouses?.current === seed.safehouseId && !db.state.flashbacks?.active;
     case 'intercepted':
       if (seed.faction === 'akatsuki') {

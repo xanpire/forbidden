@@ -233,7 +233,7 @@ describe('the scene prompt', () => {
   test('the retouch prompt edits the same image and keeps Kan’s face', () => {
     const plan = planReferences([{ kind: 'face', uri: 'data:f' }, { kind: 'edit', uri: 'data:e' }], 4);
     expect(plan.references.map((ref) => ref.kind)).toEqual(['edit', 'face']);
-    const prompt = buildRetouchPrompt('make him angrier', plan.references);
+    const prompt = buildRetouchPrompt('make him angrier', plan.references, 'Kan');
     expect(prompt).toContain('Edit this image: make him angrier.');
     expect(prompt).toContain('Keep everything else the same');
     expect(prompt).toContain('Reference image 2: Kan');

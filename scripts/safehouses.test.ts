@@ -81,13 +81,13 @@ const emptySafehouse = {
   shown_to: [], residents_joined: [], residents_left: [], ended: null,
 };
 
-/** Kan has joined the Akatsuki (the joining beat). */
+/** The player has joined the Akatsuki (the joining beat). */
 const member = (db: AppDatabase): AppDatabase => ({
   ...db,
   state: { ...db.state, canonProgress: { ...db.state.canonProgress!, completed: [...(db.state.canonProgress?.completed ?? []), 'kan-joins-akatsuki'] } },
 });
 
-/** A membership fact about Kan, newest. */
+/** A membership fact about the player, newest. */
 const joined = (db: AppDatabase, text: string): AppDatabase => {
   const kan = db.entities.find((entity) => entity.name === 'Kan')!;
   return {
@@ -101,7 +101,7 @@ const joined = (db: AppDatabase, text: string): AppDatabase => {
 
 const person = (db: AppDatabase, name: string) => db.entities.find((entity) => entity.name === name)!;
 
-/** Kan settles in a cave of his own, with Itachi there. */
+/** The player settles in a cave of their own, with Itachi there. */
 function settled() {
   const db = save({ sceneCast: ['Itachi Uchiha'] });
   return play(db, '*You clear the cave and lay out your bedroll.*', 'You sweep the stones aside. Itachi watches the falls while you sleep. By morning the cave feels like yours.', {
@@ -121,7 +121,7 @@ describe('becoming a safehouse', () => {
     const tracker = buildExtractionPrompt(db, '*You wake.*', 'Morning light in the falls.').messages.map((m) => m.content).join('\n');
     expect(tracker).toContain('SAFEHOUSES');
     expect(tracker).toContain('the cave above the falls (own;');
-    expect(tracker).toContain('[Kan is here]');
+    expect(tracker).toContain('[you are here]');
   });
 
   test('the tracker tags a place: named, kind, who knows, Kan is there', () => {

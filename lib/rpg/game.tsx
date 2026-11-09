@@ -137,7 +137,7 @@ type GameContextValue = {
   worldEventNotice: string | null;
   dismissWorldEventNotice: () => void;
   setApiKey: (key: string) => Promise<void>;
-  /** Sends Kan's input. `remember` follows the offered flashback into the memory (the "Remember" chip). */
+  /** Sends the player's input. `remember` follows the offered flashback into the memory (the "Remember" chip). */
   sendTurn: (input: string, options?: { remember?: string }) => Promise<void>;
   regenerate: () => Promise<void>;
   undoLastTurn: () => Promise<void>;
@@ -155,7 +155,7 @@ type GameContextValue = {
   mergeCharacters: (keepId: string, dropId: string) => Promise<void>;
   /** Hand correction when the story got someone's death wrong. */
   setCharacterDeceased: (entityId: string, deceased: boolean) => Promise<void>;
-  /** Hand correction: starts or ends someone travelling with Kan. */
+  /** Hand correction: starts or ends someone travelling with the player. */
   setTravelling: (entityId: string, travelling: boolean) => Promise<void>;
   /** The mode chip: force conversation, fight or normal narration, or null for automatic. */
   setSceneMode: (mode: SceneModeName | null) => Promise<void>;
@@ -198,7 +198,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [stateStepRunning, setStateStepRunning] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [streamingText, setStreamingText] = useState('');
-  /** Kan's line for the turn being narrated, shown until the turn is saved. */
+  /** The player's line for the turn being narrated, shown until the turn is saved. */
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [lastPromptTokens, setLastPromptTokens] = useState(0);
   const [worldEventNotice, setWorldEventNotice] = useState<string | null>(null);

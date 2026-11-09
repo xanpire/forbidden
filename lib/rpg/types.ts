@@ -12,7 +12,7 @@ export type SceneModeState = {
   current: SceneModeName;
   /** Exchange beats in a row with the same person or group. */
   exchangeStreak: number;
-  /** Who Kan is talking with: entity ids (or lowercased names for people not on record). */
+  /** Who the player is talking with: entity ids (or lowercased names for people not on record). */
   partners: string[];
   lastBeat?: SceneBeat;
   /** The player's choice from the mode chip; cleared once it no longer applies. */
@@ -120,34 +120,34 @@ export type GameState = {
   sceneSeq?: number;
   /** The last applied turn ended its scene: the next turn opens a new one. */
   sceneClosed?: boolean;
-  /** Personal letters to and from Kan (see letters.ts). */
+  /** Personal letters to and from the player (see letters.ts). */
   post?: PostState;
   /** Bingo books and Akatsuki standing (see reputation.ts). */
   reputation?: ReputationState;
   /** Birthdays, anniversaries and festivals (see yearly.ts). */
   yearly?: YearlyState;
-  /** Deeds people talk about, and what they call Kan (see renown.ts). */
+  /** Deeds people talk about, and what they call the player (see renown.ts). */
   renown?: RenownState;
   /** Choices that could come back later (see consequences.ts). */
   consequences?: ConsequenceSeed[];
   /** The weather held for the current scene (see weather.ts). */
   weather?: WeatherLock;
-  /** Every place Kan has been, oldest first (see mapData.ts). */
+  /** Every place the player has been, oldest first (see mapData.ts). */
   travelLog?: TravelStop[];
   /** Playable flashbacks: offers, the one playing now, and those already lived (see flashbacks.ts). */
   flashbacks?: FlashbackState;
-  /** Places Kan stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
+  /** Places the player stays: safehouses, rooms, hideouts, camps (see safehouses.ts). */
   safehouses?: SafehouseState;
-  /** The money Kan carries, and what moved it (see money.ts). */
+  /** The money the player carries, and what moved it (see money.ts). */
   purse?: PurseState;
-  /** Set once the save tracks which names Kan knows (names.ts); older saves get it on load. */
+  /** Set once the save tracks which names the player knows (names.ts); older saves get it on load. */
   namesVersion?: number;
 };
 
-/** One change to Kan's money (see money.ts). */
+/** One change to the player's money (see money.ts). */
 export type PurseEntry = {
   date: CalendarDate;
-  /** Ryō, negative when Kan paid, lost or gave it away. */
+  /** Ryō, negative when the player paid, lost or gave it away. */
   change: number;
   reason: string;
   /** The story stated his total and the count was set to it. */
@@ -155,7 +155,7 @@ export type PurseEntry = {
 };
 
 export type PurseState = {
-  /** Ryō Kan carries now. */
+  /** Ryō the player carries now. */
   ryo: number;
   /** The last 40 changes, oldest first. */
   history: PurseEntry[];
@@ -166,7 +166,7 @@ export type PurseState = {
 export type SafehouseKind = 'own' | 'rented' | 'borrowed' | 'base' | 'camp';
 export type SafehouseEnd = 'expired' | 'destroyed' | 'compromised' | 'withdrawn' | 'given-up' | 'left';
 
-/** A place Kan stays (see safehouses.ts). */
+/** A place the player stays (see safehouses.ts). */
 export type Safehouse = {
   id: string;
   /** A short name: "the cave above the falls", "a room at the Tanzaku inn". */
@@ -177,7 +177,7 @@ export type Safehouse = {
   region?: string;
   placeId?: string;
   since: CalendarDate;
-  /** The last time Kan was there. */
+  /** The last time the player was there. */
   lastVisit: CalendarDate;
   /** Nights (long rests) spent there. */
   nights: number;
@@ -193,9 +193,9 @@ export type Safehouse = {
   upgrades: { name: string; since: CalendarDate }[];
   /** People living there (entity ids). */
   residents: string[];
-  /** Found by someone Kan is hiding from. */
+  /** Found by someone the player is hiding from. */
   compromised?: { on: CalendarDate; by: string };
-  /** Searched while Kan was away; seen once he is back. */
+  /** Searched while the player was away; seen once he is back. */
   raided?: { on: CalendarDate; lost: string[]; seen: boolean };
   status: 'active' | 'ended';
   ended?: { on: CalendarDate; reason: SafehouseEnd; note?: string };
@@ -203,12 +203,12 @@ export type Safehouse = {
 
 export type SafehouseState = {
   places: Safehouse[];
-  /** The one Kan is at now. */
+  /** The one the player is at now. */
   current?: string;
 };
 
 /**
- * Kan's playable memories of his life before the story (see flashbacks.ts).
+ * The player's playable memories of their life before the story (see flashbacks.ts).
  * A flashback has its own clock and place; the present stands still while
  * it plays.
  */
@@ -219,7 +219,7 @@ export type FlashbackState = {
   offered: Record<string, CalendarDate>;
   /** The last offer of any flashback: at most one per in-story month. */
   lastOfferOn?: CalendarDate;
-  /** An offer the reply showed, which Kan can still follow. */
+  /** An offer the reply showed, which the player can still follow. */
   pending?: { id: string; logId: string; turnsLeft: number };
   /** The flashback playing now. */
   active?: ActiveFlashback;
@@ -233,7 +233,7 @@ export type ActiveFlashback = {
   date: CalendarDate;
   place: string;
   locationKind: LocationKind;
-  /** The present moment Kan left. */
+  /** The present moment the player left. */
   startedOn: CalendarDate;
   /** Flashback turns narrated and applied so far. */
   turns: number;
@@ -280,11 +280,11 @@ export type WeatherLock = {
   source: 'world' | 'story';
 };
 
-/** One stop on Kan's road (see mapData.ts). */
+/** One stop on the player's road (see mapData.ts). */
 export type TravelStop = {
   /** state.location as the story gave it. */
   place: string;
-  /** A geography region id, when the place names one or Kan has not left the last one. */
+  /** A geography region id, when the place names one or the player has not left the last one. */
   region?: string;
   /** The map place it matches (a village, a shrine, a ruin). */
   placeId?: string;
@@ -302,7 +302,7 @@ export type YearlyState = {
 export type VillageFaction = 'leaf' | 'sand' | 'mist' | 'cloud' | 'stone';
 export type ReputationFaction = VillageFaction | 'akatsuki';
 
-/** What one great village has on Kan (see reputation.ts). */
+/** What one great village has on the player (see reputation.ts). */
 export type BingoEntry = {
   /** 0-100: how badly they want him, before cooling since lastDeedOn. */
   heat: number;
@@ -311,7 +311,7 @@ export type BingoEntry = {
   /** Their last new reason to want him; cooling counts from here. */
   lastDeedOn?: CalendarDate;
   lastReason?: string;
-  /** True once Kan has seen or been told what they wrote about him. */
+  /** True once the player has seen or been told what they wrote about them. */
   known: boolean;
 };
 
@@ -323,7 +323,7 @@ export type ReputationState = {
   recent: { faction: ReputationFaction; change: number; reason?: string; date: CalendarDate }[];
 };
 
-/** Someone's grudge against Kan, kept on their bond (see grudges.ts). */
+/** Someone's grudge against the player, kept on their bond (see grudges.ts). */
 export type Grudge = {
   since: CalendarDate;
   reason: string;
@@ -335,21 +335,21 @@ export type Grudge = {
 };
 
 /**
- * One personal letter. `to-kan` letters come from someone Kan is close to
- * (a reply to his own letter, or unprompted); `from-kan` letters are the ones
+ * One personal letter. `to-player` letters come from someone the player is close to
+ * (a reply to his own letter, or unprompted); `from-player` letters are the ones
  * he sends, which take days to arrive and move the recipient's bond.
  */
 export type Letter = {
   id: string;
-  direction: 'to-kan' | 'from-kan';
+  direction: 'to-player' | 'from-player';
   entityId: string;
   name: string;
   sentOn: CalendarDate;
   arrivesOn: CalendarDate;
-  /** What the letter says, in a few words (Kan's own letters). */
+  /** What the letter says, in a few words (the player's own letters). */
   gist?: string;
   /**
-   * The letter itself, kept for the archive: Kan's own words (only spelling
+   * The letter itself, kept for the archive: the player's own words (only spelling
    * and punctuation tidied), or the words the narrator gave the writer.
    */
   text?: string;
@@ -360,7 +360,7 @@ export type Letter = {
   status: 'travelling' | 'delivered' | 'lost' | 'unsent';
   /** Why a lost letter never arrived. */
   lostReason?: string;
-  /** A to-kan letter answering one of Kan's. */
+  /** A to-player letter answering one of the player's. */
   replyTo?: string;
   deliveredOn?: CalendarDate;
   /** How it travels; sets its speed and how safe it is (see letters.ts). */
@@ -369,7 +369,7 @@ export type Letter = {
   coded?: boolean;
   /** Where the reader was thought to be when it set out (to notice they moved on). */
   toRegion?: string;
-  /** Someone read it on the way (see letters.ts); Kan does not know until it comes back to him. */
+  /** Someone read it on the way (see letters.ts); the player does not know until it comes back to them. */
   interceptedBy?: Interceptor;
   /** A birthday letter. */
   occasion?: 'birthday';
@@ -381,11 +381,11 @@ export type Interceptor = 'root' | 'akatsuki' | VillageFaction;
 
 export type PostState = {
   letters: Letter[];
-  /** When a letter last reached Kan. */
+  /** When a letter last reached the player. */
   lastLetterIn?: CalendarDate;
 };
 
-/** A deed people saw, which travels as talk and shapes what they call Kan (see renown.ts). */
+/** A deed people saw, which travels as talk and shapes what they call the player (see renown.ts). */
 export type Deed = {
   id: string;
   date: CalendarDate;
@@ -394,11 +394,11 @@ export type Deed = {
   faction?: ReputationFaction;
   /** Where it happened (geography.ts region). */
   region?: string;
-  /** How much it moved the world's view of Kan (the reputation change, or a few points). */
+  /** How much it moved the world's view of the player (the reputation change, or a few points). */
   weight: number;
 };
 
-/** Who calls Kan by a name of their own. */
+/** Who calls the player by a name of their own. */
 export type Audience = VillageFaction | 'akatsuki' | 'rain' | 'underworld';
 
 export type Epithet = {
@@ -406,7 +406,7 @@ export type Epithet = {
   since: CalendarDate;
   /** The theme it grew from (renown.ts), or 'story' when the story named him. */
   theme: string;
-  /** Kan has heard himself called this. */
+  /** The player has heard themselves called this. */
   known: boolean;
   /** Names it had before, oldest first. */
   history?: { name: string; since: CalendarDate }[];
@@ -430,7 +430,7 @@ export type ConsequenceSeed = {
   entityId?: string;
   /** Who it is, in words: a name, or "the bandit you spared at the ford". */
   who: string;
-  /** What Kan did. */
+  /** What the player did. */
   what: string;
   /** What they would want now. */
   want?: string;
@@ -486,7 +486,7 @@ export type RawLogEntry = {
   timeCorrected?: boolean;
   /** Which scene this turn belongs to (GameState.sceneSeq when it was applied). */
   sceneSeq?: number;
-  /** Who was in the scene this turn (entity ids, from the scene cast, Kan excluded). */
+  /** Who was in the scene this turn (entity ids, from the scene cast, the player excluded). */
   sceneCastIds?: string[];
   /** How the scene image on this entry was made, so drift can be traced and it can be redone. */
   imageMeta?: SceneImageMeta;
@@ -551,14 +551,14 @@ export type EntityRecord = {
   currentLook?: string;
   /** The scene (GameState.sceneSeq) currentLook was last set in. */
   currentLookSeq?: number;
-  /** Where the story last said they are or are going, when not with Kan. */
+  /** Where the story last said they are or are going, when not with the player. */
   whereabouts?: string;
   lastSeen?: CalendarDate;
-  /** Where Kan last saw this person (state.location at the time). */
+  /** Where the player last saw this person (state.location at the time). */
   lastSeenAt?: string;
   /**
    * Set once this person has died in the story (see deaths.ts). `known` is
-   * whether Kan has seen it or been told; a canon death also becomes known
+   * whether the player has seen it or been told; a canon death also becomes known
    * when the news of `canonEventId` reaches him.
    */
   deceased?: {
@@ -570,9 +570,9 @@ export type EntityRecord = {
   /** male, female, or unknown when the story hasn't said. */
   gender?: Gender;
   /**
-   * Whether Kan (straight: only women) could ever win their heart:
+   * Whether the player (straight: only women) could ever win their heart:
    * winnable, lore-locked (a woman whose heart belongs elsewhere), or
-   * not-applicable (men, and women not attracted to men). Kan has none.
+   * not-applicable (men, and women not attracted to men). The player has none.
    */
   romanceAccessibility?: 'winnable' | 'lore-locked' | 'not-applicable';
   canonDevotion?: string;
@@ -596,7 +596,7 @@ export type EntityRecord = {
    */
   identities?: Identity[];
   /**
-   * What Kan knows of their name. Missing means he knows it (older saves, and
+   * What the player knows of their name. Missing means he knows it (older saves, and
    * anyone the story introduced by name). `{}` means nothing yet: he sees
    * only their label.
    */
@@ -610,22 +610,22 @@ export type EntityRecord = {
    */
   tier?: 'minor';
   /**
-   * Set while this person travels with Kan (see companions.ts): they are in
+   * Set while this person travels with the player (see companions.ts): they are in
    * every scene until the story shows them leave, and the scenes they share
    * move their bond.
    */
   companion?: Companion;
-  /** Small events in their own life while Kan was elsewhere (see lives.ts). */
+  /** Small events in their own life while the player was elsewhere (see lives.ts). */
   lifeEvents?: LifeEvent[];
-  /** Set when Kan meets them again after a long time apart (see lives.ts). */
+  /** Set when the player meets them again after a long time apart (see lives.ts). */
   reunion?: Reunion;
   tags: string[];
 };
 
 /**
- * Something that happened in someone's own life away from Kan: a promotion,
+ * Something that happened in someone's own life away from the player: a promotion,
  * an injury, a move, a new team. `world` events are made by the engine as
- * time passes; `story` ones were stated on the page. `known` once Kan has
+ * time passes; `story` ones were stated on the page. `known` once the player has
  * learned of it (he met them again, or a letter told him).
  */
 export type LifeEvent = {
@@ -651,7 +651,7 @@ export type LifeEventKind =
   | 'growth'
   | 'other';
 
-/** Kan met them again after REUNION_DAYS apart: when, and when he had last seen them. */
+/** The player met them again after REUNION_DAYS apart: when, and when he had last seen them. */
 export type Reunion = {
   on: CalendarDate;
   lastSeen: CalendarDate;
@@ -675,9 +675,9 @@ export type IdentityKind = 'true' | 'claimed' | 'persona';
 export type IdentityKnower = {
   /** Canon names or entity ids. */
   who: string[];
-  /** From this milestone (in the world, not Kan's hearing of it). */
+  /** From this milestone (in the world, not the player's hearing of it). */
   from?: string;
-  /** Or from this in-story date (Kan told them). */
+  /** Or from this in-story date (the player told them). */
   on?: CalendarDate;
   /** They know the truth but call him by the name he goes by (Zetsu). */
   playsAlong?: boolean;
@@ -687,7 +687,7 @@ export type IdentityKnower = {
 export type Identity = {
   name: string;
   kind: IdentityKind;
-  /** Kan learns this identity when one of these milestones reaches him. */
+  /** The player learns this identity when one of these milestones reaches them. */
   learnedWith?: string[];
   /** Who in the world knows them by this name, and from when. */
   knownBy?: IdentityKnower[];
@@ -704,7 +704,7 @@ export type Identity = {
 };
 
 export type NameKnowledge = {
-  /** A short description for someone Kan cannot name yet ("the red-haired girl"). */
+  /** A short description for someone the player cannot name yet ("the red-haired girl"). */
   label?: string;
   given?: boolean;
   family?: boolean;
@@ -715,18 +715,18 @@ export type NameKnowledge = {
 
 export type HiddenAlias = {
   name: string;
-  /** Canon milestone whose news (or engagement) reveals this name to Kan. */
+  /** Canon milestone whose news (or engagement) reveals this name to the player. */
   revealedBy?: string;
 };
 
 export type Companion = {
-  /** When they started travelling with Kan. */
+  /** When they started travelling with the player. */
   since: CalendarDate;
   /** Where they joined (state.location at the time). */
   sinceLocation?: string;
   /** Why, in a few words ("assigned as your Akatsuki partner"). */
   reason?: string;
-  /** Scenes that ended with them at Kan's side. */
+  /** Scenes that ended with them at the player's side. */
   sharedScenes: number;
   /** Shared-time progress toward the next bond step (see companions.ts). */
   bondPoints: number;
@@ -787,7 +787,7 @@ export type BondRecord = {
   id: string;
   entityId: string;
   characterName: string;
-  /** How they feel about Kan: always the same as theirFeelings.affinity. */
+  /** How they feel about the player: always the same as theirFeelings.affinity. */
   affinity: number;
   status: string;
   lastKeyEventId: string | null;
@@ -801,14 +801,14 @@ export type BondRecord = {
   relationship?: RelationshipStage;
   attraction?: Attraction;
   romanceNote?: string;
-  /** Set while this person holds a grudge against Kan (grudges.ts). */
+  /** Set while this person holds a grudge against the player (grudges.ts). */
   grudge?: Grudge;
   updatedInStoryDate: CalendarDate;
 };
 
 export type FactRecord = {
   id: string;
-  /** Who the fact is about. Always set for new facts (Kan when nobody else). */
+  /** Who the fact is about. Always set for new facts (the player when nobody else). */
   subjectEntityId: string | null;
   type: FactType;
   text: string;
@@ -869,7 +869,7 @@ export type LoreRecord = {
 
 /**
  * Something the story reaches. Every field given must hold.
- * - milestone: a canon milestone Kan completed or took part in
+ * - milestone: a canon milestone the player completed or took part in
  * - thread / threadStatus: a thread (by title) with that status (default resolved)
  * - fact: an active fact containing this text
  * - flag: a state flag the app works out (see LORE_FLAGS in lore.ts)
@@ -978,7 +978,7 @@ export type CanonProgress = {
   engaged: string[];
   expired?: string[];
   heard?: Record<string, { from: string; date: CalendarDate }>;
-  /** True when the last advance was held back because Kan was mid-fight. */
+  /** True when the last advance was held back because the player was mid-fight. */
   heldForCombat?: boolean;
 };
 
@@ -1105,17 +1105,17 @@ export type TurnDiff = {
   };
   /** The state model judged this beat visually striking (queues a scene summary). */
   imageWorthy?: boolean;
-  /** How this turn played, and who Kan was talking with (ids from the tracker). */
+  /** How this turn played, and who the player was talking with (ids from the tracker). */
   beat?: { kind: SceneBeat; with: string[] };
-  /** Moves Kan could make next while a fight goes on. */
+  /** Moves the player could make next while a fight goes on. */
   fightOptions?: string[];
   /** This turn opens a new chapter with this title (the state model's chapter_title). */
   chapterTitle?: string;
-  /** A flashback offered this turn showed its trigger, Kan followed one into the memory, or the memory ended. */
+  /** A flashback offered this turn showed its trigger, the player followed one into the memory, or the memory ended. */
   flashback?: 'offered' | 'started' | 'ended';
-  /** Chakra natures Kan gained this turn: found innate, or taken with Thousand Souls. */
+  /** Chakra natures the player gained this turn: found innate, or taken with Thousand Souls. */
   naturesGained?: { nature: string; source: 'innate' | 'thousand-souls'; from?: string }[];
-  /** Abilities Kan gained or that changed stage this turn (Sharingan 2 tomoe, Mangekyō...). */
+  /** Abilities the player gained or that changed stage this turn (Sharingan 2 tomoe, Mangekyō...). */
   abilitiesChanged?: { name: string; stage?: string }[];
   /**
    * People the prose seems to show, read by the app when the state reply was
@@ -1145,9 +1145,9 @@ export type TurnDiff = {
     minor?: boolean;
     /** Who they are drawn to: men, women, both, none, or unknown. */
     attractedTo?: 'men' | 'women' | 'both' | 'none' | 'unknown';
-    /** A short description of how they look to Kan, for someone he cannot name. */
+    /** A short description of how they look to the player, for someone he cannot name. */
     label?: string;
-    /** false: Kan doesn't know their name yet (a stranger: `name` is then only their label). */
+    /** false: the player doesn't know their name yet (a stranger: `name` is then only their label). */
     nameKnown?: boolean;
   }[];
   jutsuUsed?: {
@@ -1199,33 +1199,33 @@ export type TurnDiff = {
     type?: ThreadType;
     participants?: string[];
   }[];
-  /** People who died this turn, or whose death Kan saw or was told of. */
+  /** People who died this turn, or whose death the player saw or was told of. */
   deaths?: { entityId?: string; name: string; cause?: string }[];
   /** People genuinely brought back to life (never Edo Tensei). */
   revived?: { entityId?: string; name: string }[];
-  /** People who start travelling with Kan this turn. */
+  /** People who start travelling with the player this turn. */
   companionsJoined?: { entityId?: string; name: string; reason?: string }[];
-  /** Companions who part ways with Kan this turn. */
+  /** Companions who part ways with the player this turn. */
   companionsLeft?: { entityId?: string; name: string; reason?: string }[];
   canonCompleted?: string[];
   canonEngaged?: string[];
   canonPassed?: string[];
   newsRelayed?: { id: string; from?: string }[];
-  /** Letters or messages Kan sent this turn to someone far away (or wrote to the dead). */
+  /** Letters or messages the player sent this turn to someone far away (or wrote to the dead). */
   lettersSent?: {
     entityId?: string;
     name: string;
     gist?: string;
-    /** The letter as Kan wrote it, only spelling and punctuation tidied. */
+    /** The letter as the player wrote it, only spelling and punctuation tidied. */
     text?: string;
     carrier?: LetterCarrierKind;
     coded?: boolean;
   }[];
-  /** People whose letter reached Kan on the page this turn, with its words. */
+  /** People whose letter reached the player on the page this turn, with its words. */
   lettersReceived?: { entityId?: string; name: string; text?: string }[];
-  /** Things in someone's own life away from Kan that this turn revealed. */
+  /** Things in someone's own life away from the player that this turn revealed. */
   lifeEvents?: { entityId?: string; name: string; text: string }[];
-  /** A name the story called Kan by this turn, and whose name it is. */
+  /** A name the story called the player by this turn, and whose name it is. */
   epithet?: { audience: Audience; name: string };
   /** Choices this turn that could plausibly come back later. */
   consequences?: {
@@ -1242,21 +1242,21 @@ export type TurnDiff = {
   consequencesReturned?: string[];
   /** The weather as the page changed it this turn, in a few words. */
   weather?: string;
-  /** A place Kan settles in or sleeps at, and what changed there (see safehouses.ts). */
+  /** A place the player settles in or sleeps at, and what changed there (see safehouses.ts). */
   safehouse?: SafehouseDiff;
-  /** Changes to Kan's own money this turn, in ryō (negative when he pays). */
+  /** Changes to the player's own money this turn, in ryō (negative when he pays). */
   money?: { amount: number; reason: string }[];
-  /** The total Kan has, when the prose states it. */
+  /** The total the player has, when the prose states it. */
   moneyCounted?: number;
-  /** What a village or the Akatsuki now has on Kan. */
+  /** What a village or the Akatsuki now has on the player. */
   reputation?: { faction: ReputationFaction; change: number; reason?: string }[];
-  /** People whose birthday Kan learned this turn (they said it, someone told him). */
+  /** People whose birthday the player learned this turn (they said it, someone told them). */
   birthdaysLearned?: { entityId?: string; name: string }[];
-  /** Names Kan heard, read or recognised this turn (names.ts). */
+  /** Names the player heard, read or recognised this turn (names.ts). */
   namesLearned?: { entityId?: string; character: string; name: string; part: NamePart; how: NameHow }[];
-  /** Someone in the scene learned another identity of a person (Kan told Deidara who Tobi is). */
+  /** Someone in the scene learned another identity of a person (the player told Deidara who Tobi is). */
   namesTold?: { entityId?: string; character: string; name: string; toldTo: string[] }[];
-  /** Villages whose bingo-book entry on Kan he saw or was told of this turn. */
+  /** Villages whose bingo-book entry on the player he saw or was told of this turn. */
   bountySeen?: VillageFaction[];
   /** Grudges started, acted on, settled or forgiven this turn. */
   grudges?: {
@@ -1269,7 +1269,7 @@ export type TurnDiff = {
 };
 
 export type SafehouseDiff = {
-  /** A listed safehouse id; none means where Kan is now. */
+  /** A listed safehouse id; none means where the player is now. */
   id?: string;
   name?: string;
   kind?: SafehouseKind;

@@ -1,8 +1,8 @@
 /**
- * Kan's money (`state.purse`): how many ryō he carries, and what moved it.
+ * The player's money (`state.purse`): how many ryō he carries, and what moved it.
  *
  * The narrator sees one Purse line in CURRENT STATE and the prices below; the
- * state tracker reports every change to Kan's own money (`money`) and, when
+ * state tracker reports every change to the player's own money (`money`) and, when
  * the prose states his total, the total (`money_counted`). Someone else
  * paying for him changes nothing. A flashback never touches the present
  * purse (its turns go through applyMemoryStep).
@@ -10,10 +10,10 @@
 
 import type { AppDatabase, CalendarDate, PurseEntry, PurseState } from './types';
 
-/** What Kan had in his pouch the night he left the Leaf. */
+/** What the player had in their pouch the night he left the Leaf. */
 export const STARTING_RYO = 4000;
 
-/** Changes kept for the Kan tab, newest last. */
+/** Changes kept for the the player tab, newest last. */
 const HISTORY_LIMIT = 40;
 /** No single change or total goes past this (a sanity cap on the tracker). */
 const MAX_RYO = 1_000_000_000;
@@ -33,7 +33,7 @@ export function startingPurse(estimated = false): PurseState {
   return { ryo: STARTING_RYO, history: [], ...(estimated ? { estimatedStart: true } : {}) };
 }
 
-/** Old saves get the starting amount, marked as a guess until Kan counts his money. */
+/** Old saves get the starting amount, marked as a guess until the player counts their money. */
 export function normalizePurse(value: unknown): PurseState {
   if (!value || typeof value !== 'object') return startingPurse(true);
 
@@ -87,7 +87,7 @@ export type MoneyChange = { amount: number; reason: string };
 
 /**
  * Applies this turn's money changes, then the total if the prose stated one.
- * A payment can't take Kan below nothing: he pays what he has.
+ * A payment can't take the player below nothing: he pays what he has.
  */
 export function applyPurse(
   db: AppDatabase,
@@ -125,7 +125,7 @@ export function applyPurse(
       ryo = total;
     }
 
-    // Once Kan has counted his money, the starting guess no longer matters.
+    // Once the player has counted their money, the starting guess no longer matters.
     estimatedStart = undefined;
   }
 
@@ -157,7 +157,7 @@ export function formatPurseLine(db: AppDatabase) {
   const { ryo } = purseOf(db);
   const note =
     ryo === 0
-      ? ' (empty: Kan cannot pay for anything himself)'
+      ? ' (empty: you cannot pay for anything yourself)'
       : ryo < LOW_PURSE_RYO
         ? ' (nearly empty)'
         : '';
@@ -170,12 +170,12 @@ export function formatRyo(amount: number) {
   return `${amount.toLocaleString('en-US')} ryō`;
 }
 
-/** "+1,200 ryō" / "−500 ryō", for the Kan tab. */
+/** "+1,200 ryō" / "−500 ryō", for the the player tab. */
 export function formatChange(change: number) {
   return `${change < 0 ? '−' : '+'}${formatRyo(Math.abs(change))}`;
 }
 
-/** What the purse looks like, in a few words, for the Kan tab. */
+/** What the purse looks like, in a few words, for the the player tab. */
 export function purseFeel(ryo: number) {
   if (ryo === 0) return 'Empty';
   if (ryo < LOW_PURSE_RYO) return 'Nearly empty';

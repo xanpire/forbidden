@@ -218,7 +218,7 @@ function explicitDate(text: string, current: CalendarDate): CalendarDate | undef
 }
 
 /**
- * Removes speech, so a spoken plan ("Walk until nightfall, Kan.") never moves
+ * Removes speech, so a spoken plan ("Walk until nightfall, the player.") never moves
  * the clock: only what the narration says happened counts. Handles straight
  * and curly double quotes; a quote left open runs to the end of its paragraph.
  */

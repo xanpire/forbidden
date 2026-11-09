@@ -1,6 +1,6 @@
 // Seasons and weather (living-world Stage 4, section 13).
 //
-// Weather comes from the calendar and the region Kan is in: snow in the north
+// Weather comes from the calendar and the region the player is in: snow in the north
 // in winter, the Land of Fire's rainy season and monsoon heat, fog that never
 // lifts off the Mist, sandstorms in the Wind, and the Rain that never stops.
 // It is deterministic per save, region and six-hour block, and spells last
@@ -474,7 +474,7 @@ export type WeatherNow = {
   night: boolean;
 };
 
-/** The weather where Kan is right now: the scene's held weather, else the world's. */
+/** The weather where the player is right now: the scene's held weather, else the world's. */
 export function currentWeather(db: Pick<AppDatabase, 'state' | 'meta'>): WeatherNow {
   const region = currentRegion(db);
   const date = db.state.inStoryDate;
@@ -493,7 +493,7 @@ export function currentWeather(db: Pick<AppDatabase, 'state' | 'meta'>): Weather
   };
 }
 
-/** The weather a region has now, for the map (no scene lock unless it is Kan's region). */
+/** The weather a region has now, for the map (no scene lock unless it is the player's region). */
 export function regionWeather(db: Pick<AppDatabase, 'state' | 'meta'>, region: Region): WeatherCondition {
   const here = currentWeather(db);
 

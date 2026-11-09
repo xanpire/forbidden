@@ -251,7 +251,7 @@ describe('manual override', () => {
   test('switching it off holds until the conversation is over, then automatic resumes', () => {
     let db = setSceneModeOverride(talking(), 'normal');
     expect(resolveTurnMode(db, '"Why?"')).toMatchObject({ mode: 'normal', manual: true });
-    expect(promptText(db, '"Why?"')).toContain('normal narration (Kan chose this)');
+    expect(promptText(db, '"Why?"')).toContain('normal narration (the player chose this)');
 
     db = play(db, '*I walk away.*', 'You walk into the trees alone.', { beat: 'action', pace: 'travel', present: [] }).db;
     expect(db.state.sceneMode?.override).toBeUndefined();

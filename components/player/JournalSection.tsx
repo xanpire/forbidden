@@ -13,9 +13,10 @@ import { todayNotes } from '@/lib/rpg/yearly';
 import { grudgeKnown } from '@/lib/rpg/disclosure';
 import { letterArchive, type ArchivedLetter } from '@/lib/rpg/letters';
 import { AUDIENCE_NAME, knownEpithets } from '@/lib/rpg/renown';
-import { PurseCard } from '@/components/kan/PurseCard';
-import { ScrapbookView } from '@/components/kan/ScrapbookView';
+import { PurseCard } from '@/components/player/PurseCard';
+import { ScrapbookView } from '@/components/player/ScrapbookView';
 import { displayName } from '@/lib/rpg/names';
+import { isPlayer } from '@/lib/rpg/player';
 
 type JournalView = 'now' | 'recap' | 'world' | 'memories' | 'letters' | 'scrapbook';
 
@@ -46,7 +47,7 @@ function peopleIn(db: AppDatabase, eventId: string) {
     .map((link) => link.entityId);
 
   return db.entities
-    .filter((entity) => ids.includes(entity.id) && entity.type === 'character' && entity.name !== 'Kan')
+    .filter((entity) => ids.includes(entity.id) && entity.type === 'character' && !isPlayer(db, entity))
     .slice(0, 2)
     .map((entity) => displayName(db, entity));
 }
@@ -316,7 +317,7 @@ function MemoriesView({ db }: { db: AppDatabase }) {
 function LetterRow({ letter }: { letter: ArchivedLetter }) {
   const [open, setOpen] = useState(false);
   const words = letter.text?.trim() || null;
-  const when = letter.direction === 'to-kan' ? letter.deliveredOn ?? letter.arrivesOn : letter.sentOn;
+  const when = letter.direction === 'to-player' ? letter.deliveredOn ?? letter.arrivesOn : letter.sentOn;
 
   return (
     <ListRow

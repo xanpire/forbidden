@@ -68,7 +68,7 @@ function person(db: AppDatabase, name: string): EntityRecord {
   return db.entities.find((entity) => entity.name === name)!;
 }
 
-/** The news of a milestone reaches Kan (and it has happened in the world). */
+/** The news of a milestone reaches the player (and it has happened in the world). */
 function hear(db: AppDatabase, ...ids: string[]): AppDatabase {
   const progress = db.state.canonProgress!;
 
